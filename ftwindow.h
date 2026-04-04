@@ -79,7 +79,7 @@ private:
     void drawImageWithFrame(QPainter &p, const QRect &frame, const QImage &img,
                             const ZoomState &zoom, int imgW, int imgH);
     void drawAxes(QPainter &p, const QRect &frame, const ZoomState &zoom,
-                  int imgW, int imgH, bool reciprocal);
+                  int imgW, int imgH, bool reciprocal, bool yAxisRight = false);
     void drawMinMax(QPainter &p, const QRect &frame, double minVal, double maxVal);
     void drawHistogram(QPainter &p, const QRect &frame,
                        const std::vector<double> &vals,
@@ -101,8 +101,9 @@ private:
     int   m_fftN        = 0;
     std::vector<Complex> m_fftData;   // shifted FFT (kept for mask toggle)
     bool  m_maskCenter  = false;
+    double m_fftProgress = -1;    // -1 = not computing, 0..1 = progress
 
-    QImage m_cosImg, m_sinImg, m_ampImg, m_phaseImg, m_powerImg;
+    QImage m_cosImg, m_sinImg, m_ampImg, m_phaseImg, m_powerImg, m_complexImg;
     std::vector<double> m_cosVals, m_sinVals, m_ampVals, m_phaseVals, m_powerVals;
     double m_cosMin = 0, m_cosMax = 0;
     double m_sinMin = 0, m_sinMax = 0;

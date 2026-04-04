@@ -176,14 +176,23 @@ void FtWindow::paintEvent(QPaintEvent *)
         int panel2W = width() - panel2X;
         int panel2H = hy - 1;
 
-        if (m_displayMode == 2) {
-            // Power spectrum – single square
+        if (m_displayMode == 2 || m_displayMode == 3) {
+            // Single square display (power spectrum or complex FT)
             int side = static_cast<int>(0.7 * std::min(panel2W, panel2H));
             int fx = panel2X + (panel2W - side) / 2;
             int fy = (panel2H - side) / 2;
             QRect frame(fx, fy, side, side);
 
-            drawImageWithFrame(p, frame, m_powerImg, m_zoom[1], m_fftN, m_fftN);
+            // Label above top-left corner
+            p.setPen(QColor(200, 200, 200));
+            QFont lf; lf.setPixelSize(14); p.setFont(lf);
+            if (m_displayMode == 2)
+                p.drawText(frame.x(), frame.y() - 4, "Powerspectrum");
+            else
+                p.drawText(frame.x(), frame.y() - 4, "Complex Fourier transform");
+
+            const QImage &img = (m_displayMode == 2) ? m_powerImg : m_complexImg;
+            drawImageWithFrame(p, frame, img, m_zoom[1], m_fftN, m_fftN);
             drawAxes(p, frame, m_zoom[1], m_fftN, m_fftN, true);
             drawMinMax(p, frame, m_powerMin, m_powerMax);
             drawHistogram(p, frame, m_powerVals, m_powerMin, m_powerMax);
@@ -236,7 +245,7 @@ void FtWindow::paintEvent(QPaintEvent *)
             drawHistogram(p, frame1, *vals1, min1, max1);
 
             drawImageWithFrame(p, frame2, *img2, m_zoom[2], m_fftN, m_fftN);
-            drawAxes(p, frame2, m_zoom[2], m_fftN, m_fftN, true);
+            drawAxes(p, frame2, m_zoom[2], m_fftN, m_fftN, true, true);
             drawMinMax(p, frame2, min2, max2);
             drawHistogram(p, frame2, *vals2, min2, max2);
 
@@ -299,6 +308,17 @@ void FtWindow::paintEvent(QPaintEvent *)
 
         p.setPen(QPen(QColor(255, 255, 255, 120), 1));
         p.drawLine(ax + radius, ay + 1, ax + bodyW - 1, ay + 1);
+
+        // Blue progress overlay
+        if (m_fftProgress >= 0.0 && m_fftProgress <= 1.0) {
+            p.save();
+            int clipW = ax + (int)(arrowW * m_fftProgress);
+            p.setClipRect(ax, ay - arrowH, clipW - ax, arrowH * 3);
+            p.setBrush(QColor(40, 100, 220, 180));
+            p.setPen(Qt::NoPen);
+            p.drawPath(path);
+            p.restore();
+        }
 
         QFont font; font.setBold(true); font.setPixelSize(arrowH * 0.55);
         p.setFont(font);
@@ -386,7 +406,8 @@ void FtWindow::drawImageWithFrame(QPainter &p, const QRect &frame,
 
 void FtWindow::drawAxes(QPainter &p, const QRect &frame,
                          const ZoomState &zoom,
-                         int imgW, int imgH, bool reciprocal)
+                         int imgW, int imgH, bool reciprocal,
+                         bool yAxisRight)
 {
     QFont axisFont;
     axisFont.setPixelSize(11);
@@ -404,10 +425,11 @@ void FtWindow::drawAxes(QPainter &p, const QRect &frame,
         yStart = src.top()   - halfN;
         yEnd   = src.bottom()- halfN;
     } else {
+        // pixel coordinates: 0 .. N-1
         xStart = src.left();
-        xEnd   = src.right();
+        xEnd   = src.left() + src.width() - 1;
         yStart = src.top();
-        yEnd   = src.bottom();
+        yEnd   = src.top() + src.height() - 1;
     }
 
     // horizontal axis (below image)
@@ -419,18 +441,49 @@ void FtWindow::drawAxes(QPainter &p, const QRect &frame,
         int sx = frame.left() + (int)(frac * frame.width());
         QString label = QString::number((int)std::round(val));
         int lw = fm.horizontalAdvance(label);
-        p.drawText(sx - lw / 2, axisY + fm.ascent(), label);
+        if (reciprocal) {
+            // left-most: left-flushed; right-most: right-flushed; others: centered
+            if (i == 0)
+                p.drawText(frame.left(), axisY + fm.ascent(), label);
+            else if (i == numTicks - 1)
+                p.drawText(frame.right() - lw, axisY + fm.ascent(), label);
+            else
+                p.drawText(sx - lw / 2, axisY + fm.ascent(), label);
+        } else {
+            p.drawText(sx - lw / 2, axisY + fm.ascent(), label);
+        }
     }
 
-    // vertical axis (left of image)
-    int axisX = frame.left() - 4;
+    // vertical axis
     for (int i = 0; i < numTicks; i++) {
         double frac = i / (double)(numTicks - 1);
         double val = yStart + frac * (yEnd - yStart);
         int sy = frame.top() + (int)(frac * frame.height());
         QString label = QString::number((int)std::round(val));
         int lw = fm.horizontalAdvance(label);
-        p.drawText(axisX - lw, sy + fm.ascent() / 2 - 1, label);
+        if (yAxisRight) {
+            if (reciprocal) {
+                if (i == 0)
+                    p.drawText(frame.right() + 4, frame.top() + fm.ascent(), label);
+                else if (i == numTicks - 1)
+                    p.drawText(frame.right() + 4, frame.bottom(), label);
+                else
+                    p.drawText(frame.right() + 4, sy + fm.ascent() / 2 - 1, label);
+            } else {
+                p.drawText(frame.right() + 4, sy + fm.ascent() / 2 - 1, label);
+            }
+        } else {
+            if (reciprocal) {
+                if (i == 0)
+                    p.drawText(frame.left() - 4 - lw, frame.top() + fm.ascent(), label);
+                else if (i == numTicks - 1)
+                    p.drawText(frame.left() - 4 - lw, frame.bottom(), label);
+                else
+                    p.drawText(frame.left() - 4 - lw, sy + fm.ascent() / 2 - 1, label);
+            } else {
+                p.drawText(frame.left() - 4 - lw, sy + fm.ascent() / 2 - 1, label);
+            }
+        }
     }
 }
 
@@ -457,9 +510,9 @@ void FtWindow::drawHistogram(QPainter &p, const QRect &frame,
     if (vals.empty()) return;
 
     int histW = frame.width() / 2;
-    int histH = 36;
+    int histH = 72;
     int histX = frame.x() + (frame.width() - histW) / 2;
-    int histY = frame.bottom() + 24;
+    int histY = frame.bottom() + histH;
 
     // compute bins
     const int nBins = 128;
@@ -474,6 +527,11 @@ void FtWindow::drawHistogram(QPainter &p, const QRect &frame,
 
     int maxCount = *std::max_element(bins.begin(), bins.end());
     if (maxCount == 0) return;
+
+    // border
+    p.setPen(QPen(QColor(200, 200, 200), 1));
+    p.setBrush(Qt::NoBrush);
+    p.drawRect(histX, histY, histW, histH);
 
     // draw bars
     p.setPen(Qt::NoPen);
@@ -522,7 +580,7 @@ void FtWindow::onLoadImage()
 
 void FtWindow::onCycleMode()
 {
-    m_displayMode = (m_displayMode + 1) % 3;
+    m_displayMode = (m_displayMode + 1) % 4;
     m_modeBtn->setText(modeLabel());
     update();
 }
@@ -614,13 +672,52 @@ void FtWindow::computeFFT()
             data[y * N + x] = Complex(row[x], 0.0);
     }
 
-    fft2d(data, N, false);
+    // 2D FFT with animated progress
+    m_fftProgress = 0.0;
+    update();
+    QApplication::processEvents();
+
+    {
+        // Row-wise FFT (0% – 50%)
+        std::vector<Complex> row(N);
+        for (int y = 0; y < N; y++) {
+            for (int x = 0; x < N; x++)
+                row[x] = data[y * N + x];
+            fft1d(row, false);
+            for (int x = 0; x < N; x++)
+                data[y * N + x] = row[x];
+
+            if ((y & 15) == 0) {
+                m_fftProgress = 0.5 * y / N;
+                update();
+                QApplication::processEvents();
+            }
+        }
+
+        // Column-wise FFT (50% – 100%)
+        std::vector<Complex> col(N);
+        for (int x = 0; x < N; x++) {
+            for (int y = 0; y < N; y++)
+                col[y] = data[y * N + x];
+            fft1d(col, false);
+            for (int y = 0; y < N; y++)
+                data[y * N + x] = col[y];
+
+            if ((x & 15) == 0) {
+                m_fftProgress = 0.5 + 0.5 * x / N;
+                update();
+                QApplication::processEvents();
+            }
+        }
+    }
+
     fftShift(data, N);
 
     m_fftData = data;   // keep for mask toggle
 
     recomputeDisplayImages();
 
+    m_fftProgress = -1;
     m_ftComputed = true;
     m_modeBtn->show();
     m_maskBtn->show();
@@ -661,7 +758,7 @@ void FtWindow::recomputeDisplayImages()
         m_sinVals[i]   = data[i].imag();
         double amp     = std::abs(data[i]);
         m_ampVals[i]   = std::log(1.0 + amp);
-        m_phaseVals[i] = std::arg(data[i]);
+        m_phaseVals[i] = std::arg(data[i]) * 180.0 / M_PI;
         m_powerVals[i] = std::log(1.0 + amp * amp);
     }
 
@@ -670,6 +767,26 @@ void FtWindow::recomputeDisplayImages()
     m_ampImg   = floatToImage(m_ampVals,   N);
     m_phaseImg = floatToImage(m_phaseVals, N);
     m_powerImg = floatToImage(m_powerVals, N);
+
+    // Complex FT image: brightness = power, hue = phase
+    {
+        double pMin = *std::min_element(m_powerVals.begin(), m_powerVals.end());
+        double pMax = *std::max_element(m_powerVals.begin(), m_powerVals.end());
+        double pScale = (pMax > pMin) ? 1.0 / (pMax - pMin) : 1.0;
+
+        m_complexImg = QImage(N, N, QImage::Format_RGB32);
+        for (int y = 0; y < N; y++) {
+            QRgb *row = reinterpret_cast<QRgb *>(m_complexImg.scanLine(y));
+            for (int x = 0; x < N; x++) {
+                int idx = y * N + x;
+                double val = std::clamp((m_powerVals[idx] - pMin) * pScale, 0.0, 1.0);
+                // phase in [-180, 180] degrees -> hue in [0, 360)
+                double hue = m_phaseVals[idx] + 180.0;
+                QColor c = QColor::fromHsvF(hue / 360.0, 1.0, val);
+                row[x] = c.rgb();
+            }
+        }
+    }
 
     auto mm = [](const std::vector<double> &v) {
         return std::make_pair(*std::min_element(v.begin(), v.end()),
@@ -704,6 +821,7 @@ QString FtWindow::modeLabel() const
     case 0: return "sinus and cosinus";
     case 1: return "amplitude and phase";
     case 2: return "powerspectrum";
+    case 3: return "complex Fourier transform";
     }
     return "";
 }
