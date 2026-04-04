@@ -54,6 +54,9 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     connect(m_maskBtn, &QPushButton::toggled, this, &FtWindow::onToggleMask);
     m_maskBtn->hide();
 
+    // Restore history first (so loadImageFile doesn't push empty into history)
+    restoreHistory();
+
     // Restore last file
     QSettings settings("ft", "ft");
     QString lastFile = settings.value("lastFile").toString();
@@ -76,6 +79,54 @@ void FtWindow::resizeEvent(QResizeEvent *)
 // ---------------------------------------------------------------------------
 void FtWindow::mousePressEvent(QMouseEvent *event)
 {
+    // Check history slot clicks (panel 3)
+    for (int i = 0; i < HISTORY_SLOTS; i++) {
+        if (m_history[i].occupied && m_historyRects[i].contains(event->pos())) {
+            // Take the clicked entry out
+            HistoryEntry clicked = std::move(m_history[i]);
+
+            // Remove slot i: shift slots i+1.. left to close the gap
+            for (int j = i; j < HISTORY_SLOTS - 1; j++)
+                m_history[j] = std::move(m_history[j + 1]);
+            m_history[HISTORY_SLOTS - 1].occupied = false;
+
+            // Now push current panel 1 image into slot 0, shifting everything right
+            if (!m_image.isNull()) {
+                for (int j = HISTORY_SLOTS - 1; j > 0; j--)
+                    m_history[j] = std::move(m_history[j - 1]);
+                m_history[0].image        = m_image;
+                m_history[0].path         = m_imagePath;
+                m_history[0].rawPixels    = m_imageRawPixels;
+                m_history[0].minVal       = m_imageMinVal;
+                m_history[0].maxVal       = m_imageMaxVal;
+                m_history[0].pixelSize    = m_pixelSize;
+                m_history[0].powerSpecImg = computePowerSpecMasked(m_image);
+                m_history[0].occupied     = true;
+            }
+
+            // Load clicked entry into panel 1
+            m_image          = clicked.image;
+            m_imagePath      = clicked.path;
+            m_imageRawPixels = std::move(clicked.rawPixels);
+            m_imageMinVal    = clicked.minVal;
+            m_imageMaxVal    = clicked.maxVal;
+            m_pixelSize      = clicked.pixelSize;
+
+            m_ftComputed = false;
+            m_modeBtn->hide();
+            m_maskBtn->hide();
+            m_maskBtn->setChecked(false);
+            m_maskCenter = false;
+
+            if (!m_image.isNull())
+                m_zoom[0].reset(m_image.width(), m_image.height());
+
+            saveHistory();
+            update();
+            return;
+        }
+    }
+
     if (m_image.isNull()) return;
     QRect arrowRect = upperArrowBounds();
     if (arrowRect.contains(event->pos())) {
@@ -133,6 +184,13 @@ void FtWindow::wheelEvent(QWheelEvent *event)
             z.centerY = std::clamp(z.centerY, hh, di.imgH - hh);
         }
 
+        // In modes 0/1 (side-by-side), sync both FT zoom states
+        if ((m_displayMode == 0 || m_displayMode == 1) &&
+            (di.zoomIdx == 1 || di.zoomIdx == 2)) {
+            int other = (di.zoomIdx == 1) ? 2 : 1;
+            m_zoom[other] = m_zoom[di.zoomIdx];
+        }
+
         update();
         event->accept();
         return;
@@ -171,6 +229,22 @@ void FtWindow::paintEvent(QPaintEvent *)
         return true;
     };
 
+    // ---- panel titles ----------------------------------------------------------
+    {
+        QFont tf;
+        tf.setBold(true);
+        tf.setPixelSize(14);
+        p.setFont(tf);
+        p.setPen(Qt::white);
+        QFontMetrics tfm(tf);
+
+        QString t1 = "Real Space";
+        p.drawText((cx - 1 - tfm.horizontalAdvance(t1)) / 2, 8 + tfm.ascent(), t1);
+
+        QString t2 = "Fourier Space";
+        p.drawText(cx + 2 + (width() - cx - 2 - tfm.horizontalAdvance(t2)) / 2, 8 + tfm.ascent(), t2);
+    }
+
     // ---- Panel 1: loaded image ------------------------------------------------
     int panel1W = cx - 1;
     int panel1H = hy - 1;
@@ -184,6 +258,16 @@ void FtWindow::paintEvent(QPaintEvent *)
         int imgW = m_image.width();
         int imgH = m_image.height();
 
+        // Label "A" above center of image
+        {
+            QFont lf; lf.setBold(true); lf.setPixelSize(16); p.setFont(lf);
+            p.setPen(QColor(255, 255, 0));
+            QFontMetrics lfm(lf);
+            QString lab = "A";
+            p.drawText(frame.x() + (frame.width() - lfm.horizontalAdvance(lab)) / 2,
+                       frame.y() - 6, lab);
+        }
+
         drawImageWithFrame(p, frame, m_image, m_zoom[0], imgW, imgH);
         drawAxes(p, frame, m_zoom[0], imgW, imgH, false, m_pixelSize);
 
@@ -191,12 +275,13 @@ void FtWindow::paintEvent(QPaintEvent *)
         double curVal = 0;
         bool hasCur = sampleValue(inner, m_zoom[0], imgW, imgH, m_imageRawPixels, curVal);
         drawMinMax(p, frame, m_imageMinVal, m_imageMaxVal, curVal, hasCur);
-        drawHistogram(p, frame, m_imageRawPixels, m_imageMinVal, m_imageMaxVal);
+        drawHistogram(p, frame, m_imageRawPixels, m_imageMinVal, m_imageMaxVal, hy - frame.bottom());
 
         // Pixel size label to the right of the histogram
         {
+            int avail = hy - frame.bottom();
             int histW = frame.width() / 2;
-            int histH = 72;
+            int histH = std::max(16, avail / 3);
             int histX = frame.x() + (frame.width() - histW) / 2;
             int histY = frame.bottom() + histH;
             QFont pf;
@@ -226,7 +311,14 @@ void FtWindow::paintEvent(QPaintEvent *)
             int fy = (panel2H - side) / 2;
             QRect frame(fx, fy, side, side);
 
-            // Label above top-left corner
+            // Label "a" above center, title above top-left
+            {
+                QFont af; af.setBold(true); af.setPixelSize(16); p.setFont(af);
+                p.setPen(QColor(255, 255, 0));
+                QFontMetrics afm(af);
+                p.drawText(frame.x() + (frame.width() - afm.horizontalAdvance("a")) / 2,
+                           frame.y() - 18, "a");
+            }
             p.setPen(QColor(200, 200, 200));
             QFont lf; lf.setPixelSize(14); p.setFont(lf);
             if (m_displayMode == 2)
@@ -241,8 +333,30 @@ void FtWindow::paintEvent(QPaintEvent *)
             QRect inner = frame.adjusted(2, 2, -2, -2);
             double curVal = 0;
             bool hasCur = sampleValue(inner, m_zoom[1], m_fftN, m_fftN, m_powerVals, curVal);
-            drawMinMax(p, frame, m_powerMin, m_powerMax, curVal, hasCur);
-            drawHistogram(p, frame, m_powerVals, m_powerMin, m_powerMax);
+
+            if (m_displayMode == 3) {
+                // Show separate amplitude and phase readout
+                double curAmp = 0, curPhase = 0;
+                bool hasAmp = sampleValue(inner, m_zoom[1], m_fftN, m_fftN, m_ampVals, curAmp);
+                bool hasPh  = sampleValue(inner, m_zoom[1], m_fftN, m_fftN, m_phaseVals, curPhase);
+
+                QFont f; f.setPixelSize(11); p.setFont(f); p.setPen(Qt::white);
+                QFontMetrics fm2(f);
+                QString text;
+                if (hasAmp && hasPh)
+                    text = QString("Current amplitude: %1     Current phase: %2     Min: %3     Max: %4")
+                               .arg(curAmp, 0, 'g', 5).arg(curPhase, 0, 'g', 5)
+                               .arg(m_powerMin, 0, 'g', 5).arg(m_powerMax, 0, 'g', 5);
+                else
+                    text = QString("Min: %1     Max: %2")
+                               .arg(m_powerMin, 0, 'g', 5).arg(m_powerMax, 0, 'g', 5);
+                int tw = fm2.horizontalAdvance(text);
+                p.drawText(frame.right() - tw, frame.top() - 5, text);
+            } else {
+                drawMinMax(p, frame, m_powerMin, m_powerMax, curVal, hasCur);
+            }
+
+            drawHistogram(p, frame, m_powerVals, m_powerMin, m_powerMax, hy - frame.bottom());
 
             DisplayItem &di = m_dispItems[m_numDispItems++];
             di = { inner, m_fftN, m_fftN, 1, &m_powerVals, true };
@@ -277,6 +391,17 @@ void FtWindow::paintEvent(QPaintEvent *)
                 label1 = "amplitude"; label2 = "phase";
             }
 
+            // Label "a" above center of both frames combined
+            {
+                QFont af; af.setBold(true); af.setPixelSize(16); p.setFont(af);
+                p.setPen(QColor(255, 255, 0));
+                QFontMetrics afm(af);
+                int combinedX = frame1.x();
+                int combinedW = frame2.right() - frame1.x();
+                p.drawText(combinedX + (combinedW - afm.horizontalAdvance("a")) / 2,
+                           frame1.y() - 18, "a");
+            }
+
             // Labels above frames
             p.setPen(QColor(200, 200, 200));
             QFont lf;
@@ -291,7 +416,7 @@ void FtWindow::paintEvent(QPaintEvent *)
             double curVal1 = 0;
             bool hasCur1 = sampleValue(inner1, m_zoom[1], m_fftN, m_fftN, *vals1, curVal1);
             drawMinMax(p, frame1, min1, max1, curVal1, hasCur1);
-            drawHistogram(p, frame1, *vals1, min1, max1);
+            drawHistogram(p, frame1, *vals1, min1, max1, hy - frame1.bottom());
 
             drawImageWithFrame(p, frame2, *img2, m_zoom[2], m_fftN, m_fftN);
             drawAxes(p, frame2, m_zoom[2], m_fftN, m_fftN, true, m_pixelSize, true);
@@ -299,12 +424,101 @@ void FtWindow::paintEvent(QPaintEvent *)
             double curVal2 = 0;
             bool hasCur2 = sampleValue(inner2, m_zoom[2], m_fftN, m_fftN, *vals2, curVal2);
             drawMinMax(p, frame2, min2, max2, curVal2, hasCur2);
-            drawHistogram(p, frame2, *vals2, min2, max2);
+            drawHistogram(p, frame2, *vals2, min2, max2, hy - frame2.bottom());
 
             DisplayItem &d1 = m_dispItems[m_numDispItems++];
             d1 = { inner1, m_fftN, m_fftN, 1, vals1, true };
             DisplayItem &d2 = m_dispItems[m_numDispItems++];
             d2 = { inner2, m_fftN, m_fftN, 2, vals2, true };
+        }
+    }
+
+    // ---- Panel 3: image history (below panel 1) --------------------------------
+    {
+        int p3x = 0;
+        int p3y = hy + 2;
+        int p3w = cx - 1;
+        int p3h = height() - p3y;
+
+        int margin = 8;
+        int availW = p3w - 2 * margin;
+        int availH = p3h - 2 * margin;
+        int gap = 6;
+        int side = std::min(availH, (availW - (HISTORY_SLOTS - 1) * gap) / HISTORY_SLOTS);
+        if (side < 10) side = 10;
+
+        int totalW = HISTORY_SLOTS * side + (HISTORY_SLOTS - 1) * gap;
+        int startX = p3x + (p3w - totalW) / 2;
+        int startY = p3y + (p3h - side) / 2;
+
+        for (int i = 0; i < HISTORY_SLOTS; i++) {
+            int sx = startX + i * (side + gap);
+            QRect r(sx, startY, side, side);
+            m_historyRects[i] = r;
+
+            // Label "B", "C", ... above center
+            {
+                QFont af; af.setBold(true); af.setPixelSize(14); p.setFont(af);
+                p.setPen(QColor(255, 255, 0));
+                QFontMetrics afm(af);
+                QString lab = QString(QChar('B' + i));
+                p.drawText(r.x() + (r.width() - afm.horizontalAdvance(lab)) / 2,
+                           r.y() - 3, lab);
+            }
+
+            // Yellow border
+            p.setPen(QPen(QColor(255, 255, 0), 1));
+            p.setBrush(Qt::NoBrush);
+            p.drawRect(r);
+
+            if (m_history[i].occupied) {
+                QRect inner = r.adjusted(1, 1, -1, -1);
+                p.drawImage(inner, m_history[i].image);
+            }
+        }
+    }
+
+    // ---- Panel 4: power spectrum history (below panel 2) -----------------------
+    {
+        int p4x = cx + 2;
+        int p4y = hy + 2;
+        int p4w = width() - p4x;
+        int p4h = height() - p4y;
+
+        int margin = 8;
+        int availW = p4w - 2 * margin;
+        int availH = p4h - 2 * margin;
+        int gap = 6;
+        int side = std::min(availH, (availW - (HISTORY_SLOTS - 1) * gap) / HISTORY_SLOTS);
+        if (side < 10) side = 10;
+
+        int totalW = HISTORY_SLOTS * side + (HISTORY_SLOTS - 1) * gap;
+        int startX = p4x + (p4w - totalW) / 2;
+        int startY = p4y + (p4h - side) / 2;
+
+        for (int i = 0; i < HISTORY_SLOTS; i++) {
+            int sx = startX + i * (side + gap);
+            QRect r(sx, startY, side, side);
+            m_powerSpecRects[i] = r;
+
+            // Label "b", "c", ... above center
+            {
+                QFont af; af.setBold(true); af.setPixelSize(14); p.setFont(af);
+                p.setPen(QColor(255, 255, 0));
+                QFontMetrics afm(af);
+                QString lab = QString(QChar('b' + i));
+                p.drawText(r.x() + (r.width() - afm.horizontalAdvance(lab)) / 2,
+                           r.y() - 3, lab);
+            }
+
+            p.setPen(QPen(QColor(255, 255, 0), 1));
+            p.setBrush(Qt::NoBrush);
+            p.drawRect(r);
+
+            if (m_history[i].occupied && !m_history[i].powerSpecImg.isNull()) {
+                QRect inner = r.adjusted(1, 1, -1, -1);
+                p.drawImage(inner, m_history[i].powerSpecImg);
+            }
         }
     }
 
@@ -315,14 +529,40 @@ void FtWindow::paintEvent(QPaintEvent *)
     p.setBrush(QColor(50, 50, 50));
     p.drawRect(0, hy - 1, width(), 2);
 
+    // ---- title bar ------------------------------------------------------------
+    {
+        QFont titleFont;
+        titleFont.setBold(true);
+        titleFont.setPixelSize(18);
+        p.setFont(titleFont);
+        QFontMetrics tfm(titleFont);
+        QString title = "Fourier Analyzer";
+        int tw = tfm.horizontalAdvance(title);
+        int th = tfm.height();
+        int pad = 8;
+        int tx = (width() - tw) / 2 - pad;
+        int ty = 4;
+        QRect titleRect(tx, ty, tw + 2 * pad, th + 2 * pad);
+
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(75, 75, 75));
+        p.drawRect(titleRect);
+
+        p.setPen(QPen(Qt::white, 1));
+        p.setBrush(Qt::NoBrush);
+        p.drawRect(titleRect);
+
+        p.drawText(titleRect, Qt::AlignCenter, title);
+    }
+
     // ---- arrows ---------------------------------------------------------------
     p.setRenderHint(QPainter::Antialiasing, true);
 
-    int arrowW = std::min(width() / 4, 260);
-    int arrowH = std::max(arrowW / 5, 36);
+    int arrowW = std::min({width() / 4, hy / 4, 260});
+    int arrowH = std::max(arrowW / 5, 20);
     int headW  = arrowH;
     int gap    = arrowH * 2;
-    int radius = 6;
+    int radius = std::min(6, arrowH / 4);
     int totalH = arrowH * 2 + gap;
     int topY   = (hy - totalH) / 2;
 
@@ -597,14 +837,16 @@ void FtWindow::drawMinMax(QPainter &p, const QRect &frame,
 
 void FtWindow::drawHistogram(QPainter &p, const QRect &frame,
                               const std::vector<double> &vals,
-                              double minVal, double maxVal)
+                              double minVal, double maxVal,
+                              int availableBelow)
 {
     if (vals.empty()) return;
 
+    // histogram takes about 1/3 of available space, with equal gap above
+    int histH = std::max(16, availableBelow / 3);
     int histW = frame.width() / 2;
-    int histH = 72;
     int histX = frame.x() + (frame.width() - histW) / 2;
-    int histY = frame.bottom() + histH;
+    int histY = frame.bottom() + histH;  // gap = histH above the histogram
 
     // compute bins
     const int nBins = 128;
@@ -691,6 +933,21 @@ void FtWindow::loadImageFile(const QString &path)
 {
     qDebug() << "Loading image:" << path;
 
+    // Push current image into history (shift right, slot 0 = most recent)
+    if (!m_image.isNull()) {
+        for (int i = HISTORY_SLOTS - 1; i > 0; i--)
+            m_history[i] = std::move(m_history[i - 1]);
+        m_history[0].image     = m_image;
+        m_history[0].path      = m_imagePath;
+        m_history[0].rawPixels    = m_imageRawPixels;
+        m_history[0].minVal       = m_imageMinVal;
+        m_history[0].maxVal       = m_imageMaxVal;
+        m_history[0].pixelSize    = m_pixelSize;
+        m_history[0].powerSpecImg = computePowerSpecMasked(m_image);
+        m_history[0].occupied     = true;
+        saveHistory();
+    }
+
     if (path.endsWith(".mrc", Qt::CaseInsensitive)) {
         MrcResult r = loadMrc(path);
         m_image = r.image;
@@ -716,18 +973,24 @@ void FtWindow::loadImageFile(const QString &path)
         }
     }
 
+    m_imagePath = path;
+
     QSettings settings("ft", "ft");
     settings.setValue("lastFile", path);
 
     m_ftComputed = false;
+    m_displayMode = 2;  // default to powerspectrum
+    m_modeBtn->setText(modeLabel());
     m_modeBtn->hide();
     m_maskBtn->hide();
     m_maskBtn->setChecked(false);
     m_maskCenter = false;
 
     // reset zoom
-    if (!m_image.isNull())
+    if (!m_image.isNull()) {
         m_zoom[0].reset(m_image.width(), m_image.height());
+        computeFFT();
+    }
 
     update();
 }
@@ -900,8 +1163,8 @@ QRect FtWindow::upperArrowBounds() const
 {
     int cx = width() / 2;
     int hy = height() - height() / 5;
-    int arrowW = std::min(width() / 4, 260);
-    int arrowH = std::max(arrowW / 5, 36);
+    int arrowW = std::min({width() / 4, hy / 4, 260});
+    int arrowH = std::max(arrowW / 5, 20);
     int gap    = arrowH * 2;
     int totalH = arrowH * 2 + gap;
     int topY   = (hy - totalH) / 2;
@@ -918,4 +1181,110 @@ QString FtWindow::modeLabel() const
     case 3: return "complex Fourier transform";
     }
     return "";
+}
+
+QImage FtWindow::computePowerSpecMasked(const QImage &img)
+{
+    if (img.isNull()) return {};
+
+    QImage gray = img.convertToFormat(QImage::Format_Grayscale8);
+    int w = gray.width(), h = gray.height();
+    int N = nextPow2(std::max(w, h));
+
+    std::vector<Complex> data(N * N, Complex(0, 0));
+    for (int y = 0; y < h; y++) {
+        const uchar *row = gray.constScanLine(y);
+        for (int x = 0; x < w; x++)
+            data[y * N + x] = Complex(row[x], 0.0);
+    }
+
+    fft2d(data, N, false);
+    fftShift(data, N);
+
+    // mask center 3x3
+    int half = N / 2;
+    for (int dy = -1; dy <= 1; dy++)
+        for (int dx = -1; dx <= 1; dx++) {
+            int px = half + dx, py = half + dy;
+            if (px >= 0 && px < N && py >= 0 && py < N)
+                data[py * N + px] = Complex(0, 0);
+        }
+
+    // power spectrum
+    int total = N * N;
+    std::vector<double> power(total);
+    for (int i = 0; i < total; i++) {
+        double a = std::abs(data[i]);
+        power[i] = std::log(1.0 + a * a);
+    }
+
+    return floatToImage(power, N);
+}
+
+void FtWindow::saveHistory()
+{
+    QSettings settings("ft", "ft");
+    for (int i = 0; i < HISTORY_SLOTS; i++) {
+        QString key = QString("history/%1").arg(i);
+        if (m_history[i].occupied)
+            settings.setValue(key, m_history[i].path);
+        else
+            settings.remove(key);
+    }
+}
+
+void FtWindow::restoreHistory()
+{
+    QSettings settings("ft", "ft");
+    for (int i = 0; i < HISTORY_SLOTS; i++) {
+        QString key = QString("history/%1").arg(i);
+        QString path = settings.value(key).toString();
+        if (path.isEmpty() || !QFile::exists(path)) {
+            m_history[i].occupied = false;
+            continue;
+        }
+
+        qDebug() << "Restoring history slot" << i << ":" << path;
+
+        QImage img;
+        std::vector<double> rawPixels;
+        double minVal = 0, maxVal = 0, pixelSize = 1.0;
+
+        if (path.endsWith(".mrc", Qt::CaseInsensitive)) {
+            MrcResult r = loadMrc(path);
+            img       = r.image;
+            rawPixels = std::move(r.rawPixels);
+            minVal    = r.minVal;
+            maxVal    = r.maxVal;
+            pixelSize = r.pixelSize;
+        } else {
+            img = QImage(path);
+            if (!img.isNull()) {
+                QImage gray = img.convertToFormat(QImage::Format_Grayscale8);
+                int w = gray.width(), h = gray.height();
+                rawPixels.resize((size_t)w * h);
+                for (int y = 0; y < h; y++) {
+                    const uchar *row = gray.constScanLine(y);
+                    for (int x = 0; x < w; x++)
+                        rawPixels[y * w + x] = row[x];
+                }
+                minVal = *std::min_element(rawPixels.begin(), rawPixels.end());
+                maxVal = *std::max_element(rawPixels.begin(), rawPixels.end());
+            }
+        }
+
+        if (img.isNull()) {
+            m_history[i].occupied = false;
+            continue;
+        }
+
+        m_history[i].image        = img;
+        m_history[i].path         = path;
+        m_history[i].rawPixels    = std::move(rawPixels);
+        m_history[i].minVal       = minVal;
+        m_history[i].maxVal       = maxVal;
+        m_history[i].pixelSize    = pixelSize;
+        m_history[i].powerSpecImg = computePowerSpecMasked(img);
+        m_history[i].occupied     = true;
+    }
 }

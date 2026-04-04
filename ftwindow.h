@@ -87,7 +87,8 @@ private:
                     double curVal, bool hasCur);
     void drawHistogram(QPainter &p, const QRect &frame,
                        const std::vector<double> &vals,
-                       double minVal, double maxVal);
+                       double minVal, double maxVal,
+                       int availableBelow = 200);
 
     // ---- widgets ----
     QPushButton *m_loadBtn  = nullptr;
@@ -96,6 +97,7 @@ private:
 
     // ---- loaded image ----
     QImage              m_image;
+    QString             m_imagePath;
     std::vector<double> m_imageRawPixels;
     double              m_imageMinVal = 0, m_imageMaxVal = 0;
     double              m_pixelSize = 1.0;  // in Angstrom
@@ -115,6 +117,25 @@ private:
     double m_ampMin = 0, m_ampMax = 0;
     double m_phaseMin = 0, m_phaseMax = 0;
     double m_powerMin = 0, m_powerMax = 0;
+
+    // ---- image history (panel 3) ----
+    static constexpr int HISTORY_SLOTS = 6;
+    struct HistoryEntry {
+        QImage  image;
+        QImage  powerSpecImg;       // power spectrum with masked center
+        QString path;
+        std::vector<double> rawPixels;
+        double  minVal = 0, maxVal = 0;
+        double  pixelSize = 1.0;
+        bool    occupied = false;
+    };
+    HistoryEntry m_history[HISTORY_SLOTS];
+    QRect        m_historyRects[HISTORY_SLOTS];    // panel 3 screen rects
+    QRect        m_powerSpecRects[HISTORY_SLOTS];  // panel 4 screen rects
+
+    static QImage computePowerSpecMasked(const QImage &img);
+    void saveHistory();
+    void restoreHistory();
 
     // ---- zoom (0 = image, 1 = FT left/top, 2 = FT right/bottom) ----
     static constexpr int NUM_ZOOM = 3;
