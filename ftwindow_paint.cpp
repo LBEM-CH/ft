@@ -154,6 +154,107 @@ void FtWindow::paintEvent(QPaintEvent *)
                     p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
                 }
             }
+
+            // Shift image icon (button 2): arrow pointing right
+            if (i == 2) {
+                p.setRenderHint(QPainter::Antialiasing, true);
+                double cx2 = r.x() + r.width() / 2.0;
+                double cy2 = r.y() + r.height() / 2.0;
+                double hw = r.width() * 0.35;
+                double hh = r.height() * 0.22;
+
+                p.setPen(Qt::NoPen);
+                p.setBrush(m_shiftActive ? QColor(180, 180, 255) : Qt::white);
+                // Four-direction arrow
+                // Right
+                QPainterPath ar;
+                ar.moveTo(cx2 + hw, cy2);
+                ar.lineTo(cx2 + hw * 0.4, cy2 - hh);
+                ar.lineTo(cx2 + hw * 0.4, cy2 + hh);
+                ar.closeSubpath();
+                p.drawPath(ar);
+                // Left
+                QPainterPath al;
+                al.moveTo(cx2 - hw, cy2);
+                al.lineTo(cx2 - hw * 0.4, cy2 - hh);
+                al.lineTo(cx2 - hw * 0.4, cy2 + hh);
+                al.closeSubpath();
+                p.drawPath(al);
+                // Up
+                QPainterPath au;
+                au.moveTo(cx2, cy2 - hw);
+                au.lineTo(cx2 - hh, cy2 - hw * 0.4);
+                au.lineTo(cx2 + hh, cy2 - hw * 0.4);
+                au.closeSubpath();
+                p.drawPath(au);
+                // Down
+                QPainterPath ad;
+                ad.moveTo(cx2, cy2 + hw);
+                ad.lineTo(cx2 - hh, cy2 + hw * 0.4);
+                ad.lineTo(cx2 + hh, cy2 + hw * 0.4);
+                ad.closeSubpath();
+                p.drawPath(ad);
+
+                p.setRenderHint(QPainter::Antialiasing, false);
+
+                if (r.contains(m_mousePos)) {
+                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                    QFontMetrics ttfm(ttf);
+                    QString tip = "Shift image";
+                    int ttw = ttfm.horizontalAdvance(tip) + 8;
+                    int tth = ttfm.height() + 4;
+                    int ttx = r.right() + 4;
+                    int tty = r.center().y() - tth / 2;
+                    p.setPen(QPen(Qt::white, 1));
+                    p.setBrush(QColor(40, 40, 40));
+                    p.drawRect(ttx, tty, ttw, tth);
+                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                }
+            }
+
+            // Rotate image icon (button 3): curved arrow
+            if (i == 3) {
+                p.setRenderHint(QPainter::Antialiasing, true);
+                double cx2 = r.x() + r.width() / 2.0;
+                double cy2 = r.y() + r.height() / 2.0;
+                double rad = std::min(r.width(), r.height()) * 0.32;
+
+                p.setPen(QPen(m_rotateActive ? QColor(180, 180, 255) : Qt::white,
+                              std::max(1, (int)(rad * 0.25))));
+                p.setBrush(Qt::NoBrush);
+                p.drawArc(QRectF(cx2 - rad, cy2 - rad, rad * 2, rad * 2),
+                          30 * 16, 280 * 16);
+
+                // arrowhead at end of arc (~310 degrees = -50 degrees)
+                double aAngle = -50.0 * M_PI / 180.0;
+                double ax = cx2 + rad * std::cos(aAngle);
+                double ay = cy2 - rad * std::sin(aAngle);
+                double sz = rad * 0.5;
+                p.setPen(Qt::NoPen);
+                p.setBrush(m_rotateActive ? QColor(180, 180, 255) : Qt::white);
+                QPainterPath ah;
+                ah.moveTo(ax + sz * std::cos(aAngle + 0.3), ay - sz * std::sin(aAngle + 0.3));
+                ah.lineTo(ax - sz * 0.4 * std::cos(aAngle - 0.8), ay + sz * 0.4 * std::sin(aAngle - 0.8));
+                ah.lineTo(ax + sz * 0.4 * std::cos(aAngle + 1.5), ay - sz * 0.4 * std::sin(aAngle + 1.5));
+                ah.closeSubpath();
+                p.drawPath(ah);
+
+                p.setRenderHint(QPainter::Antialiasing, false);
+
+                if (r.contains(m_mousePos)) {
+                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                    QFontMetrics ttfm(ttf);
+                    QString tip = "Rotate image";
+                    int ttw = ttfm.horizontalAdvance(tip) + 8;
+                    int tth = ttfm.height() + 4;
+                    int ttx = r.right() + 4;
+                    int tty = r.center().y() - tth / 2;
+                    p.setPen(QPen(Qt::white, 1));
+                    p.setBrush(QColor(40, 40, 40));
+                    p.drawRect(ttx, tty, ttw, tth);
+                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                }
+            }
         }
 
         // Panel 2: right edge
@@ -271,10 +372,10 @@ void FtWindow::paintEvent(QPaintEvent *)
                 QPainterPath hole;
                 hole.addEllipse(QPointF(bcx, bcy), innerR, innerR);
                 ring = ring.subtracted(hole);
-                p.setBrush(QColor(255, 255, 255));
+                p.setBrush(QColor(200, 200, 255));
                 p.drawPath(ring);
 
-                p.setPen(QPen(QColor(0, 0, 0), 1));
+                p.setPen(QPen(QColor(100, 100, 200), 1));
                 p.setBrush(Qt::NoBrush);
                 p.drawEllipse(QPointF(bcx, bcy), outerR, outerR);
                 p.drawEllipse(QPointF(bcx, bcy), innerR, innerR);
@@ -366,7 +467,7 @@ void FtWindow::paintEvent(QPaintEvent *)
             QFontMetrics lfm(lf);
             QString lab = "a";
             p.drawText(frame.x() + (frame.width() - lfm.horizontalAdvance(lab)) / 2,
-                       frame.y() - 6, lab);
+                       frame.y() - 22, lab);
         }
 
         drawImageWithFrame(p, frame, m_image, m_zoom[0], imgW, imgH);

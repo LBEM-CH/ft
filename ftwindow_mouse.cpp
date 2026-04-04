@@ -70,6 +70,30 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         update();
         return;
     }
+    if (m_p1BtnRects[2].contains(event->pos())) {
+        m_shiftActive = !m_shiftActive;
+        if (m_shiftActive) m_rotateActive = false;
+        update();
+        return;
+    }
+    if (m_p1BtnRects[3].contains(event->pos())) {
+        m_rotateActive = !m_rotateActive;
+        if (m_rotateActive) m_shiftActive = false;
+        update();
+        return;
+    }
+
+    // Shift/rotate: start drag on panel 1 image
+    if ((m_shiftActive || m_rotateActive) && !m_image.isNull()) {
+        for (int i = 0; i < m_numDispItems; i++) {
+            const DisplayItem &di = m_dispItems[i];
+            if (di.valid && di.zoomIdx == 0 && di.screenRect.contains(event->pos())) {
+                m_p1Dragging = true;
+                m_p1DragStart = event->pos();
+                return;
+            }
+        }
+    }
 
     // Check tool button clicks (panel 2 right edge)
     auto deactivateAllTools = [&]() {
@@ -209,12 +233,77 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
     }
 }
 
-void FtWindow::mouseReleaseEvent(QMouseEvent *)
+void FtWindow::mouseReleaseEvent(QMouseEvent *event)
 {
     if (m_toolDragging) {
         m_toolDragging = false;
         m_bandDragging = 0;
         m_dirDragging = 0;
+    }
+
+    if (m_p1Dragging && !m_image.isNull()) {
+        m_p1Dragging = false;
+
+        // Find the panel 1 display item to convert screen delta to pixel delta
+        for (int i = 0; i < m_numDispItems; i++) {
+            const DisplayItem &di = m_dispItems[i];
+            if (!di.valid || di.zoomIdx != 0) continue;
+
+            QRectF src = m_zoom[0].visibleRect(di.imgW, di.imgH);
+            double dxPx = (event->pos().x() - m_p1DragStart.x())
+                          / (double)di.screenRect.width() * src.width();
+            double dyPx = (event->pos().y() - m_p1DragStart.y())
+                          / (double)di.screenRect.height() * src.height();
+
+            if (m_shiftActive) {
+                // Shift with periodic boundary conditions
+                int shiftX = -(int)std::round(dxPx);
+                int shiftY = -(int)std::round(dyPx);
+                int w = m_image.width(), h = m_image.height();
+                QImage shifted(w, h, m_image.format());
+                for (int y = 0; y < h; y++) {
+                    for (int x = 0; x < w; x++) {
+                        int sx = ((x + shiftX) % w + w) % w;
+                        int sy = ((y + shiftY) % h + h) % h;
+                        shifted.setPixelColor(x, y, m_image.pixelColor(sx, sy));
+                    }
+                }
+                m_image = shifted;
+            } else if (m_rotateActive) {
+                // Compute rotation angle from drag
+                QRect sr = di.screenRect;
+                double cx = sr.center().x(), cy = sr.center().y();
+                double a1 = std::atan2(m_p1DragStart.y() - cy, m_p1DragStart.x() - cx);
+                double a2 = std::atan2(event->pos().y() - cy, event->pos().x() - cx);
+                double angleDeg = (a2 - a1) * 180.0 / M_PI;
+
+                // Compute average grey for fill
+                QImage gray = m_image.convertToFormat(QImage::Format_Grayscale8);
+                int w = gray.width(), h = gray.height();
+                double sum = 0;
+                for (int y = 0; y < h; y++) {
+                    const uchar *row = gray.constScanLine(y);
+                    for (int x = 0; x < w; x++) sum += row[x];
+                }
+                int avg = (int)(sum / (w * h));
+
+                QImage rotated(w, h, m_image.format());
+                rotated.fill(QColor(avg, avg, avg));
+                QPainter rp(&rotated);
+                rp.setRenderHint(QPainter::SmoothPixmapTransform, true);
+                rp.translate(w / 2.0, h / 2.0);
+                rp.rotate(angleDeg);
+                rp.translate(-w / 2.0, -h / 2.0);
+                rp.drawImage(0, 0, m_image);
+                rp.end();
+                m_image = rotated;
+            }
+
+            extractImageData();
+            if (m_ftComputed) computeFFT();
+            update();
+            break;
+        }
     }
 }
 
