@@ -169,6 +169,14 @@ private:
     void brushApply(QPoint pos);
     double brushValue() const;             // max amplitude outside center 3x3
 
+    // Brush/eraser parameter widgets
+    QLineEdit  *m_brushValueEdit    = nullptr;
+    QLineEdit  *m_brushDiameterEdit = nullptr;
+    QLineEdit  *m_eraserDiameterEdit = nullptr;
+    QLabel     *m_brushValueLabel   = nullptr;
+    QLabel     *m_brushDiamLabel    = nullptr;
+    QLabel     *m_eraserDiamLabel   = nullptr;
+
     // ---- bandpass filter ----
     bool        m_bandpassActive = false;
     double      m_bandInnerR = 0.3;        // fraction of N/2 (0..1)

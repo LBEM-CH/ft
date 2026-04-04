@@ -11,6 +11,10 @@ find_package(Threads REQUIRED)
 add_executable(ft
     main.cpp
     ftwindow.cpp
+    ftwindow_mouse.cpp
+    ftwindow_paint.cpp
+    ftwindow_draw.cpp
+    ftwindow_slots.cpp
     fft.cpp
     mrcloader.cpp
 )
