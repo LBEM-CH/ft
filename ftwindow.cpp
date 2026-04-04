@@ -39,6 +39,11 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_loadBtn->setFixedSize(100, 30);
     connect(m_loadBtn, &QPushButton::clicked, this, &FtWindow::onLoadImage);
 
+    // Reload button
+    m_reloadBtn = new QPushButton("Reload image", this);
+    m_reloadBtn->setFixedSize(100, 30);
+    connect(m_reloadBtn, &QPushButton::clicked, this, &FtWindow::onReloadImage);
+
     // Mode cycle button
     m_modeBtn = new QPushButton(modeLabel(), this);
     m_modeBtn->setFixedSize(180, 30);
@@ -54,6 +59,25 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
         "QPushButton:checked { background-color: #444; border: 2px inset #333; color: #ccc; }");
     connect(m_maskBtn, &QPushButton::toggled, this, &FtWindow::onToggleMask);
     m_maskBtn->hide();
+
+    // Bandpass filter widgets (hidden until bandpass mode active)
+    m_smoothEdit = new QLineEdit("0", this);
+    m_smoothEdit->setFixedSize(40, 22);
+    m_smoothEdit->setStyleSheet("background:#222; color:white; border:1px solid #888;");
+    m_smoothEdit->hide();
+
+    m_bandEraseOutside = new QCheckBox("Erase pixels outside of band", this);
+    m_bandEraseOutside->setStyleSheet("color: white;");
+    m_bandEraseOutside->setChecked(true);
+    m_bandEraseOutside->hide();
+
+    m_applyBandBtn = new QPushButton("Apply filter", this);
+    m_applyBandBtn->setFixedSize(100, 26);
+    connect(m_applyBandBtn, &QPushButton::clicked, this, [this]() {
+        if (m_bandpassActive) onApplyBandpass();
+        else if (m_directionalActive) onApplyDirectional();
+    });
+    m_applyBandBtn->hide();
 
     // Restore history first (so loadImageFile doesn't push empty into history)
     restoreHistory();
@@ -71,8 +95,18 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
 void FtWindow::resizeEvent(QResizeEvent *)
 {
     m_loadBtn->move(8, 8);
+    int hy0 = height() - height() / 5;
+    m_reloadBtn->move(8, hy0 - m_reloadBtn->height() - 8);
     m_modeBtn->move(width() - m_modeBtn->width() - 8, 8);
     m_maskBtn->move(width() - m_maskBtn->width() - 8, 8 + m_modeBtn->height() + 4);
+
+    // Bandpass widgets: bottom-right of panel 2
+    int hy = height() - height() / 5;
+    int bpX = width() - 250;
+    int bpY = hy - 90;
+    m_smoothEdit->move(bpX + 160, bpY);
+    m_bandEraseOutside->move(bpX, bpY + 28);
+    m_applyBandBtn->move(bpX, bpY + 54);
 }
 
 // ---------------------------------------------------------------------------
@@ -134,33 +168,155 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         }
     }
 
-    // Check tool button clicks (panel 2 right edge)
-    if (m_toolBtnRects[0].contains(event->pos())) {
-        m_eraserActive = !m_eraserActive;
-        if (m_eraserActive) m_brushActive = false;
+    // Check panel 1 tool button clicks (left edge)
+    if (m_p1BtnRects[0].contains(event->pos()) && !m_image.isNull()) {
+        // Flip horizontally
+        m_image = m_image.flipped(Qt::Horizontal);
+        extractImageData();
+        if (m_ftComputed) computeFFT();
         update();
         return;
+    }
+    if (m_p1BtnRects[1].contains(event->pos()) && !m_image.isNull()) {
+        // Flip vertically
+        m_image = m_image.flipped(Qt::Vertical);
+        extractImageData();
+        if (m_ftComputed) computeFFT();
+        update();
+        return;
+    }
+
+    // Check tool button clicks (panel 2 right edge)
+    auto deactivateAllTools = [&]() {
+        m_eraserActive = false; m_brushActive = false;
+        m_bandpassActive = false; m_directionalActive = false;
+    };
+    auto showFilterWidgets = [&]() {
+        bool show = m_bandpassActive || m_directionalActive;
+        m_smoothEdit->setVisible(show);
+        m_bandEraseOutside->setVisible(show);
+        m_applyBandBtn->setVisible(show);
+    };
+    if (m_toolBtnRects[0].contains(event->pos())) {
+        bool was = m_eraserActive; deactivateAllTools();
+        m_eraserActive = !was; showFilterWidgets(); update(); return;
     }
     if (m_toolBtnRects[1].contains(event->pos())) {
-        m_brushActive = !m_brushActive;
-        if (m_brushActive) m_eraserActive = false;
-        update();
-        return;
+        bool was = m_brushActive; deactivateAllTools();
+        m_brushActive = !was; showFilterWidgets(); update(); return;
+    }
+    if (m_toolBtnRects[2].contains(event->pos())) {
+        bool was = m_bandpassActive; deactivateAllTools();
+        m_bandpassActive = !was; showFilterWidgets(); update(); return;
+    }
+    if (m_toolBtnRects[3].contains(event->pos())) {
+        bool was = m_directionalActive; deactivateAllTools();
+        m_directionalActive = !was; showFilterWidgets(); update(); return;
     }
 
-    // Eraser / Brush: click on FT image, start drag
+    // Bandpass ring drag: check if click is near inner or outer ring edge
+    if (m_bandpassActive && m_ftComputed && m_fftN > 0) {
+        double halfN = m_fftN / 2.0;
+        double imgCenter = halfN + 0.5;
+        for (int i = 0; i < m_numDispItems; i++) {
+            const DisplayItem &di = m_dispItems[i];
+            if (!di.valid || di.zoomIdx < 1) continue;
+            if (!di.screenRect.contains(event->pos())) continue;
+
+            // Convert screen pos to image coordinates
+            ZoomState &z = m_zoom[di.zoomIdx];
+            QRectF src = z.visibleRect(di.imgW, di.imgH);
+            double imgX = src.x() + (event->pos().x() - di.screenRect.x())
+                          / (double)di.screenRect.width() * src.width();
+            double imgY = src.y() + (event->pos().y() - di.screenRect.y())
+                          / (double)di.screenRect.height() * src.height();
+            double dx = (imgX - imgCenter) / halfN;
+            double dy = (imgY - imgCenter) / halfN;
+            double dist = std::sqrt(dx * dx + dy * dy);
+
+            // Tolerance in image-fraction units (scale with zoom)
+            double tol = 3.0 * src.width() / (di.screenRect.width() * halfN);
+            tol = std::max(tol, 0.02);
+            if (std::abs(dist - m_bandInnerR) < tol) {
+                m_bandDragging = 1;
+                m_toolDragging = true;
+                return;
+            }
+            if (std::abs(dist - m_bandOuterR) < tol) {
+                m_bandDragging = 2;
+                m_toolDragging = true;
+                return;
+            }
+            break;
+        }
+    }
+
+    // Directional wedge drag: check if click is near an edge
+    if (m_directionalActive && m_ftComputed && m_fftN > 0) {
+        double halfN = m_fftN / 2.0;
+        double imgCenter = halfN + 0.5;
+        for (int i = 0; i < m_numDispItems; i++) {
+            const DisplayItem &di = m_dispItems[i];
+            if (!di.valid || di.zoomIdx < 1) continue;
+            if (!di.screenRect.contains(event->pos())) continue;
+
+            ZoomState &z = m_zoom[di.zoomIdx];
+            QRectF src = z.visibleRect(di.imgW, di.imgH);
+            double imgX = src.x() + (event->pos().x() - di.screenRect.x())
+                          / (double)di.screenRect.width() * src.width();
+            double imgY = src.y() + (event->pos().y() - di.screenRect.y())
+                          / (double)di.screenRect.height() * src.height();
+            double angle = std::atan2(imgY - imgCenter, imgX - imgCenter) * 180.0 / M_PI;
+
+            // Normalize angle difference
+            auto angleDiff = [](double a, double b) {
+                double d = a - b;
+                while (d > 180) d -= 360;
+                while (d < -180) d += 360;
+                return std::abs(d);
+            };
+            double tol = 4.0;
+            if (angleDiff(angle, m_dirAngle1) < tol || angleDiff(angle, m_dirAngle1 + 180) < tol) {
+                m_dirDragging = 1; m_toolDragging = true; return;
+            }
+            if (angleDiff(angle, m_dirAngle2) < tol || angleDiff(angle, m_dirAngle2 + 180) < tol) {
+                m_dirDragging = 2; m_toolDragging = true; return;
+            }
+            break;
+        }
+    }
+
+    // Eraser / Brush: click on FT image, start drag (only if over an FT display item)
     if ((m_eraserActive || m_brushActive) && m_ftComputed) {
-        if (m_eraserActive) eraserApply(event->pos());
-        else                brushApply(event->pos());
-        m_toolDragging = true;
-        return;
+        for (int i = 0; i < m_numDispItems; i++) {
+            const DisplayItem &di = m_dispItems[i];
+            if (di.valid && di.zoomIdx >= 1 && di.screenRect.contains(event->pos())) {
+                if (m_eraserActive) eraserApply(event->pos());
+                else                brushApply(event->pos());
+                m_toolDragging = true;
+                return;
+            }
+        }
     }
 
-    if (m_image.isNull()) return;
-    QRect arrowRect = upperArrowBounds();
-    if (arrowRect.contains(event->pos())) {
-        computeFFT();
-        update();
+    // FT arrow
+    if (!m_image.isNull()) {
+        QRect arrowRect = upperArrowBounds();
+        if (arrowRect.contains(event->pos())) {
+            computeFFT();
+            update();
+            return;
+        }
+    }
+
+    // FT⁻¹ arrow
+    if (m_ftComputed) {
+        QRect iftRect = lowerArrowBounds();
+        if (iftRect.contains(event->pos())) {
+            computeInverseFFT();
+            update();
+            return;
+        }
     }
 }
 
@@ -168,6 +324,8 @@ void FtWindow::mouseReleaseEvent(QMouseEvent *)
 {
     if (m_toolDragging) {
         m_toolDragging = false;
+        m_bandDragging = 0;
+        m_dirDragging = 0;
     }
 }
 
@@ -177,6 +335,51 @@ void FtWindow::mouseMoveEvent(QMouseEvent *event)
 
     // Tool drag: apply along the trace
     if (m_toolDragging && m_ftComputed) {
+        if (m_bandDragging > 0 && m_fftN > 0) {
+            double halfN = m_fftN / 2.0;
+            double imgCenter = halfN + 0.5;
+            for (int i = 0; i < m_numDispItems; i++) {
+                const DisplayItem &di = m_dispItems[i];
+                if (!di.valid || di.zoomIdx < 1) continue;
+                ZoomState &z = m_zoom[di.zoomIdx];
+                QRectF src = z.visibleRect(di.imgW, di.imgH);
+                double imgX = src.x() + (event->pos().x() - di.screenRect.x())
+                              / (double)di.screenRect.width() * src.width();
+                double imgY = src.y() + (event->pos().y() - di.screenRect.y())
+                              / (double)di.screenRect.height() * src.height();
+                double dx = (imgX - imgCenter) / halfN;
+                double dy = (imgY - imgCenter) / halfN;
+                double dist = std::clamp(std::sqrt(dx * dx + dy * dy), 0.01, 1.42);
+                if (m_bandDragging == 1) {
+                    m_bandInnerR = std::min(dist, m_bandOuterR - 0.02);
+                } else {
+                    m_bandOuterR = std::max(dist, m_bandInnerR + 0.02);
+                }
+                update();
+                break;
+            }
+            return;
+        }
+        if (m_dirDragging > 0 && m_fftN > 0) {
+            double halfN = m_fftN / 2.0;
+            double imgCenter = halfN + 0.5;
+            for (int i = 0; i < m_numDispItems; i++) {
+                const DisplayItem &di = m_dispItems[i];
+                if (!di.valid || di.zoomIdx < 1) continue;
+                ZoomState &z = m_zoom[di.zoomIdx];
+                QRectF src = z.visibleRect(di.imgW, di.imgH);
+                double imgX = src.x() + (event->pos().x() - di.screenRect.x())
+                              / (double)di.screenRect.width() * src.width();
+                double imgY = src.y() + (event->pos().y() - di.screenRect.y())
+                              / (double)di.screenRect.height() * src.height();
+                double angle = std::atan2(imgY - imgCenter, imgX - imgCenter) * 180.0 / M_PI;
+                if (m_dirDragging == 1) m_dirAngle1 = angle;
+                else                    m_dirAngle2 = angle;
+                update();
+                break;
+            }
+            return;
+        }
         if (m_eraserActive) eraserApply(event->pos());
         else if (m_brushActive) brushApply(event->pos());
         return;
@@ -306,9 +509,101 @@ void FtWindow::paintEvent(QPaintEvent *)
         for (int i = 0; i < 8; i++) {
             int by = startY + i * (btnSide + gap);
             QRect r(offset, by, btnSide, btnSide);
+            m_p1BtnRects[i] = r;
+
             p.setPen(QPen(Qt::white, 1));
             p.setBrush(QColor(0, 0, 0));
             p.drawRect(r);
+
+            // Flip horizontal icon (button 0): double arrow left-right
+            if (i == 0) {
+                p.setRenderHint(QPainter::Antialiasing, true);
+                double cx2 = r.x() + r.width() / 2.0;
+                double cy2 = r.y() + r.height() / 2.0;
+                double hw = r.width() * 0.35;
+                double hh = r.height() * 0.2;
+
+                // Left arrow
+                p.setPen(Qt::NoPen);
+                p.setBrush(Qt::white);
+                QPainterPath la;
+                la.moveTo(cx2 - hw, cy2);
+                la.lineTo(cx2 - hw * 0.3, cy2 - hh);
+                la.lineTo(cx2 - hw * 0.3, cy2 + hh);
+                la.closeSubpath();
+                p.drawPath(la);
+                // Right arrow
+                QPainterPath ra;
+                ra.moveTo(cx2 + hw, cy2);
+                ra.lineTo(cx2 + hw * 0.3, cy2 - hh);
+                ra.lineTo(cx2 + hw * 0.3, cy2 + hh);
+                ra.closeSubpath();
+                p.drawPath(ra);
+                // Line between
+                p.setPen(QPen(Qt::white, std::max(1, btnSide / 12)));
+                p.drawLine(cx2 - hw * 0.3, cy2, cx2 + hw * 0.3, cy2);
+
+                p.setRenderHint(QPainter::Antialiasing, false);
+
+                if (r.contains(m_mousePos)) {
+                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                    QFontMetrics ttfm(ttf);
+                    QString tip = "Flip horizontally";
+                    int ttw = ttfm.horizontalAdvance(tip) + 8;
+                    int tth = ttfm.height() + 4;
+                    int ttx = r.right() + 4;
+                    int tty = r.center().y() - tth / 2;
+                    p.setPen(QPen(Qt::white, 1));
+                    p.setBrush(QColor(40, 40, 40));
+                    p.drawRect(ttx, tty, ttw, tth);
+                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                }
+            }
+
+            // Flip vertical icon (button 1): double arrow up-down
+            if (i == 1) {
+                p.setRenderHint(QPainter::Antialiasing, true);
+                double cx2 = r.x() + r.width() / 2.0;
+                double cy2 = r.y() + r.height() / 2.0;
+                double hw = r.width() * 0.2;
+                double hh = r.height() * 0.35;
+
+                // Up arrow
+                p.setPen(Qt::NoPen);
+                p.setBrush(Qt::white);
+                QPainterPath ua;
+                ua.moveTo(cx2, cy2 - hh);
+                ua.lineTo(cx2 - hw, cy2 - hh * 0.3);
+                ua.lineTo(cx2 + hw, cy2 - hh * 0.3);
+                ua.closeSubpath();
+                p.drawPath(ua);
+                // Down arrow
+                QPainterPath da;
+                da.moveTo(cx2, cy2 + hh);
+                da.lineTo(cx2 - hw, cy2 + hh * 0.3);
+                da.lineTo(cx2 + hw, cy2 + hh * 0.3);
+                da.closeSubpath();
+                p.drawPath(da);
+                // Line between
+                p.setPen(QPen(Qt::white, std::max(1, btnSide / 12)));
+                p.drawLine(cx2, cy2 - hh * 0.3, cx2, cy2 + hh * 0.3);
+
+                p.setRenderHint(QPainter::Antialiasing, false);
+
+                if (r.contains(m_mousePos)) {
+                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                    QFontMetrics ttfm(ttf);
+                    QString tip = "Flip vertically";
+                    int ttw = ttfm.horizontalAdvance(tip) + 8;
+                    int tth = ttfm.height() + 4;
+                    int ttx = r.right() + 4;
+                    int tty = r.center().y() - tth / 2;
+                    p.setPen(QPen(Qt::white, 1));
+                    p.setBrush(QColor(40, 40, 40));
+                    p.drawRect(ttx, tty, ttw, tth);
+                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                }
+            }
         }
 
         // Panel 2: right edge
@@ -318,7 +613,7 @@ void FtWindow::paintEvent(QPaintEvent *)
             m_toolBtnRects[i] = r;
 
             p.setPen(QPen(Qt::white, 1));
-            if ((i == 0 && m_eraserActive) || (i == 1 && m_brushActive))
+            if ((i == 0 && m_eraserActive) || (i == 1 && m_brushActive) || (i == 2 && m_bandpassActive) || (i == 3 && m_directionalActive))
                 p.setBrush(QColor(60, 60, 60));
             else
                 p.setBrush(QColor(0, 0, 0));
@@ -415,6 +710,105 @@ void FtWindow::paintEvent(QPaintEvent *)
                     p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
                 }
             }
+
+            // Bandpass icon in third button
+            if (i == 2) {
+                p.setRenderHint(QPainter::Antialiasing, true);
+                double bcx = r.x() + r.width() / 2.0;
+                double bcy = r.y() + r.height() / 2.0;
+                double rad = std::min(r.width(), r.height()) / 2.0 - 2;
+
+                // black center
+                p.setPen(Qt::NoPen);
+                p.setBrush(QColor(0, 0, 0));
+                p.drawEllipse(QPointF(bcx, bcy), rad * 0.3, rad * 0.3);
+
+                // white ring
+                double innerR = rad * 0.3;
+                double outerR = rad * 0.6;
+                QPainterPath ring;
+                ring.addEllipse(QPointF(bcx, bcy), outerR, outerR);
+                QPainterPath hole;
+                hole.addEllipse(QPointF(bcx, bcy), innerR, innerR);
+                ring = ring.subtracted(hole);
+                p.setBrush(QColor(255, 255, 255));
+                p.drawPath(ring);
+
+                // black outer edge
+                p.setPen(QPen(QColor(0, 0, 0), 1));
+                p.setBrush(Qt::NoBrush);
+                p.drawEllipse(QPointF(bcx, bcy), outerR, outerR);
+                p.drawEllipse(QPointF(bcx, bcy), innerR, innerR);
+
+                p.setRenderHint(QPainter::Antialiasing, false);
+
+                // Tooltip
+                if (r.contains(m_mousePos)) {
+                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                    QFontMetrics ttfm(ttf);
+                    QString tip = "Bandpass filter";
+                    int ttw = ttfm.horizontalAdvance(tip) + 8;
+                    int tth = ttfm.height() + 4;
+                    int ttx = r.left() - ttw - 4;
+                    int tty = r.center().y() - tth / 2;
+                    p.setPen(QPen(Qt::white, 1));
+                    p.setBrush(QColor(40, 40, 40));
+                    p.drawRect(ttx, tty, ttw, tth);
+                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                }
+            }
+
+            // Directional filter icon in fourth button
+            if (i == 3) {
+                p.setRenderHint(QPainter::Antialiasing, true);
+                double dcx = r.x() + r.width() / 2.0;
+                double dcy = r.y() + r.height() / 2.0;
+                double drad = std::min(r.width(), r.height()) / 2.0 - 2;
+
+                // Draw a wedge (triangle sector) and its Friedel pair
+                auto drawWedge = [&](double a1deg, double a2deg) {
+                    double a1 = a1deg * M_PI / 180.0;
+                    double a2 = a2deg * M_PI / 180.0;
+                    QPainterPath wp;
+                    wp.moveTo(dcx, dcy);
+                    wp.lineTo(dcx + drad * std::cos(a1), dcy + drad * std::sin(a1));
+                    // Arc between the two edges
+                    int steps = 12;
+                    for (int s = 1; s <= steps; s++) {
+                        double a = a1 + (a2 - a1) * s / steps;
+                        wp.lineTo(dcx + drad * std::cos(a), dcy + drad * std::sin(a));
+                    }
+                    wp.closeSubpath();
+                    return wp;
+                };
+                QPainterPath w1 = drawWedge(-20, 20);
+                QPainterPath w2 = drawWedge(160, 200);
+                p.setPen(Qt::NoPen);
+                p.setBrush(QColor(200, 200, 255));
+                p.drawPath(w1);
+                p.drawPath(w2);
+                p.setPen(QPen(QColor(100, 100, 200), 1));
+                p.setBrush(Qt::NoBrush);
+                p.drawPath(w1);
+                p.drawPath(w2);
+
+                p.setRenderHint(QPainter::Antialiasing, false);
+
+                // Tooltip
+                if (r.contains(m_mousePos)) {
+                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                    QFontMetrics ttfm(ttf);
+                    QString tip = "Directional filter";
+                    int ttw = ttfm.horizontalAdvance(tip) + 8;
+                    int tth = ttfm.height() + 4;
+                    int ttx = r.left() - ttw - 4;
+                    int tty = r.center().y() - tth / 2;
+                    p.setPen(QPen(Qt::white, 1));
+                    p.setBrush(QColor(40, 40, 40));
+                    p.drawRect(ttx, tty, ttw, tth);
+                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                }
+            }
         }
     }
 
@@ -450,13 +844,8 @@ void FtWindow::paintEvent(QPaintEvent *)
         drawMinMax(p, frame, m_imageMinVal, m_imageMaxVal, curVal, hasCur);
         drawHistogram(p, frame, m_imageRawPixels, m_imageMinVal, m_imageMaxVal, hy - frame.bottom());
 
-        // Pixel size label to the right of the histogram
+        // Pixel size label at top-left corner of image
         {
-            int avail = hy - frame.bottom();
-            int histW = frame.width() / 2;
-            int histH = std::max(16, avail / 3);
-            int histX = frame.x() + (frame.width() - histW) / 2;
-            int histY = frame.bottom() + histH;
             QFont pf;
             pf.setPixelSize(11);
             p.setFont(pf);
@@ -464,7 +853,7 @@ void FtWindow::paintEvent(QPaintEvent *)
             QString psLabel = QString("1 pixel = %1 %2")
                                   .arg(m_pixelSize, 0, 'g', 4)
                                   .arg(QString::fromUtf8("\u00C5"));
-            p.drawText(histX + histW + 8, histY + histH / 2 + QFontMetrics(pf).ascent() / 2, psLabel);
+            p.drawText(frame.x() + 4, frame.y() + QFontMetrics(pf).ascent() + 4, psLabel);
         }
 
         DisplayItem &di = m_dispItems[m_numDispItems++];
@@ -530,6 +919,11 @@ void FtWindow::paintEvent(QPaintEvent *)
             }
 
             drawHistogram(p, frame, m_powerVals, m_powerMin, m_powerMax, hy - frame.bottom());
+
+            if (m_bandpassActive)
+                drawBandpassRing(p, inner, m_zoom[1], m_fftN, m_fftN);
+            if (m_directionalActive)
+                drawDirectionalWedge(p, inner, m_zoom[1], m_fftN, m_fftN);
 
             DisplayItem &di = m_dispItems[m_numDispItems++];
             di = { inner, m_fftN, m_fftN, 1, &m_powerVals, true };
@@ -599,11 +993,30 @@ void FtWindow::paintEvent(QPaintEvent *)
             drawMinMax(p, frame2, min2, max2, curVal2, hasCur2);
             drawHistogram(p, frame2, *vals2, min2, max2, hy - frame2.bottom());
 
+            if (m_bandpassActive) {
+                drawBandpassRing(p, inner1, m_zoom[1], m_fftN, m_fftN);
+                drawBandpassRing(p, inner2, m_zoom[2], m_fftN, m_fftN);
+            }
+            if (m_directionalActive) {
+                drawDirectionalWedge(p, inner1, m_zoom[1], m_fftN, m_fftN);
+                drawDirectionalWedge(p, inner2, m_zoom[2], m_fftN, m_fftN);
+            }
+
             DisplayItem &d1 = m_dispItems[m_numDispItems++];
             d1 = { inner1, m_fftN, m_fftN, 1, vals1, true };
             DisplayItem &d2 = m_dispItems[m_numDispItems++];
             d2 = { inner2, m_fftN, m_fftN, 2, vals2, true };
         }
+    }
+
+    // ---- Bandpass smooth label (drawn text next to QLineEdit) -------------------
+    if (m_bandpassActive) {
+        QFont sf; sf.setPixelSize(11); p.setFont(sf);
+        p.setPen(Qt::white);
+        int hy2 = height() - height() / 5;
+        int bpX = width() - 250;
+        int bpY = hy2 - 90;
+        p.drawText(bpX, bpY + 15, "Smooth edge by pixels:");
     }
 
     // ---- Panel 3: image history (below panel 1) --------------------------------
@@ -821,6 +1234,17 @@ void FtWindow::paintEvent(QPaintEvent *)
 
         p.setPen(QPen(QColor(255, 255, 255, 120), 1));
         p.drawLine(bodyX + 1, ay + 1, ax + arrowW - radius, ay + 1);
+
+        // Blue progress overlay (right to left)
+        if (m_iftProgress >= 0.0 && m_iftProgress <= 1.0) {
+            p.save();
+            int clipX = ax + arrowW - (int)(arrowW * m_iftProgress);
+            p.setClipRect(clipX, ay - arrowH, ax + arrowW - clipX, arrowH * 3);
+            p.setBrush(QColor(40, 100, 220, 180));
+            p.setPen(Qt::NoPen);
+            p.drawPath(path);
+            p.restore();
+        }
 
         int fontSize = arrowH * 0.55;
         QFont font; font.setBold(true); font.setPixelSize(fontSize);
@@ -1085,6 +1509,42 @@ void FtWindow::onLoadImage()
     loadImageFile(path);
 }
 
+void FtWindow::onReloadImage()
+{
+    if (m_imagePath.isEmpty() || !QFile::exists(m_imagePath)) return;
+
+    // Reload from original file without pushing to history
+    qDebug() << "Reloading image:" << m_imagePath;
+
+    if (m_imagePath.endsWith(".mrc", Qt::CaseInsensitive)) {
+        MrcResult r = loadMrc(m_imagePath);
+        m_image = r.image;
+        m_imageRawPixels = std::move(r.rawPixels);
+        m_imageMinVal = r.minVal;
+        m_imageMaxVal = r.maxVal;
+        m_pixelSize = r.pixelSize;
+    } else {
+        m_image = QImage(m_imagePath);
+        m_pixelSize = 1.0;
+        if (!m_image.isNull())
+            extractImageData();
+    }
+
+    m_ftComputed = false;
+    m_displayMode = 2;
+    m_modeBtn->setText(modeLabel());
+    m_modeBtn->hide();
+    m_maskBtn->hide();
+    m_maskBtn->setChecked(false);
+    m_maskCenter = false;
+
+    if (!m_image.isNull()) {
+        m_zoom[0].reset(m_image.width(), m_image.height());
+        computeFFT();
+    }
+    update();
+}
+
 void FtWindow::onCycleMode()
 {
     m_displayMode = (m_displayMode + 1) % 4;
@@ -1277,6 +1737,106 @@ void FtWindow::computeFFT()
     m_zoom[2].reset(N, N);
 }
 
+void FtWindow::computeInverseFFT()
+{
+    if (!m_ftComputed || m_fftN == 0) return;
+
+    int N = m_fftN;
+
+    // Copy FFT data and undo shift
+    std::vector<Complex> data = m_fftData;
+    fftShift(data, N);  // undo the shift
+
+    // Inverse 2D FFT with animated progress (right to left)
+    m_iftProgress = 0.0;
+    update();
+    QApplication::processEvents();
+
+    {
+        int nThreads = (int)std::thread::hardware_concurrency();
+        if (nThreads < 1) nThreads = 1;
+        int batchSize = nThreads * 16;
+
+        // Row-wise inverse FFT (0% – 50%)
+        for (int b = 0; b < N; b += batchSize) {
+            int bEnd = std::min(b + batchSize, N);
+            std::vector<std::thread> threads;
+            int perThread = ((bEnd - b) + nThreads - 1) / nThreads;
+            for (int t = 0; t < nThreads; t++) {
+                int y0 = b + t * perThread;
+                int y1 = std::min(y0 + perThread, bEnd);
+                if (y0 < y1)
+                    threads.emplace_back([&data, N, y0, y1]() {
+                        std::vector<Complex> row(N);
+                        for (int y = y0; y < y1; y++) {
+                            for (int x = 0; x < N; x++) row[x] = data[y * N + x];
+                            fft1d(row, true);
+                            for (int x = 0; x < N; x++) data[y * N + x] = row[x];
+                        }
+                    });
+            }
+            for (auto &t : threads) t.join();
+            m_iftProgress = 0.5 * bEnd / N;
+            update();
+            QApplication::processEvents();
+        }
+
+        // Column-wise inverse FFT (50% – 100%)
+        for (int b = 0; b < N; b += batchSize) {
+            int bEnd = std::min(b + batchSize, N);
+            std::vector<std::thread> threads;
+            int perThread = ((bEnd - b) + nThreads - 1) / nThreads;
+            for (int t = 0; t < nThreads; t++) {
+                int x0 = b + t * perThread;
+                int x1 = std::min(x0 + perThread, bEnd);
+                if (x0 < x1)
+                    threads.emplace_back([&data, N, x0, x1]() {
+                        std::vector<Complex> col(N);
+                        for (int x = x0; x < x1; x++) {
+                            for (int y = 0; y < N; y++) col[y] = data[y * N + x];
+                            fft1d(col, true);
+                            for (int y = 0; y < N; y++) data[y * N + x] = col[y];
+                        }
+                    });
+            }
+            for (auto &t : threads) t.join();
+            m_iftProgress = 0.5 + 0.5 * bEnd / N;
+            update();
+            QApplication::processEvents();
+        }
+    }
+
+    m_iftProgress = -1;
+
+    // Extract real part as the reconstructed image
+    int origW = m_image.width();
+    int origH = m_image.height();
+    int outW = std::min(origW, N);
+    int outH = std::min(origH, N);
+
+    // Collect real values and find range
+    m_imageRawPixels.resize(outW * outH);
+    for (int y = 0; y < outH; y++)
+        for (int x = 0; x < outW; x++)
+            m_imageRawPixels[y * outW + x] = data[y * N + x].real();
+
+    m_imageMinVal = *std::min_element(m_imageRawPixels.begin(), m_imageRawPixels.end());
+    m_imageMaxVal = *std::max_element(m_imageRawPixels.begin(), m_imageRawPixels.end());
+    double range = m_imageMaxVal - m_imageMinVal;
+    double scale = (range > 0) ? 255.0 / range : 1.0;
+
+    m_image = QImage(outW, outH, QImage::Format_Grayscale8);
+    for (int y = 0; y < outH; y++) {
+        uchar *row = m_image.scanLine(y);
+        for (int x = 0; x < outW; x++)
+            row[x] = static_cast<uchar>(std::clamp(
+                (m_imageRawPixels[y * outW + x] - m_imageMinVal) * scale, 0.0, 255.0));
+    }
+
+    m_zoom[0].reset(outW, outH);
+    update();
+}
+
 void FtWindow::recomputeDisplayImages()
 {
     int N = m_fftN;
@@ -1363,6 +1923,20 @@ QRect FtWindow::upperArrowBounds() const
     int topY   = (hy - totalH) / 2;
     int ax = cx - arrowW / 2;
     return QRect(ax, topY - arrowH * 0.15, arrowW, arrowH * 1.3);
+}
+
+QRect FtWindow::lowerArrowBounds() const
+{
+    int cx = width() / 2;
+    int hy = height() - height() / 5;
+    int arrowW = std::min({width() / 4, hy / 4, 260});
+    int arrowH = std::max(arrowW / 5, 20);
+    int gap    = arrowH * 2;
+    int totalH = arrowH * 2 + gap;
+    int topY   = (hy - totalH) / 2;
+    int ax = cx - arrowW / 2;
+    int ay = topY + arrowH + gap;
+    return QRect(ax, ay - arrowH * 0.15, arrowW, arrowH * 1.3);
 }
 
 QString FtWindow::modeLabel() const
@@ -1555,4 +2129,236 @@ void FtWindow::brushApply(QPoint pos)
         }
         return;
     }
+}
+
+void FtWindow::drawBandpassRing(QPainter &p, const QRect &screenRect,
+                                 const ZoomState &zoom, int imgW, int imgH)
+{
+    // The ring is in image coordinates centered at (N/2, N/2)
+    // Inner/outer radii as fraction of N/2
+    int N = m_fftN;
+    if (N == 0) return;
+
+    QRectF src = zoom.visibleRect(imgW, imgH);
+    // Center of the origin pixel is at (N/2 + 0.5, N/2 + 0.5)
+    double centerImg = N / 2.0 + 0.5;
+
+    // Map image center to screen
+    double scaleX = screenRect.width() / src.width();
+    double scaleY = screenRect.height() / src.height();
+    double scale = std::min(scaleX, scaleY);  // keep 1:1 aspect
+
+    double scrCx = screenRect.x() + (centerImg - src.x()) * scaleX;
+    double scrCy = screenRect.y() + (centerImg - src.y()) * scaleY;
+
+    double halfN = N / 2.0;
+    double innerPx = m_bandInnerR * halfN * scale;
+    double outerPx = m_bandOuterR * halfN * scale;
+
+    p.setRenderHint(QPainter::Antialiasing, true);
+
+    // Semi-transparent fill
+    QPainterPath ring;
+    ring.addEllipse(QPointF(scrCx, scrCy), outerPx, outerPx);
+    QPainterPath hole;
+    hole.addEllipse(QPointF(scrCx, scrCy), innerPx, innerPx);
+    ring = ring.subtracted(hole);
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(100, 160, 255, 60));
+    p.setClipRect(screenRect);
+    p.drawPath(ring);
+
+    // Bright non-transparent edges
+    p.setBrush(Qt::NoBrush);
+    p.setPen(QPen(QColor(140, 200, 255), 1));
+    p.drawEllipse(QPointF(scrCx, scrCy), outerPx, outerPx);
+    p.drawEllipse(QPointF(scrCx, scrCy), innerPx, innerPx);
+
+    p.setClipping(false);
+    p.setRenderHint(QPainter::Antialiasing, false);
+}
+
+void FtWindow::onApplyBandpass()
+{
+    if (!m_ftComputed || m_fftN == 0) return;
+
+    int N = m_fftN;
+    int half = N / 2;
+    double innerR = m_bandInnerR * half;
+    double outerR = m_bandOuterR * half;
+    int smooth = m_smoothEdit->text().toInt();
+    if (smooth < 0) smooth = 0;
+    bool eraseOutside = m_bandEraseOutside->isChecked();
+
+    for (int y = 0; y < N; y++) {
+        for (int x = 0; x < N; x++) {
+            double dx = x - half;
+            double dy = y - half;
+            double dist = std::sqrt(dx * dx + dy * dy);
+
+            double factor = 1.0;
+            if (eraseOutside) {
+                // Erase pixels OUTSIDE the band (keep band, zero rest)
+                if (dist < innerR) {
+                    if (smooth > 0 && dist > innerR - smooth)
+                        factor = (innerR - dist) / smooth;
+                    else
+                        factor = 0.0;
+                } else if (dist > outerR) {
+                    if (smooth > 0 && dist < outerR + smooth)
+                        factor = (dist - outerR) / smooth;
+                    else
+                        factor = 0.0;
+                } else {
+                    factor = 1.0;  // inside band: keep
+                }
+                // Invert: erase outside means keep inside band, zero outside
+                // Actually: factor=1 inside band, factor=0 outside
+                // We want to zero where factor=0
+                if (dist < innerR) {
+                    double d = innerR - dist;
+                    factor = (smooth > 0 && d < smooth) ? (1.0 - d / smooth) : 0.0;
+                } else if (dist > outerR) {
+                    double d = dist - outerR;
+                    factor = (smooth > 0 && d < smooth) ? (1.0 - d / smooth) : 0.0;
+                } else {
+                    factor = 1.0;
+                }
+            } else {
+                // Erase pixels UNDER the band (zero band, keep rest)
+                if (dist >= innerR && dist <= outerR) {
+                    factor = 0.0;
+                } else if (smooth > 0 && dist < innerR && dist > innerR - smooth) {
+                    factor = (innerR - dist) / smooth;
+                } else if (smooth > 0 && dist > outerR && dist < outerR + smooth) {
+                    factor = (dist - outerR) / smooth;
+                }
+            }
+
+            if (factor < 1.0) {
+                m_fftData[y * N + x] *= factor;
+            }
+        }
+    }
+
+    recomputeDisplayImages();
+    update();
+}
+
+void FtWindow::drawDirectionalWedge(QPainter &p, const QRect &screenRect,
+                                     const ZoomState &zoom, int imgW, int imgH)
+{
+    int N = m_fftN;
+    if (N == 0) return;
+
+    QRectF src = zoom.visibleRect(imgW, imgH);
+    double imgCenter = N / 2.0 + 0.5;
+    double scaleX = screenRect.width() / src.width();
+    double scaleY = screenRect.height() / src.height();
+
+    double scrCx = screenRect.x() + (imgCenter - src.x()) * scaleX;
+    double scrCy = screenRect.y() + (imgCenter - src.y()) * scaleY;
+
+    // Radius large enough to reach corners
+    double maxR = N * 0.8 * std::max(scaleX, scaleY);
+
+    auto makeWedge = [&](double a1deg, double a2deg) {
+        double a1 = a1deg * M_PI / 180.0;
+        double a2 = a2deg * M_PI / 180.0;
+        QPainterPath wp;
+        wp.moveTo(scrCx, scrCy);
+        int steps = 20;
+        for (int s = 0; s <= steps; s++) {
+            double a = a1 + (a2 - a1) * s / steps;
+            wp.lineTo(scrCx + maxR * std::cos(a), scrCy + maxR * std::sin(a));
+        }
+        wp.closeSubpath();
+        return wp;
+    };
+
+    QPainterPath w1 = makeWedge(m_dirAngle1, m_dirAngle2);
+    QPainterPath w2 = makeWedge(m_dirAngle1 + 180, m_dirAngle2 + 180);
+
+    p.save();
+    p.setRenderHint(QPainter::Antialiasing, true);
+    p.setClipRect(screenRect);
+
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(100, 160, 255, 60));
+    p.drawPath(w1);
+    p.drawPath(w2);
+
+    p.setBrush(Qt::NoBrush);
+    p.setPen(QPen(QColor(80, 130, 255), 1));
+    p.drawPath(w1);
+    p.drawPath(w2);
+
+    p.restore();
+}
+
+void FtWindow::onApplyDirectional()
+{
+    if (!m_ftComputed || m_fftN == 0) return;
+
+    int N = m_fftN;
+    int half = N / 2;
+    int smooth = m_smoothEdit->text().toInt();
+    if (smooth < 0) smooth = 0;
+    bool eraseOutside = m_bandEraseOutside->isChecked();
+
+    double a1 = m_dirAngle1, a2 = m_dirAngle2;
+    while (a2 < a1) a2 += 360;
+    if (a2 - a1 > 180) { std::swap(a1, a2); while (a2 < a1) a2 += 360; }
+
+    auto inRange = [](double a, double lo, double hi) {
+        while (a < lo) a += 360;
+        while (a > lo + 360) a -= 360;
+        return a <= hi;
+    };
+
+    auto isInWedge = [&](double angle) -> bool {
+        return inRange(angle, a1, a2) || inRange(angle, a1 + 180, a2 + 180);
+    };
+
+    auto wedgeDistance = [&](double angle) -> double {
+        auto distTo = [](double a, double lo, double hi) -> double {
+            while (a < lo - 180) a += 360;
+            while (a > lo + 180) a -= 360;
+            if (a >= lo && a <= hi) return 0;
+            return std::min(std::abs(a - lo), std::abs(a - hi));
+        };
+        return std::min(distTo(angle, a1, a2), distTo(angle, a1 + 180, a2 + 180));
+    };
+
+    for (int y = 0; y < N; y++) {
+        for (int x = 0; x < N; x++) {
+            double dx = x - half;
+            double dy = y - half;
+            if (dx == 0 && dy == 0) continue;
+
+            double angle = std::atan2(dy, dx) * 180.0 / M_PI;
+            bool inW = isInWedge(angle);
+            double edgeDist = wedgeDistance(angle);
+
+            double factor = 1.0;
+            if (eraseOutside) {
+                if (!inW) {
+                    factor = (smooth > 0 && edgeDist < smooth)
+                             ? (1.0 - edgeDist / smooth) : 0.0;
+                }
+            } else {
+                if (inW) {
+                    factor = 0.0;
+                } else if (smooth > 0 && edgeDist < smooth) {
+                    factor = edgeDist / smooth;
+                }
+            }
+
+            if (factor < 1.0)
+                m_fftData[y * N + x] *= factor;
+        }
+    }
+
+    recomputeDisplayImages();
+    update();
 }

@@ -4,6 +4,9 @@
 #include <QWidget>
 #include <QImage>
 #include <QPushButton>
+#include <QLineEdit>
+#include <QLabel>
+#include <QCheckBox>
 #include <vector>
 #include "fft.h"          // Complex, nextPow2, fft2d, fftShift, floatToImage
 
@@ -65,18 +68,22 @@ protected:
 
 private slots:
     void onLoadImage();
+    void onReloadImage();
     void onCycleMode();
     void onToggleMask(bool checked);
+    void onApplyBandpass();
 
 private:
     // loading / computation
     void loadImageFile(const QString &path);
     void extractImageData();
     void computeFFT();
+    void computeInverseFFT();
     void recomputeDisplayImages();
 
     // painting helpers
     QRect  upperArrowBounds() const;
+    QRect  lowerArrowBounds() const;
     QString modeLabel() const;
 
     void drawImageWithFrame(QPainter &p, const QRect &frame, const QImage &img,
@@ -92,9 +99,10 @@ private:
                        int availableBelow = 200);
 
     // ---- widgets ----
-    QPushButton *m_loadBtn  = nullptr;
-    QPushButton *m_modeBtn  = nullptr;
-    QPushButton *m_maskBtn  = nullptr;
+    QPushButton *m_loadBtn   = nullptr;
+    QPushButton *m_reloadBtn = nullptr;
+    QPushButton *m_modeBtn   = nullptr;
+    QPushButton *m_maskBtn   = nullptr;
 
     // ---- loaded image ----
     QImage              m_image;
@@ -110,6 +118,7 @@ private:
     std::vector<Complex> m_fftData;   // shifted FFT (kept for mask toggle)
     bool  m_maskCenter  = false;
     double m_fftProgress = -1;    // -1 = not computing, 0..1 = progress
+    double m_iftProgress = -1;   // inverse FFT progress
 
     QImage m_cosImg, m_sinImg, m_ampImg, m_phaseImg, m_powerImg, m_complexImg;
     std::vector<double> m_cosVals, m_sinVals, m_ampVals, m_phaseVals, m_powerVals;
@@ -149,8 +158,9 @@ private:
 
     QPoint      m_mousePos;         // current mouse position
 
-    // ---- tool buttons (panel 2 right edge) ----
-    QRect       m_toolBtnRects[8];
+    // ---- tool buttons ----
+    QRect       m_p1BtnRects[8];       // panel 1 left edge
+    QRect       m_toolBtnRects[8];     // panel 2 right edge
     bool        m_eraserActive = false;
     bool        m_brushActive = false;
     bool        m_toolDragging = false;    // mouse button held while painting/erasing
@@ -158,6 +168,29 @@ private:
     void eraserApply(QPoint pos);
     void brushApply(QPoint pos);
     double brushValue() const;             // max amplitude outside center 3x3
+
+    // ---- bandpass filter ----
+    bool        m_bandpassActive = false;
+    double      m_bandInnerR = 0.3;        // fraction of N/2 (0..1)
+    double      m_bandOuterR = 0.6;        // fraction of N/2 (0..1)
+    int         m_bandDragging = 0;        // 0=none, 1=inner, 2=outer
+
+    QLineEdit  *m_smoothEdit   = nullptr;
+    QCheckBox  *m_bandEraseOutside = nullptr;
+    QPushButton *m_applyBandBtn = nullptr;
+
+    void drawBandpassRing(QPainter &p, const QRect &screenRect,
+                          const ZoomState &zoom, int imgW, int imgH);
+
+    // ---- directional filter ----
+    bool        m_directionalActive = false;
+    double      m_dirAngle1 = -15.0;      // degrees from horizontal
+    double      m_dirAngle2 =  15.0;
+    int         m_dirDragging = 0;        // 0=none, 1=edge1, 2=edge2
+
+    void drawDirectionalWedge(QPainter &p, const QRect &screenRect,
+                              const ZoomState &zoom, int imgW, int imgH);
+    void onApplyDirectional();
 };
 
 #endif // FTWINDOW_H
