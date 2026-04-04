@@ -204,6 +204,28 @@ private:
     void drawBandpassRing(QPainter &p, const QRect &screenRect,
                           const ZoomState &zoom, int imgW, int imgH);
 
+    // ---- Fourier-space rotate ----
+    bool        m_ftRotateActive = false;
+    bool        m_p2Dragging = false;
+    QPoint      m_p2DragStart;
+
+    // ---- lattice filter ----
+    bool        m_latticeActive = false;
+    double      m_latticeUx = 20, m_latticeUy = 0;
+    double      m_latticeVx = 0,  m_latticeVy = 20;
+    int         m_latticeDragging = 0;   // 0=none, 1=u, 2=v
+
+    QLabel     *m_latticeSmoothLabel  = nullptr;
+    QLineEdit  *m_latticeSmoothEdit   = nullptr;
+    QLabel     *m_latticeDotDiamLabel = nullptr;
+    QLineEdit  *m_latticeDotDiamEdit  = nullptr;
+    QCheckBox  *m_latticeEraseOutside = nullptr;
+    QPushButton *m_latticeApplyBtn    = nullptr;
+
+    void drawLattice(QPainter &p, const QRect &screenRect,
+                     const ZoomState &zoom, int imgW, int imgH);
+    void onApplyLattice();
+
     // ---- directional filter ----
     bool        m_directionalActive = false;
     double      m_dirAngle1 = -15.0;      // degrees from horizontal

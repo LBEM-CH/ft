@@ -208,6 +208,99 @@ void FtWindow::drawHistogram(QPainter &p, const QRect &frame,
                histY + histH + fm.ascent(), maxStr);
 }
 
+void FtWindow::drawLattice(QPainter &p, const QRect &screenRect,
+                            const ZoomState &zoom, int imgW, int imgH)
+{
+    int N = m_fftN;
+    if (N == 0) return;
+
+    QRectF src = zoom.visibleRect(imgW, imgH);
+    double imgCenter = N / 2.0 + 0.5;
+
+    double scaleX = screenRect.width() / src.width();
+    double scaleY = screenRect.height() / src.height();
+
+    double scrCx = screenRect.x() + (imgCenter - src.x()) * scaleX;
+    double scrCy = screenRect.y() + (imgCenter - src.y()) * scaleY;
+
+    double dotDiam = m_latticeDotDiamEdit->text().toDouble();
+    double dotR = dotDiam / 2.0 * std::min(scaleX, scaleY);
+    if (dotR < 1.5) dotR = 1.5;
+
+    // Convert lattice vectors to screen pixels
+    double uScrX = m_latticeUx * scaleX;
+    double uScrY = m_latticeUy * scaleY;
+    double vScrX = m_latticeVx * scaleX;
+    double vScrY = m_latticeVy * scaleY;
+
+    p.save();
+    p.setRenderHint(QPainter::Antialiasing, true);
+    p.setClipRect(screenRect);
+
+    // Determine range of i,j to cover the visible area
+    // Use inverse lattice to find bounds
+    double det = m_latticeUx * m_latticeVy - m_latticeUy * m_latticeVx;
+    if (std::abs(det) < 0.5) { p.restore(); return; }  // degenerate lattice
+
+    double halfN = N / 2.0;
+    int maxIdx = (int)(halfN / std::min(std::sqrt(m_latticeUx * m_latticeUx + m_latticeUy * m_latticeUy),
+                                         std::sqrt(m_latticeVx * m_latticeVx + m_latticeVy * m_latticeVy))) + 2;
+    if (maxIdx > 200) maxIdx = 200;
+
+    // Draw lattice dots
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(100, 160, 255, 120));
+    for (int i = -maxIdx; i <= maxIdx; i++) {
+        for (int j = -maxIdx; j <= maxIdx; j++) {
+            double lx = i * m_latticeUx + j * m_latticeVx;
+            double ly = i * m_latticeUy + j * m_latticeVy;
+            if (std::abs(lx) > halfN || std::abs(ly) > halfN) continue;
+            double sx = scrCx + lx * scaleX;
+            double sy = scrCy + ly * scaleY;
+            p.drawEllipse(QPointF(sx, sy), dotR, dotR);
+        }
+    }
+
+    // Draw red arrows for u and v vectors
+    auto drawArrow = [&](double tipSx, double tipSy, const QString &label) {
+        p.setPen(QPen(QColor(255, 80, 80), 2));
+        p.drawLine(QPointF(scrCx, scrCy), QPointF(tipSx, tipSy));
+
+        // Arrowhead
+        double dx = tipSx - scrCx, dy = tipSy - scrCy;
+        double len = std::sqrt(dx * dx + dy * dy);
+        if (len > 5) {
+            double ux2 = dx / len, uy2 = dy / len;
+            double aLen = std::min(10.0, len * 0.3);
+            double px1 = tipSx - aLen * (ux2 * 0.86 + uy2 * 0.5);
+            double py1 = tipSy - aLen * (uy2 * 0.86 - ux2 * 0.5);
+            double px2 = tipSx - aLen * (ux2 * 0.86 - uy2 * 0.5);
+            double py2 = tipSy - aLen * (uy2 * 0.86 + ux2 * 0.5);
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(255, 80, 80));
+            QPainterPath ah;
+            ah.moveTo(tipSx, tipSy);
+            ah.lineTo(px1, py1);
+            ah.lineTo(px2, py2);
+            ah.closeSubpath();
+            p.drawPath(ah);
+        }
+
+        // Label
+        QFont lf; lf.setPixelSize(11); lf.setBold(true);
+        p.setFont(lf);
+        p.setPen(QColor(255, 80, 80));
+        p.drawText((int)(tipSx + 4), (int)(tipSy - 4), label);
+    };
+
+    double uTipX = scrCx + uScrX, uTipY = scrCy + uScrY;
+    double vTipX = scrCx + vScrX, vTipY = scrCy + vScrY;
+    drawArrow(uTipX, uTipY, "u");
+    drawArrow(vTipX, vTipY, "v");
+
+    p.restore();
+}
+
 void FtWindow::drawBandpassRing(QPainter &p, const QRect &screenRect,
                                  const ZoomState &zoom, int imgW, int imgH)
 {

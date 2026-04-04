@@ -84,12 +84,45 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_eraserDiameterEdit->setStyleSheet("background:#222; color:white; border:1px solid #888;");
     m_eraserDiameterEdit->hide();
 
+    // Lattice filter widgets (hidden until lattice mode active)
+    m_latticeSmoothLabel = new QLabel("Smooth edge by pixels:", this);
+    m_latticeSmoothLabel->setStyleSheet("color: white;");
+    m_latticeSmoothLabel->hide();
+    m_latticeSmoothEdit = new QLineEdit("0", this);
+    m_latticeSmoothEdit->setFixedSize(40, 22);
+    m_latticeSmoothEdit->setStyleSheet("background:#222; color:white; border:1px solid #888;");
+    m_latticeSmoothEdit->hide();
+
+    m_latticeDotDiamLabel = new QLabel("Diameter of dots:", this);
+    m_latticeDotDiamLabel->setStyleSheet("color: white;");
+    m_latticeDotDiamLabel->hide();
+    m_latticeDotDiamEdit = new QLineEdit("3", this);
+    m_latticeDotDiamEdit->setFixedSize(40, 22);
+    m_latticeDotDiamEdit->setStyleSheet("background:#222; color:white; border:1px solid #888;");
+    m_latticeDotDiamEdit->hide();
+
+    m_latticeEraseOutside = new QCheckBox("Erase pixels outside of lattice", this);
+    m_latticeEraseOutside->setStyleSheet("color: white;");
+    m_latticeEraseOutside->setChecked(true);
+    m_latticeEraseOutside->hide();
+
+    m_latticeApplyBtn = new QPushButton("Apply filter", this);
+    m_latticeApplyBtn->setFixedSize(100, 26);
+    connect(m_latticeApplyBtn, &QPushButton::clicked, this, &FtWindow::onApplyLattice);
+    m_latticeApplyBtn->hide();
+
     // Binning widgets (hidden until bin button is active)
     m_binCombo = new QComboBox(this);
-    for (int i = 1; i <= 8; i++)
+    for (int i = 2; i <= 8; i++)
         m_binCombo->addItem(QString::number(i), i);
-    m_binCombo->setFixedSize(50, 24);
-    m_binCombo->setStyleSheet("background:#222; color:white; border:1px solid #888;");
+    m_binCombo->setFixedSize(70, 28);
+    m_binCombo->setStyleSheet(
+        "QComboBox { background:#222; color:white; border:1px solid #888;"
+        "  padding: 2px 8px; }"
+        "QComboBox::drop-down { width: 20px; }"
+        "QComboBox QAbstractItemView { background:#222; color:white;"
+        "  selection-background-color:#555; min-width: 60px; padding: 4px; }"
+    );
     m_binCombo->hide();
 
     m_binKeepSizeBtn = new QCheckBox("Keep original image size", this);
@@ -138,6 +171,14 @@ void FtWindow::resizeEvent(QResizeEvent *)
     m_brushDiameterEdit->move(bpX + 210, bpY + 24);
     m_eraserDiamLabel->move(bpX, bpY);
     m_eraserDiameterEdit->move(bpX + 180, bpY - 2);
+
+    // Lattice filter widgets: bottom-right of panel 2
+    m_latticeSmoothLabel->move(bpX, bpY);
+    m_latticeSmoothEdit->move(bpX + 160, bpY - 2);
+    m_latticeDotDiamLabel->move(bpX, bpY + 26);
+    m_latticeDotDiamEdit->move(bpX + 120, bpY + 24);
+    m_latticeEraseOutside->move(bpX, bpY + 52);
+    m_latticeApplyBtn->move(bpX, bpY + 78);
 
     // Binning widgets: bottom-left of panel 1
     int binX = 10;

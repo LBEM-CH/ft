@@ -305,7 +305,7 @@ void FtWindow::paintEvent(QPaintEvent *)
             m_toolBtnRects[i] = r;
 
             p.setPen(QPen(Qt::white, 1));
-            if ((i == 0 && m_eraserActive) || (i == 1 && m_brushActive) || (i == 2 && m_bandpassActive) || (i == 3 && m_directionalActive))
+            if ((i == 0 && m_eraserActive) || (i == 1 && m_brushActive) || (i == 2 && m_bandpassActive) || (i == 3 && m_directionalActive) || (i == 4 && m_latticeActive) || (i == 5 && m_ftRotateActive))
                 p.setBrush(QColor(60, 60, 60));
             else
                 p.setBrush(QColor(0, 0, 0));
@@ -485,6 +485,85 @@ void FtWindow::paintEvent(QPaintEvent *)
                     p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
                 }
             }
+
+            // Lattice filter icon (button 4): hexagonal dot pattern
+            if (i == 4) {
+                p.setRenderHint(QPainter::Antialiasing, true);
+                double cx2 = r.x() + r.width() / 2.0;
+                double cy2 = r.y() + r.height() / 2.0;
+                double rad = std::min(r.width(), r.height()) * 0.35;
+                double dotR = rad * 0.15;
+
+                QColor dotCol(200, 200, 255);
+                p.setPen(Qt::NoPen);
+                p.setBrush(dotCol);
+                // Center dot
+                p.drawEllipse(QPointF(cx2, cy2), dotR, dotR);
+                // 6 surrounding dots in hexagonal arrangement
+                for (int k = 0; k < 6; k++) {
+                    double a = k * 60.0 * M_PI / 180.0;
+                    p.drawEllipse(QPointF(cx2 + rad * std::cos(a),
+                                          cy2 + rad * std::sin(a)), dotR, dotR);
+                }
+                p.setRenderHint(QPainter::Antialiasing, false);
+
+                if (r.contains(m_mousePos)) {
+                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                    QFontMetrics ttfm(ttf);
+                    QString tip = "Lattice filter";
+                    int ttw = ttfm.horizontalAdvance(tip) + 8;
+                    int tth = ttfm.height() + 4;
+                    int ttx = r.left() - ttw - 4;
+                    int tty = r.center().y() - tth / 2;
+                    p.setPen(QPen(Qt::white, 1));
+                    p.setBrush(QColor(40, 40, 40));
+                    p.drawRect(ttx, tty, ttw, tth);
+                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                }
+            }
+
+            // Rotate Fourier space icon (button 5): curved arrow (same as panel 1 rotate)
+            if (i == 5) {
+                p.setRenderHint(QPainter::Antialiasing, true);
+                double cx2 = r.x() + r.width() / 2.0;
+                double cy2 = r.y() + r.height() / 2.0;
+                double rad = std::min(r.width(), r.height()) * 0.32;
+
+                p.setPen(QPen(m_ftRotateActive ? QColor(180, 180, 255) : Qt::white,
+                              std::max(1, (int)(rad * 0.25))));
+                p.setBrush(Qt::NoBrush);
+                p.drawArc(QRectF(cx2 - rad, cy2 - rad, rad * 2, rad * 2),
+                          30 * 16, 280 * 16);
+
+                double aAngle = -50.0 * M_PI / 180.0;
+                double ax = cx2 + rad * std::cos(aAngle);
+                double ay = cy2 - rad * std::sin(aAngle);
+                double sz = rad * 0.5;
+                p.setPen(Qt::NoPen);
+                p.setBrush(m_ftRotateActive ? QColor(180, 180, 255) : Qt::white);
+                QPainterPath ah;
+                ah.moveTo(ax + sz * std::cos(aAngle + 0.3), ay - sz * std::sin(aAngle + 0.3));
+                ah.lineTo(ax - sz * 0.4 * std::cos(aAngle - 0.8), ay + sz * 0.4 * std::sin(aAngle - 0.8));
+                ah.lineTo(ax + sz * 0.4 * std::cos(aAngle + 1.5), ay - sz * 0.4 * std::sin(aAngle + 1.5));
+                ah.closeSubpath();
+                p.drawPath(ah);
+
+                p.setRenderHint(QPainter::Antialiasing, false);
+
+                if (r.contains(m_mousePos)) {
+                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                    QFontMetrics ttfm(ttf);
+                    QString tip = "Rotate Fourier space";
+                    int ttw = ttfm.horizontalAdvance(tip) + 8;
+                    int tth = ttfm.height() + 4;
+                    int ttx = r.left() - ttw - 4;
+                    int tty = r.center().y() - tth / 2;
+                    p.setPen(QPen(Qt::white, 1));
+                    p.setBrush(QColor(40, 40, 40));
+                    p.drawRect(ttx, tty, ttw, tth);
+                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                }
+            }
         }
     }
 
@@ -597,6 +676,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 drawBandpassRing(p, inner, m_zoom[1], m_fftN, m_fftN);
             if (m_directionalActive)
                 drawDirectionalWedge(p, inner, m_zoom[1], m_fftN, m_fftN);
+            if (m_latticeActive)
+                drawLattice(p, inner, m_zoom[1], m_fftN, m_fftN);
 
             DisplayItem &di = m_dispItems[m_numDispItems++];
             di = { inner, m_fftN, m_fftN, 1, &m_powerVals, true };
@@ -670,6 +751,10 @@ void FtWindow::paintEvent(QPaintEvent *)
             if (m_directionalActive) {
                 drawDirectionalWedge(p, inner1, m_zoom[1], m_fftN, m_fftN);
                 drawDirectionalWedge(p, inner2, m_zoom[2], m_fftN, m_fftN);
+            }
+            if (m_latticeActive) {
+                drawLattice(p, inner1, m_zoom[1], m_fftN, m_fftN);
+                drawLattice(p, inner2, m_zoom[2], m_fftN, m_fftN);
             }
 
             DisplayItem &d1 = m_dispItems[m_numDispItems++];

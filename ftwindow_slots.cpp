@@ -695,6 +695,75 @@ void FtWindow::onApplyBandpass()
     update();
 }
 
+void FtWindow::onApplyLattice()
+{
+    if (!m_ftComputed || m_fftN == 0) return;
+
+    int N = m_fftN;
+    int half = N / 2;
+    double dotDiam = m_latticeDotDiamEdit->text().toDouble();
+    double dotR = dotDiam / 2.0;
+    int smooth = m_latticeSmoothEdit->text().toInt();
+    if (smooth < 0) smooth = 0;
+    bool eraseOutside = m_latticeEraseOutside->isChecked();
+
+    double ux = m_latticeUx, uy = m_latticeUy;
+    double vx = m_latticeVx, vy = m_latticeVy;
+    double det = ux * vy - uy * vx;
+    if (std::abs(det) < 0.5) return;  // degenerate lattice
+
+    // Inverse lattice matrix for projecting pixel coords onto lattice basis
+    double invUx =  vy / det, invUy = -vx / det;
+    double invVx = -uy / det, invVy =  ux / det;
+
+    for (int y = 0; y < N; y++) {
+        for (int x = 0; x < N; x++) {
+            double dx = x - half;
+            double dy = y - half;
+
+            // Project onto lattice basis and find nearest lattice point
+            double fi = dx * invUx + dy * invUy;
+            double fj = dx * invVx + dy * invVy;
+            int i0 = (int)std::floor(fi);
+            int j0 = (int)std::floor(fj);
+
+            // Check the 4 nearest lattice points
+            double minDist = 1e18;
+            for (int di = 0; di <= 1; di++) {
+                for (int dj = 0; dj <= 1; dj++) {
+                    double lx = (i0 + di) * ux + (j0 + dj) * vx;
+                    double ly = (i0 + di) * uy + (j0 + dj) * vy;
+                    double ddx = dx - lx, ddy = dy - ly;
+                    double d = std::sqrt(ddx * ddx + ddy * ddy);
+                    if (d < minDist) minDist = d;
+                }
+            }
+
+            double factor = 1.0;
+            if (eraseOutside) {
+                // Keep pixels near lattice dots, erase everything else
+                if (minDist > dotR) {
+                    double d = minDist - dotR;
+                    factor = (smooth > 0 && d < smooth) ? (1.0 - d / smooth) : 0.0;
+                }
+            } else {
+                // Erase pixels near lattice dots, keep everything else
+                if (minDist <= dotR) {
+                    factor = 0.0;
+                } else if (smooth > 0 && minDist < dotR + smooth) {
+                    factor = (minDist - dotR) / smooth;
+                }
+            }
+
+            if (factor < 1.0)
+                m_fftData[y * N + x] *= factor;
+        }
+    }
+
+    recomputeDisplayImages();
+    update();
+}
+
 void FtWindow::onApplyBinning()
 {
     if (m_image.isNull()) return;

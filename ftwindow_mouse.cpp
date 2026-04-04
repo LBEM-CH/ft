@@ -107,6 +107,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
     auto deactivateAllTools = [&]() {
         m_eraserActive = false; m_brushActive = false;
         m_bandpassActive = false; m_directionalActive = false;
+        m_latticeActive = false; m_ftRotateActive = false;
     };
     auto showToolWidgets = [&]() {
         bool showFilter = m_bandpassActive || m_directionalActive;
@@ -121,6 +122,13 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
 
         m_eraserDiamLabel->setVisible(m_eraserActive);
         m_eraserDiameterEdit->setVisible(m_eraserActive);
+
+        m_latticeSmoothLabel->setVisible(m_latticeActive);
+        m_latticeSmoothEdit->setVisible(m_latticeActive);
+        m_latticeDotDiamLabel->setVisible(m_latticeActive);
+        m_latticeDotDiamEdit->setVisible(m_latticeActive);
+        m_latticeEraseOutside->setVisible(m_latticeActive);
+        m_latticeApplyBtn->setVisible(m_latticeActive);
     };
     if (m_toolBtnRects[0].contains(event->pos())) {
         bool was = m_eraserActive; deactivateAllTools();
@@ -142,6 +150,60 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
     if (m_toolBtnRects[3].contains(event->pos())) {
         bool was = m_directionalActive; deactivateAllTools();
         m_directionalActive = !was; showToolWidgets(); update(); return;
+    }
+    if (m_toolBtnRects[4].contains(event->pos())) {
+        bool was = m_latticeActive; deactivateAllTools();
+        m_latticeActive = !was; showToolWidgets(); update(); return;
+    }
+    if (m_toolBtnRects[5].contains(event->pos())) {
+        bool was = m_ftRotateActive; deactivateAllTools();
+        m_ftRotateActive = !was; showToolWidgets(); update(); return;
+    }
+
+    // Lattice vector drag
+    if (m_latticeActive && m_ftComputed && m_fftN > 0) {
+        double halfN = m_fftN / 2.0;
+        double imgCenter = halfN + 0.5;
+        for (int i = 0; i < m_numDispItems; i++) {
+            const DisplayItem &di = m_dispItems[i];
+            if (!di.valid || di.zoomIdx < 1) continue;
+            if (!di.screenRect.contains(event->pos())) continue;
+
+            ZoomState &z = m_zoom[di.zoomIdx];
+            QRectF src = z.visibleRect(di.imgW, di.imgH);
+            double imgX = src.x() + (event->pos().x() - di.screenRect.x())
+                          / (double)di.screenRect.width() * src.width();
+            double imgY = src.y() + (event->pos().y() - di.screenRect.y())
+                          / (double)di.screenRect.height() * src.height();
+            double dx = imgX - imgCenter;
+            double dy = imgY - imgCenter;
+
+            double tol = 5.0 * src.width() / di.screenRect.width();
+            double distU = std::sqrt((dx - m_latticeUx) * (dx - m_latticeUx)
+                                   + (dy - m_latticeUy) * (dy - m_latticeUy));
+            double distV = std::sqrt((dx - m_latticeVx) * (dx - m_latticeVx)
+                                   + (dy - m_latticeVy) * (dy - m_latticeVy));
+
+            if (distU < tol && distU <= distV) {
+                m_latticeDragging = 1; m_toolDragging = true; return;
+            }
+            if (distV < tol) {
+                m_latticeDragging = 2; m_toolDragging = true; return;
+            }
+            break;
+        }
+    }
+
+    // FT rotate: start drag on panel 2 FFT
+    if (m_ftRotateActive && m_ftComputed) {
+        for (int i = 0; i < m_numDispItems; i++) {
+            const DisplayItem &di = m_dispItems[i];
+            if (di.valid && di.zoomIdx >= 1 && di.screenRect.contains(event->pos())) {
+                m_p2Dragging = true;
+                m_p2DragStart = event->pos();
+                return;
+            }
+        }
     }
 
     // Bandpass ring drag
@@ -249,6 +311,83 @@ void FtWindow::mouseReleaseEvent(QMouseEvent *event)
         m_toolDragging = false;
         m_bandDragging = 0;
         m_dirDragging = 0;
+        m_latticeDragging = 0;
+    }
+
+    if (m_p2Dragging && m_ftComputed && m_fftN > 0) {
+        m_p2Dragging = false;
+
+        // Find the panel 2 display item to compute rotation angle
+        for (int i = 0; i < m_numDispItems; i++) {
+            const DisplayItem &di = m_dispItems[i];
+            if (!di.valid || di.zoomIdx < 1) continue;
+
+            QRect sr = di.screenRect;
+            double cx = sr.center().x(), cy = sr.center().y();
+            double a1 = std::atan2(m_p2DragStart.y() - cy, m_p2DragStart.x() - cx);
+            double a2 = std::atan2(event->pos().y() - cy, event->pos().x() - cx);
+            double angleDeg = (a2 - a1) * 180.0 / M_PI;
+            double angleRad = angleDeg * M_PI / 180.0;
+
+            int N = m_fftN;
+            double half = N / 2.0;
+            double cosA = std::cos(-angleRad);
+            double sinA = std::sin(-angleRad);
+            double nyquistR = half;  // Nyquist radius
+            double edgeW = 10.0;
+            double innerR = nyquistR - edgeW;
+
+            // Rotate only one half-plane and enforce Friedel symmetry
+            // F(N-x, N-y) = conj(F(x, y)) so the inverse FFT stays real.
+            auto lookup = [&](double srcX, double srcY) -> Complex {
+                int sx = (int)std::round(srcX);
+                int sy = (int)std::round(srcY);
+                if (sx >= 0 && sx < N && sy >= 0 && sy < N)
+                    return m_fftData[sy * N + sx];
+                return Complex(0, 0);
+            };
+
+            auto lpFilter = [&](double dist) -> double {
+                if (dist >= nyquistR) return 0.0;
+                if (dist > innerR) {
+                    double t = (dist - innerR) / edgeW;
+                    return 0.5 * (1.0 + std::cos(t * M_PI));
+                }
+                return 1.0;
+            };
+
+            int halfN = N / 2;
+            std::vector<Complex> rotated(N * N, Complex(0, 0));
+            for (int y = 0; y < N; y++) {
+                for (int x = 0; x < N; x++) {
+                    // Process each pixel only once: skip the mate half
+                    // Use lexicographic order on (y,x) relative to center
+                    int mx = (N - x) % N;
+                    int my = (N - y) % N;
+                    if (my > y || (my == y && mx > x)) continue;
+
+                    double dx = x - half;
+                    double dy = y - half;
+                    double dist = std::sqrt(dx * dx + dy * dy);
+                    double lp = lpFilter(dist);
+
+                    double srcX = half + dx * cosA - dy * sinA;
+                    double srcY = half + dx * sinA + dy * cosA;
+                    Complex val = lookup(srcX, srcY) * lp;
+
+                    rotated[y * N + x] = val;
+
+                    // Set Friedel mate to complex conjugate
+                    if (mx != x || my != y)
+                        rotated[my * N + mx] = std::conj(val);
+                }
+            }
+
+            m_fftData = std::move(rotated);
+            recomputeDisplayImages();
+            update();
+            break;
+        }
     }
 
     if (m_p1Dragging && !m_image.isNull()) {
@@ -385,6 +524,30 @@ void FtWindow::mouseMoveEvent(QMouseEvent *event)
                 double angle = std::atan2(imgY - imgCenter, imgX - imgCenter) * 180.0 / M_PI;
                 if (m_dirDragging == 1) m_dirAngle1 = angle;
                 else                    m_dirAngle2 = angle;
+                update();
+                break;
+            }
+            return;
+        }
+        if (m_latticeDragging > 0 && m_fftN > 0) {
+            double halfN = m_fftN / 2.0;
+            double imgCenter = halfN + 0.5;
+            for (int i = 0; i < m_numDispItems; i++) {
+                const DisplayItem &di = m_dispItems[i];
+                if (!di.valid || di.zoomIdx < 1) continue;
+                ZoomState &z = m_zoom[di.zoomIdx];
+                QRectF src = z.visibleRect(di.imgW, di.imgH);
+                double imgX = src.x() + (event->pos().x() - di.screenRect.x())
+                              / (double)di.screenRect.width() * src.width();
+                double imgY = src.y() + (event->pos().y() - di.screenRect.y())
+                              / (double)di.screenRect.height() * src.height();
+                if (m_latticeDragging == 1) {
+                    m_latticeUx = imgX - imgCenter;
+                    m_latticeUy = imgY - imgCenter;
+                } else {
+                    m_latticeVx = imgX - imgCenter;
+                    m_latticeVy = imgY - imgCenter;
+                }
                 update();
                 break;
             }
