@@ -633,11 +633,11 @@ void FtWindow::brushApply(QPoint pos)
                         weight = std::exp(-(dx*dx + dy*dy) / (2.0 * sigma * sigma));
 
                     double paintVal = val * weight;
-                    m_fftData[py * m_fftN + px] = Complex(paintVal, 0);
+                    m_fftData[py * m_fftN + px] += Complex(paintVal, 0);
                     // Friedel mate
                     int fpx = (m_fftN - px) % m_fftN;
                     int fpy = (m_fftN - py) % m_fftN;
-                    m_fftData[fpy * m_fftN + fpx] = Complex(paintVal, 0);
+                    m_fftData[fpy * m_fftN + fpx] += Complex(paintVal, 0);
                 }
             }
             recomputeDisplayImages();

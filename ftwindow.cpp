@@ -100,7 +100,7 @@ void FtWindow::resizeEvent(QResizeEvent *)
 {
     m_loadBtn->move(8, 8);
     int hy0 = height() - height() / 5;
-    m_reloadBtn->move(8, hy0 - m_reloadBtn->height() - 8);
+    m_reloadBtn->move(8, 8 + m_loadBtn->height() + 4);
     m_modeBtn->move(width() - m_modeBtn->width() - 8, 8);
     m_maskBtn->move(width() - m_maskBtn->width() - 8, 8 + m_modeBtn->height() + 4);
 

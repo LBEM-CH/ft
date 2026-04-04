@@ -121,8 +121,10 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
     if (m_toolBtnRects[1].contains(event->pos())) {
         bool was = m_brushActive; deactivateAllTools();
         m_brushActive = !was;
-        if (m_brushActive && m_ftComputed)
-            m_brushValueEdit->setText(QString::number(brushValue(), 'g', 5));
+        if (m_brushActive && m_ftComputed) {
+            double bv = brushValue();
+            m_brushValueEdit->setText(bv > 0 ? QString::number(bv, 'g', 5) : "1");
+        }
         showToolWidgets(); update(); return;
     }
     if (m_toolBtnRects[2].contains(event->pos())) {
@@ -296,6 +298,30 @@ void FtWindow::mouseReleaseEvent(QMouseEvent *event)
                 rp.translate(-w / 2.0, -h / 2.0);
                 rp.drawImage(0, 0, m_image);
                 rp.end();
+
+                // Apply circular mask with 10px cosine edge
+                {
+                    QImage masked = rotated.convertToFormat(QImage::Format_Grayscale8);
+                    double mcx = w / 2.0, mcy = h / 2.0;
+                    double maxR = std::min(w, h) / 2.0;
+                    double edgeW = 10.0;
+                    double innerR = maxR - edgeW;
+                    for (int y = 0; y < h; y++) {
+                        uchar *row = masked.scanLine(y);
+                        for (int x = 0; x < w; x++) {
+                            double dist = std::sqrt((x - mcx) * (x - mcx) + (y - mcy) * (y - mcy));
+                            if (dist >= maxR) {
+                                row[x] = (uchar)avg;
+                            } else if (dist > innerR) {
+                                double t = (dist - innerR) / edgeW;
+                                double fade = 0.5 * (1.0 + std::cos(t * M_PI));
+                                row[x] = (uchar)std::clamp((int)(row[x] * fade + avg * (1.0 - fade)), 0, 255);
+                            }
+                        }
+                    }
+                    rotated = masked;
+                }
+
                 m_image = rotated;
             }
 

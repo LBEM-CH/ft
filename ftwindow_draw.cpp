@@ -51,7 +51,7 @@ void FtWindow::drawAxes(QPainter &p, const QRect &frame,
         if (isReciprocal) {
             double freq = val / (imgW * pixelSize);
             if (std::abs(freq) < 1e-12)
-                return QString::fromUtf8("(\u221E)\u207B\u00B9");
+                return QString::fromUtf8("(\u221E \u00C5)\u207B\u00B9");
             double res = 1.0 / std::abs(freq);
             return QString("(%1 %2)%3")
                        .arg(res, 0, 'g', 3)
