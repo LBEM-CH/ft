@@ -17,6 +17,7 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_loadBtn = new QPushButton("Load image", this);
     m_loadBtn->setFixedSize(100, 30);
     connect(m_loadBtn, &QPushButton::clicked, this, &FtWindow::onLoadImage);
+    new QShortcut(QKeySequence::Open, this, SLOT(onLoadImage()));
 
     // Reload button
     m_reloadBtn = new QPushButton("Reload image", this);

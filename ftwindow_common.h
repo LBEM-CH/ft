@@ -16,6 +16,7 @@
 #include <QWheelEvent>
 #include <QFont>
 #include <QFontMetrics>
+#include <QShortcut>
 #include <QDebug>
 #include <cmath>
 #include <algorithm>
