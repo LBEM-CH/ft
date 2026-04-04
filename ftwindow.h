@@ -45,6 +45,7 @@ struct DisplayItem {
     int    imgW  = 0;       // source image width in pixels
     int    imgH  = 0;       // source image height in pixels
     int    zoomIdx = -1;    // index into m_zoom[]
+    const std::vector<double> *rawVals = nullptr;  // for value lookup
     bool   valid = false;
 };
 
@@ -57,6 +58,7 @@ public:
 protected:
     void resizeEvent(QResizeEvent *)            override;
     void mousePressEvent(QMouseEvent *event)    override;
+    void mouseMoveEvent(QMouseEvent *event)     override;
     void wheelEvent(QWheelEvent *event)         override;
     void paintEvent(QPaintEvent *)              override;
 
@@ -79,8 +81,10 @@ private:
     void drawImageWithFrame(QPainter &p, const QRect &frame, const QImage &img,
                             const ZoomState &zoom, int imgW, int imgH);
     void drawAxes(QPainter &p, const QRect &frame, const ZoomState &zoom,
-                  int imgW, int imgH, bool reciprocal, bool yAxisRight = false);
-    void drawMinMax(QPainter &p, const QRect &frame, double minVal, double maxVal);
+                  int imgW, int imgH, bool reciprocal, double pixelSize,
+                  bool yAxisRight = false);
+    void drawMinMax(QPainter &p, const QRect &frame, double minVal, double maxVal,
+                    double curVal, bool hasCur);
     void drawHistogram(QPainter &p, const QRect &frame,
                        const std::vector<double> &vals,
                        double minVal, double maxVal);
@@ -94,6 +98,7 @@ private:
     QImage              m_image;
     std::vector<double> m_imageRawPixels;
     double              m_imageMinVal = 0, m_imageMaxVal = 0;
+    double              m_pixelSize = 1.0;  // in Angstrom
 
     // ---- FFT state ----
     bool  m_ftComputed  = false;
@@ -119,6 +124,8 @@ private:
     static constexpr int MAX_DISP = 4;
     DisplayItem m_dispItems[MAX_DISP];
     int         m_numDispItems = 0;
+
+    QPoint      m_mousePos;         // current mouse position
 };
 
 #endif // FTWINDOW_H

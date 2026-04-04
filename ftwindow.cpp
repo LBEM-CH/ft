@@ -27,6 +27,8 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
 {
     setWindowTitle("ft");
 
+    setMouseTracking(true);
+
     QScreen *screen = QApplication::primaryScreen();
     QRect available = screen->availableGeometry();
     setGeometry(available);
@@ -70,7 +72,7 @@ void FtWindow::resizeEvent(QResizeEvent *)
 }
 
 // ---------------------------------------------------------------------------
-//  Mouse – arrow click
+//  Mouse
 // ---------------------------------------------------------------------------
 void FtWindow::mousePressEvent(QMouseEvent *event)
 {
@@ -80,6 +82,12 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         computeFFT();
         update();
     }
+}
+
+void FtWindow::mouseMoveEvent(QMouseEvent *event)
+{
+    m_mousePos = event->pos();
+    update();
 }
 
 // ---------------------------------------------------------------------------
@@ -147,6 +155,22 @@ void FtWindow::paintEvent(QPaintEvent *)
 
     m_numDispItems = 0;   // reset display item tracking
 
+    // helper: look up the raw pixel value under the mouse for a given display area
+    auto sampleValue = [&](const QRect &inner, const ZoomState &zoom,
+                           int imgW, int imgH,
+                           const std::vector<double> &vals,
+                           double &outVal) -> bool {
+        if (!inner.contains(m_mousePos) || vals.empty()) return false;
+        QRectF src = zoom.visibleRect(imgW, imgH);
+        double relX = (m_mousePos.x() - inner.x()) / (double)inner.width();
+        double relY = (m_mousePos.y() - inner.y()) / (double)inner.height();
+        int ix = (int)(src.x() + relX * src.width());
+        int iy = (int)(src.y() + relY * src.height());
+        if (ix < 0 || ix >= imgW || iy < 0 || iy >= imgH) return false;
+        outVal = vals[iy * imgW + ix];
+        return true;
+    };
+
     // ---- Panel 1: loaded image ------------------------------------------------
     int panel1W = cx - 1;
     int panel1H = hy - 1;
@@ -161,13 +185,32 @@ void FtWindow::paintEvent(QPaintEvent *)
         int imgH = m_image.height();
 
         drawImageWithFrame(p, frame, m_image, m_zoom[0], imgW, imgH);
-        drawAxes(p, frame, m_zoom[0], imgW, imgH, false);
-        drawMinMax(p, frame, m_imageMinVal, m_imageMaxVal);
-        drawHistogram(p, frame, m_imageRawPixels, m_imageMinVal, m_imageMaxVal);
+        drawAxes(p, frame, m_zoom[0], imgW, imgH, false, m_pixelSize);
 
         QRect inner = frame.adjusted(2, 2, -2, -2);
+        double curVal = 0;
+        bool hasCur = sampleValue(inner, m_zoom[0], imgW, imgH, m_imageRawPixels, curVal);
+        drawMinMax(p, frame, m_imageMinVal, m_imageMaxVal, curVal, hasCur);
+        drawHistogram(p, frame, m_imageRawPixels, m_imageMinVal, m_imageMaxVal);
+
+        // Pixel size label to the right of the histogram
+        {
+            int histW = frame.width() / 2;
+            int histH = 72;
+            int histX = frame.x() + (frame.width() - histW) / 2;
+            int histY = frame.bottom() + histH;
+            QFont pf;
+            pf.setPixelSize(11);
+            p.setFont(pf);
+            p.setPen(Qt::white);
+            QString psLabel = QString("1 pixel = %1 %2")
+                                  .arg(m_pixelSize, 0, 'g', 4)
+                                  .arg(QString::fromUtf8("\u00C5"));
+            p.drawText(histX + histW + 8, histY + histH / 2 + QFontMetrics(pf).ascent() / 2, psLabel);
+        }
+
         DisplayItem &di = m_dispItems[m_numDispItems++];
-        di = { inner, imgW, imgH, 0, true };
+        di = { inner, imgW, imgH, 0, &m_imageRawPixels, true };
     }
 
     // ---- Panel 2: FFT results -------------------------------------------------
@@ -193,13 +236,16 @@ void FtWindow::paintEvent(QPaintEvent *)
 
             const QImage &img = (m_displayMode == 2) ? m_powerImg : m_complexImg;
             drawImageWithFrame(p, frame, img, m_zoom[1], m_fftN, m_fftN);
-            drawAxes(p, frame, m_zoom[1], m_fftN, m_fftN, true);
-            drawMinMax(p, frame, m_powerMin, m_powerMax);
-            drawHistogram(p, frame, m_powerVals, m_powerMin, m_powerMax);
+            drawAxes(p, frame, m_zoom[1], m_fftN, m_fftN, true, m_pixelSize);
 
             QRect inner = frame.adjusted(2, 2, -2, -2);
+            double curVal = 0;
+            bool hasCur = sampleValue(inner, m_zoom[1], m_fftN, m_fftN, m_powerVals, curVal);
+            drawMinMax(p, frame, m_powerMin, m_powerMax, curVal, hasCur);
+            drawHistogram(p, frame, m_powerVals, m_powerMin, m_powerMax);
+
             DisplayItem &di = m_dispItems[m_numDispItems++];
-            di = { inner, m_fftN, m_fftN, 1, true };
+            di = { inner, m_fftN, m_fftN, 1, &m_powerVals, true };
         } else {
             // Mode 0 or 1: two images side by side
             int maxSide = std::min((panel2W - 20) / 2, panel2H);
@@ -240,21 +286,25 @@ void FtWindow::paintEvent(QPaintEvent *)
             p.drawText(frame2.x(), frame2.y() - 4, label2);
 
             drawImageWithFrame(p, frame1, *img1, m_zoom[1], m_fftN, m_fftN);
-            drawAxes(p, frame1, m_zoom[1], m_fftN, m_fftN, true);
-            drawMinMax(p, frame1, min1, max1);
+            drawAxes(p, frame1, m_zoom[1], m_fftN, m_fftN, true, m_pixelSize);
+            QRect inner1 = frame1.adjusted(2, 2, -2, -2);
+            double curVal1 = 0;
+            bool hasCur1 = sampleValue(inner1, m_zoom[1], m_fftN, m_fftN, *vals1, curVal1);
+            drawMinMax(p, frame1, min1, max1, curVal1, hasCur1);
             drawHistogram(p, frame1, *vals1, min1, max1);
 
             drawImageWithFrame(p, frame2, *img2, m_zoom[2], m_fftN, m_fftN);
-            drawAxes(p, frame2, m_zoom[2], m_fftN, m_fftN, true, true);
-            drawMinMax(p, frame2, min2, max2);
+            drawAxes(p, frame2, m_zoom[2], m_fftN, m_fftN, true, m_pixelSize, true);
+            QRect inner2 = frame2.adjusted(2, 2, -2, -2);
+            double curVal2 = 0;
+            bool hasCur2 = sampleValue(inner2, m_zoom[2], m_fftN, m_fftN, *vals2, curVal2);
+            drawMinMax(p, frame2, min2, max2, curVal2, hasCur2);
             drawHistogram(p, frame2, *vals2, min2, max2);
 
-            QRect inner1 = frame1.adjusted(2, 2, -2, -2);
-            QRect inner2 = frame2.adjusted(2, 2, -2, -2);
             DisplayItem &d1 = m_dispItems[m_numDispItems++];
-            d1 = { inner1, m_fftN, m_fftN, 1, true };
+            d1 = { inner1, m_fftN, m_fftN, 1, vals1, true };
             DisplayItem &d2 = m_dispItems[m_numDispItems++];
-            d2 = { inner2, m_fftN, m_fftN, 2, true };
+            d2 = { inner2, m_fftN, m_fftN, 2, vals2, true };
         }
     }
 
@@ -407,7 +457,7 @@ void FtWindow::drawImageWithFrame(QPainter &p, const QRect &frame,
 void FtWindow::drawAxes(QPainter &p, const QRect &frame,
                          const ZoomState &zoom,
                          int imgW, int imgH, bool reciprocal,
-                         bool yAxisRight)
+                         double pixelSize, bool yAxisRight)
 {
     QFont axisFont;
     axisFont.setPixelSize(11);
@@ -425,79 +475,116 @@ void FtWindow::drawAxes(QPainter &p, const QRect &frame,
         yStart = src.top()   - halfN;
         yEnd   = src.bottom()- halfN;
     } else {
-        // pixel coordinates: 0 .. N-1
         xStart = src.left();
         xEnd   = src.left() + src.width() - 1;
         yStart = src.top();
         yEnd   = src.top() + src.height() - 1;
     }
 
-    // horizontal axis (below image)
     int numTicks = 5;
-    int axisY = frame.bottom() + 4;
+    int lineH = fm.height();
+
+    // --- helper: format the second-row (physical) label for one tick -----------
+    auto physLabel = [&](double val, bool isReciprocal) -> QString {
+        if (isReciprocal) {
+            // val is in reciprocal pixels; convert to reciprocal Angstrom
+            // spatial freq = val / (N * pixelSize)
+            double freq = val / (imgW * pixelSize);
+            if (std::abs(freq) < 1e-12)
+                return QString::fromUtf8("\u221E");          // ∞
+            return QString::number(std::abs(freq), 'g', 3) + QString::fromUtf8(" 1/\u00C5");
+        } else {
+            // val is pixel index; convert to Angstrom
+            double ang = val * pixelSize;
+            return QString::number(ang, 'g', 4) + QString::fromUtf8(" \u00C5");
+        }
+    };
+
+    // --- horizontal axis (below image) -----------------------------------------
+    int axisY1 = frame.bottom() + 4;                 // row 1: pixel units
+    int axisY2 = axisY1 + lineH + 1;                 // row 2: physical units
     for (int i = 0; i < numTicks; i++) {
         double frac = i / (double)(numTicks - 1);
-        double val = xStart + frac * (xEnd - xStart);
+        double val  = xStart + frac * (xEnd - xStart);
         int sx = frame.left() + (int)(frac * frame.width());
-        QString label = QString::number((int)std::round(val));
-        int lw = fm.horizontalAdvance(label);
+
+        QString lab1 = QString::number((int)std::round(val));
+        QString lab2 = physLabel(val, reciprocal);
+        int lw1 = fm.horizontalAdvance(lab1);
+        int lw2 = fm.horizontalAdvance(lab2);
+
         if (reciprocal) {
-            // left-most: left-flushed; right-most: right-flushed; others: centered
-            if (i == 0)
-                p.drawText(frame.left(), axisY + fm.ascent(), label);
-            else if (i == numTicks - 1)
-                p.drawText(frame.right() - lw, axisY + fm.ascent(), label);
-            else
-                p.drawText(sx - lw / 2, axisY + fm.ascent(), label);
+            if (i == 0) {
+                p.drawText(frame.left(), axisY1 + fm.ascent(), lab1);
+                p.drawText(frame.left(), axisY2 + fm.ascent(), lab2);
+            } else if (i == numTicks - 1) {
+                p.drawText(frame.right() - lw1, axisY1 + fm.ascent(), lab1);
+                p.drawText(frame.right() - lw2, axisY2 + fm.ascent(), lab2);
+            } else {
+                p.drawText(sx - lw1 / 2, axisY1 + fm.ascent(), lab1);
+                p.drawText(sx - lw2 / 2, axisY2 + fm.ascent(), lab2);
+            }
         } else {
-            p.drawText(sx - lw / 2, axisY + fm.ascent(), label);
+            p.drawText(sx - lw1 / 2, axisY1 + fm.ascent(), lab1);
+            p.drawText(sx - lw2 / 2, axisY2 + fm.ascent(), lab2);
         }
     }
 
-    // vertical axis
+    // --- vertical axis ---------------------------------------------------------
     for (int i = 0; i < numTicks; i++) {
         double frac = i / (double)(numTicks - 1);
-        double val = yStart + frac * (yEnd - yStart);
+        double val  = yStart + frac * (yEnd - yStart);
         int sy = frame.top() + (int)(frac * frame.height());
-        QString label = QString::number((int)std::round(val));
-        int lw = fm.horizontalAdvance(label);
+
+        QString lab1 = QString::number((int)std::round(val));
+        QString lab2 = physLabel(val, reciprocal);
+        int lw1 = fm.horizontalAdvance(lab1);
+        int lw2 = fm.horizontalAdvance(lab2);
+
+        // choose Y position: flush top / bottom for first / last tick
+        auto tickY = [&](int idx) -> int {
+            if (reciprocal) {
+                if (idx == 0) return frame.top() + fm.ascent();
+                if (idx == numTicks - 1) return frame.bottom();
+            }
+            return sy + fm.ascent() / 2 - 1;
+        };
+        int ty1 = tickY(i);
+        int ty2 = ty1 + lineH + 1;
+
         if (yAxisRight) {
-            if (reciprocal) {
-                if (i == 0)
-                    p.drawText(frame.right() + 4, frame.top() + fm.ascent(), label);
-                else if (i == numTicks - 1)
-                    p.drawText(frame.right() + 4, frame.bottom(), label);
-                else
-                    p.drawText(frame.right() + 4, sy + fm.ascent() / 2 - 1, label);
-            } else {
-                p.drawText(frame.right() + 4, sy + fm.ascent() / 2 - 1, label);
-            }
+            int x0 = frame.right() + 4;
+            p.drawText(x0, ty1, lab1);
+            p.drawText(x0, ty2, lab2);
         } else {
-            if (reciprocal) {
-                if (i == 0)
-                    p.drawText(frame.left() - 4 - lw, frame.top() + fm.ascent(), label);
-                else if (i == numTicks - 1)
-                    p.drawText(frame.left() - 4 - lw, frame.bottom(), label);
-                else
-                    p.drawText(frame.left() - 4 - lw, sy + fm.ascent() / 2 - 1, label);
-            } else {
-                p.drawText(frame.left() - 4 - lw, sy + fm.ascent() / 2 - 1, label);
-            }
+            int maxLw = std::max(lw1, lw2);
+            int x0 = frame.left() - 4 - maxLw;
+            p.drawText(x0 + (maxLw - lw1), ty1, lab1);   // right-align row 1
+            p.drawText(x0 + (maxLw - lw2), ty2, lab2);   // right-align row 2
         }
     }
 }
 
 void FtWindow::drawMinMax(QPainter &p, const QRect &frame,
-                           double minVal, double maxVal)
+                           double minVal, double maxVal,
+                           double curVal, bool hasCur)
 {
     QFont f;
     f.setPixelSize(11);
     p.setFont(f);
     p.setPen(Qt::white);
 
-    QString text = QString("Min: %1    Max: %2")
-                       .arg(minVal, 0, 'g', 5)
-                       .arg(maxVal, 0, 'g', 5);
+    QString text;
+    if (hasCur)
+        text = QString("Current: %1     Min: %2     Max: %3")
+                   .arg(curVal, 0, 'g', 5)
+                   .arg(minVal, 0, 'g', 5)
+                   .arg(maxVal, 0, 'g', 5);
+    else
+        text = QString("Min: %1     Max: %2")
+                   .arg(minVal, 0, 'g', 5)
+                   .arg(maxVal, 0, 'g', 5);
+
     QFontMetrics fm(f);
     int tw = fm.horizontalAdvance(text);
     p.drawText(frame.right() - tw, frame.top() - 5, text);
@@ -605,6 +692,7 @@ void FtWindow::loadImageFile(const QString &path)
         m_imageRawPixels = std::move(r.rawPixels);
         m_imageMinVal = r.minVal;
         m_imageMaxVal = r.maxVal;
+        m_pixelSize = r.pixelSize;
 
         if (m_image.isNull()) {
             qDebug() << "MRC load FAILED – image is null";
@@ -613,6 +701,7 @@ void FtWindow::loadImageFile(const QString &path)
         }
     } else {
         m_image = QImage(path);
+        m_pixelSize = 1.0;
         if (m_image.isNull()) {
             qDebug() << "Image load FAILED for:" << path;
         } else {

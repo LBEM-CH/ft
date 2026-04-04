@@ -126,8 +126,16 @@ MrcResult loadMrc(const QString &path)
     qDebug() << "MRC:  dmin =" << dmin << " dmax =" << dmax << " dmean =" << dmean;
     qDebug() << "MRC:  ispg =" << ispg << " nsymbt (extended header bytes) =" << nsymbt;
 
-    if (mx > 0 && cellA > 0)
-        qDebug() << "MRC:  pixel size X =" << (cellA / mx) << "Angstrom";
+    if (mx > 0 && cellA > 0) {
+        result.pixelSize = cellA / mx;
+        qDebug() << "MRC:  pixel size X =" << result.pixelSize << "Angstrom";
+    } else if (nx > 0 && cellA > 0) {
+        result.pixelSize = cellA / nx;
+        qDebug() << "MRC:  pixel size X (from cellA/nx) =" << result.pixelSize << "Angstrom";
+    } else {
+        result.pixelSize = 1.0;
+        qDebug() << "MRC:  pixel size not available in header, assuming 1.0 Angstrom";
+    }
     if (my > 0 && cellB > 0)
         qDebug() << "MRC:  pixel size Y =" << (cellB / my) << "Angstrom";
 
