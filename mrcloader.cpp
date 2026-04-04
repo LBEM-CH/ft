@@ -1,0 +1,279 @@
+#include "mrcloader.h"
+#include <QFile>
+#include <QDebug>
+#include <QtEndian>
+#include <cstring>
+#include <algorithm>
+#include <cmath>
+
+MrcResult loadMrc(const QString &path)
+{
+    MrcResult result;
+    QFile f(path);
+
+    if (!f.open(QIODevice::ReadOnly)) {
+        qDebug() << "MRC: Failed to open file:" << path;
+        return result;
+    }
+
+    qDebug() << "MRC: Opening file:" << path;
+    qDebug() << "MRC: File size:" << f.size() << "bytes";
+
+    if (f.size() < 1024) {
+        qDebug() << "MRC: File too small for MRC header (need >= 1024 bytes)";
+        return result;
+    }
+
+    QByteArray hdr = f.read(1024);
+
+    // --- byte-order detection ---------------------------------------------------
+    bool needSwap = false;
+
+    // Check MAP stamp at bytes 208-211 (should be ASCII "MAP ")
+    bool hasMapStamp = (hdr[208] == 'M' && hdr[209] == 'A' &&
+                        hdr[210] == 'P' && hdr[211] == ' ');
+
+    qDebug() << "MRC: MAP stamp bytes:" << QString("%1 %2 %3 %4")
+                .arg((quint8)hdr[208], 2, 16, QChar('0'))
+                .arg((quint8)hdr[209], 2, 16, QChar('0'))
+                .arg((quint8)hdr[210], 2, 16, QChar('0'))
+                .arg((quint8)hdr[211], 2, 16, QChar('0'))
+             << (hasMapStamp ? "(valid)" : "(MISSING or invalid)");
+
+    if (hasMapStamp) {
+        quint8 machst0 = (quint8)hdr[212];
+        quint8 machst1 = (quint8)hdr[213];
+        qDebug() << "MRC: Machine stamp:" << QString("0x%1 0x%2")
+                    .arg(machst0, 2, 16, QChar('0'))
+                    .arg(machst1, 2, 16, QChar('0'));
+
+        // 0x44 = little-endian (Intel / ARM), 0x11 = big-endian
+#if Q_BYTE_ORDER == Q_LITTLE_ENDIAN
+        if (machst0 == 0x11) {
+            needSwap = true;
+            qDebug() << "MRC: Big-endian file detected – will byte-swap";
+        }
+#else
+        if (machst0 == 0x44) {
+            needSwap = true;
+            qDebug() << "MRC: Little-endian file on big-endian host – will byte-swap";
+        }
+#endif
+    } else {
+        // No MAP stamp – use heuristic: read mode in native order
+        qint32 rawMode;
+        memcpy(&rawMode, hdr.constData() + 12, 4);
+        if (rawMode < 0 || rawMode > 16) {
+            needSwap = true;
+            qDebug() << "MRC: No MAP stamp; raw mode =" << rawMode
+                     << "looks wrong – trying byte-swap";
+        } else {
+            qDebug() << "MRC: No MAP stamp; raw mode =" << rawMode
+                     << "looks plausible – assuming native byte order";
+        }
+    }
+
+    // helper lambdas
+    auto readI32 = [&](int offset) -> qint32 {
+        qint32 v;
+        memcpy(&v, hdr.constData() + offset, 4);
+        if (needSwap) v = qbswap(v);
+        return v;
+    };
+    auto readFloat = [&](int offset) -> float {
+        quint32 raw;
+        memcpy(&raw, hdr.constData() + offset, 4);
+        if (needSwap) raw = qbswap(raw);
+        float v;
+        memcpy(&v, &raw, 4);
+        return v;
+    };
+
+    // --- read header fields -----------------------------------------------------
+    int nx     = readI32(0);
+    int ny     = readI32(4);
+    int nz     = readI32(8);
+    int mode   = readI32(12);
+    int nxStart = readI32(16);
+    int nyStart = readI32(20);
+    int nzStart = readI32(24);
+    int mx     = readI32(28);
+    int my     = readI32(32);
+    int mz     = readI32(36);
+    float cellA     = readFloat(40);
+    float cellB     = readFloat(44);
+    float cellC     = readFloat(48);
+    float cellAlpha = readFloat(52);
+    float cellBeta  = readFloat(56);
+    float cellGamma = readFloat(60);
+    int mapc   = readI32(64);
+    int mapr   = readI32(68);
+    int maps   = readI32(72);
+    float dmin  = readFloat(76);
+    float dmax  = readFloat(80);
+    float dmean = readFloat(84);
+    int ispg    = readI32(88);
+    int nsymbt  = readI32(92);
+
+    qDebug() << "MRC: ---- Header ----";
+    qDebug() << "MRC:  nx =" << nx << " ny =" << ny << " nz =" << nz;
+    qDebug() << "MRC:  mode =" << mode;
+    qDebug() << "MRC:  nxStart =" << nxStart << " nyStart =" << nyStart << " nzStart =" << nzStart;
+    qDebug() << "MRC:  mx =" << mx << " my =" << my << " mz =" << mz;
+    qDebug() << "MRC:  cellA =" << cellA << " cellB =" << cellB << " cellC =" << cellC;
+    qDebug() << "MRC:  cellAlpha =" << cellAlpha << " cellBeta =" << cellBeta << " cellGamma =" << cellGamma;
+    qDebug() << "MRC:  mapc =" << mapc << " mapr =" << mapr << " maps =" << maps;
+    qDebug() << "MRC:  dmin =" << dmin << " dmax =" << dmax << " dmean =" << dmean;
+    qDebug() << "MRC:  ispg =" << ispg << " nsymbt (extended header bytes) =" << nsymbt;
+
+    if (mx > 0 && cellA > 0)
+        qDebug() << "MRC:  pixel size X =" << (cellA / mx) << "Angstrom";
+    if (my > 0 && cellB > 0)
+        qDebug() << "MRC:  pixel size Y =" << (cellB / my) << "Angstrom";
+
+    // --- sanity checks ----------------------------------------------------------
+    if (nx <= 0 || ny <= 0) {
+        qDebug() << "MRC: ERROR – invalid dimensions nx=" << nx << " ny=" << ny;
+        return result;
+    }
+    if (nz < 0) nz = 1;            // treat nz<=0 as single slice
+    if (nz == 0) nz = 1;
+
+    if (nsymbt < 0 || nsymbt > f.size() - 1024) {
+        qDebug() << "MRC: ERROR – nsymbt looks invalid:" << nsymbt
+                 << "(file size =" << f.size() << ")";
+        return result;
+    }
+
+    if (mode != 0 && mode != 1 && mode != 2 && mode != 6) {
+        qDebug() << "MRC: ERROR – unsupported mode:" << mode
+                 << "(supported: 0, 1, 2, 6)";
+        return result;
+    }
+
+    // --- read pixel data --------------------------------------------------------
+    qint64 dataOffset = 1024 + nsymbt;
+    f.seek(dataOffset);
+    qDebug() << "MRC: Data offset =" << dataOffset;
+
+    qint64 pixelCount = (qint64)nx * ny;
+    result.nx = nx;
+    result.ny = ny;
+    result.rawPixels.resize(pixelCount);
+
+    QImage img(nx, ny, QImage::Format_Grayscale8);
+
+    if (mode == 0) {
+        // 8-bit unsigned integers
+        QByteArray data = f.read(pixelCount);
+        if (data.size() < pixelCount) {
+            qDebug() << "MRC: ERROR – not enough data for mode 0: expected"
+                     << pixelCount << "got" << data.size();
+            return result;
+        }
+        const quint8 *src = reinterpret_cast<const quint8 *>(data.constData());
+        for (qint64 i = 0; i < pixelCount; i++)
+            result.rawPixels[i] = src[i];
+
+        double mn = *std::min_element(result.rawPixels.begin(), result.rawPixels.end());
+        double mx = *std::max_element(result.rawPixels.begin(), result.rawPixels.end());
+        result.minVal = mn;
+        result.maxVal = mx;
+        double scale = (mx > mn) ? 255.0 / (mx - mn) : 1.0;
+
+        for (int y = 0; y < ny; y++) {
+            uchar *row = img.scanLine(ny - 1 - y);
+            for (int x = 0; x < nx; x++)
+                row[x] = static_cast<uchar>(std::clamp((result.rawPixels[y * nx + x] - mn) * scale, 0.0, 255.0));
+        }
+    } else if (mode == 1) {
+        // 16-bit signed integers
+        QByteArray data = f.read(pixelCount * 2);
+        if (data.size() < pixelCount * 2) {
+            qDebug() << "MRC: ERROR – not enough data for mode 1: expected"
+                     << pixelCount * 2 << "got" << data.size();
+            return result;
+        }
+        const qint16 *src = reinterpret_cast<const qint16 *>(data.constData());
+        for (qint64 i = 0; i < pixelCount; i++) {
+            qint16 v = src[i];
+            if (needSwap) v = qbswap(v);
+            result.rawPixels[i] = v;
+        }
+
+        double mn = *std::min_element(result.rawPixels.begin(), result.rawPixels.end());
+        double mx = *std::max_element(result.rawPixels.begin(), result.rawPixels.end());
+        result.minVal = mn;
+        result.maxVal = mx;
+        double scale = (mx > mn) ? 255.0 / (mx - mn) : 1.0;
+
+        for (int y = 0; y < ny; y++) {
+            uchar *row = img.scanLine(ny - 1 - y);
+            for (int x = 0; x < nx; x++)
+                row[x] = static_cast<uchar>(std::clamp((result.rawPixels[y * nx + x] - mn) * scale, 0.0, 255.0));
+        }
+    } else if (mode == 2) {
+        // 32-bit floats
+        QByteArray data = f.read(pixelCount * 4);
+        if (data.size() < pixelCount * 4) {
+            qDebug() << "MRC: ERROR – not enough data for mode 2: expected"
+                     << pixelCount * 4 << "got" << data.size();
+            return result;
+        }
+        const quint32 *raw = reinterpret_cast<const quint32 *>(data.constData());
+        for (qint64 i = 0; i < pixelCount; i++) {
+            quint32 bits = raw[i];
+            if (needSwap) bits = qbswap(bits);
+            float v;
+            memcpy(&v, &bits, 4);
+            result.rawPixels[i] = v;
+        }
+
+        double mn = *std::min_element(result.rawPixels.begin(), result.rawPixels.end());
+        double mx = *std::max_element(result.rawPixels.begin(), result.rawPixels.end());
+        result.minVal = mn;
+        result.maxVal = mx;
+        double scale = (mx > mn) ? 255.0 / (mx - mn) : 1.0;
+
+        for (int y = 0; y < ny; y++) {
+            uchar *row = img.scanLine(ny - 1 - y);
+            for (int x = 0; x < nx; x++)
+                row[x] = static_cast<uchar>(std::clamp((result.rawPixels[y * nx + x] - mn) * scale, 0.0, 255.0));
+        }
+    } else if (mode == 6) {
+        // 16-bit unsigned integers
+        QByteArray data = f.read(pixelCount * 2);
+        if (data.size() < pixelCount * 2) {
+            qDebug() << "MRC: ERROR – not enough data for mode 6: expected"
+                     << pixelCount * 2 << "got" << data.size();
+            return result;
+        }
+        const quint16 *src = reinterpret_cast<const quint16 *>(data.constData());
+        for (qint64 i = 0; i < pixelCount; i++) {
+            quint16 v = src[i];
+            if (needSwap) v = qbswap(v);
+            result.rawPixels[i] = v;
+        }
+
+        double mn = *std::min_element(result.rawPixels.begin(), result.rawPixels.end());
+        double mx = *std::max_element(result.rawPixels.begin(), result.rawPixels.end());
+        result.minVal = mn;
+        result.maxVal = mx;
+        double scale = (mx > mn) ? 255.0 / (mx - mn) : 1.0;
+
+        for (int y = 0; y < ny; y++) {
+            uchar *row = img.scanLine(ny - 1 - y);
+            for (int x = 0; x < nx; x++)
+                row[x] = static_cast<uchar>(std::clamp((result.rawPixels[y * nx + x] - mn) * scale, 0.0, 255.0));
+        }
+    }
+
+    result.image = img;
+    result.valid = true;
+
+    qDebug() << "MRC: Successfully loaded" << nx << "x" << ny
+             << "image, mode" << mode
+             << ", pixel range [" << result.minVal << "," << result.maxVal << "]";
+
+    return result;
+}
