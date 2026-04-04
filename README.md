@@ -46,7 +46,19 @@ sudo apt install build-essential cmake qt6-base-dev
 
 On Ubuntu 22.04, if `qt6-base-dev` is not available in the default repositories, add the official Qt PPA or install from the [Qt online installer](https://www.qt.io/download-qt-installer).
 
+### Windows
+
+1. **Install Qt 6** using the [Qt online installer](https://www.qt.io/download-qt-installer). During installation, select the **Qt 6.x** component matching your compiler (MSVC or MinGW). Note the installation path (e.g. `C:\Qt\6.8.3\msvc2022_64`).
+
+2. **Install CMake** from [cmake.org](https://cmake.org/download/) or via `winget install Kitware.CMake`. Make sure CMake is on your PATH.
+
+3. **Install a C++17 compiler** — either:
+   - **MSVC**: Install [Visual Studio 2019 or later](https://visualstudio.microsoft.com/) with the "Desktop development with C++" workload, or
+   - **MinGW**: Use the MinGW build shipped with Qt (selected during Qt installation).
+
 ## Building
+
+### macOS / Linux
 
 ```bash
 mkdir build
@@ -57,10 +69,51 @@ cmake --build .
 
 The executable `ft` will be created in the `build/` directory.
 
+### Windows with MSVC
+
+Open a **Developer Command Prompt for Visual Studio** (or "x64 Native Tools Command Prompt") and run:
+
+```cmd
+mkdir build
+cd build
+cmake .. -DCMAKE_PREFIX_PATH=C:\Qt\6.8.3\msvc2022_64
+cmake --build . --config Release
+```
+
+Replace the `CMAKE_PREFIX_PATH` with the actual path to your Qt installation. The executable `ft.exe` will be created in `build\Release\`.
+
+### Windows with MinGW
+
+Open a terminal and make sure the MinGW `bin` directory shipped with Qt is on your PATH:
+
+```cmd
+set PATH=C:\Qt\Tools\mingw1310_64\bin;%PATH%
+mkdir build
+cd build
+cmake .. -G "MinGW Makefiles" -DCMAKE_PREFIX_PATH=C:\Qt\6.8.3\mingw_64
+cmake --build .
+```
+
+The executable `ft.exe` will be created in the `build\` directory.
+
 ## Running
+
+On macOS or Linux:
 
 ```bash
 ./build/ft
+```
+
+On Windows:
+
+```cmd
+build\Release\ft.exe
+```
+
+If `ft.exe` cannot find Qt DLLs at runtime, either add the Qt `bin` directory to your PATH or copy the required DLLs next to `ft.exe`. Qt provides the `windeployqt` tool to automate this:
+
+```cmd
+C:\Qt\6.8.3\msvc2022_64\bin\windeployqt.exe build\Release\ft.exe
 ```
 
 Use the **Load image** button to open an image file, then click the **FT** arrow to compute the Fourier transform.

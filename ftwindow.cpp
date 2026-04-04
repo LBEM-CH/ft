@@ -84,6 +84,24 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_eraserDiameterEdit->setStyleSheet("background:#222; color:white; border:1px solid #888;");
     m_eraserDiameterEdit->hide();
 
+    // Binning widgets (hidden until bin button is active)
+    m_binCombo = new QComboBox(this);
+    for (int i = 1; i <= 8; i++)
+        m_binCombo->addItem(QString::number(i), i);
+    m_binCombo->setFixedSize(50, 24);
+    m_binCombo->setStyleSheet("background:#222; color:white; border:1px solid #888;");
+    m_binCombo->hide();
+
+    m_binKeepSizeBtn = new QCheckBox("Keep original image size", this);
+    m_binKeepSizeBtn->setStyleSheet("color: white;");
+    m_binKeepSizeBtn->setChecked(true);
+    m_binKeepSizeBtn->hide();
+
+    m_applyBinBtn = new QPushButton("Apply binning", this);
+    m_applyBinBtn->setFixedSize(110, 26);
+    connect(m_applyBinBtn, &QPushButton::clicked, this, &FtWindow::onApplyBinning);
+    m_applyBinBtn->hide();
+
     // Restore history first (so loadImageFile doesn't push empty into history)
     restoreHistory();
 
@@ -120,4 +138,11 @@ void FtWindow::resizeEvent(QResizeEvent *)
     m_brushDiameterEdit->move(bpX + 210, bpY + 24);
     m_eraserDiamLabel->move(bpX, bpY);
     m_eraserDiameterEdit->move(bpX + 180, bpY - 2);
+
+    // Binning widgets: bottom-left of panel 1
+    int binX = 10;
+    int binY = hy - 90;
+    m_binCombo->move(binX, binY);
+    m_binKeepSizeBtn->move(binX, binY + 30);
+    m_applyBinBtn->move(binX, binY + 60);
 }

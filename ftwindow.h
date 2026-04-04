@@ -7,6 +7,7 @@
 #include <QLineEdit>
 #include <QLabel>
 #include <QCheckBox>
+#include <QComboBox>
 #include <vector>
 #include "fft.h"          // Complex, nextPow2, fft2d, fftShift, floatToImage
 
@@ -174,6 +175,13 @@ private:
     void eraserApply(QPoint pos);
     void brushApply(QPoint pos);
     double brushValue() const;             // max amplitude outside center 3x3
+    void onApplyBinning();
+
+    // Binning UI
+    bool        m_binActive = false;
+    QComboBox  *m_binCombo  = nullptr;
+    QPushButton *m_applyBinBtn = nullptr;
+    QCheckBox  *m_binKeepSizeBtn = nullptr;
 
     // Brush/eraser parameter widgets
     QLineEdit  *m_brushValueEdit    = nullptr;

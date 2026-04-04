@@ -54,7 +54,7 @@ void FtWindow::paintEvent(QPaintEvent *)
 
     // ---- Tool button columns (8 squares each) ----------------------------------
     {
-        int btnSide = width() * 5 / 400;
+        int btnSide = std::max(width() * 5 / 400, 20);
         int gap = 2;
         int totalH = 8 * btnSide + 7 * gap;
         int startY = (hy - totalH) / 2;
@@ -245,6 +245,47 @@ void FtWindow::paintEvent(QPaintEvent *)
                     QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
                     QFontMetrics ttfm(ttf);
                     QString tip = "Rotate image";
+                    int ttw = ttfm.horizontalAdvance(tip) + 8;
+                    int tth = ttfm.height() + 4;
+                    int ttx = r.right() + 4;
+                    int tty = r.center().y() - tth / 2;
+                    p.setPen(QPen(Qt::white, 1));
+                    p.setBrush(QColor(40, 40, 40));
+                    p.drawRect(ttx, tty, ttw, tth);
+                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                }
+            }
+
+            // Bin image icon (button 4): 2x2 grid representing pixel binning
+            if (i == 4) {
+                if (m_binActive) {
+                    p.setPen(QPen(Qt::white, 1));
+                    p.setBrush(QColor(60, 60, 60));
+                    p.drawRect(r);
+                }
+
+                QColor col = m_binActive ? QColor(180, 180, 255) : Qt::white;
+                int m = std::max(2, btnSide / 5);  // margin
+                QRect inner = r.adjusted(m, m, -m, -m);
+                int midX = inner.x() + inner.width() / 2;
+                int midY = inner.y() + inner.height() / 2;
+
+                // Draw 4 filled squares (2x2 grid) with gaps
+                int g = std::max(1, btnSide / 10);  // gap between cells
+                p.setPen(Qt::NoPen);
+                p.setBrush(col);
+                p.drawRect(QRect(inner.x(), inner.y(), midX - inner.x() - g, midY - inner.y() - g));
+                p.setBrush(col.darker(140));
+                p.drawRect(QRect(midX + g, inner.y(), inner.right() - midX - g + 1, midY - inner.y() - g));
+                p.setBrush(col.darker(170));
+                p.drawRect(QRect(inner.x(), midY + g, midX - inner.x() - g, inner.bottom() - midY - g + 1));
+                p.setBrush(col.darker(120));
+                p.drawRect(QRect(midX + g, midY + g, inner.right() - midX - g + 1, inner.bottom() - midY - g + 1));
+
+                if (r.contains(m_mousePos)) {
+                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                    QFontMetrics ttfm(ttf);
+                    QString tip = "Bin image";
                     int ttw = ttfm.horizontalAdvance(tip) + 8;
                     int tth = ttfm.height() + 4;
                     int ttx = r.right() + 4;

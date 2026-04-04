@@ -82,6 +82,14 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         update();
         return;
     }
+    if (m_p1BtnRects[4].contains(event->pos())) {
+        m_binActive = !m_binActive;
+        m_binCombo->setVisible(m_binActive);
+        m_binKeepSizeBtn->setVisible(m_binActive);
+        m_applyBinBtn->setVisible(m_binActive);
+        update();
+        return;
+    }
 
     // Shift/rotate: start drag on panel 1 image
     if ((m_shiftActive || m_rotateActive) && !m_image.isNull()) {

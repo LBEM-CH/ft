@@ -18,4 +18,7 @@ add_executable(ft
     fft.cpp
     mrcloader.cpp
 )
+set_target_properties(ft PROPERTIES
+    WIN32_EXECUTABLE ON
+)
 target_link_libraries(ft PRIVATE Qt6::Widgets Threads::Threads)

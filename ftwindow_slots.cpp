@@ -695,6 +695,130 @@ void FtWindow::onApplyBandpass()
     update();
 }
 
+void FtWindow::onApplyBinning()
+{
+    if (m_image.isNull()) return;
+
+    int binFactor = m_binCombo->currentData().toInt();
+    if (binFactor <= 1) return;
+
+    int w = m_image.width();
+    int h = m_image.height();
+
+    // Work on a copy of raw pixel values
+    std::vector<double> &pix = m_imageRawPixels;
+    if ((int)pix.size() != w * h) return;
+
+    bool keepSize = m_binKeepSizeBtn->isChecked();
+
+    if (keepSize) {
+        // Average each NxN block and fill all pixels in that block with the average
+        for (int by = 0; by + binFactor <= h; by += binFactor) {
+            for (int bx = 0; bx + binFactor <= w; bx += binFactor) {
+                double sum = 0;
+                for (int dy = 0; dy < binFactor; dy++)
+                    for (int dx = 0; dx < binFactor; dx++)
+                        sum += pix[(by + dy) * w + (bx + dx)];
+                double avg = sum / (binFactor * binFactor);
+                for (int dy = 0; dy < binFactor; dy++)
+                    for (int dx = 0; dx < binFactor; dx++)
+                        pix[(by + dy) * w + (bx + dx)] = avg;
+            }
+        }
+        // Handle leftover columns (right edge)
+        int remX = w % binFactor;
+        if (remX > 0) {
+            int startX = w - remX;
+            for (int by = 0; by + binFactor <= h; by += binFactor) {
+                double sum = 0;
+                for (int dy = 0; dy < binFactor; dy++)
+                    for (int x = startX; x < w; x++)
+                        sum += pix[(by + dy) * w + x];
+                double avg = sum / (remX * binFactor);
+                for (int dy = 0; dy < binFactor; dy++)
+                    for (int x = startX; x < w; x++)
+                        pix[(by + dy) * w + x] = avg;
+            }
+        }
+        // Handle leftover rows (bottom edge)
+        int remY = h % binFactor;
+        if (remY > 0) {
+            int startY = h - remY;
+            for (int bx = 0; bx + binFactor <= w; bx += binFactor) {
+                double sum = 0;
+                for (int y = startY; y < h; y++)
+                    for (int dx = 0; dx < binFactor; dx++)
+                        sum += pix[y * w + (bx + dx)];
+                double avg = sum / (remY * binFactor);
+                for (int y = startY; y < h; y++)
+                    for (int dx = 0; dx < binFactor; dx++)
+                        pix[y * w + (bx + dx)] = avg;
+            }
+        }
+        // Handle bottom-right corner
+        int remX2 = w % binFactor, remY2 = h % binFactor;
+        if (remX2 > 0 && remY2 > 0) {
+            int startX = w - remX2, startY = h - remY2;
+            double sum = 0;
+            for (int y = startY; y < h; y++)
+                for (int x = startX; x < w; x++)
+                    sum += pix[y * w + x];
+            double avg = sum / (remX2 * remY2);
+            for (int y = startY; y < h; y++)
+                for (int x = startX; x < w; x++)
+                    pix[y * w + x] = avg;
+        }
+
+        m_imageMinVal = *std::min_element(pix.begin(), pix.end());
+        m_imageMaxVal = *std::max_element(pix.begin(), pix.end());
+        double range = m_imageMaxVal - m_imageMinVal;
+        double scale = (range > 0) ? 255.0 / range : 1.0;
+        m_image = QImage(w, h, QImage::Format_Grayscale8);
+        for (int y = 0; y < h; y++) {
+            uchar *row = m_image.scanLine(y);
+            for (int x = 0; x < w; x++)
+                row[x] = static_cast<uchar>(std::clamp(
+                    (pix[y * w + x] - m_imageMinVal) * scale, 0.0, 255.0));
+        }
+    } else {
+        // Shrink: each NxN block becomes one pixel
+        int newW = w / binFactor;
+        int newH = h / binFactor;
+        if (newW < 1 || newH < 1) return;
+
+        std::vector<double> newPix(newW * newH);
+        for (int by = 0; by < newH; by++) {
+            for (int bx = 0; bx < newW; bx++) {
+                double sum = 0;
+                for (int dy = 0; dy < binFactor; dy++)
+                    for (int dx = 0; dx < binFactor; dx++)
+                        sum += pix[(by * binFactor + dy) * w + (bx * binFactor + dx)];
+                newPix[by * newW + bx] = sum / (binFactor * binFactor);
+            }
+        }
+
+        m_imageRawPixels = std::move(newPix);
+        m_imageMinVal = *std::min_element(m_imageRawPixels.begin(), m_imageRawPixels.end());
+        m_imageMaxVal = *std::max_element(m_imageRawPixels.begin(), m_imageRawPixels.end());
+        double range = m_imageMaxVal - m_imageMinVal;
+        double scale = (range > 0) ? 255.0 / range : 1.0;
+        m_image = QImage(newW, newH, QImage::Format_Grayscale8);
+        for (int y = 0; y < newH; y++) {
+            uchar *row = m_image.scanLine(y);
+            for (int x = 0; x < newW; x++)
+                row[x] = static_cast<uchar>(std::clamp(
+                    (m_imageRawPixels[y * newW + x] - m_imageMinVal) * scale, 0.0, 255.0));
+        }
+        m_zoom[0].reset(newW, newH);
+        m_pixelSize *= binFactor;
+    }
+
+    if (m_ftComputed)
+        computeFFT();
+
+    update();
+}
+
 void FtWindow::onApplyDirectional()
 {
     if (!m_ftComputed || m_fftN == 0) return;
