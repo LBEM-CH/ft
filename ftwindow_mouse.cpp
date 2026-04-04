@@ -330,59 +330,75 @@ void FtWindow::mouseReleaseEvent(QMouseEvent *event)
             double angleRad = angleDeg * M_PI / 180.0;
 
             int N = m_fftN;
-            double half = N / 2.0;
-            double cosA = std::cos(-angleRad);
-            double sinA = std::sin(-angleRad);
-            double nyquistR = half;  // Nyquist radius
+            int halfN = N / 2;
+            double cosTheta = std::cos(angleRad);
+            double sinTheta = std::sin(angleRad);
+            double nyquistR = halfN;
             double edgeW = 10.0;
             double innerR = nyquistR - edgeW;
 
-            // Rotate only one half-plane and enforce Friedel symmetry
-            // F(N-x, N-y) = conj(F(x, y)) so the inverse FFT stays real.
-            auto lookup = [&](double srcX, double srcY) -> Complex {
-                int sx = (int)std::round(srcX);
-                int sy = (int)std::round(srcY);
-                if (sx >= 0 && sx < N && sy >= 0 && sy < N)
-                    return m_fftData[sy * N + sx];
-                return Complex(0, 0);
-            };
+            // Work in the UNSHIFTED domain where DFT indices are
+            // unambiguous, so the phase correction is exact.
+            // The DFT rotation theorem rotates around the origin (0,0).
+            // To rotate around the image center (cx,cy) we compose:
+            //   translate center→origin, rotate, translate back.
+            // This adds a phase factor:
+            //   exp(2πi·[(u_s − u'_s)·cx + (v_s − v'_s)·cy] / N)
+            // where u_s, v_s are signed frequencies.
+            double imgCx = m_image.width()  / 2.0;
+            double imgCy = m_image.height() / 2.0;
+            double twoPiOverN = 2.0 * M_PI / N;
 
-            auto lpFilter = [&](double dist) -> double {
-                if (dist >= nyquistR) return 0.0;
-                if (dist > innerR) {
-                    double t = (dist - innerR) / edgeW;
-                    return 0.5 * (1.0 + std::cos(t * M_PI));
-                }
-                return 1.0;
-            };
+            // Un-shift to standard layout (DC at [0,0])
+            std::vector<Complex> unshifted = m_fftData;
+            fftShift(unshifted, N);
 
-            int halfN = N / 2;
             std::vector<Complex> rotated(N * N, Complex(0, 0));
-            for (int y = 0; y < N; y++) {
-                for (int x = 0; x < N; x++) {
-                    // Process each pixel only once: skip the mate half
-                    // Use lexicographic order on (y,x) relative to center
-                    int mx = (N - x) % N;
-                    int my = (N - y) % N;
-                    if (my > y || (my == y && mx > x)) continue;
+            for (int v = 0; v < N; v++) {
+                for (int u = 0; u < N; u++) {
+                    // Friedel: process each pair only once
+                    int mu = (N - u) % N;
+                    int mv = (N - v) % N;
+                    if (mv > v || (mv == v && mu > u)) continue;
 
-                    double dx = x - half;
-                    double dy = y - half;
-                    double dist = std::sqrt(dx * dx + dy * dy);
-                    double lp = lpFilter(dist);
+                    // Signed frequency (maps indices > N/2 to negatives)
+                    double us = (u <= halfN) ? (double)u : (double)(u - N);
+                    double vs = (v <= halfN) ? (double)v : (double)(v - N);
 
-                    double srcX = half + dx * cosA - dy * sinA;
-                    double srcY = half + dx * sinA + dy * cosA;
-                    Complex val = lookup(srcX, srcY) * lp;
+                    // Nyquist low-pass filter
+                    double dist = std::sqrt(us * us + vs * vs);
+                    double lp = 1.0;
+                    if (dist >= nyquistR) {
+                        lp = 0.0;
+                    } else if (dist > innerR) {
+                        double t = (dist - innerR) / edgeW;
+                        lp = 0.5 * (1.0 + std::cos(t * M_PI));
+                    }
 
-                    rotated[y * N + x] = val;
+                    // Inverse rotation to find source frequency
+                    double uSrc = us * cosTheta + vs * sinTheta;
+                    double vSrc = -us * sinTheta + vs * cosTheta;
+
+                    // Nearest-neighbor lookup with periodic wrapping
+                    int su = ((int)std::round(uSrc) % N + N) % N;
+                    int sv = ((int)std::round(vSrc) % N + N) % N;
+                    Complex val = unshifted[sv * N + su] * lp;
+
+                    // Phase correction for rotation around image center
+                    double phaseArg = twoPiOverN
+                        * ((us - uSrc) * imgCx + (vs - vSrc) * imgCy);
+                    val *= Complex(std::cos(phaseArg), std::sin(phaseArg));
+
+                    rotated[v * N + u] = val;
 
                     // Set Friedel mate to complex conjugate
-                    if (mx != x || my != y)
-                        rotated[my * N + mx] = std::conj(val);
+                    if (mu != u || mv != v)
+                        rotated[mv * N + mu] = std::conj(val);
                 }
             }
 
+            // Re-shift to centered layout (DC at center)
+            fftShift(rotated, N);
             m_fftData = std::move(rotated);
             recomputeDisplayImages();
             update();
