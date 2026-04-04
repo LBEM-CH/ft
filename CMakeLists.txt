@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets)
+find_package(Threads REQUIRED)
 
 add_executable(ft
     main.cpp
@@ -13,4 +14,4 @@ add_executable(ft
     fft.cpp
     mrcloader.cpp
 )
-target_link_libraries(ft PRIVATE Qt6::Widgets)
+target_link_libraries(ft PRIVATE Qt6::Widgets Threads::Threads)

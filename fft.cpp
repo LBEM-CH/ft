@@ -1,6 +1,7 @@
 #include "fft.h"
 #include <algorithm>
 #include <cmath>
+#include <thread>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -46,21 +47,55 @@ void fft1d(std::vector<Complex> &data, bool inverse) {
 }
 
 void fft2d(std::vector<Complex> &data, int N, bool inverse) {
-    std::vector<Complex> row(N);
-    for (int y = 0; y < N; y++) {
-        for (int x = 0; x < N; x++)
-            row[x] = data[y * N + x];
-        fft1d(row, inverse);
-        for (int x = 0; x < N; x++)
-            data[y * N + x] = row[x];
+    int nThreads = (int)std::thread::hardware_concurrency();
+    if (nThreads < 1) nThreads = 1;
+
+    // Row-wise FFT (each thread gets its own temp buffer)
+    auto doRows = [&](int yStart, int yEnd) {
+        std::vector<Complex> row(N);
+        for (int y = yStart; y < yEnd; y++) {
+            for (int x = 0; x < N; x++)
+                row[x] = data[y * N + x];
+            fft1d(row, inverse);
+            for (int x = 0; x < N; x++)
+                data[y * N + x] = row[x];
+        }
+    };
+
+    {
+        std::vector<std::thread> threads;
+        int perThread = (N + nThreads - 1) / nThreads;
+        for (int t = 0; t < nThreads; t++) {
+            int y0 = t * perThread;
+            int y1 = std::min(y0 + perThread, N);
+            if (y0 < y1)
+                threads.emplace_back(doRows, y0, y1);
+        }
+        for (auto &t : threads) t.join();
     }
-    std::vector<Complex> col(N);
-    for (int x = 0; x < N; x++) {
-        for (int y = 0; y < N; y++)
-            col[y] = data[y * N + x];
-        fft1d(col, inverse);
-        for (int y = 0; y < N; y++)
-            data[y * N + x] = col[y];
+
+    // Column-wise FFT
+    auto doCols = [&](int xStart, int xEnd) {
+        std::vector<Complex> col(N);
+        for (int x = xStart; x < xEnd; x++) {
+            for (int y = 0; y < N; y++)
+                col[y] = data[y * N + x];
+            fft1d(col, inverse);
+            for (int y = 0; y < N; y++)
+                data[y * N + x] = col[y];
+        }
+    };
+
+    {
+        std::vector<std::thread> threads;
+        int perThread = (N + nThreads - 1) / nThreads;
+        for (int t = 0; t < nThreads; t++) {
+            int x0 = t * perThread;
+            int x1 = std::min(x0 + perThread, N);
+            if (x0 < x1)
+                threads.emplace_back(doCols, x0, x1);
+        }
+        for (auto &t : threads) t.join();
     }
 }
 

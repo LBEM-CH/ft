@@ -15,6 +15,7 @@
 #include <QDebug>
 #include <cmath>
 #include <algorithm>
+#include <thread>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -113,18 +114,46 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
             m_pixelSize      = clicked.pixelSize;
 
             m_ftComputed = false;
+            m_displayMode = 2;
+            m_modeBtn->setText(modeLabel());
             m_modeBtn->hide();
             m_maskBtn->hide();
             m_maskBtn->setChecked(false);
             m_maskCenter = false;
 
-            if (!m_image.isNull())
+            if (!m_image.isNull()) {
                 m_zoom[0].reset(m_image.width(), m_image.height());
+                computeFFT();
+            }
 
             saveHistory();
+            QSettings settings("ft", "ft");
+            settings.setValue("lastFile", m_imagePath);
             update();
             return;
         }
+    }
+
+    // Check tool button clicks (panel 2 right edge)
+    if (m_toolBtnRects[0].contains(event->pos())) {
+        m_eraserActive = !m_eraserActive;
+        if (m_eraserActive) m_brushActive = false;
+        update();
+        return;
+    }
+    if (m_toolBtnRects[1].contains(event->pos())) {
+        m_brushActive = !m_brushActive;
+        if (m_brushActive) m_eraserActive = false;
+        update();
+        return;
+    }
+
+    // Eraser / Brush: click on FT image, start drag
+    if ((m_eraserActive || m_brushActive) && m_ftComputed) {
+        if (m_eraserActive) eraserApply(event->pos());
+        else                brushApply(event->pos());
+        m_toolDragging = true;
+        return;
     }
 
     if (m_image.isNull()) return;
@@ -135,9 +164,24 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
     }
 }
 
+void FtWindow::mouseReleaseEvent(QMouseEvent *)
+{
+    if (m_toolDragging) {
+        m_toolDragging = false;
+    }
+}
+
 void FtWindow::mouseMoveEvent(QMouseEvent *event)
 {
     m_mousePos = event->pos();
+
+    // Tool drag: apply along the trace
+    if (m_toolDragging && m_ftComputed) {
+        if (m_eraserActive) eraserApply(event->pos());
+        else if (m_brushActive) brushApply(event->pos());
+        return;
+    }
+
     update();
 }
 
@@ -208,6 +252,10 @@ void FtWindow::paintEvent(QPaintEvent *)
     int cx = width() / 2;
     int hy = height() - height() / 5;
 
+    // scaled label font sizes
+    int labelFontMain = std::clamp(std::min(cx, hy) / 20, 12, 48);
+    int labelFontHist = std::clamp(std::min(cx, height() - hy) / 4, 10, 36);
+
     // background
     p.fillRect(rect(), QColor(75, 75, 75));
 
@@ -245,6 +293,131 @@ void FtWindow::paintEvent(QPaintEvent *)
         p.drawText(cx + 2 + (width() - cx - 2 - tfm.horizontalAdvance(t2)) / 2, 8 + tfm.ascent(), t2);
     }
 
+    // ---- Tool button columns (8 squares each) ----------------------------------
+    {
+        int btnSide = width() * 5 / 400;
+        int gap = 2;
+        int totalH = 8 * btnSide + 7 * gap;
+        int startY = (hy - totalH) / 2;
+
+        int offset = btnSide / 2;
+
+        // Panel 1: left edge
+        for (int i = 0; i < 8; i++) {
+            int by = startY + i * (btnSide + gap);
+            QRect r(offset, by, btnSide, btnSide);
+            p.setPen(QPen(Qt::white, 1));
+            p.setBrush(QColor(0, 0, 0));
+            p.drawRect(r);
+        }
+
+        // Panel 2: right edge
+        for (int i = 0; i < 8; i++) {
+            int by = startY + i * (btnSide + gap);
+            QRect r(width() - btnSide - offset, by, btnSide, btnSide);
+            m_toolBtnRects[i] = r;
+
+            p.setPen(QPen(Qt::white, 1));
+            if ((i == 0 && m_eraserActive) || (i == 1 && m_brushActive))
+                p.setBrush(QColor(60, 60, 60));
+            else
+                p.setBrush(QColor(0, 0, 0));
+            p.drawRect(r);
+
+            // Eraser icon in first button
+            if (i == 0) {
+                p.setRenderHint(QPainter::Antialiasing, true);
+                QRect ir = r.adjusted(3, 3, -3, -3);
+                int ix = ir.x(), iy = ir.y(), iw = ir.width(), ih = ir.height();
+
+                // eraser body (tilted rectangle)
+                QPainterPath ep;
+                ep.moveTo(ix + iw * 0.2, iy + ih * 0.1);
+                ep.lineTo(ix + iw * 0.9, iy + ih * 0.1);
+                ep.lineTo(ix + iw * 0.8, iy + ih * 0.9);
+                ep.lineTo(ix + iw * 0.1, iy + ih * 0.9);
+                ep.closeSubpath();
+                p.setPen(Qt::NoPen);
+                p.setBrush(QColor(200, 180, 160));
+                p.drawPath(ep);
+
+                // rubber tip (bottom portion)
+                QPainterPath tp;
+                tp.moveTo(ix + iw * 0.1, iy + ih * 0.9);
+                tp.lineTo(ix + iw * 0.15, iy + ih * 0.55);
+                tp.lineTo(ix + iw * 0.85, iy + ih * 0.55);
+                tp.lineTo(ix + iw * 0.8, iy + ih * 0.9);
+                tp.closeSubpath();
+                p.setBrush(QColor(230, 100, 100));
+                p.drawPath(tp);
+
+                // divider line
+                p.setPen(QPen(QColor(120, 80, 60), std::max(1, iw / 10)));
+                p.drawLine(ix + iw * 0.15, iy + ih * 0.55, ix + iw * 0.85, iy + ih * 0.55);
+
+                p.setRenderHint(QPainter::Antialiasing, false);
+
+                // Tooltip on hover
+                if (r.contains(m_mousePos)) {
+                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                    QFontMetrics ttfm(ttf);
+                    QString tip = "Eraser";
+                    int ttw = ttfm.horizontalAdvance(tip) + 8;
+                    int tth = ttfm.height() + 4;
+                    int ttx = r.left() - ttw - 4;
+                    int tty = r.center().y() - tth / 2;
+                    p.setPen(QPen(Qt::white, 1));
+                    p.setBrush(QColor(40, 40, 40));
+                    p.drawRect(ttx, tty, ttw, tth);
+                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                }
+            }
+
+            // Paint brush icon in second button
+            if (i == 1) {
+                p.setRenderHint(QPainter::Antialiasing, true);
+                QRect ir = r.adjusted(3, 3, -3, -3);
+                int bx = ir.x(), by2 = ir.y(), bw = ir.width(), bh = ir.height();
+
+                // handle
+                p.setPen(QPen(QColor(160, 120, 60), std::max(1, bw / 6)));
+                p.drawLine(bx + bw * 0.5, by2 + bh * 0.05, bx + bw * 0.5, by2 + bh * 0.45);
+
+                // ferrule
+                p.setPen(Qt::NoPen);
+                p.setBrush(QColor(180, 180, 180));
+                p.drawRect(bx + bw * 0.25, by2 + bh * 0.40, bw * 0.5, bh * 0.15);
+
+                // bristles
+                p.setBrush(QColor(200, 160, 80));
+                QPainterPath br;
+                br.moveTo(bx + bw * 0.2, by2 + bh * 0.55);
+                br.lineTo(bx + bw * 0.8, by2 + bh * 0.55);
+                br.lineTo(bx + bw * 0.65, by2 + bh * 0.95);
+                br.lineTo(bx + bw * 0.35, by2 + bh * 0.95);
+                br.closeSubpath();
+                p.drawPath(br);
+
+                p.setRenderHint(QPainter::Antialiasing, false);
+
+                // Tooltip on hover
+                if (r.contains(m_mousePos)) {
+                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                    QFontMetrics ttfm(ttf);
+                    QString tip = "Paint brush";
+                    int ttw = ttfm.horizontalAdvance(tip) + 8;
+                    int tth = ttfm.height() + 4;
+                    int ttx = r.left() - ttw - 4;
+                    int tty = r.center().y() - tth / 2;
+                    p.setPen(QPen(Qt::white, 1));
+                    p.setBrush(QColor(40, 40, 40));
+                    p.drawRect(ttx, tty, ttw, tth);
+                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                }
+            }
+        }
+    }
+
     // ---- Panel 1: loaded image ------------------------------------------------
     int panel1W = cx - 1;
     int panel1H = hy - 1;
@@ -258,12 +431,12 @@ void FtWindow::paintEvent(QPaintEvent *)
         int imgW = m_image.width();
         int imgH = m_image.height();
 
-        // Label "A" above center of image
+        // Label "a" above center of image
         {
-            QFont lf; lf.setBold(true); lf.setPixelSize(16); p.setFont(lf);
+            QFont lf; lf.setBold(true); lf.setPixelSize(labelFontMain); p.setFont(lf);
             p.setPen(QColor(255, 255, 0));
             QFontMetrics lfm(lf);
-            QString lab = "A";
+            QString lab = "a";
             p.drawText(frame.x() + (frame.width() - lfm.horizontalAdvance(lab)) / 2,
                        frame.y() - 6, lab);
         }
@@ -311,13 +484,13 @@ void FtWindow::paintEvent(QPaintEvent *)
             int fy = (panel2H - side) / 2;
             QRect frame(fx, fy, side, side);
 
-            // Label "a" above center, title above top-left
+            // Label "A" above center, title above top-left
             {
-                QFont af; af.setBold(true); af.setPixelSize(16); p.setFont(af);
+                QFont af; af.setBold(true); af.setPixelSize(labelFontMain); p.setFont(af);
                 p.setPen(QColor(255, 255, 0));
                 QFontMetrics afm(af);
-                p.drawText(frame.x() + (frame.width() - afm.horizontalAdvance("a")) / 2,
-                           frame.y() - 18, "a");
+                p.drawText(frame.x() + (frame.width() - afm.horizontalAdvance("A")) / 2,
+                           frame.y() - 22, "A");
             }
             p.setPen(QColor(200, 200, 200));
             QFont lf; lf.setPixelSize(14); p.setFont(lf);
@@ -391,15 +564,15 @@ void FtWindow::paintEvent(QPaintEvent *)
                 label1 = "amplitude"; label2 = "phase";
             }
 
-            // Label "a" above center of both frames combined
+            // Label "A" above center of both frames combined
             {
-                QFont af; af.setBold(true); af.setPixelSize(16); p.setFont(af);
+                QFont af; af.setBold(true); af.setPixelSize(labelFontMain); p.setFont(af);
                 p.setPen(QColor(255, 255, 0));
                 QFontMetrics afm(af);
                 int combinedX = frame1.x();
                 int combinedW = frame2.right() - frame1.x();
-                p.drawText(combinedX + (combinedW - afm.horizontalAdvance("a")) / 2,
-                           frame1.y() - 18, "a");
+                p.drawText(combinedX + (combinedW - afm.horizontalAdvance("A")) / 2,
+                           frame1.y() - 22, "A");
             }
 
             // Labels above frames
@@ -456,12 +629,12 @@ void FtWindow::paintEvent(QPaintEvent *)
             QRect r(sx, startY, side, side);
             m_historyRects[i] = r;
 
-            // Label "B", "C", ... above center
+            // Label "b", "c", ... above center
             {
-                QFont af; af.setBold(true); af.setPixelSize(14); p.setFont(af);
+                QFont af; af.setBold(true); af.setPixelSize(labelFontHist); p.setFont(af);
                 p.setPen(QColor(255, 255, 0));
                 QFontMetrics afm(af);
-                QString lab = QString(QChar('B' + i));
+                QString lab = QString(QChar('b' + i));
                 p.drawText(r.x() + (r.width() - afm.horizontalAdvance(lab)) / 2,
                            r.y() - 3, lab);
             }
@@ -501,12 +674,12 @@ void FtWindow::paintEvent(QPaintEvent *)
             QRect r(sx, startY, side, side);
             m_powerSpecRects[i] = r;
 
-            // Label "b", "c", ... above center
+            // Label "B", "C", ... above center
             {
-                QFont af; af.setBold(true); af.setPixelSize(14); p.setFont(af);
+                QFont af; af.setBold(true); af.setPixelSize(labelFontHist); p.setFont(af);
                 p.setPen(QColor(255, 255, 0));
                 QFontMetrics afm(af);
-                QString lab = QString(QChar('b' + i));
+                QString lab = QString(QChar('B' + i));
                 p.drawText(r.x() + (r.width() - afm.horizontalAdvance(lab)) / 2,
                            r.y() - 3, lab);
             }
@@ -1029,42 +1202,62 @@ void FtWindow::computeFFT()
             data[y * N + x] = Complex(row[x], 0.0);
     }
 
-    // 2D FFT with animated progress
+    // 2D FFT with animated progress, parallelised in batches
     m_fftProgress = 0.0;
     update();
     QApplication::processEvents();
 
     {
-        // Row-wise FFT (0% – 50%)
-        std::vector<Complex> row(N);
-        for (int y = 0; y < N; y++) {
-            for (int x = 0; x < N; x++)
-                row[x] = data[y * N + x];
-            fft1d(row, false);
-            for (int x = 0; x < N; x++)
-                data[y * N + x] = row[x];
+        int nThreads = (int)std::thread::hardware_concurrency();
+        if (nThreads < 1) nThreads = 1;
+        int batchSize = nThreads * 16;   // rows/cols per progress step
 
-            if ((y & 15) == 0) {
-                m_fftProgress = 0.5 * y / N;
-                update();
-                QApplication::processEvents();
+        // Row-wise FFT (0% – 50%)
+        for (int b = 0; b < N; b += batchSize) {
+            int bEnd = std::min(b + batchSize, N);
+            std::vector<std::thread> threads;
+            int perThread = ((bEnd - b) + nThreads - 1) / nThreads;
+            for (int t = 0; t < nThreads; t++) {
+                int y0 = b + t * perThread;
+                int y1 = std::min(y0 + perThread, bEnd);
+                if (y0 < y1)
+                    threads.emplace_back([&data, N, y0, y1]() {
+                        std::vector<Complex> row(N);
+                        for (int y = y0; y < y1; y++) {
+                            for (int x = 0; x < N; x++) row[x] = data[y * N + x];
+                            fft1d(row, false);
+                            for (int x = 0; x < N; x++) data[y * N + x] = row[x];
+                        }
+                    });
             }
+            for (auto &t : threads) t.join();
+            m_fftProgress = 0.5 * bEnd / N;
+            update();
+            QApplication::processEvents();
         }
 
         // Column-wise FFT (50% – 100%)
-        std::vector<Complex> col(N);
-        for (int x = 0; x < N; x++) {
-            for (int y = 0; y < N; y++)
-                col[y] = data[y * N + x];
-            fft1d(col, false);
-            for (int y = 0; y < N; y++)
-                data[y * N + x] = col[y];
-
-            if ((x & 15) == 0) {
-                m_fftProgress = 0.5 + 0.5 * x / N;
-                update();
-                QApplication::processEvents();
+        for (int b = 0; b < N; b += batchSize) {
+            int bEnd = std::min(b + batchSize, N);
+            std::vector<std::thread> threads;
+            int perThread = ((bEnd - b) + nThreads - 1) / nThreads;
+            for (int t = 0; t < nThreads; t++) {
+                int x0 = b + t * perThread;
+                int x1 = std::min(x0 + perThread, bEnd);
+                if (x0 < x1)
+                    threads.emplace_back([&data, N, x0, x1]() {
+                        std::vector<Complex> col(N);
+                        for (int x = x0; x < x1; x++) {
+                            for (int y = 0; y < N; y++) col[y] = data[y * N + x];
+                            fft1d(col, false);
+                            for (int y = 0; y < N; y++) data[y * N + x] = col[y];
+                        }
+                    });
             }
+            for (auto &t : threads) t.join();
+            m_fftProgress = 0.5 + 0.5 * bEnd / N;
+            update();
+            QApplication::processEvents();
         }
     }
 
@@ -1286,5 +1479,80 @@ void FtWindow::restoreHistory()
         m_history[i].pixelSize    = pixelSize;
         m_history[i].powerSpecImg = computePowerSpecMasked(img);
         m_history[i].occupied     = true;
+    }
+}
+
+void FtWindow::eraserApply(QPoint pos)
+{
+    if (!m_ftComputed) return;
+
+    for (int i = 0; i < m_numDispItems; i++) {
+        const DisplayItem &di = m_dispItems[i];
+        if (!di.valid || di.zoomIdx < 1) continue;
+        if (!di.screenRect.contains(pos)) continue;
+
+        ZoomState &z = m_zoom[di.zoomIdx];
+        QRectF src = z.visibleRect(di.imgW, di.imgH);
+        double relX = (pos.x() - di.screenRect.x()) / (double)di.screenRect.width();
+        double relY = (pos.y() - di.screenRect.y()) / (double)di.screenRect.height();
+        int ix = (int)(src.x() + relX * src.width());
+        int iy = (int)(src.y() + relY * src.height());
+
+        if (ix >= 0 && ix < m_fftN && iy >= 0 && iy < m_fftN) {
+            m_fftData[iy * m_fftN + ix] = Complex(0, 0);
+            // Friedel mate
+            int fx = (m_fftN - ix) % m_fftN;
+            int fy = (m_fftN - iy) % m_fftN;
+            m_fftData[fy * m_fftN + fx] = Complex(0, 0);
+            recomputeDisplayImages();
+            update();
+        }
+        return;
+    }
+}
+
+double FtWindow::brushValue() const
+{
+    if (!m_ftComputed || m_fftN == 0) return 1.0;
+    int half = m_fftN / 2;
+    double maxAmp = 0;
+    for (int y = 0; y < m_fftN; y++) {
+        for (int x = 0; x < m_fftN; x++) {
+            if (std::abs(x - half) <= 1 && std::abs(y - half) <= 1)
+                continue;  // skip center 3x3
+            double a = std::abs(m_fftData[y * m_fftN + x]);
+            if (a > maxAmp) maxAmp = a;
+        }
+    }
+    return maxAmp;
+}
+
+void FtWindow::brushApply(QPoint pos)
+{
+    if (!m_ftComputed) return;
+
+    for (int i = 0; i < m_numDispItems; i++) {
+        const DisplayItem &di = m_dispItems[i];
+        if (!di.valid || di.zoomIdx < 1) continue;
+        if (!di.screenRect.contains(pos)) continue;
+
+        ZoomState &z = m_zoom[di.zoomIdx];
+        QRectF src = z.visibleRect(di.imgW, di.imgH);
+        double relX = (pos.x() - di.screenRect.x()) / (double)di.screenRect.width();
+        double relY = (pos.y() - di.screenRect.y()) / (double)di.screenRect.height();
+        int ix = (int)(src.x() + relX * src.width());
+        int iy = (int)(src.y() + relY * src.height());
+
+        if (ix >= 0 && ix < m_fftN && iy >= 0 && iy < m_fftN) {
+            double val = brushValue();
+            m_fftData[iy * m_fftN + ix] = Complex(val, 0);
+            // Friedel mate (complex conjugate)
+            int fx = (m_fftN - ix) % m_fftN;
+            int fy = (m_fftN - iy) % m_fftN;
+            m_fftData[fy * m_fftN + fx] = Complex(val, 0);
+            recomputeDisplayImages();
+            update();
+        }
+        return;
     }
 }

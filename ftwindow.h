@@ -58,6 +58,7 @@ public:
 protected:
     void resizeEvent(QResizeEvent *)            override;
     void mousePressEvent(QMouseEvent *event)    override;
+    void mouseReleaseEvent(QMouseEvent *event)  override;
     void mouseMoveEvent(QMouseEvent *event)     override;
     void wheelEvent(QWheelEvent *event)         override;
     void paintEvent(QPaintEvent *)              override;
@@ -147,6 +148,16 @@ private:
     int         m_numDispItems = 0;
 
     QPoint      m_mousePos;         // current mouse position
+
+    // ---- tool buttons (panel 2 right edge) ----
+    QRect       m_toolBtnRects[8];
+    bool        m_eraserActive = false;
+    bool        m_brushActive = false;
+    bool        m_toolDragging = false;    // mouse button held while painting/erasing
+
+    void eraserApply(QPoint pos);
+    void brushApply(QPoint pos);
+    double brushValue() const;             // max amplitude outside center 3x3
 };
 
 #endif // FTWINDOW_H
