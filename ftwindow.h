@@ -161,6 +161,12 @@ private:
     // ---- tool buttons ----
     QRect       m_p1BtnRects[8];       // panel 1 left edge
     QRect       m_toolBtnRects[8];     // panel 2 right edge
+
+    // Panel 1 tools
+    bool        m_shiftActive = false;
+    bool        m_rotateActive = false;
+    bool        m_p1Dragging = false;
+    QPoint      m_p1DragStart;         // screen pos at drag start
     bool        m_eraserActive = false;
     bool        m_brushActive = false;
     bool        m_toolDragging = false;    // mouse button held while painting/erasing
