@@ -117,6 +117,8 @@ private:
     bool  m_ftComputed  = false;
     int   m_displayMode = 0;          // 0=cos/sin, 1=amp/phase, 2=power
     int   m_fftN        = 0;
+    int   m_origW       = 0;          // image width at FFT time (for rotation center)
+    int   m_origH       = 0;          // image height at FFT time
     std::vector<Complex> m_fftData;   // shifted FFT (kept for mask toggle)
     bool  m_maskCenter  = false;
     double m_fftProgress = -1;    // -1 = not computing, 0..1 = progress
@@ -131,7 +133,7 @@ private:
     double m_powerMin = 0, m_powerMax = 0;
 
     // ---- image history (panel 3) ----
-    static constexpr int HISTORY_SLOTS = 10;
+    static constexpr int HISTORY_SLOTS = 16;
     int m_activeSlot = -1;     // which slot (0..9) is shown in panel 1, -1 = none
     struct HistoryEntry {
         QImage  image;

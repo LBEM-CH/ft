@@ -605,14 +605,47 @@ void FtWindow::paintEvent(QPaintEvent *)
             pf.setPixelSize(11);
             p.setFont(pf);
             p.setPen(Qt::white);
+            QFontMetrics pfm(pf);
             QString psLabel = QString("1 pixel = %1 %2")
                                   .arg(m_pixelSize, 0, 'g', 4)
                                   .arg(QString::fromUtf8("\u00C5"));
-            p.drawText(frame.x(), frame.top() - 5, psLabel);
+
+            // Resolution and pixel-size info below the bottom-right of the frame
+            int infoX = frame.right();
+            int infoY = frame.bottom() + 4 + 3 * (pfm.height() + 1);
+
+            QString resLabel = QString("%1 x %2 pixels").arg(imgW).arg(imgH);
+            p.drawText(infoX - pfm.horizontalAdvance(resLabel), infoY + pfm.ascent(), resLabel);
+
+            infoY += pfm.height() + 1;
+            p.drawText(infoX - pfm.horizontalAdvance(psLabel), infoY + pfm.ascent(), psLabel);
+
+            if (!m_imagePath.isEmpty()) {
+                infoY += pfm.height() + 1;
+                QString fname = QFileInfo(m_imagePath).fileName();
+                p.drawText(infoX - pfm.horizontalAdvance(fname), infoY + pfm.ascent(), fname);
+            }
         }
 
         DisplayItem &di = m_dispItems[m_numDispItems++];
         di = { inner, imgW, imgH, 0, &m_imageRawPixels, true };
+    } else if (m_activeSlot >= 0) {
+        // Empty buffer selected – draw yellow frame with buffer letter
+        int side1 = static_cast<int>(0.7 * std::min(panel1W, panel1H));
+        int imgX = (panel1W - side1) / 2;
+        int imgY = (panel1H - side1) / 2;
+        QRect frame(imgX, imgY, side1, side1);
+
+        QFont lf; lf.setBold(true); lf.setPixelSize(labelFontMain); p.setFont(lf);
+        p.setPen(QColor(255, 255, 0));
+        QFontMetrics lfm(lf);
+        QString lab = QString(QChar('a' + m_activeSlot));
+        p.drawText(frame.x() + (frame.width() - lfm.horizontalAdvance(lab)) / 2,
+                   frame.y() - 22, lab);
+
+        p.setPen(QPen(QColor(255, 255, 0), 2));
+        p.setBrush(Qt::NoBrush);
+        p.drawRect(frame);
     }
 
     // ---- Panel 2: FFT results -------------------------------------------------
@@ -776,14 +809,14 @@ void FtWindow::paintEvent(QPaintEvent *)
         p.drawText(bpX, bpY + 15, "Smooth edge by pixels:");
     }
 
-    // ---- Panel 3: image history (below panel 1) – 2 rows × 5 columns ----------
+    // ---- Panel 3: image history (below panel 1) – 2 rows × 8 columns ----------
     {
         int p3x = 0;
         int p3y = hy + 2;
         int p3w = cx - 1;
         int p3h = height() - p3y;
 
-        int cols = 5, rows = 2;
+        int cols = 8, rows = 2;
         int margin = 8;
         int availW = p3w - 2 * margin;
         int availH = p3h - 2 * margin;
@@ -830,21 +863,37 @@ void FtWindow::paintEvent(QPaintEvent *)
                 else
                     p.drawImage(inner, m_history[i].image);
 
-                // Semi-transparent grey overlay for the active slot
-                if (isActive)
-                    p.fillRect(inner, QColor(128, 128, 128, 128));
+                // Diagonal hatching overlay for the active slot
+                if (isActive) {
+                    p.save();
+                    p.setClipRect(inner);
+                    p.setRenderHint(QPainter::Antialiasing, true);
+                    p.setPen(QPen(QColor(128, 128, 128, 180), 1));
+                    // 60° lines from bottom-left to top-right
+                    double h = inner.height();
+                    double run = h / std::tan(60.0 * M_PI / 180.0); // horizontal shift per line height
+                    double step = inner.width() / 10.0;             // ~10 lines across
+                    int n = (int)((inner.width() + run) / step) + 2;
+                    for (int k = -n; k <= n; k++) {
+                        double bx = inner.left() + k * step;
+                        p.drawLine(QPointF(bx, inner.bottom()),
+                                   QPointF(bx + run, inner.top()));
+                    }
+                    p.setRenderHint(QPainter::Antialiasing, false);
+                    p.restore();
+                }
             }
         }
     }
 
-    // ---- Panel 4: power spectrum history (below panel 2) – 2 rows × 5 columns -
+    // ---- Panel 4: power spectrum history (below panel 2) – 2 rows × 8 columns -
     {
         int p4x = cx + 2;
         int p4y = hy + 2;
         int p4w = width() - p4x;
         int p4h = height() - p4y;
 
-        int cols = 5, rows = 2;
+        int cols = 8, rows = 2;
         int margin = 8;
         int availW = p4w - 2 * margin;
         int availH = p4h - 2 * margin;

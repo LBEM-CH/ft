@@ -5,11 +5,12 @@
 // ---------------------------------------------------------------------------
 void FtWindow::onLoadImage()
 {
-    QSettings settings("ft", "ft");
-    QString lastDir = QFileInfo(settings.value("lastFile").toString()).absolutePath();
+    QString startDir = QCoreApplication::applicationDirPath() + "/../EXAMPLE_IMAGES";
+    if (!QDir(startDir).exists())
+        startDir = QCoreApplication::applicationDirPath();
 
     QString path = QFileDialog::getOpenFileName(
-        this, "Load image", lastDir,
+        this, "Load image", startDir,
         "Images (*.tif *.tiff *.jpg *.jpeg *.png *.mrc *.MRC)");
 
     if (path.isEmpty()) return;
@@ -76,22 +77,12 @@ void FtWindow::loadImageFile(const QString &path)
 {
     qDebug() << "Loading image:" << path;
 
-    // Save current active image back to its slot
-    if (m_activeSlot >= 0 && !m_image.isNull()) {
-        m_history[m_activeSlot].image        = m_image;
-        m_history[m_activeSlot].path         = m_imagePath;
-        m_history[m_activeSlot].rawPixels    = m_imageRawPixels;
-        m_history[m_activeSlot].minVal       = m_imageMinVal;
-        m_history[m_activeSlot].maxVal       = m_imageMaxVal;
-        m_history[m_activeSlot].pixelSize    = m_pixelSize;
-        m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
-        m_history[m_activeSlot].occupied     = true;
-    }
-
-    // Find first empty slot; fall back to last slot if all full
-    int newSlot = HISTORY_SLOTS - 1;
-    for (int i = 0; i < HISTORY_SLOTS; i++) {
-        if (!m_history[i].occupied) { newSlot = i; break; }
+    // If no slot is active, pick the first empty one (or last slot as fallback)
+    if (m_activeSlot < 0) {
+        m_activeSlot = HISTORY_SLOTS - 1;
+        for (int i = 0; i < HISTORY_SLOTS; i++) {
+            if (!m_history[i].occupied) { m_activeSlot = i; break; }
+        }
     }
 
     if (path.endsWith(".mrc", Qt::CaseInsensitive)) {
@@ -123,17 +114,16 @@ void FtWindow::loadImageFile(const QString &path)
 
     m_imagePath = path;
 
-    // Store in the chosen slot and activate it
+    // Store in the active slot
     if (!m_image.isNull()) {
-        m_history[newSlot].image        = m_image;
-        m_history[newSlot].path         = path;
-        m_history[newSlot].rawPixels    = m_imageRawPixels;
-        m_history[newSlot].minVal       = m_imageMinVal;
-        m_history[newSlot].maxVal       = m_imageMaxVal;
-        m_history[newSlot].pixelSize    = m_pixelSize;
-        m_history[newSlot].occupied     = true;
+        m_history[m_activeSlot].image        = m_image;
+        m_history[m_activeSlot].path         = path;
+        m_history[m_activeSlot].rawPixels    = m_imageRawPixels;
+        m_history[m_activeSlot].minVal       = m_imageMinVal;
+        m_history[m_activeSlot].maxVal       = m_imageMaxVal;
+        m_history[m_activeSlot].pixelSize    = m_pixelSize;
+        m_history[m_activeSlot].occupied     = true;
     }
-    m_activeSlot = newSlot;
 
     QSettings settings("ft", "ft");
     settings.setValue("lastFile", path);
@@ -151,7 +141,7 @@ void FtWindow::loadImageFile(const QString &path)
         m_zoom[0].reset(m_image.width(), m_image.height());
         computeFFT();
         // Store power spec thumbnail now that FFT is done
-        m_history[newSlot].powerSpecImg = computePowerSpecMasked(m_image);
+        m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
     }
 
     saveHistory();
@@ -250,6 +240,8 @@ void FtWindow::computeFFT()
     int h = gray.height();
     int N = nextPow2(std::max(w, h));
     m_fftN = N;
+    m_origW = w;
+    m_origH = h;
 
     // Compute average grey for padding beyond image bounds
     double sum = 0;
@@ -401,10 +393,8 @@ void FtWindow::computeInverseFFT()
 
     m_iftProgress = -1;
 
-    int origW = m_image.width();
-    int origH = m_image.height();
-    int outW = std::min(origW, N);
-    int outH = std::min(origH, N);
+    int outW = (m_origW > 0) ? std::min(m_origW, N) : N;
+    int outH = (m_origH > 0) ? std::min(m_origH, N) : N;
 
     m_imageRawPixels.resize(outW * outH);
     for (int y = 0; y < outH; y++)
@@ -631,6 +621,17 @@ void FtWindow::restoreHistory()
             m_history[i].occupied = false;
             continue;
         }
+
+        // Pad to square using the existing padImageToSquare() helper
+        m_image          = img;
+        m_imageRawPixels = std::move(rawPixels);
+        m_imageMinVal    = minVal;
+        m_imageMaxVal    = maxVal;
+        padImageToSquare();
+        img       = m_image;
+        rawPixels = std::move(m_imageRawPixels);
+        minVal    = m_imageMinVal;
+        maxVal    = m_imageMaxVal;
 
         m_history[i].image        = img;
         m_history[i].path         = path;

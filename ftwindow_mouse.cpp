@@ -7,7 +7,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
 {
     // Check history slot clicks (panel 3) – activate clicked slot
     for (int i = 0; i < HISTORY_SLOTS; i++) {
-        if (m_history[i].occupied && m_historyRects[i].contains(event->pos())) {
+        if (m_historyRects[i].contains(event->pos())) {
             if (i == m_activeSlot) return;   // already active
 
             // Save current active image back to its slot
@@ -22,14 +22,26 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
                 m_history[m_activeSlot].occupied     = true;
             }
 
-            // Load clicked slot into panel 1
-            m_activeSlot     = i;
-            m_image          = m_history[i].image;
-            m_imagePath      = m_history[i].path;
-            m_imageRawPixels = m_history[i].rawPixels;
-            m_imageMinVal    = m_history[i].minVal;
-            m_imageMaxVal    = m_history[i].maxVal;
-            m_pixelSize      = m_history[i].pixelSize;
+            // Activate the clicked slot
+            m_activeSlot = i;
+
+            if (m_history[i].occupied) {
+                // Load occupied slot into panel 1
+                m_image          = m_history[i].image;
+                m_imagePath      = m_history[i].path;
+                m_imageRawPixels = m_history[i].rawPixels;
+                m_imageMinVal    = m_history[i].minVal;
+                m_imageMaxVal    = m_history[i].maxVal;
+                m_pixelSize      = m_history[i].pixelSize;
+            } else {
+                // Empty slot – clear panel 1
+                m_image          = QImage();
+                m_imagePath.clear();
+                m_imageRawPixels.clear();
+                m_imageMinVal    = 0;
+                m_imageMaxVal    = 0;
+                m_pixelSize      = 1.0;
+            }
 
             m_ftComputed = false;
             m_displayMode = 2;
@@ -338,100 +350,46 @@ void FtWindow::mouseReleaseEvent(QMouseEvent *event)
             int halfN = N / 2;
             double cosA = std::cos(-angleRad);   // inverse rotation
             double sinA = std::sin(-angleRad);
-            double nyquistR = halfN;
-            double edgeW = 10.0;
-            double innerR = nyquistR - edgeW;
 
-            // ---- Step 1: inverse FFT to get real-space image ----
+            // Real-space rotation center = center of original image in N×N grid
+            double rcx = (m_origW - 1) / 2.0;
+            double rcy = (m_origH - 1) / 2.0;
+
+            // Un-shift to standard DFT layout (DC at [0,0])
             std::vector<Complex> freq(m_fftData);
-            fftShift(freq, N);            // un-shift DC to [0,0]
-            fft2d(freq, N, true);         // inverse FFT → real space
+            fftShift(freq, N);
 
-            // ---- Step 2: circular mask with cosine edge ----
-            {
-                double sum = 0;
-                for (int i = 0; i < N * N; i++) sum += freq[i].real();
-                double avg = sum / (N * N);
-
-                double mcx = N / 2.0, mcy = N / 2.0;
-                double maxR = N / 2.0;
-                double maskEdge = 10.0;
-                double maskInner = maxR - maskEdge;
-
-                for (int y = 0; y < N; y++) {
-                    for (int x = 0; x < N; x++) {
-                        double dx = x - mcx, dy = y - mcy;
-                        double dist = std::sqrt(dx * dx + dy * dy);
-                        if (dist >= maxR) {
-                            freq[y * N + x] = Complex(avg, 0);
-                        } else if (dist > maskInner) {
-                            double t = (dist - maskInner) / maskEdge;
-                            double fade = 0.5 * (1.0 + std::cos(t * M_PI));
-                            double v = freq[y * N + x].real();
-                            freq[y * N + x] = Complex(v * fade + avg * (1.0 - fade), 0);
-                        }
-                    }
-                }
-            }
-
-            // ---- Step 3: FFT back to Fourier space (unshifted: DC at [0,0]) ----
-            fft2d(freq, N, false);
-
-            // ---- Step 4: multiply by (-1)^(u+v) to shift real-space origin
-            //              to image center. This is a phase ramp, NOT fftShift. ----
-            // DFT shift theorem: multiplying F(u,v) by (-1)^(u+v) = e^{jπ(u+v)}
-            // circularly shifts the spatial image by (N/2, N/2), moving the
-            // content at the image center to the DFT origin (0,0).
-            for (int v = 0; v < N; v++)
-                for (int u = 0; u < N; u++)
-                    if ((u + v) & 1)
-                        freq[v * N + u] = -freq[v * N + u];
-
-            // ---- Step 5: rotate in unshifted domain using signed frequencies ----
-            // DC is at index [0,0]. Rotation around frequency origin =
-            // rotation around spatial origin, which is now the image center.
+            // Rotate in Fourier space with phase correction for off-center rotation.
+            // For rotation around (rcx, rcy) instead of (0,0), the DFT shift theorem
+            // gives: G(u,v) = F(u',v') · exp(j·2π·((u'-u)·rcx + (v'-v)·rcy)/N)
+            // where (u',v') is the nearest source frequency from inverse rotation.
             std::vector<Complex> rotated(N * N, Complex(0, 0));
             for (int v = 0; v < N; v++) {
                 for (int u = 0; u < N; u++) {
-                    // Friedel: process each pair only once
-                    int mu = (N - u) % N;
-                    int mv = (N - v) % N;
-                    if (mv > v || (mv == v && mu > u)) continue;
-
-                    // Signed frequency
                     double us = (u <= halfN) ? (double)u : (double)(u - N);
                     double vs = (v <= halfN) ? (double)v : (double)(v - N);
 
-                    // Nyquist low-pass
-                    double dist = std::sqrt(us * us + vs * vs);
-                    double lp = 1.0;
-                    if (dist >= nyquistR)
-                        lp = 0.0;
-                    else if (dist > innerR) {
-                        double t = (dist - innerR) / edgeW;
-                        lp = 0.5 * (1.0 + std::cos(t * M_PI));
-                    }
+                    // Inverse-rotate to find source signed frequency
+                    double uSrcF = us * cosA - vs * sinA;
+                    double vSrcF = us * sinA + vs * cosA;
 
-                    // Inverse-rotate source frequency
-                    double uSrc = us * cosA - vs * sinA;
-                    double vSrc = us * sinA + vs * cosA;
+                    // Nearest-neighbor (signed integer source frequency)
+                    int uSrcI = (int)std::round(uSrcF);
+                    int vSrcI = (int)std::round(vSrcF);
 
-                    // Nearest-neighbor with periodic wrapping
-                    int su = ((int)std::round(uSrc) % N + N) % N;
-                    int sv = ((int)std::round(vSrc) % N + N) % N;
-                    Complex val = freq[sv * N + su] * lp;
+                    // Wrap to array indices
+                    int su = ((uSrcI % N) + N) % N;
+                    int sv = ((vSrcI % N) + N) % N;
 
-                    rotated[v * N + u] = val;
-                    if (mu != u || mv != v)
-                        rotated[mv * N + mu] = std::conj(val);
+                    // Phase correction for off-center rotation
+                    double du = (double)uSrcI - us;
+                    double dv = (double)vSrcI - vs;
+                    double phase = 2.0 * M_PI * (du * rcx + dv * rcy) / N;
+                    Complex phasor(std::cos(phase), std::sin(phase));
+
+                    rotated[v * N + u] = freq[sv * N + su] * phasor;
                 }
             }
-
-            // ---- Step 6: multiply by (-1)^(u+v) to undo the shift ----
-            for (int v = 0; v < N; v++)
-                for (int u = 0; u < N; u++)
-                    if ((u + v) & 1)
-                        rotated[v * N + u] = -rotated[v * N + u];
 
             // ---- Convert to centered layout for m_fftData storage ----
             fftShift(rotated, N);
