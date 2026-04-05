@@ -115,7 +115,7 @@ private:
 
     // ---- FFT state ----
     bool  m_ftComputed  = false;
-    int   m_displayMode = 0;          // 0=cos/sin, 1=amp/phase, 2=power
+    int   m_displayMode = 0;          // 0=cos/sin, 1=amp/phase, 2=complex, 3=power
     int   m_fftN        = 0;
     int   m_origW       = 0;          // image width at FFT time (for rotation center)
     int   m_origH       = 0;          // image height at FFT time
@@ -172,6 +172,23 @@ private:
     bool        m_rotateActive = false;
     bool        m_p1Dragging = false;
     QPoint      m_p1DragStart;         // screen pos at drag start
+    bool        m_p1EraserActive = false;
+    bool        m_p1BrushActive = false;
+    bool        m_p1ToolDragging = false;  // mouse button held while painting/erasing in panel 1
+
+    // Panel 1 eraser/brush parameter widgets
+    QLabel     *m_p1EraserDiamLabel = nullptr;
+    QLineEdit  *m_p1EraserDiameterEdit = nullptr;
+    QLabel     *m_p1BrushValueLabel = nullptr;
+    QLineEdit  *m_p1BrushValueEdit = nullptr;
+    QLabel     *m_p1BrushDiamLabel = nullptr;
+    QLineEdit  *m_p1BrushDiameterEdit = nullptr;
+
+    void p1EraserApply(QPoint pos);
+    void p1BrushApply(QPoint pos);
+    void rebuildImageFromRaw();
+
+    // Panel 2 tools
     bool        m_eraserActive = false;
     bool        m_brushActive = false;
     bool        m_toolDragging = false;    // mouse button held while painting/erasing

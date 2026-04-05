@@ -111,6 +111,31 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     connect(m_latticeApplyBtn, &QPushButton::clicked, this, &FtWindow::onApplyLattice);
     m_latticeApplyBtn->hide();
 
+    // Panel 1 eraser parameter widgets
+    m_p1EraserDiamLabel = new QLabel("Eraser Gaussian diameter:", this);
+    m_p1EraserDiamLabel->setStyleSheet("color: white;");
+    m_p1EraserDiamLabel->hide();
+    m_p1EraserDiameterEdit = new QLineEdit("5", this);
+    m_p1EraserDiameterEdit->setFixedSize(40, 22);
+    m_p1EraserDiameterEdit->setStyleSheet("background:#222; color:white; border:1px solid #888;");
+    m_p1EraserDiameterEdit->hide();
+
+    // Panel 1 brush parameter widgets
+    m_p1BrushValueLabel = new QLabel("Pixel value to enter:", this);
+    m_p1BrushValueLabel->setStyleSheet("color: white;");
+    m_p1BrushValueLabel->hide();
+    m_p1BrushValueEdit = new QLineEdit("1", this);
+    m_p1BrushValueEdit->setFixedSize(60, 22);
+    m_p1BrushValueEdit->setStyleSheet("background:#222; color:white; border:1px solid #888;");
+    m_p1BrushValueEdit->hide();
+    m_p1BrushDiamLabel = new QLabel("Paint brush Gaussian diameter:", this);
+    m_p1BrushDiamLabel->setStyleSheet("color: white;");
+    m_p1BrushDiamLabel->hide();
+    m_p1BrushDiameterEdit = new QLineEdit("5", this);
+    m_p1BrushDiameterEdit->setFixedSize(40, 22);
+    m_p1BrushDiameterEdit->setStyleSheet("background:#222; color:white; border:1px solid #888;");
+    m_p1BrushDiameterEdit->hide();
+
     // Binning widgets (hidden until bin button is active)
     m_binCombo = new QComboBox(this);
     for (int i = 2; i <= 8; i++)
@@ -191,6 +216,16 @@ void FtWindow::resizeEvent(QResizeEvent *)
     m_latticeDotDiamEdit->move(bpX + 120, bpY + 24);
     m_latticeEraseOutside->move(bpX, bpY + 52);
     m_latticeApplyBtn->move(bpX, bpY + 78);
+
+    // Panel 1 eraser/brush widgets: bottom-left of panel 1
+    int p1ToolX = 10;
+    int p1ToolY = hy - 90;
+    m_p1EraserDiamLabel->move(p1ToolX, p1ToolY);
+    m_p1EraserDiameterEdit->move(p1ToolX + 180, p1ToolY - 2);
+    m_p1BrushValueLabel->move(p1ToolX, p1ToolY);
+    m_p1BrushValueEdit->move(p1ToolX + 140, p1ToolY - 2);
+    m_p1BrushDiamLabel->move(p1ToolX, p1ToolY + 26);
+    m_p1BrushDiameterEdit->move(p1ToolX + 210, p1ToolY + 24);
 
     // Binning widgets: bottom-left of panel 1
     int binX = 10;

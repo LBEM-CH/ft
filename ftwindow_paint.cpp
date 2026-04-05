@@ -68,11 +68,99 @@ void FtWindow::paintEvent(QPaintEvent *)
             m_p1BtnRects[i] = r;
 
             p.setPen(QPen(Qt::white, 1));
-            p.setBrush(QColor(0, 0, 0));
+            if ((i == 0 && m_p1EraserActive) || (i == 1 && m_p1BrushActive) ||
+                (i == 4 && m_shiftActive) || (i == 5 && m_rotateActive) || (i == 6 && m_binActive))
+                p.setBrush(QColor(60, 60, 60));
+            else
+                p.setBrush(QColor(0, 0, 0));
             p.drawRect(r);
 
-            // Flip horizontal icon (button 0): double arrow left-right
+            // Eraser icon (button 0): reuse panel 2 eraser icon
             if (i == 0) {
+                p.setRenderHint(QPainter::Antialiasing, true);
+                QRect ir = r.adjusted(3, 3, -3, -3);
+                int ix = ir.x(), iy2 = ir.y(), iw = ir.width(), ih = ir.height();
+
+                QPainterPath ep;
+                ep.moveTo(ix + iw * 0.2, iy2 + ih * 0.1);
+                ep.lineTo(ix + iw * 0.9, iy2 + ih * 0.1);
+                ep.lineTo(ix + iw * 0.8, iy2 + ih * 0.9);
+                ep.lineTo(ix + iw * 0.1, iy2 + ih * 0.9);
+                ep.closeSubpath();
+                p.setPen(Qt::NoPen);
+                p.setBrush(QColor(200, 180, 160));
+                p.drawPath(ep);
+
+                QPainterPath tp;
+                tp.moveTo(ix + iw * 0.1, iy2 + ih * 0.9);
+                tp.lineTo(ix + iw * 0.15, iy2 + ih * 0.55);
+                tp.lineTo(ix + iw * 0.85, iy2 + ih * 0.55);
+                tp.lineTo(ix + iw * 0.8, iy2 + ih * 0.9);
+                tp.closeSubpath();
+                p.setBrush(QColor(230, 100, 100));
+                p.drawPath(tp);
+
+                p.setPen(QPen(QColor(120, 80, 60), std::max(1, iw / 10)));
+                p.drawLine(ix + iw * 0.15, iy2 + ih * 0.55, ix + iw * 0.85, iy2 + ih * 0.55);
+
+                p.setRenderHint(QPainter::Antialiasing, false);
+
+                if (r.contains(m_mousePos)) {
+                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                    QFontMetrics ttfm(ttf);
+                    QString tip = "Eraser";
+                    int ttw = ttfm.horizontalAdvance(tip) + 8;
+                    int tth = ttfm.height() + 4;
+                    int ttx = r.right() + 4;
+                    int tty = r.center().y() - tth / 2;
+                    p.setPen(QPen(Qt::white, 1));
+                    p.setBrush(QColor(40, 40, 40));
+                    p.drawRect(ttx, tty, ttw, tth);
+                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                }
+            }
+
+            // Paint brush icon (button 1): reuse panel 2 brush icon
+            if (i == 1) {
+                p.setRenderHint(QPainter::Antialiasing, true);
+                QRect ir = r.adjusted(3, 3, -3, -3);
+                int bx2 = ir.x(), by3 = ir.y(), bw = ir.width(), bh = ir.height();
+
+                p.setPen(QPen(QColor(160, 120, 60), std::max(1, bw / 6)));
+                p.drawLine(bx2 + bw * 0.5, by3 + bh * 0.05, bx2 + bw * 0.5, by3 + bh * 0.45);
+
+                p.setPen(Qt::NoPen);
+                p.setBrush(QColor(180, 180, 180));
+                p.drawRect(bx2 + bw * 0.25, by3 + bh * 0.40, bw * 0.5, bh * 0.15);
+
+                p.setBrush(QColor(200, 160, 80));
+                QPainterPath br;
+                br.moveTo(bx2 + bw * 0.2, by3 + bh * 0.55);
+                br.lineTo(bx2 + bw * 0.8, by3 + bh * 0.55);
+                br.lineTo(bx2 + bw * 0.65, by3 + bh * 0.95);
+                br.lineTo(bx2 + bw * 0.35, by3 + bh * 0.95);
+                br.closeSubpath();
+                p.drawPath(br);
+
+                p.setRenderHint(QPainter::Antialiasing, false);
+
+                if (r.contains(m_mousePos)) {
+                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                    QFontMetrics ttfm(ttf);
+                    QString tip = "Paint brush";
+                    int ttw = ttfm.horizontalAdvance(tip) + 8;
+                    int tth = ttfm.height() + 4;
+                    int ttx = r.right() + 4;
+                    int tty = r.center().y() - tth / 2;
+                    p.setPen(QPen(Qt::white, 1));
+                    p.setBrush(QColor(40, 40, 40));
+                    p.drawRect(ttx, tty, ttw, tth);
+                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                }
+            }
+
+            // Flip horizontal icon (button 2): double arrow left-right
+            if (i == 2) {
                 p.setRenderHint(QPainter::Antialiasing, true);
                 double cx2 = r.x() + r.width() / 2.0;
                 double cy2 = r.y() + r.height() / 2.0;
@@ -113,8 +201,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Flip vertical icon (button 1): double arrow up-down
-            if (i == 1) {
+            // Flip vertical icon (button 3): double arrow up-down
+            if (i == 3) {
                 p.setRenderHint(QPainter::Antialiasing, true);
                 double cx2 = r.x() + r.width() / 2.0;
                 double cy2 = r.y() + r.height() / 2.0;
@@ -155,8 +243,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Shift image icon (button 2): arrow pointing right
-            if (i == 2) {
+            // Shift image icon (button 4): arrow pointing right
+            if (i == 4) {
                 p.setRenderHint(QPainter::Antialiasing, true);
                 double cx2 = r.x() + r.width() / 2.0;
                 double cy2 = r.y() + r.height() / 2.0;
@@ -212,8 +300,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Rotate image icon (button 3): curved arrow
-            if (i == 3) {
+            // Rotate image icon (button 5): curved arrow
+            if (i == 5) {
                 p.setRenderHint(QPainter::Antialiasing, true);
                 double cx2 = r.x() + r.width() / 2.0;
                 double cy2 = r.y() + r.height() / 2.0;
@@ -256,8 +344,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Bin image icon (button 4): 2x2 grid representing pixel binning
-            if (i == 4) {
+            // Bin image icon (button 6): 2x2 grid representing pixel binning
+            if (i == 6) {
                 if (m_binActive) {
                     p.setPen(QPen(Qt::white, 1));
                     p.setBrush(QColor(60, 60, 60));
@@ -669,13 +757,13 @@ void FtWindow::paintEvent(QPaintEvent *)
                            frame.y() - 22, ftLab);
             }
             p.setPen(QColor(200, 200, 200));
-            QFont lf; lf.setPixelSize(14); p.setFont(lf);
-            if (m_displayMode == 2)
+            QFont lf; lf.setPixelSize(28); p.setFont(lf);
+            if (m_displayMode == 3)
                 p.drawText(frame.x(), frame.y() - 4, "Powerspectrum");
             else
-                p.drawText(frame.x(), frame.y() - 4, "Complex Fourier transform");
+                p.drawText(frame.x(), frame.y() - 4, "Complex Fourier Transform");
 
-            const QImage &img = (m_displayMode == 2) ? m_powerImg : m_complexImg;
+            const QImage &img = (m_displayMode == 3) ? m_powerImg : m_complexImg;
             drawImageWithFrame(p, frame, img, m_zoom[1], m_fftN, m_fftN);
             drawAxes(p, frame, m_zoom[1], m_fftN, m_fftN, true, m_pixelSize);
 
@@ -683,7 +771,7 @@ void FtWindow::paintEvent(QPaintEvent *)
             double curVal = 0;
             bool hasCur = sampleValue(inner, m_zoom[1], m_fftN, m_fftN, m_powerVals, curVal);
 
-            if (m_displayMode == 3) {
+            if (m_displayMode == 2) {
                 double curAmp = 0, curPhase = 0;
                 bool hasAmp = sampleValue(inner, m_zoom[1], m_fftN, m_fftN, m_ampVals, curAmp);
                 bool hasPh  = sampleValue(inner, m_zoom[1], m_fftN, m_fftN, m_phaseVals, curPhase);
@@ -736,13 +824,13 @@ void FtWindow::paintEvent(QPaintEvent *)
                 vals1 = &m_cosVals; vals2 = &m_sinVals;
                 min1 = m_cosMin; max1 = m_cosMax;
                 min2 = m_sinMin; max2 = m_sinMax;
-                label1 = "cosinus"; label2 = "sinus";
+                label1 = "Cosinus"; label2 = "Sinus";
             } else {
                 img1 = &m_ampImg;  img2 = &m_phaseImg;
                 vals1 = &m_ampVals; vals2 = &m_phaseVals;
                 min1 = m_ampMin; max1 = m_ampMax;
                 min2 = m_phaseMin; max2 = m_phaseMax;
-                label1 = "amplitude"; label2 = "phase";
+                label1 = "Amplitude"; label2 = "Phase";
             }
 
             if (m_activeSlot >= 0) {
@@ -758,7 +846,7 @@ void FtWindow::paintEvent(QPaintEvent *)
 
             p.setPen(QColor(200, 200, 200));
             QFont lf;
-            lf.setPixelSize(14);
+            lf.setPixelSize(28);
             p.setFont(lf);
             p.drawText(frame1.x(), frame1.y() - 4, label1);
             p.drawText(frame2.x(), frame2.y() - 4, label2);
@@ -797,6 +885,49 @@ void FtWindow::paintEvent(QPaintEvent *)
             DisplayItem &d2 = m_dispItems[m_numDispItems++];
             d2 = { inner2, m_fftN, m_fftN, 2, vals2, true };
         }
+    }
+
+    // ---- Rotation drag overlay (red line + angle text) -------------------------
+    if ((m_p1Dragging && m_rotateActive) || (m_p2Dragging && m_ftRotateActive)) {
+        p.setRenderHint(QPainter::Antialiasing, true);
+        for (int i = 0; i < m_numDispItems; i++) {
+            const DisplayItem &di = m_dispItems[i];
+            if (!di.valid) continue;
+            bool isP1 = (m_p1Dragging && m_rotateActive && di.zoomIdx == 0);
+            bool isP2 = (m_p2Dragging && m_ftRotateActive && di.zoomIdx >= 1);
+            if (!isP1 && !isP2) continue;
+
+            QRect sr = di.screenRect;
+            double ccx = sr.center().x(), ccy = sr.center().y();
+            double radius = std::min(sr.width(), sr.height()) / 2.0;
+
+            // Draw red line from center to edge in direction of current mouse
+            double angle2 = std::atan2(m_mousePos.y() - ccy, m_mousePos.x() - ccx);
+            double ex = ccx + radius * std::cos(angle2);
+            double ey = ccy + radius * std::sin(angle2);
+            p.setPen(QPen(Qt::red, 2));
+            p.drawLine(QPointF(ccx, ccy), QPointF(ex, ey));
+
+            // Compute rotation angle (difference from drag start)
+            const QPoint &dragStart = isP1 ? m_p1DragStart : m_p2DragStart;
+            double a1 = std::atan2(dragStart.y() - ccy, dragStart.x() - ccx);
+            double angleDeg = (angle2 - a1) * 180.0 / M_PI;
+            while (angleDeg > 180.0) angleDeg -= 360.0;
+            while (angleDeg < -180.0) angleDeg += 360.0;
+
+            // Draw angle text at half radius
+            double tx = ccx + radius * 0.5 * std::cos(angle2);
+            double ty = ccy + radius * 0.5 * std::sin(angle2);
+            // Offset text perpendicular to the line
+            double perpX = -std::sin(angle2) * 15;
+            double perpY =  std::cos(angle2) * 15;
+            QFont af; af.setBold(true); af.setPixelSize(14); p.setFont(af);
+            p.setPen(QColor(255, 255, 0));
+            QString angleStr = QString::number(angleDeg, 'f', 1) + QString::fromUtf8("\u00B0");
+            p.drawText(QPointF(tx + perpX, ty + perpY), angleStr);
+            break;
+        }
+        p.setRenderHint(QPainter::Antialiasing, false);
     }
 
     // ---- Bandpass/directional smooth label ------------------------------------
@@ -863,23 +994,23 @@ void FtWindow::paintEvent(QPaintEvent *)
                 else
                     p.drawImage(inner, m_history[i].image);
 
-                // Diagonal hatching overlay for the active slot
+                // Horizontal stripe overlay for the active slot
                 if (isActive) {
                     p.save();
                     p.setClipRect(inner);
-                    p.setRenderHint(QPainter::Antialiasing, true);
-                    p.setPen(QPen(QColor(128, 128, 128, 180), 1));
-                    // 60° lines from bottom-left to top-right
-                    double h = inner.height();
-                    double run = h / std::tan(60.0 * M_PI / 180.0); // horizontal shift per line height
-                    double step = inner.width() / 10.0;             // ~10 lines across
-                    int n = (int)((inner.width() + run) / step) + 2;
-                    for (int k = -n; k <= n; k++) {
-                        double bx = inner.left() + k * step;
-                        p.drawLine(QPointF(bx, inner.bottom()),
-                                   QPointF(bx + run, inner.top()));
+                    int stripeH = std::max(2, inner.height() / 10);
+                    for (int sy2 = inner.top(); sy2 < inner.bottom(); sy2 += stripeH * 2) {
+                        // Bright stripe (line)
+                        int h1 = std::min(stripeH, inner.bottom() - sy2);
+                        p.fillRect(inner.left(), sy2, inner.width(), h1,
+                                   QColor(255, 255, 255, 179));
+                        // Dark stripe (space)
+                        if (sy2 + stripeH < inner.bottom()) {
+                            int h2 = std::min(stripeH, inner.bottom() - sy2 - stripeH);
+                            p.fillRect(inner.left(), sy2 + stripeH, inner.width(), h2,
+                                       QColor(0, 0, 0, 179));
+                        }
                     }
-                    p.setRenderHint(QPainter::Antialiasing, false);
                     p.restore();
                 }
             }

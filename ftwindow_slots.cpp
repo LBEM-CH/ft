@@ -42,7 +42,7 @@ void FtWindow::onReloadImage()
     }
 
     m_ftComputed = false;
-    m_displayMode = 2;
+    m_displayMode = 3;
     m_modeBtn->setText(modeLabel());
     m_modeBtn->hide();
     m_maskBtn->hide();
@@ -130,7 +130,7 @@ void FtWindow::loadImageFile(const QString &path)
     settings.setValue("activeSlot", m_activeSlot);
 
     m_ftComputed = false;
-    m_displayMode = 2;
+    m_displayMode = 3;
     m_modeBtn->setText(modeLabel());
     m_modeBtn->hide();
     m_maskBtn->hide();
@@ -520,10 +520,10 @@ QRect FtWindow::lowerArrowBounds() const
 QString FtWindow::modeLabel() const
 {
     switch (m_displayMode) {
-    case 0: return "sinus and cosinus";
+    case 0: return "cosinus and sinus";
     case 1: return "amplitude and phase";
-    case 2: return "powerspectrum";
-    case 3: return "complex Fourier transform";
+    case 2: return "complex Fourier transform";
+    case 3: return "powerspectrum";
     }
     return "";
 }
@@ -746,6 +746,108 @@ void FtWindow::brushApply(QPoint pos)
             recomputeDisplayImages();
             update();
         }
+        return;
+    }
+}
+
+void FtWindow::rebuildImageFromRaw()
+{
+    int w = m_image.width(), h = m_image.height();
+    if (m_imageRawPixels.empty() || (int)m_imageRawPixels.size() != w * h) return;
+
+    m_imageMinVal = *std::min_element(m_imageRawPixels.begin(), m_imageRawPixels.end());
+    m_imageMaxVal = *std::max_element(m_imageRawPixels.begin(), m_imageRawPixels.end());
+    double range = m_imageMaxVal - m_imageMinVal;
+    double scale = (range > 0) ? 255.0 / range : 1.0;
+
+    m_image = QImage(w, h, QImage::Format_Grayscale8);
+    for (int y = 0; y < h; y++) {
+        uchar *row = m_image.scanLine(y);
+        for (int x = 0; x < w; x++)
+            row[x] = static_cast<uchar>(std::clamp(
+                (m_imageRawPixels[y * w + x] - m_imageMinVal) * scale, 0.0, 255.0));
+    }
+}
+
+void FtWindow::p1EraserApply(QPoint pos)
+{
+    if (m_image.isNull()) return;
+
+    for (int i = 0; i < m_numDispItems; i++) {
+        const DisplayItem &di = m_dispItems[i];
+        if (!di.valid || di.zoomIdx != 0) continue;
+        if (!di.screenRect.contains(pos)) continue;
+
+        ZoomState &z = m_zoom[0];
+        QRectF src = z.visibleRect(di.imgW, di.imgH);
+        double relX = (pos.x() - di.screenRect.x()) / (double)di.screenRect.width();
+        double relY = (pos.y() - di.screenRect.y()) / (double)di.screenRect.height();
+        int ix = (int)(src.x() + relX * src.width());
+        int iy = (int)(src.y() + relY * src.height());
+
+        int w = m_image.width(), h = m_image.height();
+        if (ix < 0 || ix >= w || iy < 0 || iy >= h) return;
+
+        double diam = m_p1EraserDiameterEdit->text().toDouble();
+        double sigma = diam / 2.0;
+        int rad = (sigma > 0.5) ? (int)std::ceil(sigma * 3) : 0;
+
+        for (int dy = -rad; dy <= rad; dy++) {
+            for (int dx = -rad; dx <= rad; dx++) {
+                int px = ix + dx, py = iy + dy;
+                if (px < 0 || px >= w || py < 0 || py >= h) continue;
+
+                double weight = 1.0;
+                if (sigma > 0.5)
+                    weight = std::exp(-(dx*dx + dy*dy) / (2.0 * sigma * sigma));
+
+                m_imageRawPixels[py * w + px] *= (1.0 - weight);
+            }
+        }
+        rebuildImageFromRaw();
+        update();
+        return;
+    }
+}
+
+void FtWindow::p1BrushApply(QPoint pos)
+{
+    if (m_image.isNull()) return;
+
+    for (int i = 0; i < m_numDispItems; i++) {
+        const DisplayItem &di = m_dispItems[i];
+        if (!di.valid || di.zoomIdx != 0) continue;
+        if (!di.screenRect.contains(pos)) continue;
+
+        ZoomState &z = m_zoom[0];
+        QRectF src = z.visibleRect(di.imgW, di.imgH);
+        double relX = (pos.x() - di.screenRect.x()) / (double)di.screenRect.width();
+        double relY = (pos.y() - di.screenRect.y()) / (double)di.screenRect.height();
+        int ix = (int)(src.x() + relX * src.width());
+        int iy = (int)(src.y() + relY * src.height());
+
+        int w = m_image.width(), h = m_image.height();
+        if (ix < 0 || ix >= w || iy < 0 || iy >= h) return;
+
+        double val = m_p1BrushValueEdit->text().toDouble();
+        double diam = m_p1BrushDiameterEdit->text().toDouble();
+        double sigma = diam / 2.0;
+        int rad = (sigma > 0.5) ? (int)std::ceil(sigma * 3) : 0;
+
+        for (int dy = -rad; dy <= rad; dy++) {
+            for (int dx = -rad; dx <= rad; dx++) {
+                int px = ix + dx, py = iy + dy;
+                if (px < 0 || px >= w || py < 0 || py >= h) continue;
+
+                double weight = 1.0;
+                if (sigma > 0.5)
+                    weight = std::exp(-(dx*dx + dy*dy) / (2.0 * sigma * sigma));
+
+                m_imageRawPixels[py * w + px] = m_imageRawPixels[py * w + px] * (1.0 - weight) + val * weight;
+            }
+        }
+        rebuildImageFromRaw();
+        update();
         return;
     }
 }

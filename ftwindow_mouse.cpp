@@ -44,7 +44,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
             }
 
             m_ftComputed = false;
-            m_displayMode = 2;
+            m_displayMode = 3;
             m_modeBtn->setText(modeLabel());
             m_modeBtn->hide();
             m_maskBtn->hide();
@@ -66,39 +66,70 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
     }
 
     // Check panel 1 tool button clicks (left edge)
-    if (m_p1BtnRects[0].contains(event->pos()) && !m_image.isNull()) {
+    auto deactivateAllP1Tools = [&]() {
+        m_p1EraserActive = false; m_p1BrushActive = false;
+        m_shiftActive = false; m_rotateActive = false;
+        m_binActive = false;
+    };
+    auto showP1ToolWidgets = [&]() {
+        m_p1EraserDiamLabel->setVisible(m_p1EraserActive);
+        m_p1EraserDiameterEdit->setVisible(m_p1EraserActive);
+        m_p1BrushValueLabel->setVisible(m_p1BrushActive);
+        m_p1BrushValueEdit->setVisible(m_p1BrushActive);
+        m_p1BrushDiamLabel->setVisible(m_p1BrushActive);
+        m_p1BrushDiameterEdit->setVisible(m_p1BrushActive);
+        m_binCombo->setVisible(m_binActive);
+        m_binKeepSizeBtn->setVisible(m_binActive);
+        m_applyBinBtn->setVisible(m_binActive);
+    };
+    if (m_p1BtnRects[0].contains(event->pos())) {
+        bool was = m_p1EraserActive; deactivateAllP1Tools();
+        m_p1EraserActive = !was; showP1ToolWidgets(); update(); return;
+    }
+    if (m_p1BtnRects[1].contains(event->pos())) {
+        bool was = m_p1BrushActive; deactivateAllP1Tools();
+        m_p1BrushActive = !was; showP1ToolWidgets(); update(); return;
+    }
+    if (m_p1BtnRects[2].contains(event->pos()) && !m_image.isNull()) {
+        deactivateAllP1Tools(); showP1ToolWidgets();
         m_image = m_image.flipped(Qt::Horizontal);
         extractImageData();
         if (m_ftComputed) computeFFT();
         update();
         return;
     }
-    if (m_p1BtnRects[1].contains(event->pos()) && !m_image.isNull()) {
+    if (m_p1BtnRects[3].contains(event->pos()) && !m_image.isNull()) {
+        deactivateAllP1Tools(); showP1ToolWidgets();
         m_image = m_image.flipped(Qt::Vertical);
         extractImageData();
         if (m_ftComputed) computeFFT();
         update();
         return;
     }
-    if (m_p1BtnRects[2].contains(event->pos())) {
-        m_shiftActive = !m_shiftActive;
-        if (m_shiftActive) m_rotateActive = false;
-        update();
-        return;
-    }
-    if (m_p1BtnRects[3].contains(event->pos())) {
-        m_rotateActive = !m_rotateActive;
-        if (m_rotateActive) m_shiftActive = false;
-        update();
-        return;
-    }
     if (m_p1BtnRects[4].contains(event->pos())) {
-        m_binActive = !m_binActive;
-        m_binCombo->setVisible(m_binActive);
-        m_binKeepSizeBtn->setVisible(m_binActive);
-        m_applyBinBtn->setVisible(m_binActive);
-        update();
-        return;
+        bool was = m_shiftActive; deactivateAllP1Tools();
+        m_shiftActive = !was; showP1ToolWidgets(); update(); return;
+    }
+    if (m_p1BtnRects[5].contains(event->pos())) {
+        bool was = m_rotateActive; deactivateAllP1Tools();
+        m_rotateActive = !was; showP1ToolWidgets(); update(); return;
+    }
+    if (m_p1BtnRects[6].contains(event->pos())) {
+        bool was = m_binActive; deactivateAllP1Tools();
+        m_binActive = !was; showP1ToolWidgets(); update(); return;
+    }
+
+    // Panel 1 eraser/brush: start drag on panel 1 image
+    if ((m_p1EraserActive || m_p1BrushActive) && !m_image.isNull()) {
+        for (int i = 0; i < m_numDispItems; i++) {
+            const DisplayItem &di = m_dispItems[i];
+            if (di.valid && di.zoomIdx == 0 && di.screenRect.contains(event->pos())) {
+                if (m_p1EraserActive) p1EraserApply(event->pos());
+                else                  p1BrushApply(event->pos());
+                m_p1ToolDragging = true;
+                return;
+            }
+        }
     }
 
     // Shift/rotate: start drag on panel 1 image
@@ -317,6 +348,14 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
 
 void FtWindow::mouseReleaseEvent(QMouseEvent *event)
 {
+    if (m_p1ToolDragging) {
+        m_p1ToolDragging = false;
+        if (m_ftComputed) {
+            computeFFT();
+            update();
+        }
+    }
+
     if (m_toolDragging) {
         bool wasPainting = (m_eraserActive || m_brushActive)
                            && m_bandDragging == 0 && m_dirDragging == 0
@@ -494,6 +533,12 @@ void FtWindow::mouseReleaseEvent(QMouseEvent *event)
 void FtWindow::mouseMoveEvent(QMouseEvent *event)
 {
     m_mousePos = event->pos();
+
+    if (m_p1ToolDragging && !m_image.isNull()) {
+        if (m_p1EraserActive) p1EraserApply(event->pos());
+        else if (m_p1BrushActive) p1BrushApply(event->pos());
+        return;
+    }
 
     if (m_toolDragging && m_ftComputed) {
         if (m_bandDragging > 0 && m_fftN > 0) {
