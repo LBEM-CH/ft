@@ -29,11 +29,15 @@ void FtWindow::onReloadImage()
         m_imageMinVal = r.minVal;
         m_imageMaxVal = r.maxVal;
         m_pixelSize = r.pixelSize;
+        if (!m_image.isNull())
+            padImageToSquare();
     } else {
         m_image = QImage(m_imagePath);
         m_pixelSize = 1.0;
-        if (!m_image.isNull())
+        if (!m_image.isNull()) {
+            padImageToSquare();
             extractImageData();
+        }
     }
 
     m_ftComputed = false;
@@ -96,8 +100,10 @@ void FtWindow::loadImageFile(const QString &path)
 
         if (m_image.isNull())
             qDebug() << "MRC load FAILED – image is null";
-        else
+        else {
             qDebug() << "MRC load OK –" << m_image.width() << "x" << m_image.height();
+            padImageToSquare();
+        }
     } else {
         m_image = QImage(path);
         m_pixelSize = 1.0;
@@ -106,6 +112,7 @@ void FtWindow::loadImageFile(const QString &path)
         } else {
             qDebug() << "Image loaded:" << m_image.width() << "x" << m_image.height()
                      << "format:" << m_image.format();
+            padImageToSquare();
             extractImageData();
         }
     }
@@ -129,6 +136,72 @@ void FtWindow::loadImageFile(const QString &path)
     }
 
     update();
+}
+
+// Find smallest n >= val whose only prime factors are 2, 3, or 5
+static int nextSmooth235(int val)
+{
+    if (val <= 1) return 1;
+    for (int n = val; ; n++) {
+        int t = n;
+        while (t % 2 == 0) t /= 2;
+        while (t % 3 == 0) t /= 3;
+        while (t % 5 == 0) t /= 5;
+        if (t == 1) return n;
+    }
+}
+
+void FtWindow::padImageToSquare()
+{
+    if (m_image.isNull()) return;
+    int w = m_image.width(), h = m_image.height();
+    int side = nextSmooth235(std::max(w, h));
+    if (w == side && h == side) return;
+
+    int ox = (side - w) / 2;
+    int oy = (side - h) / 2;
+
+    // Pad raw pixel data if present (preserves MRC float precision)
+    if ((int)m_imageRawPixels.size() == w * h) {
+        double sum = 0;
+        for (double v : m_imageRawPixels) sum += v;
+        double avg = sum / m_imageRawPixels.size();
+
+        std::vector<double> padded(side * side, avg);
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+                padded[(y + oy) * side + (x + ox)] = m_imageRawPixels[y * w + x];
+        m_imageRawPixels = std::move(padded);
+        m_imageMinVal = *std::min_element(m_imageRawPixels.begin(), m_imageRawPixels.end());
+        m_imageMaxVal = *std::max_element(m_imageRawPixels.begin(), m_imageRawPixels.end());
+
+        // Rebuild the display image from padded raw pixels
+        double range = m_imageMaxVal - m_imageMinVal;
+        double scale = (range > 0) ? 255.0 / range : 1.0;
+        m_image = QImage(side, side, QImage::Format_Grayscale8);
+        for (int y = 0; y < side; y++) {
+            uchar *row = m_image.scanLine(y);
+            for (int x = 0; x < side; x++)
+                row[x] = static_cast<uchar>(std::clamp(
+                    (m_imageRawPixels[y * side + x] - m_imageMinVal) * scale, 0.0, 255.0));
+        }
+    } else {
+        // No raw pixels — pad the QImage with average grey
+        QImage gray = m_image.convertToFormat(QImage::Format_Grayscale8);
+        double sum = 0;
+        for (int y = 0; y < h; y++) {
+            const uchar *row = gray.constScanLine(y);
+            for (int x = 0; x < w; x++) sum += row[x];
+        }
+        int avg = (int)(sum / ((double)w * h));
+
+        QImage paddedImg(side, side, QImage::Format_Grayscale8);
+        paddedImg.fill(QColor(avg, avg, avg));
+        QPainter pp(&paddedImg);
+        pp.drawImage(ox, oy, gray);
+        pp.end();
+        m_image = paddedImg;
+    }
 }
 
 void FtWindow::extractImageData()
@@ -158,7 +231,15 @@ void FtWindow::computeFFT()
     int N = nextPow2(std::max(w, h));
     m_fftN = N;
 
-    std::vector<Complex> data(N * N, Complex(0.0, 0.0));
+    // Compute average grey for padding beyond image bounds
+    double sum = 0;
+    for (int y = 0; y < h; y++) {
+        const uchar *row = gray.constScanLine(y);
+        for (int x = 0; x < w; x++) sum += row[x];
+    }
+    double avg = sum / ((double)w * h);
+
+    std::vector<Complex> data(N * N, Complex(avg, 0.0));
     for (int y = 0; y < h; y++) {
         const uchar *row = gray.constScanLine(y);
         for (int x = 0; x < w; x++)
@@ -692,6 +773,7 @@ void FtWindow::onApplyBandpass()
     }
 
     recomputeDisplayImages();
+    computeInverseFFT();
     update();
 }
 
@@ -761,6 +843,7 @@ void FtWindow::onApplyLattice()
     }
 
     recomputeDisplayImages();
+    computeInverseFFT();
     update();
 }
 
@@ -952,5 +1035,6 @@ void FtWindow::onApplyDirectional()
     }
 
     recomputeDisplayImages();
+    computeInverseFFT();
     update();
 }

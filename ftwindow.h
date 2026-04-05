@@ -77,6 +77,7 @@ private slots:
 private:
     // loading / computation
     void loadImageFile(const QString &path);
+    void padImageToSquare();
     void extractImageData();
     void computeFFT();
     void computeInverseFFT();

@@ -308,10 +308,17 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
 void FtWindow::mouseReleaseEvent(QMouseEvent *event)
 {
     if (m_toolDragging) {
+        bool wasPainting = (m_eraserActive || m_brushActive)
+                           && m_bandDragging == 0 && m_dirDragging == 0
+                           && m_latticeDragging == 0;
         m_toolDragging = false;
         m_bandDragging = 0;
         m_dirDragging = 0;
         m_latticeDragging = 0;
+        if (wasPainting && m_ftComputed) {
+            computeInverseFFT();
+            update();
+        }
     }
 
     if (m_p2Dragging && m_ftComputed && m_fftN > 0) {
@@ -331,28 +338,60 @@ void FtWindow::mouseReleaseEvent(QMouseEvent *event)
 
             int N = m_fftN;
             int halfN = N / 2;
-            double cosTheta = std::cos(angleRad);
-            double sinTheta = std::sin(angleRad);
+            double cosA = std::cos(-angleRad);   // inverse rotation
+            double sinA = std::sin(-angleRad);
             double nyquistR = halfN;
             double edgeW = 10.0;
             double innerR = nyquistR - edgeW;
 
-            // Work in the UNSHIFTED domain where DFT indices are
-            // unambiguous, so the phase correction is exact.
-            // The DFT rotation theorem rotates around the origin (0,0).
-            // To rotate around the image center (cx,cy) we compose:
-            //   translate center→origin, rotate, translate back.
-            // This adds a phase factor:
-            //   exp(2πi·[(u_s − u'_s)·cx + (v_s − v'_s)·cy] / N)
-            // where u_s, v_s are signed frequencies.
-            double imgCx = m_image.width()  / 2.0;
-            double imgCy = m_image.height() / 2.0;
-            double twoPiOverN = 2.0 * M_PI / N;
+            // ---- Step 1: inverse FFT to get real-space image ----
+            std::vector<Complex> freq(m_fftData);
+            fftShift(freq, N);            // un-shift DC to [0,0]
+            fft2d(freq, N, true);         // inverse FFT → real space
 
-            // Un-shift to standard layout (DC at [0,0])
-            std::vector<Complex> unshifted = m_fftData;
-            fftShift(unshifted, N);
+            // ---- Step 2: circular mask with cosine edge ----
+            {
+                double sum = 0;
+                for (int i = 0; i < N * N; i++) sum += freq[i].real();
+                double avg = sum / (N * N);
 
+                double mcx = N / 2.0, mcy = N / 2.0;
+                double maxR = N / 2.0;
+                double maskEdge = 10.0;
+                double maskInner = maxR - maskEdge;
+
+                for (int y = 0; y < N; y++) {
+                    for (int x = 0; x < N; x++) {
+                        double dx = x - mcx, dy = y - mcy;
+                        double dist = std::sqrt(dx * dx + dy * dy);
+                        if (dist >= maxR) {
+                            freq[y * N + x] = Complex(avg, 0);
+                        } else if (dist > maskInner) {
+                            double t = (dist - maskInner) / maskEdge;
+                            double fade = 0.5 * (1.0 + std::cos(t * M_PI));
+                            double v = freq[y * N + x].real();
+                            freq[y * N + x] = Complex(v * fade + avg * (1.0 - fade), 0);
+                        }
+                    }
+                }
+            }
+
+            // ---- Step 3: FFT back to Fourier space (unshifted: DC at [0,0]) ----
+            fft2d(freq, N, false);
+
+            // ---- Step 4: multiply by (-1)^(u+v) to shift real-space origin
+            //              to image center. This is a phase ramp, NOT fftShift. ----
+            // DFT shift theorem: multiplying F(u,v) by (-1)^(u+v) = e^{jπ(u+v)}
+            // circularly shifts the spatial image by (N/2, N/2), moving the
+            // content at the image center to the DFT origin (0,0).
+            for (int v = 0; v < N; v++)
+                for (int u = 0; u < N; u++)
+                    if ((u + v) & 1)
+                        freq[v * N + u] = -freq[v * N + u];
+
+            // ---- Step 5: rotate in unshifted domain using signed frequencies ----
+            // DC is at index [0,0]. Rotation around frequency origin =
+            // rotation around spatial origin, which is now the image center.
             std::vector<Complex> rotated(N * N, Complex(0, 0));
             for (int v = 0; v < N; v++) {
                 for (int u = 0; u < N; u++) {
@@ -361,46 +400,46 @@ void FtWindow::mouseReleaseEvent(QMouseEvent *event)
                     int mv = (N - v) % N;
                     if (mv > v || (mv == v && mu > u)) continue;
 
-                    // Signed frequency (maps indices > N/2 to negatives)
+                    // Signed frequency
                     double us = (u <= halfN) ? (double)u : (double)(u - N);
                     double vs = (v <= halfN) ? (double)v : (double)(v - N);
 
-                    // Nyquist low-pass filter
+                    // Nyquist low-pass
                     double dist = std::sqrt(us * us + vs * vs);
                     double lp = 1.0;
-                    if (dist >= nyquistR) {
+                    if (dist >= nyquistR)
                         lp = 0.0;
-                    } else if (dist > innerR) {
+                    else if (dist > innerR) {
                         double t = (dist - innerR) / edgeW;
                         lp = 0.5 * (1.0 + std::cos(t * M_PI));
                     }
 
-                    // Inverse rotation to find source frequency
-                    double uSrc = us * cosTheta + vs * sinTheta;
-                    double vSrc = -us * sinTheta + vs * cosTheta;
+                    // Inverse-rotate source frequency
+                    double uSrc = us * cosA - vs * sinA;
+                    double vSrc = us * sinA + vs * cosA;
 
-                    // Nearest-neighbor lookup with periodic wrapping
+                    // Nearest-neighbor with periodic wrapping
                     int su = ((int)std::round(uSrc) % N + N) % N;
                     int sv = ((int)std::round(vSrc) % N + N) % N;
-                    Complex val = unshifted[sv * N + su] * lp;
-
-                    // Phase correction for rotation around image center
-                    double phaseArg = twoPiOverN
-                        * ((us - uSrc) * imgCx + (vs - vSrc) * imgCy);
-                    val *= Complex(std::cos(phaseArg), std::sin(phaseArg));
+                    Complex val = freq[sv * N + su] * lp;
 
                     rotated[v * N + u] = val;
-
-                    // Set Friedel mate to complex conjugate
                     if (mu != u || mv != v)
                         rotated[mv * N + mu] = std::conj(val);
                 }
             }
 
-            // Re-shift to centered layout (DC at center)
+            // ---- Step 6: multiply by (-1)^(u+v) to undo the shift ----
+            for (int v = 0; v < N; v++)
+                for (int u = 0; u < N; u++)
+                    if ((u + v) & 1)
+                        rotated[v * N + u] = -rotated[v * N + u];
+
+            // ---- Convert to centered layout for m_fftData storage ----
             fftShift(rotated, N);
             m_fftData = std::move(rotated);
             recomputeDisplayImages();
+            computeInverseFFT();
             update();
             break;
         }
