@@ -384,7 +384,7 @@ void FtWindow::mouseReleaseEvent(QMouseEvent *event)
                     // Phase correction for off-center rotation
                     double du = (double)uSrcI - us;
                     double dv = (double)vSrcI - vs;
-                    double phase = 2.0 * M_PI * (du * rcx + dv * rcy) / N;
+                    double phase = -2.0 * M_PI * (du * rcx + dv * rcy) / N;
                     Complex phasor(std::cos(phase), std::sin(phase));
 
                     rotated[v * N + u] = freq[sv * N + su] * phasor;
