@@ -5,34 +5,31 @@
 // ---------------------------------------------------------------------------
 void FtWindow::mousePressEvent(QMouseEvent *event)
 {
-    // Check history slot clicks (panel 3)
+    // Check history slot clicks (panel 3) – activate clicked slot
     for (int i = 0; i < HISTORY_SLOTS; i++) {
         if (m_history[i].occupied && m_historyRects[i].contains(event->pos())) {
-            HistoryEntry clicked = std::move(m_history[i]);
+            if (i == m_activeSlot) return;   // already active
 
-            for (int j = i; j < HISTORY_SLOTS - 1; j++)
-                m_history[j] = std::move(m_history[j + 1]);
-            m_history[HISTORY_SLOTS - 1].occupied = false;
-
-            if (!m_image.isNull()) {
-                for (int j = HISTORY_SLOTS - 1; j > 0; j--)
-                    m_history[j] = std::move(m_history[j - 1]);
-                m_history[0].image        = m_image;
-                m_history[0].path         = m_imagePath;
-                m_history[0].rawPixels    = m_imageRawPixels;
-                m_history[0].minVal       = m_imageMinVal;
-                m_history[0].maxVal       = m_imageMaxVal;
-                m_history[0].pixelSize    = m_pixelSize;
-                m_history[0].powerSpecImg = computePowerSpecMasked(m_image);
-                m_history[0].occupied     = true;
+            // Save current active image back to its slot
+            if (m_activeSlot >= 0 && !m_image.isNull()) {
+                m_history[m_activeSlot].image        = m_image;
+                m_history[m_activeSlot].path         = m_imagePath;
+                m_history[m_activeSlot].rawPixels    = m_imageRawPixels;
+                m_history[m_activeSlot].minVal       = m_imageMinVal;
+                m_history[m_activeSlot].maxVal       = m_imageMaxVal;
+                m_history[m_activeSlot].pixelSize    = m_pixelSize;
+                m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
+                m_history[m_activeSlot].occupied     = true;
             }
 
-            m_image          = clicked.image;
-            m_imagePath      = clicked.path;
-            m_imageRawPixels = std::move(clicked.rawPixels);
-            m_imageMinVal    = clicked.minVal;
-            m_imageMaxVal    = clicked.maxVal;
-            m_pixelSize      = clicked.pixelSize;
+            // Load clicked slot into panel 1
+            m_activeSlot     = i;
+            m_image          = m_history[i].image;
+            m_imagePath      = m_history[i].path;
+            m_imageRawPixels = m_history[i].rawPixels;
+            m_imageMinVal    = m_history[i].minVal;
+            m_imageMaxVal    = m_history[i].maxVal;
+            m_pixelSize      = m_history[i].pixelSize;
 
             m_ftComputed = false;
             m_displayMode = 2;
@@ -50,6 +47,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
             saveHistory();
             QSettings settings("ft", "ft");
             settings.setValue("lastFile", m_imagePath);
+            settings.setValue("activeSlot", m_activeSlot);
             update();
             return;
         }

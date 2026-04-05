@@ -76,18 +76,22 @@ void FtWindow::loadImageFile(const QString &path)
 {
     qDebug() << "Loading image:" << path;
 
-    if (!m_image.isNull()) {
-        for (int i = HISTORY_SLOTS - 1; i > 0; i--)
-            m_history[i] = std::move(m_history[i - 1]);
-        m_history[0].image        = m_image;
-        m_history[0].path         = m_imagePath;
-        m_history[0].rawPixels    = m_imageRawPixels;
-        m_history[0].minVal       = m_imageMinVal;
-        m_history[0].maxVal       = m_imageMaxVal;
-        m_history[0].pixelSize    = m_pixelSize;
-        m_history[0].powerSpecImg = computePowerSpecMasked(m_image);
-        m_history[0].occupied     = true;
-        saveHistory();
+    // Save current active image back to its slot
+    if (m_activeSlot >= 0 && !m_image.isNull()) {
+        m_history[m_activeSlot].image        = m_image;
+        m_history[m_activeSlot].path         = m_imagePath;
+        m_history[m_activeSlot].rawPixels    = m_imageRawPixels;
+        m_history[m_activeSlot].minVal       = m_imageMinVal;
+        m_history[m_activeSlot].maxVal       = m_imageMaxVal;
+        m_history[m_activeSlot].pixelSize    = m_pixelSize;
+        m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
+        m_history[m_activeSlot].occupied     = true;
+    }
+
+    // Find first empty slot; fall back to last slot if all full
+    int newSlot = HISTORY_SLOTS - 1;
+    for (int i = 0; i < HISTORY_SLOTS; i++) {
+        if (!m_history[i].occupied) { newSlot = i; break; }
     }
 
     if (path.endsWith(".mrc", Qt::CaseInsensitive)) {
@@ -119,8 +123,21 @@ void FtWindow::loadImageFile(const QString &path)
 
     m_imagePath = path;
 
+    // Store in the chosen slot and activate it
+    if (!m_image.isNull()) {
+        m_history[newSlot].image        = m_image;
+        m_history[newSlot].path         = path;
+        m_history[newSlot].rawPixels    = m_imageRawPixels;
+        m_history[newSlot].minVal       = m_imageMinVal;
+        m_history[newSlot].maxVal       = m_imageMaxVal;
+        m_history[newSlot].pixelSize    = m_pixelSize;
+        m_history[newSlot].occupied     = true;
+    }
+    m_activeSlot = newSlot;
+
     QSettings settings("ft", "ft");
     settings.setValue("lastFile", path);
+    settings.setValue("activeSlot", m_activeSlot);
 
     m_ftComputed = false;
     m_displayMode = 2;
@@ -133,8 +150,11 @@ void FtWindow::loadImageFile(const QString &path)
     if (!m_image.isNull()) {
         m_zoom[0].reset(m_image.width(), m_image.height());
         computeFFT();
+        // Store power spec thumbnail now that FFT is done
+        m_history[newSlot].powerSpecImg = computePowerSpecMasked(m_image);
     }
 
+    saveHistory();
     update();
 }
 
@@ -564,6 +584,7 @@ void FtWindow::saveHistory()
         else
             settings.remove(key);
     }
+    settings.setValue("activeSlot", m_activeSlot);
 }
 
 void FtWindow::restoreHistory()

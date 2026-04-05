@@ -135,14 +135,26 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     connect(m_applyBinBtn, &QPushButton::clicked, this, &FtWindow::onApplyBinning);
     m_applyBinBtn->hide();
 
-    // Restore history first (so loadImageFile doesn't push empty into history)
+    // Restore history and active slot
     restoreHistory();
 
-    // Restore last file
     QSettings settings("ft", "ft");
-    QString lastFile = settings.value("lastFile").toString();
-    if (!lastFile.isEmpty() && QFile::exists(lastFile))
-        loadImageFile(lastFile);
+    m_activeSlot = settings.value("activeSlot", -1).toInt();
+    if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS
+        && m_history[m_activeSlot].occupied) {
+        m_image          = m_history[m_activeSlot].image;
+        m_imagePath      = m_history[m_activeSlot].path;
+        m_imageRawPixels = m_history[m_activeSlot].rawPixels;
+        m_imageMinVal    = m_history[m_activeSlot].minVal;
+        m_imageMaxVal    = m_history[m_activeSlot].maxVal;
+        m_pixelSize      = m_history[m_activeSlot].pixelSize;
+        if (!m_image.isNull()) {
+            m_zoom[0].reset(m_image.width(), m_image.height());
+            computeFFT();
+        }
+    } else {
+        m_activeSlot = -1;
+    }
 }
 
 // ---------------------------------------------------------------------------

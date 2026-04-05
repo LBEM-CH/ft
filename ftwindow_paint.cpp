@@ -13,7 +13,7 @@ void FtWindow::paintEvent(QPaintEvent *)
 
     // scaled label font sizes
     int labelFontMain = std::clamp(std::min(cx, hy) / 20, 12, 48);
-    int labelFontHist = std::clamp(std::min(cx, height() - hy) / 4, 10, 36);
+    int labelFontHist = std::clamp(std::min(cx / 5, (height() - hy)) / 6, 8, 24);
 
     // background
     p.fillRect(rect(), QColor(75, 75, 75));
@@ -580,12 +580,12 @@ void FtWindow::paintEvent(QPaintEvent *)
         int imgW = m_image.width();
         int imgH = m_image.height();
 
-        // Label "a" above center of image
-        {
+        // Label (a-j) above center of image
+        if (m_activeSlot >= 0) {
             QFont lf; lf.setBold(true); lf.setPixelSize(labelFontMain); p.setFont(lf);
             p.setPen(QColor(255, 255, 0));
             QFontMetrics lfm(lf);
-            QString lab = "a";
+            QString lab = QString(QChar('a' + m_activeSlot));
             p.drawText(frame.x() + (frame.width() - lfm.horizontalAdvance(lab)) / 2,
                        frame.y() - 22, lab);
         }
@@ -627,12 +627,13 @@ void FtWindow::paintEvent(QPaintEvent *)
             int fy = (panel2H - side) / 2;
             QRect frame(fx, fy, side, side);
 
-            {
+            if (m_activeSlot >= 0) {
                 QFont af; af.setBold(true); af.setPixelSize(labelFontMain); p.setFont(af);
                 p.setPen(QColor(255, 255, 0));
                 QFontMetrics afm(af);
-                p.drawText(frame.x() + (frame.width() - afm.horizontalAdvance("A")) / 2,
-                           frame.y() - 22, "A");
+                QString ftLab = QString(QChar('A' + m_activeSlot));
+                p.drawText(frame.x() + (frame.width() - afm.horizontalAdvance(ftLab)) / 2,
+                           frame.y() - 22, ftLab);
             }
             p.setPen(QColor(200, 200, 200));
             QFont lf; lf.setPixelSize(14); p.setFont(lf);
@@ -711,14 +712,15 @@ void FtWindow::paintEvent(QPaintEvent *)
                 label1 = "amplitude"; label2 = "phase";
             }
 
-            {
+            if (m_activeSlot >= 0) {
                 QFont af; af.setBold(true); af.setPixelSize(labelFontMain); p.setFont(af);
                 p.setPen(QColor(255, 255, 0));
                 QFontMetrics afm(af);
+                QString ftLab = QString(QChar('A' + m_activeSlot));
                 int combinedX = frame1.x();
                 int combinedW = frame2.right() - frame1.x();
-                p.drawText(combinedX + (combinedW - afm.horizontalAdvance("A")) / 2,
-                           frame1.y() - 22, "A");
+                p.drawText(combinedX + (combinedW - afm.horizontalAdvance(ftLab)) / 2,
+                           frame1.y() - 22, ftLab);
             }
 
             p.setPen(QColor(200, 200, 200));
@@ -774,34 +776,42 @@ void FtWindow::paintEvent(QPaintEvent *)
         p.drawText(bpX, bpY + 15, "Smooth edge by pixels:");
     }
 
-    // ---- Panel 3: image history (below panel 1) --------------------------------
+    // ---- Panel 3: image history (below panel 1) – 2 rows × 5 columns ----------
     {
         int p3x = 0;
         int p3y = hy + 2;
         int p3w = cx - 1;
         int p3h = height() - p3y;
 
+        int cols = 5, rows = 2;
         int margin = 8;
         int availW = p3w - 2 * margin;
         int availH = p3h - 2 * margin;
         int gap = 6;
-        int side = std::min(availH, (availW - (HISTORY_SLOTS - 1) * gap) / HISTORY_SLOTS);
+        int labelH = labelFontHist + 4;
+        int sideFromW = (availW - (cols - 1) * gap) / cols;
+        int sideFromH = (availH - gap - rows * labelH) / rows;
+        int side = std::min(sideFromW, sideFromH);
         if (side < 10) side = 10;
 
-        int totalW = HISTORY_SLOTS * side + (HISTORY_SLOTS - 1) * gap;
+        int totalW = cols * side + (cols - 1) * gap;
+        int totalH = rows * (side + labelH) + gap;
         int startX = p3x + (p3w - totalW) / 2;
-        int startY = p3y + (p3h - side) / 2;
+        int startY = p3y + (p3h - totalH) / 2;
 
         for (int i = 0; i < HISTORY_SLOTS; i++) {
-            int sx = startX + i * (side + gap);
-            QRect r(sx, startY, side, side);
+            int row = i / cols;
+            int col = i % cols;
+            int sx = startX + col * (side + gap);
+            int sy = startY + row * (side + labelH + gap) + labelH;
+            QRect r(sx, sy, side, side);
             m_historyRects[i] = r;
 
             {
                 QFont af; af.setBold(true); af.setPixelSize(labelFontHist); p.setFont(af);
                 p.setPen(QColor(255, 255, 0));
                 QFontMetrics afm(af);
-                QString lab = QString(QChar('b' + i));
+                QString lab = QString(QChar('a' + i));
                 p.drawText(r.x() + (r.width() - afm.horizontalAdvance(lab)) / 2,
                            r.y() - 3, lab);
             }
@@ -810,41 +820,59 @@ void FtWindow::paintEvent(QPaintEvent *)
             p.setBrush(Qt::NoBrush);
             p.drawRect(r);
 
-            if (m_history[i].occupied) {
+            bool isActive = (i == m_activeSlot);
+            bool hasImage = isActive ? !m_image.isNull() : m_history[i].occupied;
+
+            if (hasImage) {
                 QRect inner = r.adjusted(1, 1, -1, -1);
-                p.drawImage(inner, m_history[i].image);
+                if (isActive)
+                    p.drawImage(inner, m_image);
+                else
+                    p.drawImage(inner, m_history[i].image);
+
+                // Semi-transparent grey overlay for the active slot
+                if (isActive)
+                    p.fillRect(inner, QColor(128, 128, 128, 128));
             }
         }
     }
 
-    // ---- Panel 4: power spectrum history (below panel 2) -----------------------
+    // ---- Panel 4: power spectrum history (below panel 2) – 2 rows × 5 columns -
     {
         int p4x = cx + 2;
         int p4y = hy + 2;
         int p4w = width() - p4x;
         int p4h = height() - p4y;
 
+        int cols = 5, rows = 2;
         int margin = 8;
         int availW = p4w - 2 * margin;
         int availH = p4h - 2 * margin;
         int gap = 6;
-        int side = std::min(availH, (availW - (HISTORY_SLOTS - 1) * gap) / HISTORY_SLOTS);
+        int labelH = labelFontHist + 4;
+        int sideFromW = (availW - (cols - 1) * gap) / cols;
+        int sideFromH = (availH - gap - rows * labelH) / rows;
+        int side = std::min(sideFromW, sideFromH);
         if (side < 10) side = 10;
 
-        int totalW = HISTORY_SLOTS * side + (HISTORY_SLOTS - 1) * gap;
+        int totalW = cols * side + (cols - 1) * gap;
+        int totalH = rows * (side + labelH) + gap;
         int startX = p4x + (p4w - totalW) / 2;
-        int startY = p4y + (p4h - side) / 2;
+        int startY = p4y + (p4h - totalH) / 2;
 
         for (int i = 0; i < HISTORY_SLOTS; i++) {
-            int sx = startX + i * (side + gap);
-            QRect r(sx, startY, side, side);
+            int row = i / cols;
+            int col = i % cols;
+            int sx = startX + col * (side + gap);
+            int sy = startY + row * (side + labelH + gap) + labelH;
+            QRect r(sx, sy, side, side);
             m_powerSpecRects[i] = r;
 
             {
                 QFont af; af.setBold(true); af.setPixelSize(labelFontHist); p.setFont(af);
                 p.setPen(QColor(255, 255, 0));
                 QFontMetrics afm(af);
-                QString lab = QString(QChar('B' + i));
+                QString lab = QString(QChar('A' + i));
                 p.drawText(r.x() + (r.width() - afm.horizontalAdvance(lab)) / 2,
                            r.y() - 3, lab);
             }
@@ -853,8 +881,13 @@ void FtWindow::paintEvent(QPaintEvent *)
             p.setBrush(Qt::NoBrush);
             p.drawRect(r);
 
-            if (m_history[i].occupied && !m_history[i].powerSpecImg.isNull()) {
-                QRect inner = r.adjusted(1, 1, -1, -1);
+            bool isActive = (i == m_activeSlot);
+            QRect inner = r.adjusted(1, 1, -1, -1);
+
+            if (isActive && m_ftComputed && !m_powerImg.isNull()) {
+                p.drawImage(inner, m_powerImg);
+            } else if (!isActive && m_history[i].occupied
+                       && !m_history[i].powerSpecImg.isNull()) {
                 p.drawImage(inner, m_history[i].powerSpecImg);
             }
         }

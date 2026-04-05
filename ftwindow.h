@@ -131,7 +131,8 @@ private:
     double m_powerMin = 0, m_powerMax = 0;
 
     // ---- image history (panel 3) ----
-    static constexpr int HISTORY_SLOTS = 6;
+    static constexpr int HISTORY_SLOTS = 10;
+    int m_activeSlot = -1;     // which slot (0..9) is shown in panel 1, -1 = none
     struct HistoryEntry {
         QImage  image;
         QImage  powerSpecImg;       // power spectrum with masked center
