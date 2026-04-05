@@ -88,7 +88,12 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
     }
     if (m_p1BtnRects[1].contains(event->pos())) {
         bool was = m_p1BrushActive; deactivateAllP1Tools();
-        m_p1BrushActive = !was; showP1ToolWidgets(); update(); return;
+        m_p1BrushActive = !was;
+        if (m_p1BrushActive && !m_image.isNull()) {
+            double defVal = m_imageMaxVal > 0 ? m_imageMaxVal : 1.0;
+            m_p1BrushValueEdit->setText(QString::number(defVal, 'g', 5));
+        }
+        showP1ToolWidgets(); update(); return;
     }
     if (m_p1BtnRects[2].contains(event->pos()) && !m_image.isNull()) {
         deactivateAllP1Tools(); showP1ToolWidgets();
