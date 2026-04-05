@@ -69,7 +69,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
     auto deactivateAllP1Tools = [&]() {
         m_p1EraserActive = false; m_p1BrushActive = false;
         m_shiftActive = false; m_rotateActive = false;
-        m_binActive = false;
+        m_binActive = false; m_mathActive = false;
     };
     auto showP1ToolWidgets = [&]() {
         m_p1EraserDiamLabel->setVisible(m_p1EraserActive);
@@ -81,6 +81,13 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         m_binCombo->setVisible(m_binActive);
         m_binKeepSizeBtn->setVisible(m_binActive);
         m_applyBinBtn->setVisible(m_binActive);
+        m_mathOutCombo->setVisible(m_mathActive);
+        m_mathEqualsLabel->setVisible(m_mathActive);
+        m_mathIn1Combo->setVisible(m_mathActive);
+        m_mathOpCombo->setVisible(m_mathActive);
+        m_mathIn2Combo->setVisible(m_mathActive);
+        m_mathCancelBtn->setVisible(m_mathActive);
+        m_mathComputeBtn->setVisible(m_mathActive);
     };
     if (m_p1BtnRects[0].contains(event->pos())) {
         bool was = m_p1EraserActive; deactivateAllP1Tools();
@@ -122,6 +129,10 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
     if (m_p1BtnRects[6].contains(event->pos())) {
         bool was = m_binActive; deactivateAllP1Tools();
         m_binActive = !was; showP1ToolWidgets(); update(); return;
+    }
+    if (m_p1BtnRects[7].contains(event->pos())) {
+        bool was = m_mathActive; deactivateAllP1Tools();
+        m_mathActive = !was; showP1ToolWidgets(); update(); return;
     }
 
     // Panel 1 eraser/brush: start drag on panel 1 image

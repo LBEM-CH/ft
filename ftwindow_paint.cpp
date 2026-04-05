@@ -69,7 +69,8 @@ void FtWindow::paintEvent(QPaintEvent *)
 
             p.setPen(QPen(Qt::white, 1));
             if ((i == 0 && m_p1EraserActive) || (i == 1 && m_p1BrushActive) ||
-                (i == 4 && m_shiftActive) || (i == 5 && m_rotateActive) || (i == 6 && m_binActive))
+                (i == 4 && m_shiftActive) || (i == 5 && m_rotateActive) || (i == 6 && m_binActive) ||
+                (i == 7 && m_mathActive))
                 p.setBrush(QColor(60, 60, 60));
             else
                 p.setBrush(QColor(0, 0, 0));
@@ -374,6 +375,54 @@ void FtWindow::paintEvent(QPaintEvent *)
                     QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
                     QFontMetrics ttfm(ttf);
                     QString tip = "Bin image";
+                    int ttw = ttfm.horizontalAdvance(tip) + 8;
+                    int tth = ttfm.height() + 4;
+                    int ttx = r.right() + 4;
+                    int tty = r.center().y() - tth / 2;
+                    p.setPen(QPen(Qt::white, 1));
+                    p.setBrush(QColor(40, 40, 40));
+                    p.drawRect(ttx, tty, ttw, tth);
+                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                }
+            }
+
+            // Math calculations icon (button 7): Sigma/Sum sign
+            if (i == 7) {
+                if (m_mathActive) {
+                    p.setPen(QPen(Qt::white, 1));
+                    p.setBrush(QColor(60, 60, 60));
+                    p.drawRect(r);
+                }
+
+                p.setRenderHint(QPainter::Antialiasing, true);
+                QRect ir = r.adjusted(3, 3, -3, -3);
+                int sx = ir.x(), sy = ir.y(), sw = ir.width(), sh = ir.height();
+                QColor col = m_mathActive ? QColor(180, 180, 255) : Qt::white;
+
+                // Draw Sigma (Σ) symbol
+                QPainterPath sigma;
+                sigma.moveTo(sx + sw * 0.85, sy + sh * 0.10);  // top-right
+                sigma.lineTo(sx + sw * 0.15, sy + sh * 0.10);  // top-left
+                sigma.lineTo(sx + sw * 0.50, sy + sh * 0.50);  // center point (chevron)
+                sigma.lineTo(sx + sw * 0.15, sy + sh * 0.90);  // bottom-left
+                sigma.lineTo(sx + sw * 0.85, sy + sh * 0.90);  // bottom-right
+
+                // Top and bottom horizontal serifs
+                sigma.moveTo(sx + sw * 0.85, sy + sh * 0.10);
+                sigma.lineTo(sx + sw * 0.85, sy + sh * 0.18);
+                sigma.moveTo(sx + sw * 0.85, sy + sh * 0.90);
+                sigma.lineTo(sx + sw * 0.85, sy + sh * 0.82);
+
+                p.setPen(QPen(col, std::max(1, sw / 6)));
+                p.setBrush(Qt::NoBrush);
+                p.drawPath(sigma);
+
+                p.setRenderHint(QPainter::Antialiasing, false);
+
+                if (r.contains(m_mousePos)) {
+                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                    QFontMetrics ttfm(ttf);
+                    QString tip = "Math calculations";
                     int ttw = ttfm.horizontalAdvance(tip) + 8;
                     int tth = ttfm.height() + 4;
                     int ttx = r.right() + 4;
@@ -715,6 +764,167 @@ void FtWindow::paintEvent(QPaintEvent *)
             }
         }
 
+        // Math calculations overlay frame
+        if (m_mathActive) {
+            int fw = static_cast<int>(inner.width()  * 0.80);
+            int fh = static_cast<int>(inner.height() * 0.30);
+            int fx = inner.x() + (inner.width()  - fw) / 2;
+            int fy = inner.y() + (inner.height() - fh) / 2;
+            QRect mathRect(fx, fy, fw, fh);
+
+            // Shadow: per-pixel, darker towards the outside, directional offset
+            // Light from top-left: bottom-right gets full offset in both axes,
+            // bottom-left gets offset only to the right, upper-right only downward.
+            {
+                int shBlur = 28;
+                double shOffX = 10.0, shOffY = 10.0;
+                int maxAlpha = 140;
+
+                int sx0 = mathRect.left()  - shBlur;
+                int sy0 = mathRect.top()   - shBlur;
+                int sx1 = mathRect.right() + shBlur + (int)shOffX;
+                int sy1 = mathRect.bottom()+ shBlur + (int)shOffY;
+
+                QImage shadowImg(sx1 - sx0 + 1, sy1 - sy0 + 1, QImage::Format_ARGB32_Premultiplied);
+                shadowImg.fill(Qt::transparent);
+
+                int imgW2 = shadowImg.width(), imgH2 = shadowImg.height();
+
+                double frameL = mathRect.left()   - sx0;
+                double frameT = mathRect.top()    - sy0;
+                double frameR = mathRect.right()  - sx0;
+                double frameB = mathRect.bottom() - sy0;
+                double fcx = (frameL + frameR) / 2.0;
+                double fcy = (frameT + frameB) / 2.0;
+                double fhw = (frameR - frameL) / 2.0;
+                double fhh = (frameB - frameT) / 2.0;
+
+                for (int py = 0; py < imgH2; py++) {
+                    QRgb *line = reinterpret_cast<QRgb*>(shadowImg.scanLine(py));
+                    for (int px = 0; px < imgW2; px++) {
+                        // Skip pixels inside the frame (covered by white background)
+                        if (px >= frameL && px <= frameR && py >= frameT && py <= frameB)
+                            continue;
+
+                        // Position relative to frame center, normalized to edge
+                        double rx = (px - fcx) / fhw;  // -1 left edge, +1 right edge
+                        double ry = (py - fcy) / fhh;  // -1 top edge,  +1 bottom edge
+
+                        // Directional offset per edge:
+                        // right side & bottom get full offset, left & top get none
+                        // bottom-left corner: offset X only (rx<0, ry>0)
+                        // upper-right corner: offset Y only (rx>0, ry<0)
+                        double tx = std::clamp(0.5 + 0.5 * rx, 0.0, 1.0);  // 0 at left, 1 at right
+                        double ty = std::clamp(0.5 + 0.5 * ry, 0.0, 1.0);  // 0 at top, 1 at bottom
+                        double localOffX = shOffX * tx;
+                        double localOffY = shOffY * ty;
+
+                        // Source point on frame that casts this shadow
+                        double srcX = px - localOffX;
+                        double srcY = py - localOffY;
+
+                        // Distance from source point to frame rectangle
+                        double dx = std::max({frameL - srcX, srcX - frameR, 0.0});
+                        double dy = std::max({frameT - srcY, srcY - frameB, 0.0});
+                        double dist = std::sqrt(dx * dx + dy * dy);
+
+                        if (dist >= shBlur) continue;
+
+                        // Fade: darkest near frame, fading to transparent at outer edge
+                        double t = dist / shBlur;
+                        int alpha;
+                        if (dist <= 0)
+                            alpha = maxAlpha;
+                        else
+                            alpha = (int)(maxAlpha * (1.0 - t) * (1.0 - t));
+
+                        if (alpha > 0)
+                            line[px] = qRgba(0, 0, 0, alpha);
+                    }
+                }
+                p.drawImage(sx0, sy0, shadowImg);
+            }
+
+            // White background
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(255, 255, 255));
+            p.drawRect(mathRect);
+
+            // Dark grey border, 3 pixels wide
+            p.setPen(QPen(QColor(60, 60, 60), 3));
+            p.setBrush(Qt::NoBrush);
+            p.drawRect(mathRect);
+
+            // Scale widget sizes relative to frame width
+            int fontSize = std::clamp(fw / 30, 12, 32);
+            int comboH = fontSize * 2;
+            int bufW = fw / 8;
+            int eqW  = fw / 16;
+            int opW  = fw * 3 / 10;
+            int btnW = fw * 3 / 16;
+            int btnH = comboH;
+            int gap  = fw / 80;
+
+            // Apply scaled stylesheet to all math combos
+            QString comboSS = QString(
+                "QComboBox { background:white; color:black; border:1px solid #888;"
+                "  padding: 2px 4px; font-size: %1px; font-weight: bold; }"
+                "QComboBox::drop-down { width: %2px; }"
+                "QComboBox QAbstractItemView { background:white; color:black;"
+                "  selection-background-color:#ccc; min-width: 60px; padding: 4px;"
+                "  font-size: %1px; }")
+                .arg(fontSize).arg(fontSize);
+            m_mathOutCombo->setStyleSheet(comboSS);
+            m_mathIn1Combo->setStyleSheet(comboSS);
+            m_mathOpCombo->setStyleSheet(comboSS);
+            m_mathIn2Combo->setStyleSheet(comboSS);
+
+            m_mathOutCombo->setFixedSize(bufW, comboH);
+            m_mathIn1Combo->setFixedSize(bufW, comboH);
+            m_mathOpCombo->setFixedSize(opW, comboH);
+            m_mathIn2Combo->setFixedSize(bufW, comboH);
+            m_mathEqualsLabel->setFixedSize(eqW, comboH);
+            m_mathEqualsLabel->setStyleSheet(
+                QString("color: black; font-size: %1px; font-weight: bold;").arg(fontSize * 4 / 3));
+
+            m_mathCancelBtn->setFixedSize(btnW, btnH);
+            m_mathComputeBtn->setFixedSize(btnW, btnH);
+            QString btnSS = QString(
+                "QPushButton { background-color: #888; border: 2px outset #aaa;"
+                "  color: #eee; padding: 2px; font-size: %1px; font-weight: bold; }").arg(fontSize);
+            m_mathCancelBtn->setStyleSheet(btnSS);
+            m_mathComputeBtn->setStyleSheet(btnSS);
+
+            // Title in top-left corner
+            {
+                int titleFontSize = std::max(14, fontSize * 4 / 3);
+                int titleMarginX = std::max(8, fw / 40);
+                int titleMarginY = std::max(6, fh / 15);
+                QFont tf;
+                tf.setPixelSize(titleFontSize);
+                tf.setBold(true);
+                p.setFont(tf);
+                p.setPen(QColor(60, 60, 60));
+                p.drawText(fx + titleMarginX, fy + titleMarginY + QFontMetrics(tf).ascent(), "Image calculation");
+            }
+
+            // Position the equation widgets centered in the frame
+            int totalEqW = bufW + gap + eqW + gap + bufW + gap + opW + gap + bufW;
+            int eqX = fx + (fw - totalEqW) / 2;
+            int eqY = fy + fh / 2 - comboH / 2;
+
+            m_mathOutCombo->move(eqX, eqY);        eqX += bufW + gap;
+            m_mathEqualsLabel->move(eqX, eqY);      eqX += eqW + gap;
+            m_mathIn1Combo->move(eqX, eqY);          eqX += bufW + gap;
+            m_mathOpCombo->move(eqX, eqY);           eqX += opW + gap;
+            m_mathIn2Combo->move(eqX, eqY);
+
+            // Cancel in bottom-left, Compute in bottom-right
+            int btnMargin = 8;
+            m_mathCancelBtn->move(fx + btnMargin, fy + fh - btnH - btnMargin);
+            m_mathComputeBtn->move(fx + fw - btnW - btnMargin, fy + fh - btnH - btnMargin);
+        }
+
         DisplayItem &di = m_dispItems[m_numDispItems++];
         di = { inner, imgW, imgH, 0, &m_imageRawPixels, true };
     } else if (m_activeSlot >= 0) {
@@ -994,22 +1204,40 @@ void FtWindow::paintEvent(QPaintEvent *)
                 else
                     p.drawImage(inner, m_history[i].image);
 
-                // Horizontal stripe overlay for the active slot
+                // Diagonal stripe overlay for the active slot (60° from bottom-left to top-right)
                 if (isActive) {
                     p.save();
                     p.setClipRect(inner);
-                    int stripeH = std::max(2, inner.height() / 10);
-                    for (int sy2 = inner.top(); sy2 < inner.bottom(); sy2 += stripeH * 2) {
-                        // Bright stripe (line)
-                        int h1 = std::min(stripeH, inner.bottom() - sy2);
-                        p.fillRect(inner.left(), sy2, inner.width(), h1,
-                                   QColor(255, 255, 255, 179));
-                        // Dark stripe (space)
-                        if (sy2 + stripeH < inner.bottom()) {
-                            int h2 = std::min(stripeH, inner.bottom() - sy2 - stripeH);
-                            p.fillRect(inner.left(), sy2 + stripeH, inner.width(), h2,
-                                       QColor(0, 0, 0, 179));
-                        }
+                    int stripeW = std::max(2, inner.height() / 10);
+                    // step perpendicular to the stripe direction
+                    int step = stripeW * 2;
+                    // 60° angle: tan(60°) ≈ 1.732
+                    double tanA = 1.732;
+                    // Offset range needed to cover the entire rectangle with diagonal lines
+                    int span = inner.width() + (int)(inner.height() * tanA);
+                    int origin = inner.left() - (int)(inner.height() * tanA);
+                    // Bright stripes
+                    p.setPen(Qt::NoPen);
+                    for (int d = 0; d < span + step; d += step) {
+                        int x0 = origin + d;
+                        QPolygon poly;
+                        poly << QPoint(x0, inner.bottom())
+                             << QPoint(x0 + stripeW, inner.bottom())
+                             << QPoint(x0 + stripeW + (int)(inner.height() * tanA), inner.top())
+                             << QPoint(x0 + (int)(inner.height() * tanA), inner.top());
+                        p.setBrush(QColor(255, 255, 255, 179));
+                        p.drawPolygon(poly);
+                    }
+                    // Dark stripes (in between)
+                    for (int d = stripeW; d < span + step; d += step) {
+                        int x0 = origin + d;
+                        QPolygon poly;
+                        poly << QPoint(x0, inner.bottom())
+                             << QPoint(x0 + stripeW, inner.bottom())
+                             << QPoint(x0 + stripeW + (int)(inner.height() * tanA), inner.top())
+                             << QPoint(x0 + (int)(inner.height() * tanA), inner.top());
+                        p.setBrush(QColor(0, 0, 0, 179));
+                        p.drawPolygon(poly);
                     }
                     p.restore();
                 }

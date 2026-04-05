@@ -198,6 +198,18 @@ private:
     double brushValue() const;             // max amplitude outside center 3x3
     void onApplyBinning();
 
+    // Math calculations overlay
+    bool        m_mathActive = false;
+    QComboBox  *m_mathOutCombo  = nullptr;   // output buffer a..p
+    QComboBox  *m_mathIn1Combo  = nullptr;   // first input buffer a..p
+    QComboBox  *m_mathOpCombo   = nullptr;   // operation +,-,*,/,conv,corr
+    QComboBox  *m_mathIn2Combo  = nullptr;   // second input buffer a..p
+    QPushButton *m_mathCancelBtn = nullptr;
+    QPushButton *m_mathComputeBtn = nullptr;
+    QLabel     *m_mathEqualsLabel = nullptr;
+    void onMathCompute();
+    void onMathCancel();
+
     // Binning UI
     bool        m_binActive = false;
     QComboBox  *m_binCombo  = nullptr;

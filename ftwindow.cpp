@@ -136,6 +136,69 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_p1BrushDiameterEdit->setStyleSheet("background:#222; color:white; border:1px solid #888;");
     m_p1BrushDiameterEdit->hide();
 
+    // Math calculation widgets (hidden until math button is active)
+    auto mathComboStyle = [](QComboBox *cb) {
+        cb->setStyleSheet(
+            "QComboBox { background:white; color:black; border:1px solid #888;"
+            "  padding: 2px 8px; font-size: 26px; font-weight: bold; }"
+            "QComboBox::drop-down { width: 28px; }"
+            "QComboBox QAbstractItemView { background:white; color:black;"
+            "  selection-background-color:#ccc; min-width: 80px; padding: 4px;"
+            "  font-size: 26px; }"
+        );
+    };
+    m_mathOutCombo = new QComboBox(this);
+    for (int i = 0; i < HISTORY_SLOTS; i++)
+        m_mathOutCombo->addItem(QString(QChar('a' + i)));
+    m_mathOutCombo->setFixedSize(100, 56);
+    mathComboStyle(m_mathOutCombo);
+    m_mathOutCombo->hide();
+
+    m_mathEqualsLabel = new QLabel("=", this);
+    m_mathEqualsLabel->setStyleSheet("color: black; font-size: 36px; font-weight: bold;");
+    m_mathEqualsLabel->setFixedSize(40, 56);
+    m_mathEqualsLabel->setAlignment(Qt::AlignCenter);
+    m_mathEqualsLabel->hide();
+
+    m_mathIn1Combo = new QComboBox(this);
+    for (int i = 0; i < HISTORY_SLOTS; i++)
+        m_mathIn1Combo->addItem(QString(QChar('a' + i)));
+    m_mathIn1Combo->setFixedSize(100, 56);
+    mathComboStyle(m_mathIn1Combo);
+    m_mathIn1Combo->hide();
+
+    m_mathOpCombo = new QComboBox(this);
+    m_mathOpCombo->addItem("+");
+    m_mathOpCombo->addItem("\u2212");   // minus sign
+    m_mathOpCombo->addItem("\u00D7");   // multiplication sign
+    m_mathOpCombo->addItem("\u00F7");   // division sign
+    m_mathOpCombo->addItem("convolute");
+    m_mathOpCombo->addItem("correlate");
+    m_mathOpCombo->setFixedSize(260, 56);
+    mathComboStyle(m_mathOpCombo);
+    m_mathOpCombo->hide();
+
+    m_mathIn2Combo = new QComboBox(this);
+    for (int i = 0; i < HISTORY_SLOTS; i++)
+        m_mathIn2Combo->addItem(QString(QChar('a' + i)));
+    m_mathIn2Combo->setFixedSize(100, 56);
+    mathComboStyle(m_mathIn2Combo);
+    m_mathIn2Combo->hide();
+
+    m_mathCancelBtn = new QPushButton("Cancel", this);
+    m_mathCancelBtn->setFixedSize(80, 28);
+    m_mathCancelBtn->setStyleSheet(
+        "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }");
+    connect(m_mathCancelBtn, &QPushButton::clicked, this, &FtWindow::onMathCancel);
+    m_mathCancelBtn->hide();
+
+    m_mathComputeBtn = new QPushButton("Compute", this);
+    m_mathComputeBtn->setFixedSize(80, 28);
+    m_mathComputeBtn->setStyleSheet(
+        "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }");
+    connect(m_mathComputeBtn, &QPushButton::clicked, this, &FtWindow::onMathCompute);
+    m_mathComputeBtn->hide();
+
     // Binning widgets (hidden until bin button is active)
     m_binCombo = new QComboBox(this);
     for (int i = 2; i <= 8; i++)
