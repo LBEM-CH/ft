@@ -1231,16 +1231,132 @@ void FtWindow::onMathCompute()
         sh = S;
     };
 
-    // First pad both images to square
+    // For convolution/correlation, use zero-mean + zero-padded approach
+    if (opIdx >= 4) {
+        // Subtract mean from each image (float to zero average)
+        double mean1 = 0, mean2 = 0;
+        for (double v : pix1) mean1 += v;
+        mean1 /= pix1.size();
+        for (double v : pix2) mean2 += v;
+        mean2 /= pix2.size();
+        for (double &v : pix1) v -= mean1;
+        for (double &v : pix2) v -= mean2;
+
+        // Determine S = square dimension of the larger image
+        int S = std::max({w1, h1, w2, h2});
+        int N = nextPow2(S);
+        int halfS = S / 2;
+
+        // Zero-pad both images into N x N complex arrays (centered)
+        std::vector<Complex> fa(N * N, Complex(0, 0));
+        std::vector<Complex> fb(N * N, Complex(0, 0));
+        int off1X = (S - w1) / 2, off1Y = (S - h1) / 2;
+        int off2X = (S - w2) / 2, off2Y = (S - h2) / 2;
+        for (int y = 0; y < h1; y++)
+            for (int x = 0; x < w1; x++)
+                fa[(y + off1Y) * N + (x + off1X)] = Complex(pix1[y * w1 + x], 0);
+        for (int y = 0; y < h2; y++)
+            for (int x = 0; x < w2; x++)
+                fb[(y + off2Y) * N + (x + off2X)] = Complex(pix2[y * w2 + x], 0);
+
+        fft2d(fa, N, false);
+        fft2d(fb, N, false);
+
+        std::vector<Complex> fc(N * N);
+        for (int i = 0; i < N * N; i++) {
+            if (opIdx == 4)
+                fc[i] = fa[i] * fb[i];             // convolution
+            else
+                fc[i] = fa[i] * std::conj(fb[i]);  // cross-correlation
+        }
+
+        fft2d(fc, N, true);  // inverse FFT
+
+        std::vector<double> result(S * S);
+        if (opIdx == 4) {
+            for (int y = 0; y < S; y++)
+                for (int x = 0; x < S; x++)
+                    result[y * S + x] = fc[y * N + x].real();
+        } else {
+            for (int y = 0; y < S; y++)
+                for (int x = 0; x < S; x++) {
+                    int fy = (y - halfS + N) % N;
+                    int fx = (x - halfS + N) % N;
+                    result[y * S + x] = fc[fy * N + fx].real();
+                }
+        }
+
+        // Build the output QImage from the result
+        double minVal = *std::min_element(result.begin(), result.end());
+        double maxVal = *std::max_element(result.begin(), result.end());
+        double range  = maxVal - minVal;
+        double scale  = (range > 0) ? 255.0 / range : 1.0;
+
+        QImage outImg(S, S, QImage::Format_Grayscale8);
+        for (int y = 0; y < S; y++) {
+            uchar *row = outImg.scanLine(y);
+            for (int x = 0; x < S; x++)
+                row[x] = static_cast<uchar>(std::clamp(
+                    (result[y * S + x] - minVal) * scale, 0.0, 255.0));
+        }
+
+        // Save current active image back to its slot before switching
+        if (m_activeSlot >= 0 && !m_image.isNull()) {
+            m_history[m_activeSlot].image        = m_image;
+            m_history[m_activeSlot].path         = m_imagePath;
+            m_history[m_activeSlot].rawPixels    = m_imageRawPixels;
+            m_history[m_activeSlot].minVal       = m_imageMinVal;
+            m_history[m_activeSlot].maxVal       = m_imageMaxVal;
+            m_history[m_activeSlot].pixelSize    = m_pixelSize;
+            m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
+            m_history[m_activeSlot].occupied     = true;
+        }
+
+        // Store result in output slot
+        m_history[outIdx].image     = outImg;
+        m_history[outIdx].path      = QString("math: %1 %2 %3")
+                                          .arg(QChar('a' + in1Idx))
+                                          .arg(m_mathOpCombo->currentText())
+                                          .arg(QChar('a' + in2Idx));
+        m_history[outIdx].rawPixels = std::move(result);
+        m_history[outIdx].minVal    = minVal;
+        m_history[outIdx].maxVal    = maxVal;
+        m_history[outIdx].pixelSize = 1.0;
+        m_history[outIdx].powerSpecImg = computePowerSpecMasked(outImg);
+        m_history[outIdx].occupied  = true;
+
+        m_activeSlot     = outIdx;
+        m_image          = m_history[outIdx].image;
+        m_imagePath      = m_history[outIdx].path;
+        m_imageRawPixels = m_history[outIdx].rawPixels;
+        m_imageMinVal    = m_history[outIdx].minVal;
+        m_imageMaxVal    = m_history[outIdx].maxVal;
+        m_pixelSize      = m_history[outIdx].pixelSize;
+        m_zoom[0].reset(m_image.width(), m_image.height());
+
+        m_ftComputed  = false;
+        m_displayMode = 3;
+        m_modeBtn->setText(modeLabel());
+        m_modeBtn->hide();
+        m_maskBtn->hide();
+        m_maskBtn->setChecked(false);
+        m_maskCenter = false;
+
+        computeFFT();
+        m_history[outIdx].powerSpecImg = computePowerSpecMasked(m_image);
+        saveHistory();
+        onMathCancel();
+        return;
+    }
+
+    // For arithmetic operations (+, -, *, /), pad to square and scale
     padToSquare(pix1, w1, h1);
     padToSquare(pix2, w2, h2);
 
-    // Determine the common size (max of the two square dimensions)
     int S = std::max(w1, w2);
 
-    // Scale an image to S x S using bilinear interpolation
     auto scaleToSize = [](const std::vector<double> &src, int sw, int S) {
-        if (sw == S) return src;   // already the right size
+        if (sw == S) return src;
         std::vector<double> dst(S * S);
         for (int y = 0; y < S; y++) {
             double srcY = y * (sw - 1.0) / (S - 1.0);
@@ -1265,7 +1381,6 @@ void FtWindow::onMathCompute()
         return dst;
     };
 
-    // Then scale the smaller square image up to match the larger
     std::vector<double> a = scaleToSize(pix1, w1, S);
     std::vector<double> b = scaleToSize(pix2, w2, S);
 
@@ -1285,53 +1400,6 @@ void FtWindow::onMathCompute()
             case 2: result[i] = a[i] * b[i]; break;
             case 3: result[i] = a[i] * b[i] / (b[i] * b[i] + noise); break;
             }
-        }
-    } else {
-        // Convolution (4) or cross-correlation (5) via FFT
-        int N = nextPow2(S);
-        int halfS = S / 2;
-
-        // Subtract mean from both images to remove DC component
-        double meanA = 0, meanB = 0;
-        for (int i = 0; i < S * S; i++) { meanA += a[i]; meanB += b[i]; }
-        meanA /= (S * S);
-        meanB /= (S * S);
-
-        std::vector<Complex> fa(N * N, Complex(0, 0));
-        std::vector<Complex> fb(N * N, Complex(0, 0));
-        for (int y = 0; y < S; y++)
-            for (int x = 0; x < S; x++) {
-                fa[y * N + x] = Complex(a[y * S + x] - meanA, 0);
-                fb[y * N + x] = Complex(b[y * S + x] - meanB, 0);
-            }
-
-        fft2d(fa, N, false);
-        fft2d(fb, N, false);
-
-        std::vector<Complex> fc(N * N);
-        for (int i = 0; i < N * N; i++) {
-            if (opIdx == 4)
-                fc[i] = fa[i] * fb[i];             // convolution
-            else
-                fc[i] = fa[i] * std::conj(fb[i]);  // cross-correlation
-        }
-
-        fft2d(fc, N, true);  // inverse FFT
-
-        result.resize(S * S);
-        if (opIdx == 4) {
-            // Convolution: circular convolution, extract [0, S-1] directly
-            for (int y = 0; y < S; y++)
-                for (int x = 0; x < S; x++)
-                    result[y * S + x] = fc[y * N + x].real();
-        } else {
-            // Correlation: zero-lag at (0,0); center it in output at (S/2, S/2)
-            for (int y = 0; y < S; y++)
-                for (int x = 0; x < S; x++) {
-                    int fy = (y - halfS + N) % N;
-                    int fx = (x - halfS + N) % N;
-                    result[y * S + x] = fc[fy * N + fx].real();
-                }
         }
     }
 
