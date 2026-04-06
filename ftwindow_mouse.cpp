@@ -488,6 +488,30 @@ void FtWindow::mouseReleaseEvent(QMouseEvent *event)
                     break;
                 }
                 update();
+            } else {
+                switch (h) {
+                case HIST_P1:
+                    m_imageDispMin = m_imageMinVal;
+                    m_imageDispMax = m_imageMaxVal;
+                    rebuildImageWithLUT();
+                    break;
+                case HIST_POWER:
+                    m_powerDispMin = m_powerMin;
+                    m_powerDispMax = m_powerMax;
+                    rebuildFTImageWithLUT(HIST_POWER);
+                    break;
+                case HIST_FT_LEFT:
+                    if (m_displayMode == 0) { m_cosDispMin = m_cosMin; m_cosDispMax = m_cosMax; }
+                    else                    { m_ampDispMin = m_ampMin; m_ampDispMax = m_ampMax; }
+                    rebuildFTImageWithLUT(HIST_FT_LEFT);
+                    break;
+                case HIST_FT_RIGHT:
+                    if (m_displayMode == 0) { m_sinDispMin = m_sinMin; m_sinDispMax = m_sinMax; }
+                    else                    { m_phaseDispMin = m_phaseMin; m_phaseDispMax = m_phaseMax; }
+                    rebuildFTImageWithLUT(HIST_FT_RIGHT);
+                    break;
+                }
+                update();
             }
         }
         return;
