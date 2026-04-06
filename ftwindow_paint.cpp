@@ -1023,6 +1023,7 @@ void FtWindow::paintEvent(QPaintEvent *)
 
             const QImage &img = (m_displayMode == 3) ? m_powerImg : m_complexImg;
             drawImageWithFrame(p, frame, img, m_zoom[1], m_fftN, m_fftN);
+            drawOriginCross(frame.adjusted(2, 2, -2, -2), m_zoom[1], m_fftN, m_fftN);
             drawAxes(p, frame, m_zoom[1], m_fftN, m_fftN, true, m_pixelSize);
 
             QRect inner = frame.adjusted(2, 2, -2, -2);
@@ -1116,6 +1117,7 @@ void FtWindow::paintEvent(QPaintEvent *)
             p.drawText(frame2.x(), frame2.y() - 4, label2);
 
             drawImageWithFrame(p, frame1, *img1, m_zoom[1], m_fftN, m_fftN);
+            drawOriginCross(frame1.adjusted(2, 2, -2, -2), m_zoom[1], m_fftN, m_fftN);
             drawAxes(p, frame1, m_zoom[1], m_fftN, m_fftN, true, m_pixelSize);
             QRect inner1 = frame1.adjusted(2, 2, -2, -2);
             double curVal1 = 0;
@@ -1125,6 +1127,7 @@ void FtWindow::paintEvent(QPaintEvent *)
                           HIST_FT_LEFT, dmin1, dmax1);
 
             drawImageWithFrame(p, frame2, *img2, m_zoom[2], m_fftN, m_fftN);
+            drawOriginCross(frame2.adjusted(2, 2, -2, -2), m_zoom[2], m_fftN, m_fftN);
             drawAxes(p, frame2, m_zoom[2], m_fftN, m_fftN, true, m_pixelSize, true);
             QRect inner2 = frame2.adjusted(2, 2, -2, -2);
             double curVal2 = 0;
