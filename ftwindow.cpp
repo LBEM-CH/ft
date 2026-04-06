@@ -30,14 +30,10 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     connect(m_modeBtn, &QPushButton::clicked, this, &FtWindow::onCycleMode);
     m_modeBtn->hide();
 
-    // Mask-center toggle button
-    m_maskBtn = new QPushButton("mask center for display", this);
-    m_maskBtn->setFixedSize(180, 22);
-    m_maskBtn->setCheckable(true);
-    m_maskBtn->setStyleSheet(
-        "QPushButton        { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }"
-        "QPushButton:checked { background-color: #444; border: 2px inset #333; color: #ccc; }");
-    connect(m_maskBtn, &QPushButton::toggled, this, &FtWindow::onToggleMask);
+    // Mask-center toggle checkbox
+    m_maskBtn = new QCheckBox("mask center for display", this);
+    m_maskBtn->setStyleSheet("color: white;");
+    connect(m_maskBtn, &QCheckBox::toggled, this, &FtWindow::onToggleMask);
     m_maskBtn->hide();
 
     // Bandpass filter widgets (hidden until bandpass mode active)
@@ -110,6 +106,30 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_latticeApplyBtn->setFixedSize(100, 26);
     connect(m_latticeApplyBtn, &QPushButton::clicked, this, &FtWindow::onApplyLattice);
     m_latticeApplyBtn->hide();
+
+    // Fourier crop widgets (hidden until Fourier crop mode active)
+    m_ftCropCombo = new QComboBox(this);
+    for (int i = 2; i <= 8; i++)
+        m_ftCropCombo->addItem(QString::number(i), i);
+    m_ftCropCombo->setFixedSize(70, 28);
+    m_ftCropCombo->setStyleSheet(
+        "QComboBox { background:#222; color:white; border:1px solid #888;"
+        "  padding: 2px 8px; }"
+        "QComboBox::drop-down { width: 20px; }"
+        "QComboBox QAbstractItemView { background:#222; color:white;"
+        "  selection-background-color:#555; min-width: 60px; padding: 4px; }"
+    );
+    m_ftCropCombo->hide();
+
+    m_ftCropKeepSizeBtn = new QCheckBox("Keep original Fourier transform size", this);
+    m_ftCropKeepSizeBtn->setStyleSheet("color: white;");
+    m_ftCropKeepSizeBtn->setChecked(true);
+    m_ftCropKeepSizeBtn->hide();
+
+    m_applyFtCropBtn = new QPushButton("Apply Fourier crop", this);
+    m_applyFtCropBtn->setFixedSize(140, 26);
+    connect(m_applyFtCropBtn, &QPushButton::clicked, this, &FtWindow::onApplyFtCrop);
+    m_applyFtCropBtn->hide();
 
     // Panel 1 eraser parameter widgets
     m_p1EraserDiamLabel = new QLabel("Eraser Gaussian diameter:", this);
@@ -227,6 +247,10 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     restoreHistory();
 
     QSettings settings("ft", "ft");
+    m_maskCenter = settings.value("maskCenter", false).toBool();
+    m_maskBtn->setChecked(m_maskCenter);
+    m_displayMode = settings.value("displayMode", 3).toInt();
+    m_modeBtn->setText(modeLabel());
     m_activeSlot = settings.value("activeSlot", -1).toInt();
     if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS
         && m_history[m_activeSlot].occupied) {
@@ -291,6 +315,19 @@ void FtWindow::resizeEvent(QResizeEvent *)
     m_latticeEraseOutside->setStyleSheet(cbSS);
     m_latticeApplyBtn->setFixedSize(static_cast<int>(100 * sc), btnH);
     m_latticeApplyBtn->setStyleSheet(btnSS);
+
+    // Fourier crop widgets (sizes only)
+    m_ftCropCombo->setFixedSize(static_cast<int>(70 * sc), btnH);
+    m_ftCropCombo->setStyleSheet(QString(
+        "QComboBox { background:white; color:black; border:1px solid #888;"
+        "  padding: 2px 4px; font-size: %1px; }"
+        "QComboBox::drop-down { width: %2px; }"
+        "QComboBox QAbstractItemView { background:white; color:black;"
+        "  selection-background-color:#ccc; min-width: 60px; padding: 4px;"
+        "  font-size: %1px; }").arg(fontSize).arg(static_cast<int>(20 * sc)));
+    m_ftCropKeepSizeBtn->setStyleSheet(cbSS);
+    m_applyFtCropBtn->setFixedSize(static_cast<int>(140 * sc), btnH);
+    m_applyFtCropBtn->setStyleSheet(btnSS);
 
     // Panel 1 eraser/brush widgets (sizes only)
     m_p1EraserDiameterEdit->setFixedSize(static_cast<int>(40 * sc), editH);

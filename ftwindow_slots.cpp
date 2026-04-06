@@ -42,12 +42,9 @@ void FtWindow::onReloadImage()
     }
 
     m_ftComputed = false;
-    m_displayMode = 3;
     m_modeBtn->setText(modeLabel());
     m_modeBtn->hide();
     m_maskBtn->hide();
-    m_maskBtn->setChecked(false);
-    m_maskCenter = false;
 
     if (!m_image.isNull()) {
         m_zoom[0].reset(m_image.width(), m_image.height());
@@ -60,12 +57,16 @@ void FtWindow::onCycleMode()
 {
     m_displayMode = (m_displayMode + 1) % 4;
     m_modeBtn->setText(modeLabel());
+    QSettings settings("ft", "ft");
+    settings.setValue("displayMode", m_displayMode);
     update();
 }
 
 void FtWindow::onToggleMask(bool checked)
 {
     m_maskCenter = checked;
+    QSettings settings("ft", "ft");
+    settings.setValue("maskCenter", checked);
     recomputeDisplayImages();
     update();
 }
@@ -130,12 +131,9 @@ void FtWindow::loadImageFile(const QString &path)
     settings.setValue("activeSlot", m_activeSlot);
 
     m_ftComputed = false;
-    m_displayMode = 3;
     m_modeBtn->setText(modeLabel());
     m_modeBtn->hide();
     m_maskBtn->hide();
-    m_maskBtn->setChecked(false);
-    m_maskCenter = false;
 
     if (!m_image.isNull()) {
         m_zoom[0].reset(m_image.width(), m_image.height());
@@ -1095,6 +1093,63 @@ void FtWindow::onApplyBinning()
     update();
 }
 
+void FtWindow::onApplyFtCrop()
+{
+    if (!m_ftComputed || m_fftN == 0) return;
+
+    int factor = m_ftCropCombo->currentData().toInt();
+    if (factor <= 1) return;
+
+    int N = m_fftN;
+    int half = N / 2;
+    // Crop radius: pixels within half/factor of center are kept
+    int cropHalf = half / factor;
+    bool keepSize = m_ftCropKeepSizeBtn->isChecked();
+
+    if (keepSize) {
+        // Zero out pixels outside the crop square (centered at N/2, N/2)
+        for (int y = 0; y < N; y++) {
+            for (int x = 0; x < N; x++) {
+                int dx = std::abs(x - half);
+                int dy = std::abs(y - half);
+                if (dx > cropHalf || dy > cropHalf)
+                    m_fftData[y * N + x] = Complex(0.0, 0.0);
+            }
+        }
+        recomputeDisplayImages();
+        computeInverseFFT();
+    } else {
+        // Extract the central crop region into a smaller FFT
+        int newN = cropHalf * 2;
+        if (newN < 2) newN = 2;
+        // Round up to next power of 2
+        int pow2 = 1;
+        while (pow2 < newN) pow2 <<= 1;
+        newN = pow2;
+        cropHalf = newN / 2;
+
+        std::vector<Complex> newData(newN * newN, Complex(0.0, 0.0));
+        for (int y = 0; y < newN; y++) {
+            for (int x = 0; x < newN; x++) {
+                int srcX = half - cropHalf + x;
+                int srcY = half - cropHalf + y;
+                if (srcX >= 0 && srcX < N && srcY >= 0 && srcY < N)
+                    newData[y * newN + x] = m_fftData[srcY * N + srcX];
+            }
+        }
+
+        m_fftData = newData;
+        m_fftN = newN;
+        m_origW = newN;
+        m_origH = newN;
+        m_zoom[1].reset(newN, newN);
+        m_zoom[2].reset(newN, newN);
+        recomputeDisplayImages();
+        computeInverseFFT();
+    }
+    update();
+}
+
 void FtWindow::onApplyDirectional()
 {
     if (!m_ftComputed || m_fftN == 0) return;
@@ -1393,12 +1448,9 @@ void FtWindow::onMathCompute()
         m_zoom[0].reset(m_image.width(), m_image.height());
 
         m_ftComputed  = false;
-        m_displayMode = 3;
         m_modeBtn->setText(modeLabel());
         m_modeBtn->hide();
         m_maskBtn->hide();
-        m_maskBtn->setChecked(false);
-        m_maskCenter = false;
 
         computeFFT();
         m_history[outIdx].powerSpecImg = computePowerSpecMasked(m_image);
@@ -1511,12 +1563,9 @@ void FtWindow::onMathCompute()
     m_zoom[0].reset(m_image.width(), m_image.height());
 
     m_ftComputed  = false;
-    m_displayMode = 3;
     m_modeBtn->setText(modeLabel());
     m_modeBtn->hide();
     m_maskBtn->hide();
-    m_maskBtn->setChecked(false);
-    m_maskCenter = false;
 
     computeFFT();
     m_history[outIdx].powerSpecImg = computePowerSpecMasked(m_image);

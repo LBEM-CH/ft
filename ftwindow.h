@@ -105,7 +105,7 @@ private:
     QPushButton *m_loadBtn   = nullptr;
     QPushButton *m_reloadBtn = nullptr;
     QPushButton *m_modeBtn   = nullptr;
-    QPushButton *m_maskBtn   = nullptr;
+    QCheckBox   *m_maskBtn   = nullptr;
 
     // ---- loaded image ----
     QImage              m_image;
@@ -259,6 +259,13 @@ private:
     void drawLattice(QPainter &p, const QRect &screenRect,
                      const ZoomState &zoom, int imgW, int imgH);
     void onApplyLattice();
+
+    // ---- Fourier crop ----
+    bool        m_ftCropActive = false;
+    QComboBox  *m_ftCropCombo     = nullptr;
+    QCheckBox  *m_ftCropKeepSizeBtn = nullptr;
+    QPushButton *m_applyFtCropBtn = nullptr;
+    void onApplyFtCrop();
 
     // ---- directional filter ----
     bool        m_directionalActive = false;

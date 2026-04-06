@@ -44,12 +44,9 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
             }
 
             m_ftComputed = false;
-            m_displayMode = 3;
             m_modeBtn->setText(modeLabel());
             m_modeBtn->hide();
             m_maskBtn->hide();
-            m_maskBtn->setChecked(false);
-            m_maskCenter = false;
 
             if (!m_image.isNull()) {
                 m_zoom[0].reset(m_image.width(), m_image.height());
@@ -72,11 +69,8 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         m_binActive = false; m_mathActive = false;
     };
     auto showP1ToolWidgets = [&]() {
-        m_p1EraserDiamLabel->setVisible(m_p1EraserActive);
         m_p1EraserDiameterEdit->setVisible(m_p1EraserActive);
-        m_p1BrushValueLabel->setVisible(m_p1BrushActive);
         m_p1BrushValueEdit->setVisible(m_p1BrushActive);
-        m_p1BrushDiamLabel->setVisible(m_p1BrushActive);
         m_p1BrushDiameterEdit->setVisible(m_p1BrushActive);
         m_binCombo->setVisible(m_binActive);
         m_binKeepSizeBtn->setVisible(m_binActive);
@@ -165,6 +159,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         m_eraserActive = false; m_brushActive = false;
         m_bandpassActive = false; m_directionalActive = false;
         m_latticeActive = false; m_ftRotateActive = false;
+        m_ftCropActive = false;
     };
     auto showToolWidgets = [&]() {
         bool showFilter = m_bandpassActive || m_directionalActive;
@@ -172,20 +167,19 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         m_bandEraseOutside->setVisible(showFilter);
         m_applyBandBtn->setVisible(showFilter);
 
-        m_brushValueLabel->setVisible(m_brushActive);
         m_brushValueEdit->setVisible(m_brushActive);
-        m_brushDiamLabel->setVisible(m_brushActive);
         m_brushDiameterEdit->setVisible(m_brushActive);
 
-        m_eraserDiamLabel->setVisible(m_eraserActive);
         m_eraserDiameterEdit->setVisible(m_eraserActive);
 
-        m_latticeSmoothLabel->setVisible(m_latticeActive);
         m_latticeSmoothEdit->setVisible(m_latticeActive);
-        m_latticeDotDiamLabel->setVisible(m_latticeActive);
         m_latticeDotDiamEdit->setVisible(m_latticeActive);
         m_latticeEraseOutside->setVisible(m_latticeActive);
         m_latticeApplyBtn->setVisible(m_latticeActive);
+
+        m_ftCropCombo->setVisible(m_ftCropActive);
+        m_ftCropKeepSizeBtn->setVisible(m_ftCropActive);
+        m_applyFtCropBtn->setVisible(m_ftCropActive);
     };
     if (m_toolBtnRects[0].contains(event->pos())) {
         bool was = m_eraserActive; deactivateAllTools();
@@ -215,6 +209,10 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
     if (m_toolBtnRects[5].contains(event->pos())) {
         bool was = m_ftRotateActive; deactivateAllTools();
         m_ftRotateActive = !was; showToolWidgets(); update(); return;
+    }
+    if (m_toolBtnRects[6].contains(event->pos())) {
+        bool was = m_ftCropActive; deactivateAllTools();
+        m_ftCropActive = !was; showToolWidgets(); update(); return;
     }
 
     // Lattice vector drag

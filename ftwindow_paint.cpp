@@ -442,7 +442,7 @@ void FtWindow::paintEvent(QPaintEvent *)
             m_toolBtnRects[i] = r;
 
             p.setPen(QPen(Qt::white, 1));
-            if ((i == 0 && m_eraserActive) || (i == 1 && m_brushActive) || (i == 2 && m_bandpassActive) || (i == 3 && m_directionalActive) || (i == 4 && m_latticeActive) || (i == 5 && m_ftRotateActive))
+            if ((i == 0 && m_eraserActive) || (i == 1 && m_brushActive) || (i == 2 && m_bandpassActive) || (i == 3 && m_directionalActive) || (i == 4 && m_latticeActive) || (i == 5 && m_ftRotateActive) || (i == 6 && m_ftCropActive))
                 p.setBrush(QColor(60, 60, 60));
             else
                 p.setBrush(QColor(0, 0, 0));
@@ -691,6 +691,39 @@ void FtWindow::paintEvent(QPaintEvent *)
                     QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
                     QFontMetrics ttfm(ttf);
                     QString tip = "Rotate Fourier space";
+                    int ttw = ttfm.horizontalAdvance(tip) + 8;
+                    int tth = ttfm.height() + 4;
+                    int ttx = r.left() - ttw - 4;
+                    int tty = r.center().y() - tth / 2;
+                    p.setPen(QPen(Qt::white, 1));
+                    p.setBrush(QColor(40, 40, 40));
+                    p.drawRect(ttx, tty, ttw, tth);
+                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                }
+            }
+
+            // Fourier crop icon (button 6): 2x2 grid (same as panel 1 binning)
+            if (i == 6) {
+                QColor col = m_ftCropActive ? QColor(180, 180, 255) : Qt::white;
+                int m = std::max(2, btnSide / 5);
+                QRect inner = r.adjusted(m, m, -m, -m);
+                int midX = inner.x() + inner.width() / 2;
+                int midY = inner.y() + inner.height() / 2;
+                int g = std::max(1, btnSide / 10);
+                p.setPen(Qt::NoPen);
+                p.setBrush(col);
+                p.drawRect(QRect(inner.x(), inner.y(), midX - inner.x() - g, midY - inner.y() - g));
+                p.setBrush(col.darker(140));
+                p.drawRect(QRect(midX + g, inner.y(), inner.right() - midX - g + 1, midY - inner.y() - g));
+                p.setBrush(col.darker(170));
+                p.drawRect(QRect(inner.x(), midY + g, midX - inner.x() - g, inner.bottom() - midY - g + 1));
+                p.setBrush(col.darker(120));
+                p.drawRect(QRect(midX + g, midY + g, inner.right() - midX - g + 1, inner.bottom() - midY - g + 1));
+
+                if (r.contains(m_mousePos)) {
+                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                    QFontMetrics ttfm(ttf);
+                    QString tip = "Fourier crop";
                     int ttw = ttfm.horizontalAdvance(tip) + 8;
                     int tth = ttfm.height() + 4;
                     int ttx = r.left() - ttw - 4;
@@ -1070,25 +1103,40 @@ void FtWindow::paintEvent(QPaintEvent *)
 
         // Panel 2 tool option rectangles (bottom-right of panel 2)
         bool p2Tool = m_bandpassActive || m_directionalActive || m_brushActive
-                      || m_eraserActive || m_latticeActive;
+                      || m_eraserActive || m_latticeActive || m_ftCropActive;
         if (p2Tool) {
             int nRows = 0;
             int textW = 0;
             if (m_bandpassActive || m_directionalActive) {
                 nRows = 3;
-                textW = fm.horizontalAdvance("Smooth edge by pixels:  000");
+                int r1 = fm.horizontalAdvance("Smooth edge by pixels: ") + m_smoothEdit->width();
+                int r2 = fm.horizontalAdvance("Erase pixels outside of band");
+                int r3 = m_applyBandBtn->width();
+                textW = std::max({r1, r2, r3});
             } else if (m_brushActive) {
                 nRows = 2;
-                textW = fm.horizontalAdvance("Paint brush Gaussian diameter:  000");
+                int r1 = fm.horizontalAdvance("Pixel value to enter: ") + m_brushValueEdit->width();
+                int r2 = fm.horizontalAdvance("Paint brush Gaussian diameter: ") + m_brushDiameterEdit->width();
+                textW = std::max(r1, r2);
             } else if (m_eraserActive) {
                 nRows = 1;
-                textW = fm.horizontalAdvance("Eraser Gaussian diameter:  000");
+                textW = fm.horizontalAdvance("Eraser Gaussian diameter: ") + m_eraserDiameterEdit->width();
             } else if (m_latticeActive) {
                 nRows = 4;
-                textW = fm.horizontalAdvance("Erase pixels outside of lattice  000");
+                int r1 = fm.horizontalAdvance("Smooth edge by pixels: ") + m_latticeSmoothEdit->width();
+                int r2 = fm.horizontalAdvance("Diameter of dots: ") + m_latticeDotDiamEdit->width();
+                int r3 = fm.horizontalAdvance("Erase pixels outside of lattice");
+                int r4 = m_latticeApplyBtn->width();
+                textW = std::max({r1, r2, r3, r4});
+            } else if (m_ftCropActive) {
+                nRows = 3;
+                int r1 = m_ftCropCombo->width();
+                int r2 = fm.horizontalAdvance("Keep original Fourier transform size");
+                int r3 = m_applyFtCropBtn->width();
+                textW = std::max({r1, r2, r3});
             }
 
-            int rw = textW + 2 * margin;
+            int rw = textW * 6 / 5 + 2 * margin;
             int rh = nRows * lh + 2 * margin;
             int rx = width() - rw - margin;
             int ry = hy - rh - margin;
@@ -1121,6 +1169,10 @@ void FtWindow::paintEvent(QPaintEvent *)
                 m_latticeDotDiamEdit->move(tx + fm.horizontalAdvance("Diameter of dots: "), ty + lh);
                 m_latticeEraseOutside->move(tx, ty + lh * 2);
                 m_latticeApplyBtn->move(tx, ty + lh * 3);
+            } else if (m_ftCropActive) {
+                m_ftCropCombo->move(tx, ty);
+                m_ftCropKeepSizeBtn->move(tx, ty + lh);
+                m_applyFtCropBtn->move(tx, ty + lh * 2);
             }
         }
 
@@ -1131,16 +1183,21 @@ void FtWindow::paintEvent(QPaintEvent *)
             int textW = 0;
             if (m_p1EraserActive) {
                 nRows = 1;
-                textW = fm.horizontalAdvance("Eraser Gaussian diameter:  000");
+                textW = fm.horizontalAdvance("Eraser Gaussian diameter: ") + m_p1EraserDiameterEdit->width();
             } else if (m_p1BrushActive) {
                 nRows = 2;
-                textW = fm.horizontalAdvance("Paint brush Gaussian diameter:  000");
+                int r1 = fm.horizontalAdvance("Pixel value to enter: ") + m_p1BrushValueEdit->width();
+                int r2 = fm.horizontalAdvance("Paint brush Gaussian diameter: ") + m_p1BrushDiameterEdit->width();
+                textW = std::max(r1, r2);
             } else if (m_binActive) {
                 nRows = 3;
-                textW = fm.horizontalAdvance("Keep original image size  000");
+                int r1 = m_binCombo->width();
+                int r2 = fm.horizontalAdvance("Keep original image size");
+                int r3 = m_applyBinBtn->width();
+                textW = std::max({r1, r2, r3});
             }
 
-            int rw = textW + 2 * margin;
+            int rw = textW * 6 / 5 + 2 * margin;
             int rh = nRows * lh + 2 * margin;
             int rx = margin;
             int ry = hy - rh - margin;
@@ -1208,11 +1265,16 @@ void FtWindow::paintEvent(QPaintEvent *)
                            r.y() - 3, lab);
             }
 
-            p.setPen(QPen(QColor(255, 255, 0), 1));
+            bool isActive = (i == m_activeSlot);
+
+            if (isActive) {
+                p.setPen(QPen(QColor(120, 180, 255), 3));
+            } else {
+                p.setPen(QPen(QColor(255, 255, 0), 1));
+            }
             p.setBrush(Qt::NoBrush);
             p.drawRect(r);
 
-            bool isActive = (i == m_activeSlot);
             bool hasImage = isActive ? !m_image.isNull() : m_history[i].occupied;
 
             if (hasImage) {
@@ -1221,44 +1283,6 @@ void FtWindow::paintEvent(QPaintEvent *)
                     p.drawImage(inner, m_image);
                 else
                     p.drawImage(inner, m_history[i].image);
-
-                // Diagonal stripe overlay for the active slot (60° from bottom-left to top-right)
-                if (isActive) {
-                    p.save();
-                    p.setClipRect(inner);
-                    int stripeW = std::max(2, inner.height() / 10);
-                    // step perpendicular to the stripe direction
-                    int step = stripeW * 2;
-                    // 60° angle: tan(60°) ≈ 1.732
-                    double tanA = 1.732;
-                    // Offset range needed to cover the entire rectangle with diagonal lines
-                    int span = inner.width() + (int)(inner.height() * tanA);
-                    int origin = inner.left() - (int)(inner.height() * tanA);
-                    // Bright stripes
-                    p.setPen(Qt::NoPen);
-                    for (int d = 0; d < span + step; d += step) {
-                        int x0 = origin + d;
-                        QPolygon poly;
-                        poly << QPoint(x0, inner.bottom())
-                             << QPoint(x0 + stripeW, inner.bottom())
-                             << QPoint(x0 + stripeW + (int)(inner.height() * tanA), inner.top())
-                             << QPoint(x0 + (int)(inner.height() * tanA), inner.top());
-                        p.setBrush(QColor(255, 255, 255, 179));
-                        p.drawPolygon(poly);
-                    }
-                    // Dark stripes (in between)
-                    for (int d = stripeW; d < span + step; d += step) {
-                        int x0 = origin + d;
-                        QPolygon poly;
-                        poly << QPoint(x0, inner.bottom())
-                             << QPoint(x0 + stripeW, inner.bottom())
-                             << QPoint(x0 + stripeW + (int)(inner.height() * tanA), inner.top())
-                             << QPoint(x0 + (int)(inner.height() * tanA), inner.top());
-                        p.setBrush(QColor(0, 0, 0, 179));
-                        p.drawPolygon(poly);
-                    }
-                    p.restore();
-                }
             }
         }
     }
