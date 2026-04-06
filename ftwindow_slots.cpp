@@ -40,11 +40,19 @@ void FtWindow::onLoadImage()
           << "Exercise9-Apple/apple_very_noisy.png"
           << "Own_Images/blank_1024.png";
 
-    bool ok = false;
-    QString chosen = QInputDialog::getItem(
-        this, "Load Example Image", "Select an image:", items, 0, false, &ok);
-    if (!ok || chosen.isEmpty()) return;
-    fetchAndLoadImage(chosen);
+    // Use non-blocking open() instead of exec() for WASM compatibility
+    auto *dlg = new QInputDialog(this);
+    dlg->setAttribute(Qt::WA_DeleteOnClose);
+    dlg->setWindowTitle("Load Example Image");
+    dlg->setLabelText("Select an image:");
+    dlg->setComboBoxItems(items);
+    dlg->setComboBoxEditable(false);
+    connect(dlg, &QDialog::accepted, this, [this, dlg]() {
+        QString chosen = dlg->textValue();
+        if (!chosen.isEmpty())
+            fetchAndLoadImage(chosen);
+    });
+    dlg->open();
 #else
     QString startDir = QCoreApplication::applicationDirPath() + "/../EXAMPLE_IMAGES";
     if (!QDir(startDir).exists())
@@ -346,30 +354,34 @@ void FtWindow::loadImageData(const QString &fileName, const QByteArray &fileData
 #ifdef __EMSCRIPTEN__
 void FtWindow::fetchAndLoadImage(const QString &relativePath)
 {
-    if (!m_nam)
-        m_nam = new QNetworkAccessManager(this);
+    struct FetchCtx {
+        FtWindow *self;
+        QString path;
+    };
+    FetchCtx *ctx = new FetchCtx{this, relativePath};
 
-    // Build absolute URL relative to the page origin
     QString urlStr = QStringLiteral("images/") + relativePath;
-    QUrl url = QUrl(urlStr);
-    qDebug() << "Fetching image:" << url.toString();
-    QNetworkRequest req(url);
-    QNetworkReply *reply = m_nam->get(req);
-    connect(reply, &QNetworkReply::finished, this, [this, reply, relativePath]() {
-        reply->deleteLater();
-        qDebug() << "Fetch finished, error:" << reply->error()
-                 << reply->errorString()
-                 << "HTTP status:" << reply->attribute(QNetworkRequest::HttpStatusCodeAttribute)
-                 << "bytes:" << reply->size();
-        if (reply->error() != QNetworkReply::NoError) {
-            qWarning() << "Failed to fetch image:" << reply->errorString();
-            return;
+    qDebug() << "Fetching:" << urlStr;
+
+    emscripten_async_wget_data(
+        urlStr.toUtf8().constData(),
+        ctx,
+        // onload
+        [](void *arg, void *buf, int sz) {
+            FetchCtx *c = static_cast<FetchCtx *>(arg);
+            qDebug() << "Fetched" << sz << "bytes for" << c->path;
+            QByteArray data(static_cast<const char *>(buf), sz);
+            QString fileName = c->path.section('/', -1);
+            c->self->loadImageData(fileName, data);
+            delete c;
+        },
+        // onerror
+        [](void *arg) {
+            FetchCtx *c = static_cast<FetchCtx *>(arg);
+            qWarning() << "Failed to fetch image:" << c->path;
+            delete c;
         }
-        QByteArray data = reply->readAll();
-        qDebug() << "Read" << data.size() << "bytes for" << relativePath;
-        QString fileName = relativePath.section('/', -1);
-        loadImageData(fileName, data);
-    });
+    );
 }
 #endif
 

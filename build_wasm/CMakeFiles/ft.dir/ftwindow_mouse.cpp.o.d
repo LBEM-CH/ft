@@ -978,24 +978,15 @@ CMakeFiles/ft.dir/ftwindow_mouse.cpp.o: \
   /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtWidgets/qtabwidget.h \
   /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtWidgets/qrubberband.h \
   /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qabstractitemmodel.h \
-  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtNetwork/QNetworkAccessManager \
-  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtNetwork/qnetworkaccessmanager.h \
-  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtNetwork/qtnetworkglobal.h \
-  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtNetwork/qtnetwork-config.h \
-  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtNetwork/qtnetworkexports.h \
-  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtNetwork/qnetworkrequest.h \
-  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtNetwork/qhttpheaders.h \
-  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/QSharedDataPointer \
-  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/QString \
-  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/QUrl \
-  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/QVariant \
-  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/q26numeric.h \
-  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/QList \
-  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/QObject \
-  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtNetwork/QNetworkReply \
-  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtNetwork/qnetworkreply.h \
-  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/QIODevice \
-  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtNetwork/QNetworkRequest \
+  /Users/stahlber/Projects/emsdk/upstream/emscripten/cache/sysroot/include/emscripten.h \
+  /Users/stahlber/Projects/emsdk/upstream/emscripten/cache/sysroot/include/emscripten/emscripten.h \
+  /Users/stahlber/Projects/emsdk/upstream/emscripten/cache/sysroot/include/emscripten/em_asm.h \
+  /Users/stahlber/Projects/emsdk/upstream/emscripten/cache/sysroot/include/emscripten/em_macros.h \
+  /Users/stahlber/Projects/emsdk/upstream/emscripten/cache/sysroot/include/emscripten/em_types.h \
+  /Users/stahlber/Projects/emsdk/upstream/emscripten/cache/sysroot/include/emscripten/em_js.h \
+  /Users/stahlber/Projects/emsdk/upstream/emscripten/cache/sysroot/include/emscripten/promise.h \
+  /Users/stahlber/Projects/emsdk/upstream/emscripten/cache/sysroot/include/emscripten/wget.h \
+  /Users/stahlber/Projects/emsdk/upstream/emscripten/cache/sysroot/include/emscripten/version.h \
   /Users/stahlber/Projects/ft/fft.h \
   /Users/stahlber/Projects/emsdk/upstream/emscripten/cache/sysroot/include/c++/v1/complex \
   /Users/stahlber/Projects/emsdk/upstream/emscripten/cache/sysroot/include/c++/v1/sstream \
@@ -1003,6 +994,7 @@ CMakeFiles/ft.dir/ftwindow_mouse.cpp.o: \
   /Users/stahlber/Projects/emsdk/upstream/emscripten/cache/sysroot/include/c++/v1/ostream \
   /Users/stahlber/Projects/emsdk/upstream/emscripten/cache/sysroot/include/c++/v1/bitset \
   /Users/stahlber/Projects/ft/mrcloader.h \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/QString \
   /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtWidgets/QApplication \
   /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtWidgets/qapplication.h \
   /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qcoreapplication.h \
@@ -1017,6 +1009,8 @@ CMakeFiles/ft.dir/ftwindow_mouse.cpp.o: \
   /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtGui/qguiapplication_platform.h \
   /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtGui/QScreen \
   /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtGui/qscreen.h \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/QList \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/QObject \
   /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/QRect \
   /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/QSize \
   /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/QSizeF \

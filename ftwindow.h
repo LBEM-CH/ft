@@ -9,8 +9,7 @@
 #include <QCheckBox>
 #include <QComboBox>
 #ifdef __EMSCRIPTEN__
-#include <QNetworkAccessManager>
-#include <QNetworkReply>
+#include <emscripten.h>
 #endif
 #include <vector>
 #include "fft.h"          // Complex, nextPow2, fft2d, fftShift, floatToImage
@@ -90,7 +89,6 @@ private:
     void loadImageData(const QString &fileName, const QByteArray &fileData);
 #ifdef __EMSCRIPTEN__
     void fetchAndLoadImage(const QString &relativePath);
-    QNetworkAccessManager *m_nam = nullptr;
 #endif
     void padImageToSquare();
     void extractImageData();

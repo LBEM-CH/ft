@@ -6,9 +6,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets)
-if(EMSCRIPTEN)
-    find_package(Qt6 REQUIRED COMPONENTS Network)
-endif()
 
 add_executable(ft
     main.cpp
@@ -26,7 +23,7 @@ set_target_properties(ft PROPERTIES
 
 if(EMSCRIPTEN)
     # ---- WebAssembly build ----
-    target_link_libraries(ft PRIVATE Qt6::Widgets Qt6::Network)
+    target_link_libraries(ft PRIVATE Qt6::Widgets)
     target_link_options(ft PRIVATE
         -sALLOW_MEMORY_GROWTH=1
         -sINITIAL_MEMORY=256MB

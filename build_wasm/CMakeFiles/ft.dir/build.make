@@ -244,7 +244,6 @@ ft.js: /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/objects-Release/Widgets_re
 ft.js: /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/objects-Release/Widgets_resources_4/.qt/rcc/qrc_qmessagebox_init.cpp.o
 ft.js: /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/objects-Release/Gui_resources_1/.qt/rcc/qrc_qpdf_init.cpp.o
 ft.js: /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/objects-Release/Gui_resources_2/.qt/rcc/qrc_gui_shaders_init.cpp.o
-ft.js: /Users/stahlber/Qt/6.8.3/wasm_singlethread/plugins/tls/objects-Release/QTlsBackendCertOnlyPlugin_init/QTlsBackendCertOnlyPlugin_init.cpp.o
 ft.js: /Users/stahlber/Qt/6.8.3/wasm_singlethread/plugins/imageformats/objects-Release/QGifPlugin_init/QGifPlugin_init.cpp.o
 ft.js: /Users/stahlber/Qt/6.8.3/wasm_singlethread/plugins/imageformats/objects-Release/QICOPlugin_init/QICOPlugin_init.cpp.o
 ft.js: /Users/stahlber/Qt/6.8.3/wasm_singlethread/plugins/imageformats/objects-Release/QJpegPlugin_init/QJpegPlugin_init.cpp.o
@@ -254,7 +253,6 @@ ft.js: /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/objects-Release/QWasmInteg
 ft.js: /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/objects-Release/QWasmIntegrationPlugin_resources_2/.qt/rcc/qrc_wasmwindow_init.cpp.o
 ft.js: /Users/stahlber/Qt/6.8.3/wasm_singlethread/plugins/platforms/objects-Release/QWasmIntegrationPlugin_init/QWasmIntegrationPlugin_init.cpp.o
 ft.js: /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/libQt6Widgets.a
-ft.js: /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/libQt6Network.a
 ft.js: /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/libQt6Gui.a
 ft.js: /Users/stahlber/Qt/6.8.3/wasm_singlethread/plugins/imageformats/libqgif.a
 ft.js: /Users/stahlber/Qt/6.8.3/wasm_singlethread/plugins/imageformats/libqico.a
@@ -277,9 +275,6 @@ ft.js: /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/libQt6BundledHarfbuzz.a
 ft.js: /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/libQt6BundledFreetype.a
 ft.js: /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/libQt6BundledLibpng.a
 ft.js: /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/libQt6BundledLibjpeg.a
-ft.js: /Users/stahlber/Qt/6.8.3/wasm_singlethread/plugins/tls/libqcertonlybackend.a
-ft.js: /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/libQt6Network.a
-ft.js: /Users/stahlber/Qt/6.8.3/wasm_singlethread/plugins/tls/libqcertonlybackend.a
 ft.js: /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/libQt6Core.a
 ft.js: /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/libQt6BundledZLIB.a
 ft.js: /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/libQt6BundledPcre2.a
