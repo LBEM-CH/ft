@@ -52,25 +52,26 @@ void FtWindow::paintEvent(QPaintEvent *)
         p.drawText(cx + 2 + (width() - cx - 2 - tfm.horizontalAdvance(t2)) / 2, 8 + tfm.ascent(), t2);
     }
 
-    // ---- Tool button columns (8 squares each) ----------------------------------
+    // ---- Tool button columns ----------------------------------
     {
         int btnSide = std::max(width() * 5 / 400, 20);
         int gap = 2;
-        int totalH = 8 * btnSide + 7 * gap;
+        int totalH = P1_TOOL_BUTTONS * btnSide + (P1_TOOL_BUTTONS - 1) * gap;
         int startY = (hy - totalH) / 2;
 
         int offset = btnSide / 2;
 
         // Panel 1: left edge
-        for (int i = 0; i < 8; i++) {
+        for (int i = 0; i < P1_TOOL_BUTTONS; i++) {
             int by = startY + i * (btnSide + gap);
             QRect r(offset, by, btnSide, btnSide);
             m_p1BtnRects[i] = r;
 
             p.setPen(QPen(Qt::white, 1));
             if ((i == 0 && m_p1EraserActive) || (i == 1 && m_p1BrushActive) ||
-                (i == 4 && m_shiftActive) || (i == 5 && m_rotateActive) || (i == 6 && m_binActive) ||
-                (i == 7 && m_mathActive))
+                (i == 4 && m_shiftActive) || (i == 5 && m_rotateActive) ||
+                (i == 6 && m_p1TaperActive) || (i == 7 && m_binActive) ||
+                (i == 8 && m_mathActive))
                 p.setBrush(QColor(60, 60, 60));
             else
                 p.setBrush(QColor(0, 0, 0));
@@ -345,8 +346,41 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Bin image icon (button 6): 2x2 grid representing pixel binning
+            // Taper edges icon (button 6): white square ring with black center
             if (i == 6) {
+                p.setRenderHint(QPainter::Antialiasing, true);
+                QColor col = m_p1TaperActive ? QColor(180, 180, 255) : Qt::white;
+                int side = static_cast<int>(btnSide * 0.85);
+                int left = r.x() + (r.width() - side) / 2;
+                int top = r.y() + (r.height() - side) / 2;
+                QRect outer(left, top, side, side);
+                int ring = std::max(1, side / 10);
+                QRect inner = outer.adjusted(ring, ring, -ring, -ring);
+
+                p.setPen(Qt::NoPen);
+                p.setBrush(col);
+                p.drawRect(outer);
+                p.setBrush(Qt::black);
+                p.drawRect(inner);
+                p.setRenderHint(QPainter::Antialiasing, false);
+
+                if (r.contains(m_mousePos)) {
+                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                    QFontMetrics ttfm(ttf);
+                    QString tip = "Taper edges";
+                    int ttw = ttfm.horizontalAdvance(tip) + 8;
+                    int tth = ttfm.height() + 4;
+                    int ttx = r.right() + 4;
+                    int tty = r.center().y() - tth / 2;
+                    p.setPen(QPen(Qt::white, 1));
+                    p.setBrush(QColor(40, 40, 40));
+                    p.drawRect(ttx, tty, ttw, tth);
+                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                }
+            }
+
+            // Bin image icon (button 7): 2x2 grid representing pixel binning
+            if (i == 7) {
                 if (m_binActive) {
                     p.setPen(QPen(Qt::white, 1));
                     p.setBrush(QColor(60, 60, 60));
@@ -386,8 +420,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Math calculations icon (button 7): Sigma/Sum sign
-            if (i == 7) {
+            // Math calculations icon (button 8): Sigma/Sum sign
+            if (i == 8) {
                 if (m_mathActive) {
                     p.setPen(QPen(Qt::white, 1));
                     p.setBrush(QColor(60, 60, 60));
@@ -437,13 +471,17 @@ void FtWindow::paintEvent(QPaintEvent *)
         }
 
         // Panel 2: right edge
-        for (int i = 0; i < 8; i++) {
+        for (int i = 0; i < P2_TOOL_BUTTONS; i++) {
             int by = startY + i * (btnSide + gap);
             QRect r(width() - btnSide - offset, by, btnSide, btnSide);
             m_toolBtnRects[i] = r;
 
             p.setPen(QPen(Qt::white, 1));
-            if ((i == 0 && m_eraserActive) || (i == 1 && m_brushActive) || (i == 2 && m_bandpassActive) || (i == 3 && m_directionalActive) || (i == 4 && m_latticeActive) || (i == 5 && m_ftRotateActive) || (i == 6 && m_ftCropActive) || (i == 7 && m_ftMathActive))
+            if ((i == 0 && m_eraserActive) || (i == 1 && m_brushActive) ||
+                (i == 2 && m_bandpassActive) || (i == 3 && m_directionalActive) ||
+                (i == 4 && m_lineFilterActive) || (i == 5 && m_latticeActive) ||
+                (i == 6 && m_ftRotateActive) || (i == 7 && m_ftCropActive) ||
+                (i == 8 && m_ftMathActive))
                 p.setBrush(QColor(60, 60, 60));
             else
                 p.setBrush(QColor(0, 0, 0));
@@ -624,8 +662,40 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Lattice filter icon (button 4): hexagonal dot pattern
+            // Line filter icon (button 4): 30-degree line spanning the icon
             if (i == 4) {
+                p.setRenderHint(QPainter::Antialiasing, true);
+                QColor col = m_lineFilterActive ? QColor(180, 180, 255) : QColor(200, 200, 255);
+                double angle = 30.0 * M_PI / 180.0;
+                double halfLen = std::sqrt(r.width() * r.width() + r.height() * r.height()) / 2.0;
+                double cx2 = r.center().x();
+                double cy2 = r.center().y();
+                double dx = std::cos(angle) * halfLen;
+                double dy = std::sin(angle) * halfLen;
+                p.setPen(QPen(col, std::max(2, btnSide / 10)));
+                p.save();
+                p.setClipRect(r.adjusted(1, 1, -1, -1));
+                p.drawLine(QPointF(cx2 - dx, cy2 + dy), QPointF(cx2 + dx, cy2 - dy));
+                p.restore();
+                p.setRenderHint(QPainter::Antialiasing, false);
+
+                if (r.contains(m_mousePos)) {
+                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                    QFontMetrics ttfm(ttf);
+                    QString tip = "Line filter";
+                    int ttw = ttfm.horizontalAdvance(tip) + 8;
+                    int tth = ttfm.height() + 4;
+                    int ttx = r.left() - ttw - 4;
+                    int tty = r.center().y() - tth / 2;
+                    p.setPen(QPen(Qt::white, 1));
+                    p.setBrush(QColor(40, 40, 40));
+                    p.drawRect(ttx, tty, ttw, tth);
+                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                }
+            }
+
+            // Lattice filter icon (button 5): hexagonal dot pattern
+            if (i == 5) {
                 p.setRenderHint(QPainter::Antialiasing, true);
                 double cx2 = r.x() + r.width() / 2.0;
                 double cy2 = r.y() + r.height() / 2.0;
@@ -660,8 +730,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Rotate Fourier space icon (button 5): curved arrow (same as panel 1 rotate)
-            if (i == 5) {
+            // Rotate Fourier space icon (button 6): curved arrow (same as panel 1 rotate)
+            if (i == 6) {
                 p.setRenderHint(QPainter::Antialiasing, true);
                 double cx2 = r.x() + r.width() / 2.0;
                 double cy2 = r.y() + r.height() / 2.0;
@@ -703,8 +773,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Fourier crop icon (button 6): 2x2 grid (same as panel 1 binning)
-            if (i == 6) {
+            // Fourier crop icon (button 7): 2x2 grid (same as panel 1 binning)
+            if (i == 7) {
                 QColor col = m_ftCropActive ? QColor(180, 180, 255) : Qt::white;
                 int m = std::max(2, btnSide / 5);
                 QRect inner = r.adjusted(m, m, -m, -m);
@@ -736,8 +806,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Fourier math icon (button 7): Sigma/Sum sign
-            if (i == 7) {
+            // Fourier math icon (button 8): Sigma/Sum sign
+            if (i == 8) {
                 p.setRenderHint(QPainter::Antialiasing, true);
                 int inset = std::max(3, btnSide / 4);
                 QRect ir = r.adjusted(inset, inset, -inset, -inset);
@@ -1054,6 +1124,8 @@ void FtWindow::paintEvent(QPaintEvent *)
             drawHistogram(p, frame, m_powerVals, m_powerMin, m_powerMax, hy - frame.bottom(),
                           HIST_POWER, m_powerDispMin, m_powerDispMax);
 
+            if (m_lineFilterActive)
+                drawLineFilter(p, inner, m_zoom[1], m_fftN, m_fftN);
             if (m_bandpassActive)
                 drawBandpassRing(p, inner, m_zoom[1], m_fftN, m_fftN);
             if (m_directionalActive)
@@ -1136,6 +1208,10 @@ void FtWindow::paintEvent(QPaintEvent *)
             drawHistogram(p, frame2, *vals2, min2, max2, hy - frame2.bottom(),
                           HIST_FT_RIGHT, dmin2, dmax2);
 
+            if (m_lineFilterActive) {
+                drawLineFilter(p, inner1, m_zoom[1], m_fftN, m_fftN);
+                drawLineFilter(p, inner2, m_zoom[2], m_fftN, m_fftN);
+            }
             if (m_bandpassActive) {
                 drawBandpassRing(p, inner1, m_zoom[1], m_fftN, m_fftN);
                 drawBandpassRing(p, inner2, m_zoom[2], m_fftN, m_fftN);
@@ -1329,7 +1405,7 @@ void FtWindow::paintEvent(QPaintEvent *)
         QFontMetrics fm(sf);
 
         // Panel 2 tool option rectangles (bottom-right of panel 2)
-        bool p2Tool = m_bandpassActive || m_directionalActive || m_brushActive
+        bool p2Tool = m_bandpassActive || m_directionalActive || m_lineFilterActive || m_brushActive
                       || m_eraserActive || m_latticeActive || m_ftCropActive;
         if (p2Tool) {
             int nRows = 0;
@@ -1348,6 +1424,13 @@ void FtWindow::paintEvent(QPaintEvent *)
             } else if (m_eraserActive) {
                 nRows = 1;
                 textW = fm.horizontalAdvance("Eraser Gaussian diameter: ") + m_eraserDiameterEdit->width();
+            } else if (m_lineFilterActive) {
+                nRows = 4;
+                int r1 = fm.horizontalAdvance("Width of line: ") + m_lineWidthEdit->width();
+                int r2 = fm.horizontalAdvance("Direction of the line: ") + m_lineDirectionEdit->width();
+                int r3 = m_lineEraseOutsideBtn->width();
+                int r4 = m_applyLineBtn->width();
+                textW = std::max({r1, r2, r3, r4});
             } else if (m_latticeActive) {
                 nRows = 4;
                 int r1 = fm.horizontalAdvance("Smooth edge by pixels: ") + m_latticeSmoothEdit->width();
@@ -1389,6 +1472,13 @@ void FtWindow::paintEvent(QPaintEvent *)
             } else if (m_eraserActive) {
                 p.drawText(tx, ty + fm.ascent(), "Eraser Gaussian diameter:");
                 m_eraserDiameterEdit->move(tx + fm.horizontalAdvance("Eraser Gaussian diameter: "), ty);
+            } else if (m_lineFilterActive) {
+                p.drawText(tx, ty + fm.ascent(), "Width of line:");
+                m_lineWidthEdit->move(tx + fm.horizontalAdvance("Width of line: "), ty);
+                p.drawText(tx, ty + lh + fm.ascent(), "Direction of the line:");
+                m_lineDirectionEdit->move(tx + fm.horizontalAdvance("Direction of the line: "), ty + lh);
+                m_lineEraseOutsideBtn->move(tx, ty + lh * 2);
+                m_applyLineBtn->move(tx, ty + lh * 3);
             } else if (m_latticeActive) {
                 p.drawText(tx, ty + fm.ascent(), "Smooth edge by pixels:");
                 m_latticeSmoothEdit->move(tx + fm.horizontalAdvance("Smooth edge by pixels: "), ty);
@@ -1404,7 +1494,7 @@ void FtWindow::paintEvent(QPaintEvent *)
         }
 
         // Panel 1 tool option rectangles (bottom-left of panel 1)
-        bool p1Tool = m_p1EraserActive || m_p1BrushActive || m_binActive;
+        bool p1Tool = m_p1EraserActive || m_p1BrushActive || m_p1TaperActive || m_binActive;
         if (p1Tool) {
             int nRows = 0;
             int textW = 0;
@@ -1415,6 +1505,11 @@ void FtWindow::paintEvent(QPaintEvent *)
                 nRows = 2;
                 int r1 = fm.horizontalAdvance("Pixel value to enter: ") + m_p1BrushValueEdit->width();
                 int r2 = fm.horizontalAdvance("Paint brush Gaussian diameter: ") + m_p1BrushDiameterEdit->width();
+                textW = std::max(r1, r2);
+            } else if (m_p1TaperActive) {
+                nRows = 2;
+                int r1 = fm.horizontalAdvance("Hanning width: ") + m_p1TaperWidthEdit->width();
+                int r2 = m_applyP1TaperBtn->width();
                 textW = std::max(r1, r2);
             } else if (m_binActive) {
                 nRows = 3;
@@ -1444,6 +1539,10 @@ void FtWindow::paintEvent(QPaintEvent *)
                 m_p1BrushValueEdit->move(tx + fm.horizontalAdvance("Pixel value to enter: "), ty);
                 p.drawText(tx, ty + lh + fm.ascent(), "Paint brush Gaussian diameter:");
                 m_p1BrushDiameterEdit->move(tx + fm.horizontalAdvance("Paint brush Gaussian diameter: "), ty + lh);
+            } else if (m_p1TaperActive) {
+                p.drawText(tx, ty + fm.ascent(), "Hanning width:");
+                m_p1TaperWidthEdit->move(tx + fm.horizontalAdvance("Hanning width: "), ty);
+                m_applyP1TaperBtn->move(tx, ty + lh);
             } else if (m_binActive) {
                 m_binCombo->move(tx, ty);
                 m_binKeepSizeBtn->move(tx, ty + lh);

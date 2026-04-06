@@ -1225,6 +1225,73 @@ void FtWindow::onApplyBinning()
     update();
 }
 
+void FtWindow::onApplyEdgeTaper()
+{
+    if (m_image.isNull()) return;
+
+    int w = m_image.width();
+    int h = m_image.height();
+    if ((int)m_imageRawPixels.size() != w * h) return;
+
+    bool ok = false;
+    double taperWidth = m_p1TaperWidthEdit->text().toDouble(&ok);
+    if (!ok || taperWidth <= 0.0) return;
+
+    double maxWidth = std::max(1.0, std::min(w, h) / 2.0 - 1.0);
+    taperWidth = std::clamp(taperWidth, 1.0, maxWidth);
+
+    double edgeSum = 0.0;
+    int edgeCount = 0;
+    for (int x = 0; x < w; x++) {
+        edgeSum += m_imageRawPixels[x];
+        edgeSum += m_imageRawPixels[(h - 1) * w + x];
+        edgeCount += 2;
+    }
+    for (int y = 1; y < h - 1; y++) {
+        edgeSum += m_imageRawPixels[y * w];
+        edgeSum += m_imageRawPixels[y * w + (w - 1)];
+        edgeCount += 2;
+    }
+    if (edgeCount == 0) return;
+
+    double edgeAvg = edgeSum / edgeCount;
+
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            double dist = std::min({
+                static_cast<double>(x),
+                static_cast<double>(w - 1 - x),
+                static_cast<double>(y),
+                static_cast<double>(h - 1 - y)
+            });
+            if (dist >= taperWidth) continue;
+
+            double phase = (taperWidth - dist) / taperWidth;
+            double keep = 0.5 * (1.0 + std::cos(M_PI * phase));
+            double &pix = m_imageRawPixels[y * w + x];
+            pix = pix * keep + edgeAvg * (1.0 - keep);
+        }
+    }
+
+    rebuildImageFromRaw();
+    if (m_ftComputed)
+        computeFFT();
+
+    if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS) {
+        m_history[m_activeSlot].image = m_image;
+        m_history[m_activeSlot].rawPixels = m_imageRawPixels;
+        m_history[m_activeSlot].minVal = m_imageMinVal;
+        m_history[m_activeSlot].maxVal = m_imageMaxVal;
+        m_history[m_activeSlot].pixelSize = m_pixelSize;
+        m_history[m_activeSlot].occupied = true;
+        if (m_ftComputed)
+            m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
+    }
+
+    saveHistory();
+    update();
+}
+
 void FtWindow::onApplyFtCrop()
 {
     if (!m_ftComputed || m_fftN == 0) return;
@@ -1339,6 +1406,40 @@ void FtWindow::onApplyDirectional()
 
             if (factor < 1.0)
                 m_fftData[y * N + x] *= factor;
+        }
+    }
+
+    recomputeDisplayImages();
+    computeInverseFFT();
+    update();
+}
+
+void FtWindow::onApplyLineFilter()
+{
+    if (!m_ftComputed || m_fftN == 0) return;
+
+    bool okWidth = false;
+    bool okAngle = false;
+    double lineWidth = m_lineWidthEdit->text().toDouble(&okWidth);
+    double angleDeg = m_lineDirectionEdit->text().toDouble(&okAngle);
+    if (!okWidth || lineWidth <= 0.0) return;
+    if (!okAngle) angleDeg = 0.0;
+
+    double halfWidth = lineWidth / 2.0;
+    double angle = angleDeg * M_PI / 180.0;
+    double normX = -std::sin(angle);
+    double normY =  std::cos(angle);
+    double imgCenter = m_fftN / 2.0 + 0.5;
+    bool eraseOutside = m_lineEraseOutsideBtn->isChecked();
+
+    for (int y = 0; y < m_fftN; y++) {
+        for (int x = 0; x < m_fftN; x++) {
+            double relX = x - imgCenter;
+            double relY = y - imgCenter;
+            double dist = std::abs(relX * normX + relY * normY - m_lineOffset);
+            bool inside = dist <= halfWidth;
+            if ((eraseOutside && !inside) || (!eraseOutside && inside))
+                m_fftData[y * m_fftN + x] = Complex(0.0, 0.0);
         }
     }
 

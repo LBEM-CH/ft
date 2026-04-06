@@ -76,6 +76,8 @@ private slots:
     void onCycleMode();
     void onToggleMask(bool checked);
     void onApplyBandpass();
+    void onApplyEdgeTaper();
+    void onApplyLineFilter();
 
 private:
     // loading / computation
@@ -193,8 +195,10 @@ private:
     QPoint      m_mousePos;         // current mouse position
 
     // ---- tool buttons ----
-    QRect       m_p1BtnRects[8];       // panel 1 left edge
-    QRect       m_toolBtnRects[8];     // panel 2 right edge
+    static constexpr int P1_TOOL_BUTTONS = 9;
+    static constexpr int P2_TOOL_BUTTONS = 9;
+    QRect       m_p1BtnRects[P1_TOOL_BUTTONS];       // panel 1 left edge
+    QRect       m_toolBtnRects[P2_TOOL_BUTTONS];     // panel 2 right edge
 
     // Panel 1 tools
     bool        m_shiftActive = false;
@@ -203,6 +207,7 @@ private:
     QPoint      m_p1DragStart;         // screen pos at drag start
     bool        m_p1EraserActive = false;
     bool        m_p1BrushActive = false;
+    bool        m_p1TaperActive = false;
     bool        m_p1ToolDragging = false;  // mouse button held while painting/erasing in panel 1
 
     // Panel 1 eraser/brush parameter widgets
@@ -212,6 +217,9 @@ private:
     QLineEdit  *m_p1BrushValueEdit = nullptr;
     QLabel     *m_p1BrushDiamLabel = nullptr;
     QLineEdit  *m_p1BrushDiameterEdit = nullptr;
+    QLabel     *m_p1TaperWidthLabel = nullptr;
+    QLineEdit  *m_p1TaperWidthEdit = nullptr;
+    QPushButton *m_applyP1TaperBtn = nullptr;
 
     void p1EraserApply(QPoint pos);
     void p1BrushApply(QPoint pos);
@@ -266,6 +274,18 @@ private:
 
     void drawBandpassRing(QPainter &p, const QRect &screenRect,
                           const ZoomState &zoom, int imgW, int imgH);
+
+    // ---- line filter ----
+    bool        m_lineFilterActive = false;
+    bool        m_lineDragging = false;
+    double      m_lineOffset = 0.0;    // signed offset from Fourier center in pixels
+    QLineEdit  *m_lineWidthEdit = nullptr;
+    QLineEdit  *m_lineDirectionEdit = nullptr;
+    QCheckBox  *m_lineEraseOutsideBtn = nullptr;
+    QPushButton *m_applyLineBtn = nullptr;
+
+    void drawLineFilter(QPainter &p, const QRect &screenRect,
+                        const ZoomState &zoom, int imgW, int imgH);
 
     // ---- Fourier-space rotate ----
     bool        m_ftRotateActive = false;

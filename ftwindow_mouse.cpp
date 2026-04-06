@@ -80,12 +80,14 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
     auto deactivateAllP1Tools = [&]() {
         m_p1EraserActive = false; m_p1BrushActive = false;
         m_shiftActive = false; m_rotateActive = false;
-        m_binActive = false; m_mathActive = false;
+        m_p1TaperActive = false; m_binActive = false; m_mathActive = false;
     };
     auto showP1ToolWidgets = [&]() {
         m_p1EraserDiameterEdit->setVisible(m_p1EraserActive);
         m_p1BrushValueEdit->setVisible(m_p1BrushActive);
         m_p1BrushDiameterEdit->setVisible(m_p1BrushActive);
+        m_p1TaperWidthEdit->setVisible(m_p1TaperActive);
+        m_applyP1TaperBtn->setVisible(m_p1TaperActive);
         m_binCombo->setVisible(m_binActive);
         m_binKeepSizeBtn->setVisible(m_binActive);
         m_applyBinBtn->setVisible(m_binActive);
@@ -135,10 +137,14 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         m_rotateActive = !was; showP1ToolWidgets(); update(); return;
     }
     if (m_p1BtnRects[6].contains(event->pos())) {
+        bool was = m_p1TaperActive; deactivateAllP1Tools();
+        m_p1TaperActive = !was; showP1ToolWidgets(); update(); return;
+    }
+    if (m_p1BtnRects[7].contains(event->pos())) {
         bool was = m_binActive; deactivateAllP1Tools();
         m_binActive = !was; showP1ToolWidgets(); update(); return;
     }
-    if (m_p1BtnRects[7].contains(event->pos())) {
+    if (m_p1BtnRects[8].contains(event->pos())) {
         bool was = m_mathActive; deactivateAllP1Tools();
         m_mathActive = !was; showP1ToolWidgets(); update(); return;
     }
@@ -172,6 +178,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
     auto deactivateAllTools = [&]() {
         m_eraserActive = false; m_brushActive = false;
         m_bandpassActive = false; m_directionalActive = false;
+        m_lineFilterActive = false;
         m_latticeActive = false; m_ftRotateActive = false;
         m_ftCropActive = false; m_ftMathActive = false;
     };
@@ -185,6 +192,11 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         m_brushDiameterEdit->setVisible(m_brushActive);
 
         m_eraserDiameterEdit->setVisible(m_eraserActive);
+
+        m_lineWidthEdit->setVisible(m_lineFilterActive);
+        m_lineDirectionEdit->setVisible(m_lineFilterActive);
+        m_lineEraseOutsideBtn->setVisible(m_lineFilterActive);
+        m_applyLineBtn->setVisible(m_lineFilterActive);
 
         m_latticeSmoothEdit->setVisible(m_latticeActive);
         m_latticeDotDiamEdit->setVisible(m_latticeActive);
@@ -226,20 +238,53 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         m_directionalActive = !was; showToolWidgets(); update(); return;
     }
     if (m_toolBtnRects[4].contains(event->pos())) {
+        bool was = m_lineFilterActive; deactivateAllTools();
+        m_lineFilterActive = !was; showToolWidgets(); update(); return;
+    }
+    if (m_toolBtnRects[5].contains(event->pos())) {
         bool was = m_latticeActive; deactivateAllTools();
         m_latticeActive = !was; showToolWidgets(); update(); return;
     }
-    if (m_toolBtnRects[5].contains(event->pos())) {
+    if (m_toolBtnRects[6].contains(event->pos())) {
         bool was = m_ftRotateActive; deactivateAllTools();
         m_ftRotateActive = !was; showToolWidgets(); update(); return;
     }
-    if (m_toolBtnRects[6].contains(event->pos())) {
+    if (m_toolBtnRects[7].contains(event->pos())) {
         bool was = m_ftCropActive; deactivateAllTools();
         m_ftCropActive = !was; showToolWidgets(); update(); return;
     }
-    if (m_toolBtnRects[7].contains(event->pos())) {
+    if (m_toolBtnRects[8].contains(event->pos())) {
         bool was = m_ftMathActive; deactivateAllTools();
         m_ftMathActive = !was; showToolWidgets(); update(); return;
+    }
+
+    if (m_lineFilterActive && m_ftComputed && m_fftN > 0) {
+        double halfN = m_fftN / 2.0;
+        double imgCenter = halfN + 0.5;
+        bool ok = false;
+        double angleDeg = m_lineDirectionEdit->text().toDouble(&ok);
+        if (!ok) angleDeg = 0.0;
+        double angle = angleDeg * M_PI / 180.0;
+        double nx = -std::sin(angle);
+        double ny =  std::cos(angle);
+
+        for (int i = 0; i < m_numDispItems; i++) {
+            const DisplayItem &di = m_dispItems[i];
+            if (!di.valid || di.zoomIdx < 1) continue;
+            if (!di.screenRect.contains(event->pos())) continue;
+
+            ZoomState &z = m_zoom[di.zoomIdx];
+            QRectF src = z.visibleRect(di.imgW, di.imgH);
+            double imgX = src.x() + (event->pos().x() - di.screenRect.x())
+                          / (double)di.screenRect.width() * src.width();
+            double imgY = src.y() + (event->pos().y() - di.screenRect.y())
+                          / (double)di.screenRect.height() * src.height();
+            m_lineOffset = (imgX - imgCenter) * nx + (imgY - imgCenter) * ny;
+            m_lineDragging = true;
+            m_toolDragging = true;
+            update();
+            return;
+        }
     }
 
     // Lattice vector drag
@@ -464,6 +509,7 @@ void FtWindow::mouseReleaseEvent(QMouseEvent *event)
         m_bandDragging = 0;
         m_dirDragging = 0;
         m_latticeDragging = 0;
+        m_lineDragging = false;
         if (wasPainting && m_ftComputed) {
             computeInverseFFT();
             update();
@@ -700,6 +746,30 @@ void FtWindow::mouseMoveEvent(QMouseEvent *event)
                 double angle = std::atan2(imgY - imgCenter, imgX - imgCenter) * 180.0 / M_PI;
                 if (m_dirDragging == 1) m_dirAngle1 = angle;
                 else                    m_dirAngle2 = angle;
+                update();
+                break;
+            }
+            return;
+        }
+        if (m_lineDragging && m_fftN > 0) {
+            double halfN = m_fftN / 2.0;
+            double imgCenter = halfN + 0.5;
+            bool ok = false;
+            double angleDeg = m_lineDirectionEdit->text().toDouble(&ok);
+            if (!ok) angleDeg = 0.0;
+            double angle = angleDeg * M_PI / 180.0;
+            double nx = -std::sin(angle);
+            double ny =  std::cos(angle);
+            for (int i = 0; i < m_numDispItems; i++) {
+                const DisplayItem &di = m_dispItems[i];
+                if (!di.valid || di.zoomIdx < 1) continue;
+                ZoomState &z = m_zoom[di.zoomIdx];
+                QRectF src = z.visibleRect(di.imgW, di.imgH);
+                double imgX = src.x() + (event->pos().x() - di.screenRect.x())
+                              / (double)di.screenRect.width() * src.width();
+                double imgY = src.y() + (event->pos().y() - di.screenRect.y())
+                              / (double)di.screenRect.height() * src.height();
+                m_lineOffset = (imgX - imgCenter) * nx + (imgY - imgCenter) * ny;
                 update();
                 break;
             }

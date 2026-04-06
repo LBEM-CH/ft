@@ -450,6 +450,78 @@ void FtWindow::drawBandpassRing(QPainter &p, const QRect &screenRect,
     p.setRenderHint(QPainter::Antialiasing, false);
 }
 
+void FtWindow::drawLineFilter(QPainter &p, const QRect &screenRect,
+                              const ZoomState &zoom, int imgW, int imgH)
+{
+    int N = m_fftN;
+    if (N == 0) return;
+
+    bool okWidth = false;
+    bool okAngle = false;
+    double lineWidth = m_lineWidthEdit->text().toDouble(&okWidth);
+    double angleDeg = m_lineDirectionEdit->text().toDouble(&okAngle);
+    if (!okWidth || lineWidth <= 0.0) lineWidth = 1.0;
+    if (!okAngle) angleDeg = 0.0;
+
+    QRectF src = zoom.visibleRect(imgW, imgH);
+    double imgCenter = N / 2.0 + 0.5;
+    double scaleX = screenRect.width() / src.width();
+    double scaleY = screenRect.height() / src.height();
+    double scrCx = screenRect.x() + (imgCenter - src.x()) * scaleX;
+    double scrCy = screenRect.y() + (imgCenter - src.y()) * scaleY;
+
+    double angle = angleDeg * M_PI / 180.0;
+    double dirX = std::cos(angle);
+    double dirY = std::sin(angle);
+    double normX = -std::sin(angle);
+    double normY =  std::cos(angle);
+
+    double baseX = scrCx + m_lineOffset * normX * scaleX;
+    double baseY = scrCy + m_lineOffset * normY * scaleY;
+    double widthPx = lineWidth * std::min(scaleX, scaleY);
+    if (widthPx < 1.0) widthPx = 1.0;
+
+    auto clipLine = [&](double shift) {
+        double x0 = baseX + shift * normX;
+        double y0 = baseY + shift * normY;
+        double tMin = -1e9, tMax = 1e9;
+
+        auto clipAxis = [&](double p0, double dp, double lo, double hi) {
+            if (std::abs(dp) < 1e-9) {
+                if (p0 < lo || p0 > hi) { tMin = 1.0; tMax = 0.0; }
+                return;
+            }
+            double t1 = (lo - p0) / dp;
+            double t2 = (hi - p0) / dp;
+            if (t1 > t2) std::swap(t1, t2);
+            tMin = std::max(tMin, t1);
+            tMax = std::min(tMax, t2);
+        };
+
+        clipAxis(x0, dirX, screenRect.left(), screenRect.right());
+        clipAxis(y0, dirY, screenRect.top(), screenRect.bottom());
+
+        return QLineF(x0 + tMin * dirX, y0 + tMin * dirY,
+                      x0 + tMax * dirX, y0 + tMax * dirY);
+    };
+
+    QLineF mid = clipLine(0.0);
+    QLineF upper = clipLine(widthPx / 2.0);
+    QLineF lower = clipLine(-widthPx / 2.0);
+
+    p.save();
+    p.setRenderHint(QPainter::Antialiasing, true);
+    p.setClipRect(screenRect);
+    p.setPen(QPen(QColor(100, 160, 255, 80), std::max(1.0, widthPx)));
+    p.drawLine(mid);
+    p.setPen(QPen(QColor(80, 130, 255), 2));
+    p.drawLine(mid);
+    p.setPen(QPen(QColor(80, 130, 255, 180), 1));
+    p.drawLine(upper);
+    p.drawLine(lower);
+    p.restore();
+}
+
 void FtWindow::drawDirectionalWedge(QPainter &p, const QRect &screenRect,
                                      const ZoomState &zoom, int imgW, int imgH)
 {

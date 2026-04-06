@@ -65,6 +65,27 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     });
     m_applyBandBtn->hide();
 
+    // Line filter widgets (hidden until line filter mode active)
+    m_lineWidthEdit = new QLineEdit("10", this);
+    m_lineWidthEdit->setFixedSize(40, 22);
+    m_lineWidthEdit->setStyleSheet("background:#222; color:white; border:1px solid #888;");
+    m_lineWidthEdit->hide();
+
+    m_lineDirectionEdit = new QLineEdit("0", this);
+    m_lineDirectionEdit->setFixedSize(50, 22);
+    m_lineDirectionEdit->setStyleSheet("background:#222; color:white; border:1px solid #888;");
+    m_lineDirectionEdit->hide();
+
+    m_lineEraseOutsideBtn = new QCheckBox("Erase pixels outside of line", this);
+    m_lineEraseOutsideBtn->setStyleSheet("color: white;");
+    m_lineEraseOutsideBtn->setChecked(true);
+    m_lineEraseOutsideBtn->hide();
+
+    m_applyLineBtn = new QPushButton("Apply filter", this);
+    m_applyLineBtn->setFixedSize(100, 26);
+    connect(m_applyLineBtn, &QPushButton::clicked, this, &FtWindow::onApplyLineFilter);
+    m_applyLineBtn->hide();
+
     // Brush parameter widgets
     m_brushValueLabel = new QLabel("Pixel value to enter:", this);
     m_brushValueLabel->setStyleSheet("color: white;");
@@ -236,6 +257,19 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_p1BrushDiameterEdit->setStyleSheet("background:#222; color:white; border:1px solid #888;");
     m_p1BrushDiameterEdit->hide();
 
+    // Panel 1 taper widgets
+    m_p1TaperWidthLabel = new QLabel("Hanning width:", this);
+    m_p1TaperWidthLabel->setStyleSheet("color: white;");
+    m_p1TaperWidthLabel->hide();
+    m_p1TaperWidthEdit = new QLineEdit("32", this);
+    m_p1TaperWidthEdit->setFixedSize(50, 22);
+    m_p1TaperWidthEdit->setStyleSheet("background:#222; color:white; border:1px solid #888;");
+    m_p1TaperWidthEdit->hide();
+    m_applyP1TaperBtn = new QPushButton("Apply edge taper", this);
+    m_applyP1TaperBtn->setFixedSize(130, 26);
+    connect(m_applyP1TaperBtn, &QPushButton::clicked, this, &FtWindow::onApplyEdgeTaper);
+    m_applyP1TaperBtn->hide();
+
     // Math calculation widgets (hidden until math button is active)
     auto mathComboStyle = [](QComboBox *cb) {
         cb->setStyleSheet(
@@ -383,6 +417,14 @@ void FtWindow::resizeEvent(QResizeEvent *)
     m_applyBandBtn->setFixedSize(static_cast<int>(100 * sc), btnH);
     m_applyBandBtn->setStyleSheet(btnSS);
 
+    m_lineWidthEdit->setFixedSize(static_cast<int>(40 * sc), editH);
+    m_lineWidthEdit->setStyleSheet(editSS);
+    m_lineDirectionEdit->setFixedSize(static_cast<int>(50 * sc), editH);
+    m_lineDirectionEdit->setStyleSheet(editSS);
+    m_lineEraseOutsideBtn->setStyleSheet(cbSS);
+    m_applyLineBtn->setFixedSize(static_cast<int>(100 * sc), btnH);
+    m_applyLineBtn->setStyleSheet(btnSS);
+
     // Brush/eraser widgets (sizes only)
     m_brushValueEdit->setFixedSize(static_cast<int>(60 * sc), editH);
     m_brushValueEdit->setStyleSheet(editSS);
@@ -420,6 +462,10 @@ void FtWindow::resizeEvent(QResizeEvent *)
     m_p1BrushValueEdit->setStyleSheet(editSS);
     m_p1BrushDiameterEdit->setFixedSize(static_cast<int>(40 * sc), editH);
     m_p1BrushDiameterEdit->setStyleSheet(editSS);
+    m_p1TaperWidthEdit->setFixedSize(static_cast<int>(50 * sc), editH);
+    m_p1TaperWidthEdit->setStyleSheet(editSS);
+    m_applyP1TaperBtn->setFixedSize(static_cast<int>(130 * sc), btnH);
+    m_applyP1TaperBtn->setStyleSheet(btnSS);
 
     // Binning widgets (sizes only)
     m_binCombo->setFixedSize(static_cast<int>(70 * sc), btnH);
