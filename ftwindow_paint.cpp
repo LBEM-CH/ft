@@ -321,7 +321,7 @@ void FtWindow::paintEvent(QPaintEvent *)
                 double ay = cy2 - rad * std::sin(aAngle);
                 double arrowLen = rad * 1.4;
                 double arrowHalfW = rad * 0.56;
-                QPointF tangent(std::sin(aAngle), -std::cos(aAngle));
+                QPointF tangent(-std::sin(aAngle), -std::cos(aAngle));
                 QPointF normal(std::cos(aAngle), std::sin(aAngle));
                 QPointF base(ax, ay);
                 QPointF tip = base + tangent * arrowLen;
@@ -755,7 +755,7 @@ void FtWindow::paintEvent(QPaintEvent *)
                 double ay = cy2 - rad * std::sin(aAngle);
                 double arrowLen = rad * 1.4;
                 double arrowHalfW = rad * 0.56;
-                QPointF tangent(std::sin(aAngle), -std::cos(aAngle));
+                QPointF tangent(-std::sin(aAngle), -std::cos(aAngle));
                 QPointF normal(std::cos(aAngle), std::sin(aAngle));
                 QPointF base(ax, ay);
                 QPointF tip = base + tangent * arrowLen;
