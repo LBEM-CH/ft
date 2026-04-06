@@ -236,7 +236,7 @@ void FtWindow::computeFFT()
     QImage gray = m_image.convertToFormat(QImage::Format_Grayscale8);
     int w = gray.width();
     int h = gray.height();
-    int N = nextPow2(std::max(w, h));
+    int N = nextGoodFFTSize(std::max(w, h));
     m_fftN = N;
     m_origW = w;
     m_origH = h;
@@ -532,7 +532,7 @@ QImage FtWindow::computePowerSpecMasked(const QImage &img)
 
     QImage gray = img.convertToFormat(QImage::Format_Grayscale8);
     int w = gray.width(), h = gray.height();
-    int N = nextPow2(std::max(w, h));
+    int N = nextGoodFFTSize(std::max(w, h));
 
     std::vector<Complex> data(N * N, Complex(0, 0));
     for (int y = 0; y < h; y++) {
@@ -1122,10 +1122,7 @@ void FtWindow::onApplyFtCrop()
         // Extract the central crop region into a smaller FFT
         int newN = cropHalf * 2;
         if (newN < 2) newN = 2;
-        // Round up to next power of 2
-        int pow2 = 1;
-        while (pow2 < newN) pow2 <<= 1;
-        newN = pow2;
+        newN = nextGoodFFTSize(newN);
         cropHalf = newN / 2;
 
         std::vector<Complex> newData(newN * newN, Complex(0.0, 0.0));
@@ -1246,8 +1243,7 @@ void FtWindow::onFtMathCompute()
     // Helper: get raw pixels from a slot
     auto getSlotPixels = [&](int idx, int &w, int &h) -> std::vector<double> {
         if (idx == m_activeSlot && !m_image.isNull()) {
-            w = m_image.width();
-            h = m_image.height();
+            w = m_image.width(); h = m_image.height();
             return m_imageRawPixels;
         }
         if (idx >= 0 && idx < HISTORY_SLOTS && m_history[idx].occupied) {
@@ -1284,62 +1280,19 @@ void FtWindow::onFtMathCompute()
     fixRawPixels(pix1, in1Idx, w1, h1);
     fixRawPixels(pix2, in2Idx, w2, h2);
 
-    // Pad each image to square
-    auto padToSquare = [](std::vector<double> &pix, int &w, int &h) {
-        if (w == h) return;
+    // Compute FFT for a slot's raw pixels, returning shifted FFT and its N
+    auto computeSlotFFT = [](const std::vector<double> &pixels, int w, int h) {
         int S = std::max(w, h);
-        double sum = 0;
-        for (auto v : pix) sum += v;
-        double avg = pix.empty() ? 0.0 : sum / pix.size();
-        std::vector<double> sq(S * S, avg);
-        int offX = (S - w) / 2, offY = (S - h) / 2;
-        for (int y = 0; y < h; y++)
-            for (int x = 0; x < w; x++)
-                sq[(y + offY) * S + (x + offX)] = pix[y * w + x];
-        pix = std::move(sq);
-        w = h = S;
-    };
-    padToSquare(pix1, w1, h1);
-    padToSquare(pix2, w2, h2);
-
-    // Scale both to the same size
-    int S = std::max(w1, w2);
-    auto scaleToSize = [](const std::vector<double> &src, int sw, int S) {
-        if (sw == S) return src;
-        std::vector<double> dst(S * S);
-        for (int y = 0; y < S; y++) {
-            double srcY = y * (sw - 1.0) / (S - 1.0);
-            int y0 = (int)srcY;
-            int y1 = std::min(y0 + 1, sw - 1);
-            double fy = srcY - y0;
-            for (int x = 0; x < S; x++) {
-                double srcX = x * (sw - 1.0) / (S - 1.0);
-                int x0 = (int)srcX;
-                int x1 = std::min(x0 + 1, sw - 1);
-                double fx = srcX - x0;
-                dst[y * S + x] = src[y0 * sw + x0] * (1 - fx) * (1 - fy)
-                               + src[y0 * sw + x1] * fx       * (1 - fy)
-                               + src[y1 * sw + x0] * (1 - fx) * fy
-                               + src[y1 * sw + x1] * fx       * fy;
-            }
-        }
-        return dst;
-    };
-    std::vector<double> a = scaleToSize(pix1, w1, S);
-    std::vector<double> b = scaleToSize(pix2, w2, S);
-
-    // Compute FFTs of both inputs
-    int N = 1;
-    while (N < S) N <<= 1;
-
-    auto computeSlotFFT = [&](const std::vector<double> &pixels, int S, int N) {
+        int N = nextGoodFFTSize(S);
         double sum = 0;
         for (auto v : pixels) sum += v;
-        double avg = sum / (S * S);
+        double avg = pixels.empty() ? 0.0 : sum / pixels.size();
         std::vector<Complex> data(N * N, Complex(avg, 0.0));
-        for (int y = 0; y < S; y++)
-            for (int x = 0; x < S; x++)
-                data[y * N + x] = Complex(pixels[y * S + x], 0.0);
+        // Center the image in the NxN grid
+        int offX = (N - w) / 2, offY = (N - h) / 2;
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+                data[(y + offY) * N + (x + offX)] = Complex(pixels[y * w + x], 0.0);
         // Row FFTs
         std::vector<Complex> row(N);
         for (int y = 0; y < N; y++) {
@@ -1355,11 +1308,29 @@ void FtWindow::onFtMathCompute()
             for (int y = 0; y < N; y++) data[y * N + x] = col[y];
         }
         fftShift(data, N);
-        return data;
+        return std::make_pair(std::move(data), N);
     };
 
-    std::vector<Complex> fft1data = computeSlotFFT(a, S, N);
-    std::vector<Complex> fft2data = computeSlotFFT(b, S, N);
+    auto [fft1data, N1] = computeSlotFFT(pix1, w1, h1);
+    auto [fft2data, N2] = computeSlotFFT(pix2, w2, h2);
+
+    // If FFT sizes differ, zero-pad the smaller one in frequency space
+    // (insert zeros around the edges of the shifted FFT, keeping DC at center)
+    int N = std::max(N1, N2);
+    auto zeroPadFFT = [](const std::vector<Complex> &src, int srcN, int dstN) {
+        if (srcN == dstN) return src;
+        std::vector<Complex> dst(dstN * dstN, Complex(0.0, 0.0));
+        int off = (dstN - srcN) / 2;
+        for (int y = 0; y < srcN; y++)
+            for (int x = 0; x < srcN; x++)
+                dst[(y + off) * dstN + (x + off)] = src[y * srcN + x];
+        // Scale to preserve energy (area ratio)
+        double scale = (double)(dstN * dstN) / (double)(srcN * srcN);
+        for (auto &c : dst) c *= scale;
+        return dst;
+    };
+    if (N1 < N) fft1data = zeroPadFFT(fft1data, N1, N);
+    if (N2 < N) fft2data = zeroPadFFT(fft2data, N2, N);
 
     // Apply complex conjugation to second input if selected
     if (conjugate) {
@@ -1391,38 +1362,53 @@ void FtWindow::onFtMathCompute()
 
     // Inverse FFT to get real-space image
     fftShift(result, N);
-    std::vector<Complex> row(N);
-    for (int y = 0; y < N; y++) {
-        for (int x = 0; x < N; x++) row[x] = result[y * N + x];
-        fft1d(row, true);
-        for (int x = 0; x < N; x++) result[y * N + x] = row[x];
-    }
-    std::vector<Complex> col(N);
-    for (int x = 0; x < N; x++) {
-        for (int y = 0; y < N; y++) col[y] = result[y * N + x];
-        fft1d(col, true);
-        for (int y = 0; y < N; y++) result[y * N + x] = col[y];
+    {
+        std::vector<Complex> row(N);
+        for (int y = 0; y < N; y++) {
+            for (int x = 0; x < N; x++) row[x] = result[y * N + x];
+            fft1d(row, true);
+            for (int x = 0; x < N; x++) result[y * N + x] = row[x];
+        }
+        std::vector<Complex> col(N);
+        for (int x = 0; x < N; x++) {
+            for (int y = 0; y < N; y++) col[y] = result[y * N + x];
+            fft1d(col, true);
+            for (int y = 0; y < N; y++) result[y * N + x] = col[y];
+        }
     }
 
-    // Extract real part
-    int outW = std::min(S, N);
-    int outH = std::min(S, N);
-    std::vector<double> realResult(outW * outH);
-    for (int y = 0; y < outH; y++)
-        for (int x = 0; x < outW; x++)
-            realResult[y * outW + x] = result[y * N + x].real();
+    // For multiplication (convolution) and division, cyclic-shift the result
+    // so that the output feature is centered, matching real-space behavior.
+    // Multiplication in Fourier space = convolution in real space.
+    int halfN = N / 2;
+    int outS = N;
+    std::vector<double> realResult(outS * outS);
+    if (opIdx == 2 || opIdx == 3) {
+        // Convolution/deconvolution: shift by +halfN to center
+        for (int y = 0; y < outS; y++)
+            for (int x = 0; x < outS; x++) {
+                int sy = (y + halfN) % N;
+                int sx = (x + halfN) % N;
+                realResult[y * outS + x] = result[sy * N + sx].real();
+            }
+    } else {
+        // Addition/subtraction: no shift needed
+        for (int y = 0; y < outS; y++)
+            for (int x = 0; x < outS; x++)
+                realResult[y * outS + x] = result[y * N + x].real();
+    }
 
     double minVal = *std::min_element(realResult.begin(), realResult.end());
     double maxVal = *std::max_element(realResult.begin(), realResult.end());
     double range  = maxVal - minVal;
     double scale  = (range > 0) ? 255.0 / range : 1.0;
 
-    QImage outImg(outW, outH, QImage::Format_Grayscale8);
-    for (int y = 0; y < outH; y++) {
+    QImage outImg(outS, outS, QImage::Format_Grayscale8);
+    for (int y = 0; y < outS; y++) {
         uchar *rw = outImg.scanLine(y);
-        for (int x = 0; x < outW; x++)
+        for (int x = 0; x < outS; x++)
             rw[x] = static_cast<uchar>(std::clamp(
-                (realResult[y * outW + x] - minVal) * scale, 0.0, 255.0));
+                (realResult[y * outS + x] - minVal) * scale, 0.0, 255.0));
     }
 
     // Save current active image back to its slot before switching
@@ -1612,7 +1598,7 @@ void FtWindow::onMathCompute()
         std::vector<double> b = scaleToSize(pix2, w2, S);
 
         // Step 4: FFT convolution/correlation
-        int N = nextPow2(S);
+        int N = nextGoodFFTSize(S);
         int halfS = S / 2;
 
         std::vector<Complex> fa(N * N, Complex(0, 0));

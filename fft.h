@@ -8,6 +8,7 @@
 using Complex = std::complex<double>;
 
 int nextPow2(int n);
+int nextGoodFFTSize(int n);
 void fft1d(std::vector<Complex> &data, bool inverse);
 void fft2d(std::vector<Complex> &data, int N, bool inverse);
 void fftShift(std::vector<Complex> &data, int N);

@@ -887,7 +887,13 @@ void FtWindow::paintEvent(QPaintEvent *)
             m_mathCancelBtn->setStyleSheet(btnSS);
             m_mathComputeBtn->setStyleSheet(btnSS);
 
+            // Position the equation widgets centered in the frame
+            int totalEqW = bufW + gap + eqW + gap + bufW + gap + opW + gap + bufW;
+            int eqX = fx + (fw - totalEqW) / 2;
+            int eqY = fy + fh / 2 - comboH / 2;
+
             // Title in top-left corner
+            int titleBottom;
             {
                 int titleFontSize = std::max(14, fontSize * 4 / 3);
                 int titleMarginX = std::max(8, fw / 40);
@@ -897,13 +903,34 @@ void FtWindow::paintEvent(QPaintEvent *)
                 tf.setBold(true);
                 p.setFont(tf);
                 p.setPen(QColor(60, 60, 60));
-                p.drawText(fx + titleMarginX, fy + titleMarginY + QFontMetrics(tf).ascent(), "Image calculation");
+                QFontMetrics tfm(tf);
+                int titleBaseY = fy + titleMarginY + tfm.ascent();
+                p.drawText(fx + titleMarginX, titleBaseY, "Image calculation");
+                titleBottom = titleBaseY + tfm.descent();
             }
 
-            // Position the equation widgets centered in the frame
-            int totalEqW = bufW + gap + eqW + gap + bufW + gap + opW + gap + bufW;
-            int eqX = fx + (fw - totalEqW) / 2;
-            int eqY = fy + fh / 2 - comboH / 2;
+            // Draw clean equation text centered between title and combo row
+            {
+                QString opSym = m_mathOpCombo->currentText();
+                int opIdx2 = m_mathOpCombo->currentIndex();
+                if (opIdx2 == 4) opSym = QString::fromUtf8("\u2731");       // convolute: ✱
+                else if (opIdx2 == 5) opSym = QString::fromUtf8("\u229B");  // correlate: ⊛
+                QString eqText = QString("%1 = %2 %3 %4")
+                    .arg(QChar('a' + m_mathOutCombo->currentIndex()))
+                    .arg(QChar('a' + m_mathIn1Combo->currentIndex()))
+                    .arg(opSym)
+                    .arg(QChar('a' + m_mathIn2Combo->currentIndex()));
+                int eqFontSize = std::max(16, fontSize * 3 / 2);
+                QFont ef("Palatino");
+                ef.setPixelSize(eqFontSize);
+                p.setFont(ef);
+                p.setPen(QColor(40, 40, 40));
+                QFontMetrics efm(ef);
+                int eqTextW = efm.horizontalAdvance(eqText);
+                int gapCenter = titleBottom + (eqY - titleBottom) / 2;
+                int eqTextY = gapCenter - efm.height() / 2;
+                p.drawText(fx + (fw - eqTextW) / 2, eqTextY + efm.ascent(), eqText);
+            }
 
             m_mathOutCombo->move(eqX, eqY);        eqX += bufW + gap;
             m_mathEqualsLabel->move(eqX, eqY);      eqX += eqW + gap;
@@ -1145,7 +1172,13 @@ void FtWindow::paintEvent(QPaintEvent *)
         m_ftMathCancelBtn->setStyleSheet(btnSS);
         m_ftMathComputeBtn->setStyleSheet(btnSS);
 
+        // Position the equation widgets centered in the frame
+        int totalEqW = bufW + gap + eqW + gap + bufW + gap + opW + gap + bufW + gap + conjW;
+        int eqX = fx + (fw - totalEqW) / 2;
+        int eqY = fy + fh / 2 - comboH / 2;
+
         // Title
+        int titleBottom2;
         {
             int titleFontSize = std::max(14, fontSize * 4 / 3);
             int titleMarginX = std::max(8, fw / 40);
@@ -1155,13 +1188,32 @@ void FtWindow::paintEvent(QPaintEvent *)
             tf.setBold(true);
             p.setFont(tf);
             p.setPen(QColor(60, 60, 60));
-            p.drawText(fx + titleMarginX, fy + titleMarginY + QFontMetrics(tf).ascent(), "Fourier calculation");
+            QFontMetrics tfm(tf);
+            int titleBaseY = fy + titleMarginY + tfm.ascent();
+            p.drawText(fx + titleMarginX, titleBaseY, "Fourier calculation");
+            titleBottom2 = titleBaseY + tfm.descent();
         }
 
-        // Position the equation widgets centered in the frame
-        int totalEqW = bufW + gap + eqW + gap + bufW + gap + opW + gap + bufW + gap + conjW;
-        int eqX = fx + (fw - totalEqW) / 2;
-        int eqY = fy + fh / 2 - comboH / 2;
+        // Draw clean equation text centered between title and combo row
+        {
+            QString out  = QString(QChar('A' + m_ftMathOutCombo->currentIndex()));
+            QString in1  = QString(QChar('A' + m_ftMathIn1Combo->currentIndex()));
+            QString op   = m_ftMathOpCombo->currentText();
+            QString in2  = QString(QChar('A' + m_ftMathIn2Combo->currentIndex()));
+            QString conj = (m_ftMathConjCombo->currentIndex() == 1) ? "*" : "";
+            QString eqText = QString("%1 = %2 %3 %4%5")
+                .arg(out).arg(in1).arg(op).arg(in2).arg(conj);
+            int eqFontSize = std::max(16, fontSize * 3 / 2);
+            QFont ef("Palatino");
+            ef.setPixelSize(eqFontSize);
+            p.setFont(ef);
+            p.setPen(QColor(40, 40, 40));
+            QFontMetrics efm(ef);
+            int eqTextW = efm.horizontalAdvance(eqText);
+            int gapCenter = titleBottom2 + (eqY - titleBottom2) / 2;
+            int eqTextY2 = gapCenter - efm.height() / 2;
+            p.drawText(fx + (fw - eqTextW) / 2, eqTextY2 + efm.ascent(), eqText);
+        }
 
         m_ftMathOutCombo->move(eqX, eqY);      eqX += bufW + gap;
         m_ftMathEqualsLabel->move(eqX, eqY);    eqX += eqW + gap;

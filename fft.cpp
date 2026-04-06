@@ -13,7 +13,22 @@ int nextPow2(int n) {
     return p;
 }
 
-void fft1d(std::vector<Complex> &data, bool inverse) {
+// Find the smallest integer >= n whose prime factors are only 2, 3, and 5.
+int nextGoodFFTSize(int n) {
+    if (n <= 1) return 1;
+    int best = nextPow2(n);  // fallback: always valid
+    for (int p5 = 1; p5 <= best; p5 *= 5) {
+        for (int p3 = p5; p3 <= best; p3 *= 3) {
+            int p2 = p3;
+            while (p2 < n) p2 *= 2;
+            if (p2 < best) best = p2;
+        }
+    }
+    return best;
+}
+
+// Radix-2 FFT for power-of-2 sizes (known working implementation)
+static void fft1d_pow2(std::vector<Complex> &data, bool inverse) {
     int n = (int)data.size();
     if (n <= 1) return;
 
@@ -46,11 +61,69 @@ void fft1d(std::vector<Complex> &data, bool inverse) {
     }
 }
 
+// Bluestein's algorithm: compute FFT of any size N by reducing to
+// a power-of-2 convolution.
+static void fft1d_bluestein(std::vector<Complex> &data, bool inverse) {
+    int N = (int)data.size();
+    if (N <= 1) return;
+
+    // Chirp: w[k] = exp(-i * pi * k^2 / N)  (forward)
+    //        w[k] = exp(+i * pi * k^2 / N)  (inverse)
+    double sign = inverse ? 1.0 : -1.0;
+    std::vector<Complex> chirp(N);
+    for (int k = 0; k < N; k++) {
+        double angle = sign * M_PI * ((long long)k * k % (2LL * N)) / N;
+        chirp[k] = Complex(cos(angle), sin(angle));
+    }
+
+    // Convolution size: power of 2 >= 2N - 1
+    int M = nextPow2(2 * N - 1);
+
+    // a[k] = data[k] * chirp[k], zero-padded to M
+    std::vector<Complex> a(M, Complex(0, 0));
+    for (int k = 0; k < N; k++)
+        a[k] = data[k] * chirp[k];
+
+    // b[k] = conj(chirp[k]) with wrap-around, zero-padded to M
+    std::vector<Complex> b(M, Complex(0, 0));
+    b[0] = std::conj(chirp[0]);
+    for (int k = 1; k < N; k++) {
+        b[k]     = std::conj(chirp[k]);
+        b[M - k] = std::conj(chirp[k]);
+    }
+
+    // Convolution via FFT: result = IFFT(FFT(a) * FFT(b))
+    fft1d_pow2(a, false);
+    fft1d_pow2(b, false);
+    for (int i = 0; i < M; i++)
+        a[i] *= b[i];
+    fft1d_pow2(a, true);
+
+    // Extract result: data[k] = a[k] * chirp[k]
+    for (int k = 0; k < N; k++)
+        data[k] = a[k] * chirp[k];
+
+    if (inverse) {
+        for (auto &x : data)
+            x /= N;
+    }
+}
+
+// Public FFT: dispatches to radix-2 or Bluestein
+void fft1d(std::vector<Complex> &data, bool inverse) {
+    int n = (int)data.size();
+    if (n <= 1) return;
+    // Check if n is a power of 2
+    if ((n & (n - 1)) == 0)
+        fft1d_pow2(data, inverse);
+    else
+        fft1d_bluestein(data, inverse);
+}
+
 void fft2d(std::vector<Complex> &data, int N, bool inverse) {
     int nThreads = (int)std::thread::hardware_concurrency();
     if (nThreads < 1) nThreads = 1;
 
-    // Row-wise FFT (each thread gets its own temp buffer)
     auto doRows = [&](int yStart, int yEnd) {
         std::vector<Complex> row(N);
         for (int y = yStart; y < yEnd; y++) {
@@ -74,7 +147,6 @@ void fft2d(std::vector<Complex> &data, int N, bool inverse) {
         for (auto &t : threads) t.join();
     }
 
-    // Column-wise FFT
     auto doCols = [&](int xStart, int xEnd) {
         std::vector<Complex> col(N);
         for (int x = xStart; x < xEnd; x++) {
@@ -101,12 +173,15 @@ void fft2d(std::vector<Complex> &data, int N, bool inverse) {
 
 void fftShift(std::vector<Complex> &data, int N) {
     int half = N / 2;
-    for (int y = 0; y < half; y++) {
-        for (int x = 0; x < half; x++) {
-            std::swap(data[y * N + x], data[(y + half) * N + (x + half)]);
-            std::swap(data[y * N + (x + half)], data[(y + half) * N + x]);
+    std::vector<Complex> tmp(data.size());
+    for (int y = 0; y < N; y++) {
+        int ny = (y + half) % N;
+        for (int x = 0; x < N; x++) {
+            int nx = (x + half) % N;
+            tmp[ny * N + nx] = data[y * N + x];
         }
     }
+    data = std::move(tmp);
 }
 
 QImage floatToImage(const std::vector<double> &vals, int N) {
