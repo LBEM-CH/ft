@@ -984,13 +984,13 @@ void FtWindow::paintEvent(QPaintEvent *)
         auto drawOriginCross = [&](const QRect &screenRect, const ZoomState &zoom,
                                    int imgW, int imgH) {
             QRectF src = zoom.visibleRect(imgW, imgH);
-            double originX = imgW / 2.0;
-            double originY = imgH / 2.0;
+            double originX = imgW / 2.0 + 0.5;  // center of the central pixel
+            double originY = imgH / 2.0 + 0.5;
             // Map image coordinate to screen coordinate
             double sx = screenRect.x() + (originX - src.x()) / src.width()  * screenRect.width();
             double sy = screenRect.y() + (originY - src.y()) / src.height() * screenRect.height();
-            // Cross arm length: 1/16 of image mapped to screen
-            double armImg = imgW / 16.0;
+            // Cross arm length: 1/32 of image mapped to screen
+            double armImg = imgW / 32.0;
             double armScreen = armImg / src.width() * screenRect.width();
             p.save();
             p.setClipRect(screenRect);
