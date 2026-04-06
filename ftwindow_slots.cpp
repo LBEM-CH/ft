@@ -1221,6 +1221,257 @@ void FtWindow::onApplyDirectional()
 // ---------------------------------------------------------------------------
 //  Math calculations
 // ---------------------------------------------------------------------------
+void FtWindow::onFtMathCancel()
+{
+    m_ftMathActive = false;
+    m_ftMathOutCombo->hide();
+    m_ftMathEqualsLabel->hide();
+    m_ftMathIn1Combo->hide();
+    m_ftMathOpCombo->hide();
+    m_ftMathIn2Combo->hide();
+    m_ftMathConjCombo->hide();
+    m_ftMathCancelBtn->hide();
+    m_ftMathComputeBtn->hide();
+    update();
+}
+
+void FtWindow::onFtMathCompute()
+{
+    int outIdx = m_ftMathOutCombo->currentIndex();
+    int in1Idx = m_ftMathIn1Combo->currentIndex();
+    int in2Idx = m_ftMathIn2Combo->currentIndex();
+    int opIdx  = m_ftMathOpCombo->currentIndex();   // 0=+, 1=-, 2=*, 3=/
+    bool conjugate = (m_ftMathConjCombo->currentIndex() == 1);
+
+    // Helper: get raw pixels from a slot
+    auto getSlotPixels = [&](int idx, int &w, int &h) -> std::vector<double> {
+        if (idx == m_activeSlot && !m_image.isNull()) {
+            w = m_image.width();
+            h = m_image.height();
+            return m_imageRawPixels;
+        }
+        if (idx >= 0 && idx < HISTORY_SLOTS && m_history[idx].occupied) {
+            w = m_history[idx].image.width();
+            h = m_history[idx].image.height();
+            return m_history[idx].rawPixels;
+        }
+        w = 0; h = 0;
+        return {};
+    };
+
+    int w1 = 0, h1 = 0, w2 = 0, h2 = 0;
+    std::vector<double> pix1 = getSlotPixels(in1Idx, w1, h1);
+    std::vector<double> pix2 = getSlotPixels(in2Idx, w2, h2);
+    if (pix1.empty() || pix2.empty()) return;
+
+    // Safety: rebuild rawPixels from QImage if sizes don't match
+    auto fixRawPixels = [&](std::vector<double> &pix, int idx, int w, int h) {
+        if ((int)pix.size() == w * h) return;
+        QImage img;
+        if (idx == m_activeSlot && !m_image.isNull())
+            img = m_image;
+        else if (idx >= 0 && idx < HISTORY_SLOTS && m_history[idx].occupied)
+            img = m_history[idx].image;
+        if (img.isNull()) return;
+        QImage gray = img.convertToFormat(QImage::Format_Grayscale8);
+        pix.resize((size_t)w * h);
+        for (int y = 0; y < h; y++) {
+            const uchar *row = gray.constScanLine(y);
+            for (int x = 0; x < w; x++)
+                pix[y * w + x] = row[x];
+        }
+    };
+    fixRawPixels(pix1, in1Idx, w1, h1);
+    fixRawPixels(pix2, in2Idx, w2, h2);
+
+    // Pad each image to square
+    auto padToSquare = [](std::vector<double> &pix, int &w, int &h) {
+        if (w == h) return;
+        int S = std::max(w, h);
+        double sum = 0;
+        for (auto v : pix) sum += v;
+        double avg = pix.empty() ? 0.0 : sum / pix.size();
+        std::vector<double> sq(S * S, avg);
+        int offX = (S - w) / 2, offY = (S - h) / 2;
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+                sq[(y + offY) * S + (x + offX)] = pix[y * w + x];
+        pix = std::move(sq);
+        w = h = S;
+    };
+    padToSquare(pix1, w1, h1);
+    padToSquare(pix2, w2, h2);
+
+    // Scale both to the same size
+    int S = std::max(w1, w2);
+    auto scaleToSize = [](const std::vector<double> &src, int sw, int S) {
+        if (sw == S) return src;
+        std::vector<double> dst(S * S);
+        for (int y = 0; y < S; y++) {
+            double srcY = y * (sw - 1.0) / (S - 1.0);
+            int y0 = (int)srcY;
+            int y1 = std::min(y0 + 1, sw - 1);
+            double fy = srcY - y0;
+            for (int x = 0; x < S; x++) {
+                double srcX = x * (sw - 1.0) / (S - 1.0);
+                int x0 = (int)srcX;
+                int x1 = std::min(x0 + 1, sw - 1);
+                double fx = srcX - x0;
+                dst[y * S + x] = src[y0 * sw + x0] * (1 - fx) * (1 - fy)
+                               + src[y0 * sw + x1] * fx       * (1 - fy)
+                               + src[y1 * sw + x0] * (1 - fx) * fy
+                               + src[y1 * sw + x1] * fx       * fy;
+            }
+        }
+        return dst;
+    };
+    std::vector<double> a = scaleToSize(pix1, w1, S);
+    std::vector<double> b = scaleToSize(pix2, w2, S);
+
+    // Compute FFTs of both inputs
+    int N = 1;
+    while (N < S) N <<= 1;
+
+    auto computeSlotFFT = [&](const std::vector<double> &pixels, int S, int N) {
+        double sum = 0;
+        for (auto v : pixels) sum += v;
+        double avg = sum / (S * S);
+        std::vector<Complex> data(N * N, Complex(avg, 0.0));
+        for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++)
+                data[y * N + x] = Complex(pixels[y * S + x], 0.0);
+        // Row FFTs
+        std::vector<Complex> row(N);
+        for (int y = 0; y < N; y++) {
+            for (int x = 0; x < N; x++) row[x] = data[y * N + x];
+            fft1d(row, false);
+            for (int x = 0; x < N; x++) data[y * N + x] = row[x];
+        }
+        // Column FFTs
+        std::vector<Complex> col(N);
+        for (int x = 0; x < N; x++) {
+            for (int y = 0; y < N; y++) col[y] = data[y * N + x];
+            fft1d(col, false);
+            for (int y = 0; y < N; y++) data[y * N + x] = col[y];
+        }
+        fftShift(data, N);
+        return data;
+    };
+
+    std::vector<Complex> fft1data = computeSlotFFT(a, S, N);
+    std::vector<Complex> fft2data = computeSlotFFT(b, S, N);
+
+    // Apply complex conjugation to second input if selected
+    if (conjugate) {
+        for (auto &c : fft2data)
+            c = std::conj(c);
+    }
+
+    // Perform operation in Fourier space
+    std::vector<Complex> result(N * N);
+    if (opIdx == 3) {
+        // Wien filter division: A * conj(B) / (|B|^2 + noise)
+        double maxAmp = 0;
+        for (auto &c : fft2data)
+            maxAmp = std::max(maxAmp, std::abs(c));
+        double noise = std::max(maxAmp * maxAmp / 10000.0, 1e-10);
+        for (int i = 0; i < N * N; i++) {
+            double denom = std::norm(fft2data[i]) + noise;
+            result[i] = fft1data[i] * std::conj(fft2data[i]) / denom;
+        }
+    } else {
+        for (int i = 0; i < N * N; i++) {
+            switch (opIdx) {
+            case 0: result[i] = fft1data[i] + fft2data[i]; break;
+            case 1: result[i] = fft1data[i] - fft2data[i]; break;
+            case 2: result[i] = fft1data[i] * fft2data[i]; break;
+            }
+        }
+    }
+
+    // Inverse FFT to get real-space image
+    fftShift(result, N);
+    std::vector<Complex> row(N);
+    for (int y = 0; y < N; y++) {
+        for (int x = 0; x < N; x++) row[x] = result[y * N + x];
+        fft1d(row, true);
+        for (int x = 0; x < N; x++) result[y * N + x] = row[x];
+    }
+    std::vector<Complex> col(N);
+    for (int x = 0; x < N; x++) {
+        for (int y = 0; y < N; y++) col[y] = result[y * N + x];
+        fft1d(col, true);
+        for (int y = 0; y < N; y++) result[y * N + x] = col[y];
+    }
+
+    // Extract real part
+    int outW = std::min(S, N);
+    int outH = std::min(S, N);
+    std::vector<double> realResult(outW * outH);
+    for (int y = 0; y < outH; y++)
+        for (int x = 0; x < outW; x++)
+            realResult[y * outW + x] = result[y * N + x].real();
+
+    double minVal = *std::min_element(realResult.begin(), realResult.end());
+    double maxVal = *std::max_element(realResult.begin(), realResult.end());
+    double range  = maxVal - minVal;
+    double scale  = (range > 0) ? 255.0 / range : 1.0;
+
+    QImage outImg(outW, outH, QImage::Format_Grayscale8);
+    for (int y = 0; y < outH; y++) {
+        uchar *rw = outImg.scanLine(y);
+        for (int x = 0; x < outW; x++)
+            rw[x] = static_cast<uchar>(std::clamp(
+                (realResult[y * outW + x] - minVal) * scale, 0.0, 255.0));
+    }
+
+    // Save current active image back to its slot before switching
+    if (m_activeSlot >= 0 && !m_image.isNull()) {
+        m_history[m_activeSlot].image        = m_image;
+        m_history[m_activeSlot].path         = m_imagePath;
+        m_history[m_activeSlot].rawPixels    = m_imageRawPixels;
+        m_history[m_activeSlot].minVal       = m_imageMinVal;
+        m_history[m_activeSlot].maxVal       = m_imageMaxVal;
+        m_history[m_activeSlot].pixelSize    = m_pixelSize;
+        m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
+        m_history[m_activeSlot].occupied     = true;
+    }
+
+    // Store result in output slot
+    m_history[outIdx].image     = outImg;
+    m_history[outIdx].path      = QString("ftmath: %1 %2 %3")
+                                      .arg(QChar('A' + in1Idx))
+                                      .arg(m_ftMathOpCombo->currentText())
+                                      .arg(QChar('A' + in2Idx));
+    m_history[outIdx].rawPixels = std::move(realResult);
+    m_history[outIdx].minVal    = minVal;
+    m_history[outIdx].maxVal    = maxVal;
+    m_history[outIdx].pixelSize = 1.0;
+    m_history[outIdx].powerSpecImg = computePowerSpecMasked(outImg);
+    m_history[outIdx].occupied  = true;
+
+    // Activate the output slot
+    m_activeSlot     = outIdx;
+    m_image          = m_history[outIdx].image;
+    m_imagePath      = m_history[outIdx].path;
+    m_imageRawPixels = m_history[outIdx].rawPixels;
+    m_imageMinVal    = m_history[outIdx].minVal;
+    m_imageMaxVal    = m_history[outIdx].maxVal;
+    m_pixelSize      = m_history[outIdx].pixelSize;
+    m_zoom[0].reset(m_image.width(), m_image.height());
+
+    m_ftComputed  = false;
+    m_modeBtn->setText(modeLabel());
+    m_modeBtn->hide();
+    m_maskBtn->hide();
+
+    computeFFT();
+    m_history[outIdx].powerSpecImg = computePowerSpecMasked(m_image);
+    saveHistory();
+
+    onFtMathCancel();
+}
+
 void FtWindow::onMathCancel()
 {
     m_mathActive = false;

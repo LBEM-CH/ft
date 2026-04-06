@@ -260,6 +260,19 @@ private:
                      const ZoomState &zoom, int imgW, int imgH);
     void onApplyLattice();
 
+    // ---- Fourier math ----
+    bool        m_ftMathActive = false;
+    QComboBox  *m_ftMathOutCombo  = nullptr;
+    QComboBox  *m_ftMathIn1Combo  = nullptr;
+    QComboBox  *m_ftMathOpCombo   = nullptr;
+    QComboBox  *m_ftMathIn2Combo  = nullptr;
+    QComboBox  *m_ftMathConjCombo = nullptr;
+    QLabel     *m_ftMathEqualsLabel = nullptr;
+    QPushButton *m_ftMathCancelBtn  = nullptr;
+    QPushButton *m_ftMathComputeBtn = nullptr;
+    void onFtMathCompute();
+    void onFtMathCancel();
+
     // ---- Fourier crop ----
     bool        m_ftCropActive = false;
     QComboBox  *m_ftCropCombo     = nullptr;

@@ -395,7 +395,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
 
                 p.setRenderHint(QPainter::Antialiasing, true);
-                QRect ir = r.adjusted(3, 3, -3, -3);
+                int inset = std::max(3, r.width() / 4);
+                QRect ir = r.adjusted(inset, inset, -inset, -inset);
                 int sx = ir.x(), sy = ir.y(), sw = ir.width(), sh = ir.height();
                 QColor col = m_mathActive ? QColor(180, 180, 255) : Qt::white;
 
@@ -442,7 +443,7 @@ void FtWindow::paintEvent(QPaintEvent *)
             m_toolBtnRects[i] = r;
 
             p.setPen(QPen(Qt::white, 1));
-            if ((i == 0 && m_eraserActive) || (i == 1 && m_brushActive) || (i == 2 && m_bandpassActive) || (i == 3 && m_directionalActive) || (i == 4 && m_latticeActive) || (i == 5 && m_ftRotateActive) || (i == 6 && m_ftCropActive))
+            if ((i == 0 && m_eraserActive) || (i == 1 && m_brushActive) || (i == 2 && m_bandpassActive) || (i == 3 && m_directionalActive) || (i == 4 && m_latticeActive) || (i == 5 && m_ftRotateActive) || (i == 6 && m_ftCropActive) || (i == 7 && m_ftMathActive))
                 p.setBrush(QColor(60, 60, 60));
             else
                 p.setBrush(QColor(0, 0, 0));
@@ -724,6 +725,45 @@ void FtWindow::paintEvent(QPaintEvent *)
                     QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
                     QFontMetrics ttfm(ttf);
                     QString tip = "Fourier crop";
+                    int ttw = ttfm.horizontalAdvance(tip) + 8;
+                    int tth = ttfm.height() + 4;
+                    int ttx = r.left() - ttw - 4;
+                    int tty = r.center().y() - tth / 2;
+                    p.setPen(QPen(Qt::white, 1));
+                    p.setBrush(QColor(40, 40, 40));
+                    p.drawRect(ttx, tty, ttw, tth);
+                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                }
+            }
+
+            // Fourier math icon (button 7): Sigma/Sum sign
+            if (i == 7) {
+                p.setRenderHint(QPainter::Antialiasing, true);
+                int inset = std::max(3, btnSide / 4);
+                QRect ir = r.adjusted(inset, inset, -inset, -inset);
+                int sx = ir.x(), sy = ir.y(), sw = ir.width(), sh = ir.height();
+                QColor col = m_ftMathActive ? QColor(180, 180, 255) : Qt::white;
+
+                QPainterPath sigma;
+                sigma.moveTo(sx + sw * 0.85, sy + sh * 0.10);
+                sigma.lineTo(sx + sw * 0.15, sy + sh * 0.10);
+                sigma.lineTo(sx + sw * 0.50, sy + sh * 0.50);
+                sigma.lineTo(sx + sw * 0.15, sy + sh * 0.90);
+                sigma.lineTo(sx + sw * 0.85, sy + sh * 0.90);
+                sigma.moveTo(sx + sw * 0.85, sy + sh * 0.10);
+                sigma.lineTo(sx + sw * 0.85, sy + sh * 0.18);
+                sigma.moveTo(sx + sw * 0.85, sy + sh * 0.90);
+                sigma.lineTo(sx + sw * 0.85, sy + sh * 0.82);
+
+                p.setPen(QPen(col, std::max(1, sw / 6)));
+                p.setBrush(Qt::NoBrush);
+                p.drawPath(sigma);
+                p.setRenderHint(QPainter::Antialiasing, false);
+
+                if (r.contains(m_mousePos)) {
+                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                    QFontMetrics ttfm(ttf);
+                    QString tip = "Math calculation";
                     int ttw = ttfm.horizontalAdvance(tip) + 8;
                     int tth = ttfm.height() + 4;
                     int ttx = r.left() - ttw - 4;
@@ -1049,6 +1089,93 @@ void FtWindow::paintEvent(QPaintEvent *)
         }
     }
 
+    // ---- Fourier math overlay (panel 2) -----------------------------------------
+    if (m_ftMathActive && m_ftComputed) {
+        int panel2X = cx + 2;
+        int panel2W = width() - panel2X;
+        int panel2H = hy - 1;
+
+        int fw = static_cast<int>(panel2W * 0.80);
+        int fh = static_cast<int>(panel2H * 0.35);
+        int fx = panel2X + (panel2W - fw) / 2;
+        int fy = (panel2H - fh) / 2;
+        QRect ftMathRect(fx, fy, fw, fh);
+
+        drawShadowRect(p, ftMathRect);
+
+        // Scale widget sizes relative to frame width
+        int fontSize = std::clamp(fw / 30, 12, 32);
+        int comboH = fontSize * 2;
+        int bufW = fw / 8;
+        int eqW  = fw / 16;
+        int opW  = fw / 10;
+        int conjW = fw * 3 / 10;
+        int btnW = fw * 3 / 16;
+        int btnH2 = comboH;
+        int gap  = fw / 80;
+
+        QString comboSS = QString(
+            "QComboBox { background:white; color:black; border:1px solid #888;"
+            "  padding: 2px 4px; font-size: %1px; font-weight: bold; }"
+            "QComboBox::drop-down { width: %2px; }"
+            "QComboBox QAbstractItemView { background:white; color:black;"
+            "  selection-background-color:#ccc; min-width: 60px; padding: 4px;"
+            "  font-size: %1px; }")
+            .arg(fontSize).arg(fontSize);
+        m_ftMathOutCombo->setStyleSheet(comboSS);
+        m_ftMathIn1Combo->setStyleSheet(comboSS);
+        m_ftMathOpCombo->setStyleSheet(comboSS);
+        m_ftMathIn2Combo->setStyleSheet(comboSS);
+        m_ftMathConjCombo->setStyleSheet(comboSS);
+
+        m_ftMathOutCombo->setFixedSize(bufW, comboH);
+        m_ftMathIn1Combo->setFixedSize(bufW, comboH);
+        m_ftMathOpCombo->setFixedSize(opW, comboH);
+        m_ftMathIn2Combo->setFixedSize(bufW, comboH);
+        m_ftMathConjCombo->setFixedSize(conjW, comboH);
+        m_ftMathEqualsLabel->setFixedSize(eqW, comboH);
+        m_ftMathEqualsLabel->setStyleSheet(
+            QString("color: black; font-size: %1px; font-weight: bold;").arg(fontSize * 4 / 3));
+
+        m_ftMathCancelBtn->setFixedSize(btnW, btnH2);
+        m_ftMathComputeBtn->setFixedSize(btnW, btnH2);
+        QString btnSS = QString(
+            "QPushButton { background-color: #888; border: 2px outset #aaa;"
+            "  color: #eee; padding: 2px; font-size: %1px; font-weight: bold; }").arg(fontSize);
+        m_ftMathCancelBtn->setStyleSheet(btnSS);
+        m_ftMathComputeBtn->setStyleSheet(btnSS);
+
+        // Title
+        {
+            int titleFontSize = std::max(14, fontSize * 4 / 3);
+            int titleMarginX = std::max(8, fw / 40);
+            int titleMarginY = std::max(6, fh / 15);
+            QFont tf;
+            tf.setPixelSize(titleFontSize);
+            tf.setBold(true);
+            p.setFont(tf);
+            p.setPen(QColor(60, 60, 60));
+            p.drawText(fx + titleMarginX, fy + titleMarginY + QFontMetrics(tf).ascent(), "Fourier calculation");
+        }
+
+        // Position the equation widgets centered in the frame
+        int totalEqW = bufW + gap + eqW + gap + bufW + gap + opW + gap + bufW + gap + conjW;
+        int eqX = fx + (fw - totalEqW) / 2;
+        int eqY = fy + fh / 2 - comboH / 2;
+
+        m_ftMathOutCombo->move(eqX, eqY);      eqX += bufW + gap;
+        m_ftMathEqualsLabel->move(eqX, eqY);    eqX += eqW + gap;
+        m_ftMathIn1Combo->move(eqX, eqY);       eqX += bufW + gap;
+        m_ftMathOpCombo->move(eqX, eqY);        eqX += opW + gap;
+        m_ftMathIn2Combo->move(eqX, eqY);       eqX += bufW + gap;
+        m_ftMathConjCombo->move(eqX, eqY);
+
+        // Cancel in bottom-left, Compute in bottom-right
+        int btnMargin = 8;
+        m_ftMathCancelBtn->move(fx + btnMargin, fy + fh - btnH2 - btnMargin);
+        m_ftMathComputeBtn->move(fx + fw - btnW - btnMargin, fy + fh - btnH2 - btnMargin);
+    }
+
     // ---- Rotation drag overlay (red line + angle text) -------------------------
     if ((m_p1Dragging && m_rotateActive) || (m_p2Dragging && m_ftRotateActive)) {
         p.setRenderHint(QPainter::Antialiasing, true);
@@ -1268,7 +1395,7 @@ void FtWindow::paintEvent(QPaintEvent *)
             bool isActive = (i == m_activeSlot);
 
             if (isActive) {
-                p.setPen(QPen(QColor(120, 180, 255), 3));
+                p.setPen(QPen(QColor(120, 180, 255), 8));
             } else {
                 p.setPen(QPen(QColor(255, 255, 0), 1));
             }
@@ -1327,11 +1454,16 @@ void FtWindow::paintEvent(QPaintEvent *)
                            r.y() - 3, lab);
             }
 
-            p.setPen(QPen(QColor(255, 255, 0), 1));
+            bool isActive = (i == m_activeSlot);
+
+            if (isActive) {
+                p.setPen(QPen(QColor(120, 180, 255), 8));
+            } else {
+                p.setPen(QPen(QColor(255, 255, 0), 1));
+            }
             p.setBrush(Qt::NoBrush);
             p.drawRect(r);
 
-            bool isActive = (i == m_activeSlot);
             QRect inner = r.adjusted(1, 1, -1, -1);
 
             if (isActive && m_ftComputed && !m_powerImg.isNull()) {

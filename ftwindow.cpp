@@ -107,6 +107,76 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     connect(m_latticeApplyBtn, &QPushButton::clicked, this, &FtWindow::onApplyLattice);
     m_latticeApplyBtn->hide();
 
+    // Fourier math widgets (hidden until Fourier math mode active)
+    {
+        auto ftMathComboStyle = [](QComboBox *cb) {
+            cb->setStyleSheet(
+                "QComboBox { background:white; color:black; border:1px solid #888;"
+                "  padding: 2px 8px; font-size: 26px; font-weight: bold; }"
+                "QComboBox::drop-down { width: 28px; }"
+                "QComboBox QAbstractItemView { background:white; color:black;"
+                "  selection-background-color:#ccc; min-width: 80px; padding: 4px;"
+                "  font-size: 26px; }"
+            );
+        };
+        m_ftMathOutCombo = new QComboBox(this);
+        for (int i = 0; i < HISTORY_SLOTS; i++)
+            m_ftMathOutCombo->addItem(QString(QChar('A' + i)));
+        m_ftMathOutCombo->setFixedSize(100, 56);
+        ftMathComboStyle(m_ftMathOutCombo);
+        m_ftMathOutCombo->hide();
+
+        m_ftMathEqualsLabel = new QLabel("=", this);
+        m_ftMathEqualsLabel->setStyleSheet("color: black; font-size: 36px; font-weight: bold;");
+        m_ftMathEqualsLabel->setFixedSize(40, 56);
+        m_ftMathEqualsLabel->setAlignment(Qt::AlignCenter);
+        m_ftMathEqualsLabel->hide();
+
+        m_ftMathIn1Combo = new QComboBox(this);
+        for (int i = 0; i < HISTORY_SLOTS; i++)
+            m_ftMathIn1Combo->addItem(QString(QChar('A' + i)));
+        m_ftMathIn1Combo->setFixedSize(100, 56);
+        ftMathComboStyle(m_ftMathIn1Combo);
+        m_ftMathIn1Combo->hide();
+
+        m_ftMathOpCombo = new QComboBox(this);
+        m_ftMathOpCombo->addItem("+");
+        m_ftMathOpCombo->addItem("\u2212");   // minus sign
+        m_ftMathOpCombo->addItem("\u00D7");   // multiplication sign
+        m_ftMathOpCombo->addItem("\u00F7");   // division sign
+        m_ftMathOpCombo->setFixedSize(100, 56);
+        ftMathComboStyle(m_ftMathOpCombo);
+        m_ftMathOpCombo->hide();
+
+        m_ftMathIn2Combo = new QComboBox(this);
+        for (int i = 0; i < HISTORY_SLOTS; i++)
+            m_ftMathIn2Combo->addItem(QString(QChar('A' + i)));
+        m_ftMathIn2Combo->setFixedSize(100, 56);
+        ftMathComboStyle(m_ftMathIn2Combo);
+        m_ftMathIn2Combo->hide();
+
+        m_ftMathConjCombo = new QComboBox(this);
+        m_ftMathConjCombo->addItem(" ");
+        m_ftMathConjCombo->addItem("* (complex conjugate)");
+        m_ftMathConjCombo->setFixedSize(260, 56);
+        ftMathComboStyle(m_ftMathConjCombo);
+        m_ftMathConjCombo->hide();
+
+        m_ftMathCancelBtn = new QPushButton("Cancel", this);
+        m_ftMathCancelBtn->setFixedSize(80, 28);
+        m_ftMathCancelBtn->setStyleSheet(
+            "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }");
+        connect(m_ftMathCancelBtn, &QPushButton::clicked, this, &FtWindow::onFtMathCancel);
+        m_ftMathCancelBtn->hide();
+
+        m_ftMathComputeBtn = new QPushButton("Compute", this);
+        m_ftMathComputeBtn->setFixedSize(80, 28);
+        m_ftMathComputeBtn->setStyleSheet(
+            "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }");
+        connect(m_ftMathComputeBtn, &QPushButton::clicked, this, &FtWindow::onFtMathCompute);
+        m_ftMathComputeBtn->hide();
+    }
+
     // Fourier crop widgets (hidden until Fourier crop mode active)
     m_ftCropCombo = new QComboBox(this);
     for (int i = 2; i <= 8; i++)

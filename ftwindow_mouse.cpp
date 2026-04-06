@@ -159,7 +159,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         m_eraserActive = false; m_brushActive = false;
         m_bandpassActive = false; m_directionalActive = false;
         m_latticeActive = false; m_ftRotateActive = false;
-        m_ftCropActive = false;
+        m_ftCropActive = false; m_ftMathActive = false;
     };
     auto showToolWidgets = [&]() {
         bool showFilter = m_bandpassActive || m_directionalActive;
@@ -180,6 +180,15 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         m_ftCropCombo->setVisible(m_ftCropActive);
         m_ftCropKeepSizeBtn->setVisible(m_ftCropActive);
         m_applyFtCropBtn->setVisible(m_ftCropActive);
+
+        m_ftMathOutCombo->setVisible(m_ftMathActive);
+        m_ftMathEqualsLabel->setVisible(m_ftMathActive);
+        m_ftMathIn1Combo->setVisible(m_ftMathActive);
+        m_ftMathOpCombo->setVisible(m_ftMathActive);
+        m_ftMathIn2Combo->setVisible(m_ftMathActive);
+        m_ftMathConjCombo->setVisible(m_ftMathActive);
+        m_ftMathCancelBtn->setVisible(m_ftMathActive);
+        m_ftMathComputeBtn->setVisible(m_ftMathActive);
     };
     if (m_toolBtnRects[0].contains(event->pos())) {
         bool was = m_eraserActive; deactivateAllTools();
@@ -213,6 +222,10 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
     if (m_toolBtnRects[6].contains(event->pos())) {
         bool was = m_ftCropActive; deactivateAllTools();
         m_ftCropActive = !was; showToolWidgets(); update(); return;
+    }
+    if (m_toolBtnRects[7].contains(event->pos())) {
+        bool was = m_ftMathActive; deactivateAllTools();
+        m_ftMathActive = !was; showToolWidgets(); update(); return;
     }
 
     // Lattice vector drag
