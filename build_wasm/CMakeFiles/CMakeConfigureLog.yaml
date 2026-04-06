@@ -6410,3 +6410,137 @@ events:
         - "/"
       CMAKE_FIND_ROOT_PATH: "/Users/stahlber/Qt/6.8.3/wasm_singlethread;/Users/stahlber/Projects/emsdk/upstream/emscripten/cache/sysroot"
 ...
+
+---
+events:
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/opt/homebrew/share/cmake/Modules/Platform/Emscripten.cmake:6 (find_file)"
+      - "/opt/homebrew/share/cmake/Modules/CMakeSystemSpecificInformation.cmake:32 (include)"
+      - "CMakeLists.txt:2 (project)"
+    mode: "file"
+    variable: "_EMSCRIPTEN_PLATFORM_MODULE"
+    description: "Path to a file."
+    settings:
+      SearchFramework: "FIRST"
+      SearchAppBundle: "FIRST"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "Platform/Emscripten.cmake"
+    candidate_directories:
+      - "/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6/platforms/"
+      - "/Users/stahlber/Projects/emsdk/upstream/emscripten/cmake/Modules/"
+    searched_directories:
+      - "/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6/platforms/Platform.framework/Headers/Emscripten.cmake"
+      - "/Users/stahlber/Projects/emsdk/upstream/emscripten/cmake/Modules/Platform.framework/Headers/Emscripten.cmake"
+      - "/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6/platforms/Platform/Emscripten.cmake"
+    found: "/Users/stahlber/Projects/emsdk/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake"
+    search_context:
+      CMAKE_PREFIX_PATH:
+        - "/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake"
+      ENV{PATH}:
+        - "/Users/stahlber/Projects/emsdk"
+        - "/Users/stahlber/Projects/emsdk/upstream/emscripten"
+        - "/Users/stahlber/4d/scripts/proc"
+        - "/Users/stahlber/4d/kernel/mrc/bin"
+        - "/Users/stahlber/4d/bin"
+        - "/Users/stahlber/Library/Python/3.9/bin"
+        - "/opt/homebrew/opt/qt/bin"
+        - "/opt/homebrew/opt/gcc/bin"
+        - "/Users/stahlber/Library/Application Support/Code/User/globalStorage/github.copilot-chat/debugCommand"
+        - "/Users/stahlber/Library/Application Support/Code/User/globalStorage/github.copilot-chat/copilotCli"
+        - "/Applications/arp_warp_8.0/bin/bin-arm64-Darwin"
+        - "/Applications/ccp4-8.0/etc"
+        - "/Applications/ccp4-8.0/bin"
+        - "/opt/homebrew/bin"
+        - "/Users/stahlber/bin"
+        - "/usr/local/bin"
+        - "/System/Cryptexes/App/usr/bin"
+        - "/usr/bin"
+        - "/bin"
+        - "/usr/sbin"
+        - "/sbin"
+        - "/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin"
+        - "/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin"
+        - "/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin"
+        - "/opt/pmk/env/global/bin"
+        - "/opt/X11/bin"
+        - "/Library/Apple/usr/bin"
+        - "/Users/stahlber/.local/bin"
+      CMAKE_INSTALL_PREFIX: "/Users/stahlber/Projects/emsdk/upstream/emscripten/cache/sysroot"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "/"
+      CMAKE_FIND_ROOT_PATH: "/Users/stahlber/Qt/6.8.3/wasm_singlethread;/Users/stahlber/Projects/emsdk/upstream/emscripten/cache/sysroot"
+...
+
+---
+events:
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/opt/homebrew/share/cmake/Modules/Platform/Emscripten.cmake:6 (find_file)"
+      - "/opt/homebrew/share/cmake/Modules/CMakeSystemSpecificInformation.cmake:32 (include)"
+      - "CMakeLists.txt:2 (project)"
+    mode: "file"
+    variable: "_EMSCRIPTEN_PLATFORM_MODULE"
+    description: "Path to a file."
+    settings:
+      SearchFramework: "FIRST"
+      SearchAppBundle: "FIRST"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "Platform/Emscripten.cmake"
+    candidate_directories:
+      - "/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6/platforms/"
+      - "/Users/stahlber/Projects/emsdk/upstream/emscripten/cmake/Modules/"
+    searched_directories:
+      - "/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6/platforms/Platform.framework/Headers/Emscripten.cmake"
+      - "/Users/stahlber/Projects/emsdk/upstream/emscripten/cmake/Modules/Platform.framework/Headers/Emscripten.cmake"
+      - "/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6/platforms/Platform/Emscripten.cmake"
+    found: "/Users/stahlber/Projects/emsdk/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake"
+    search_context:
+      CMAKE_PREFIX_PATH:
+        - "/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake"
+      ENV{PATH}:
+        - "/Users/stahlber/Projects/emsdk"
+        - "/Users/stahlber/Projects/emsdk/upstream/emscripten"
+        - "/Users/stahlber/4d/scripts/proc"
+        - "/Users/stahlber/4d/kernel/mrc/bin"
+        - "/Users/stahlber/4d/bin"
+        - "/Users/stahlber/Library/Python/3.9/bin"
+        - "/opt/homebrew/opt/qt/bin"
+        - "/opt/homebrew/opt/gcc/bin"
+        - "/Users/stahlber/Library/Application Support/Code/User/globalStorage/github.copilot-chat/debugCommand"
+        - "/Users/stahlber/Library/Application Support/Code/User/globalStorage/github.copilot-chat/copilotCli"
+        - "/Applications/arp_warp_8.0/bin/bin-arm64-Darwin"
+        - "/Applications/ccp4-8.0/etc"
+        - "/Applications/ccp4-8.0/bin"
+        - "/opt/homebrew/bin"
+        - "/Users/stahlber/bin"
+        - "/usr/local/bin"
+        - "/System/Cryptexes/App/usr/bin"
+        - "/usr/bin"
+        - "/bin"
+        - "/usr/sbin"
+        - "/sbin"
+        - "/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin"
+        - "/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin"
+        - "/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin"
+        - "/opt/pmk/env/global/bin"
+        - "/opt/X11/bin"
+        - "/Library/Apple/usr/bin"
+        - "/Users/stahlber/.local/bin"
+      CMAKE_INSTALL_PREFIX: "/Users/stahlber/Projects/emsdk/upstream/emscripten/cache/sysroot"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "/"
+      CMAKE_FIND_ROOT_PATH: "/Users/stahlber/Qt/6.8.3/wasm_singlethread;/Users/stahlber/Projects/emsdk/upstream/emscripten/cache/sysroot"
+...

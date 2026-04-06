@@ -6,14 +6,45 @@
 void FtWindow::onLoadImage()
 {
 #ifdef __EMSCRIPTEN__
-    // In WASM, use QFileDialog::getOpenFileContent which maps to the browser
-    // file picker and returns the file data as a QByteArray.
-    QFileDialog::getOpenFileContent(
-        "Images (*.tif *.tiff *.jpg *.jpeg *.png *.mrc *.MRC)",
-        [this](const QString &fileName, const QByteArray &fileData) {
-            if (fileName.isEmpty() || fileData.isEmpty()) return;
-            loadImageData(fileName, fileData);
-        });
+    // Build a list of example images served alongside the WASM app.
+    QStringList items;
+    items << "Exercise1-Photos/band_1995.png"
+          << "Exercise1-Photos/brain.png"
+          << "Exercise1-Photos/church.png"
+          << "Exercise1-Photos/lorenz_1999.png"
+          << "Exercise1-Photos/party_1995.png"
+          << "Exercise1-Photos/plants.png"
+          << "Exercise1-Photos/simon_1999.png"
+          << "Exercise1-Photos/simon_2015.png"
+          << "Exercise1-Photos/thomas_1999.png"
+          << "Exercise2-Restauration/restauration.png"
+          << "Exercise3-2D-Crystal/raw.png"
+          << "Exercise4-Eyes/eyes.png"
+          << "Exercise5-Text/F.png"
+          << "Exercise5-Text/Fourier.png"
+          << "Exercise5-Text/Fouriertext.png"
+          << "Exercise5-Text/Fshift.png"
+          << "Exercise5-Text/e.png"
+          << "Exercise5-Text/in.png"
+          << "Exercise5-Text/o.png"
+          << "Exercise5-Text/oshift.png"
+          << "Exercise6-Photo-Multiplication/andreas.png"
+          << "Exercise7-Proteins/apoartcns_010.png"
+          << "Exercise7-Proteins/apoartcns_016.png"
+          << "Exercise8-2D-Crystal/Pol-4-512.png"
+          << "Exercise9-Apple/APPL0000000100.mrc"
+          << "Exercise9-Apple/APPL0012345604.mrc"
+          << "Exercise9-Apple/apple_clean.png"
+          << "Exercise9-Apple/apple_corners_labeled.png"
+          << "Exercise9-Apple/apple_noisy.png"
+          << "Exercise9-Apple/apple_very_noisy.png"
+          << "Own_Images/blank_1024.png";
+
+    bool ok = false;
+    QString chosen = QInputDialog::getItem(
+        this, "Load Example Image", "Select an image:", items, 0, false, &ok);
+    if (!ok || chosen.isEmpty()) return;
+    fetchAndLoadImage(chosen);
 #else
     QString startDir = QCoreApplication::applicationDirPath() + "/../EXAMPLE_IMAGES";
     if (!QDir(startDir).exists())
@@ -311,6 +342,36 @@ void FtWindow::loadImageData(const QString &fileName, const QByteArray &fileData
     saveHistory();
     update();
 }
+
+#ifdef __EMSCRIPTEN__
+void FtWindow::fetchAndLoadImage(const QString &relativePath)
+{
+    if (!m_nam)
+        m_nam = new QNetworkAccessManager(this);
+
+    // Build absolute URL relative to the page origin
+    QString urlStr = QStringLiteral("images/") + relativePath;
+    QUrl url = QUrl(urlStr);
+    qDebug() << "Fetching image:" << url.toString();
+    QNetworkRequest req(url);
+    QNetworkReply *reply = m_nam->get(req);
+    connect(reply, &QNetworkReply::finished, this, [this, reply, relativePath]() {
+        reply->deleteLater();
+        qDebug() << "Fetch finished, error:" << reply->error()
+                 << reply->errorString()
+                 << "HTTP status:" << reply->attribute(QNetworkRequest::HttpStatusCodeAttribute)
+                 << "bytes:" << reply->size();
+        if (reply->error() != QNetworkReply::NoError) {
+            qWarning() << "Failed to fetch image:" << reply->errorString();
+            return;
+        }
+        QByteArray data = reply->readAll();
+        qDebug() << "Read" << data.size() << "bytes for" << relativePath;
+        QString fileName = relativePath.section('/', -1);
+        loadImageData(fileName, data);
+    });
+}
+#endif
 
 // Find smallest n >= val whose only prime factors are 2, 3, or 5
 static int nextSmooth235(int val)

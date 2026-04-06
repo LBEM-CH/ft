@@ -978,10 +978,36 @@ CMakeFiles/ft.dir/ft_autogen/mocs_compilation.cpp.o: \
   /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtWidgets/qtabwidget.h \
   /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtWidgets/qrubberband.h \
   /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qabstractitemmodel.h \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtNetwork/QNetworkAccessManager \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtNetwork/qnetworkaccessmanager.h \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtNetwork/qtnetworkglobal.h \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtNetwork/qtnetwork-config.h \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtNetwork/qtnetworkexports.h \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtNetwork/qnetworkrequest.h \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtNetwork/qhttpheaders.h \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/QSharedDataPointer \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/QString \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/QUrl \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/QVariant \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/q26numeric.h \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/QList \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/QObject \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtNetwork/QNetworkReply \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtNetwork/qnetworkreply.h \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/QIODevice \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtNetwork/QNetworkRequest \
   /Users/stahlber/Projects/ft/build_wasm/ft_autogen/EWIEGA46WW/../../../fft.h \
   /Users/stahlber/Projects/emsdk/upstream/emscripten/cache/sysroot/include/c++/v1/complex \
   /Users/stahlber/Projects/emsdk/upstream/emscripten/cache/sysroot/include/c++/v1/sstream \
   /Users/stahlber/Projects/emsdk/upstream/emscripten/cache/sysroot/include/c++/v1/istream \
   /Users/stahlber/Projects/emsdk/upstream/emscripten/cache/sysroot/include/c++/v1/ostream \
   /Users/stahlber/Projects/emsdk/upstream/emscripten/cache/sysroot/include/c++/v1/bitset \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtNetwork/QSslError \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtNetwork/qsslerror.h \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtNetwork/qsslcertificate.h \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qcryptographichash.h \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qdatetime.h \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qcalendar.h \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtNetwork/qssl.h \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/QFlags \
   /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qtmochelpers.h

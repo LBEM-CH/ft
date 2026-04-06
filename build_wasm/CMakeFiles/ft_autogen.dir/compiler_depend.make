@@ -58,12 +58,20 @@ ft_autogen/timestamp: /Users/stahlber/Projects/emsdk/upstream/emscripten/cache/s
   /Users/stahlber/Qt/6.8.3/macos/lib/cmake/Qt6WidgetsTools/Qt6WidgetsToolsTargets-relwithdebinfo.cmake \
   /Users/stahlber/Qt/6.8.3/macos/lib/cmake/Qt6WidgetsTools/Qt6WidgetsToolsTargets.cmake \
   /Users/stahlber/Qt/6.8.3/macos/lib/cmake/Qt6WidgetsTools/Qt6WidgetsToolsVersionlessTargets.cmake \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/QIODevice \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/QList \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/QObject \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/QSharedDataPointer \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/QString \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/QUrl \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/QVariant \
   /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/q20functional.h \
   /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/q20iterator.h \
   /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/q20memory.h \
   /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/q20type_traits.h \
   /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/q20utility.h \
   /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/q23utility.h \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/q26numeric.h \
   /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qabstractitemmodel.h \
   /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qalgorithms.h \
   /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qanystringview.h \
@@ -216,6 +224,16 @@ ft_autogen/timestamp: /Users/stahlber/Projects/emsdk/upstream/emscripten/cache/s
   /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtGui/qtransform.h \
   /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtGui/qvalidator.h \
   /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtGui/qwindowdefs.h \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtNetwork/QNetworkAccessManager \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtNetwork/QNetworkReply \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtNetwork/QNetworkRequest \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtNetwork/qhttpheaders.h \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtNetwork/qnetworkaccessmanager.h \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtNetwork/qnetworkreply.h \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtNetwork/qnetworkrequest.h \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtNetwork/qtnetwork-config.h \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtNetwork/qtnetworkexports.h \
+  /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtNetwork/qtnetworkglobal.h \
   /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtWidgets/QCheckBox \
   /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtWidgets/QComboBox \
   /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtWidgets/QLabel \
@@ -495,8 +513,6 @@ ft_autogen/timestamp: /Users/stahlber/Projects/emsdk/upstream/emscripten/cache/s
 
 /opt/homebrew/share/cmake/Modules/Platform/Emscripten-Clang-CXX.cmake:
 
-/opt/homebrew/share/cmake/Modules/Internal/CheckSourceCompiles.cmake:
-
 /opt/homebrew/share/cmake/Modules/Internal/CMakeCommonLinkerInformation.cmake:
 
 /opt/homebrew/share/cmake/Modules/Internal/CMakeCXXLinkerInformation.cmake:
@@ -587,21 +603,17 @@ ft_autogen/timestamp: /Users/stahlber/Projects/emsdk/upstream/emscripten/cache/s
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Gui/Qt6QWasmIntegrationPluginTargets.cmake:
 
-/opt/homebrew/share/cmake/Modules/Internal/CheckFlagCommonConfig.cmake:
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Gui/Qt6QWasmIntegrationPluginDependencies.cmake:
 
-/Users/stahlber/Projects/emsdk/upstream/emscripten/cache/sysroot/include/stdlib.h:
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Gui/Qt6QWasmIntegrationPluginConfig.cmake:
 
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Gui/Qt6QTuioTouchPluginTargets.cmake:
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Gui/Qt6QWasmIntegrationPluginAdditionalTargetInfo.cmake:
 
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtWidgets/qabstractbutton.h:
-
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Gui/Qt6QTuioTouchPluginTargets-release.cmake:
-
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtWidgets/qwidget.h:
-
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Gui/Qt6QTuioTouchPluginDependencies.cmake:
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Gui/Qt6QTuioTouchPluginConfig.cmake:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Gui/Qt6QTuioTouchPluginAdditionalTargetInfo.cmake:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Gui/Qt6QSvgPluginTargets.cmake:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Gui/Qt6QSvgPluginDependencies.cmake:
 
@@ -609,9 +621,9 @@ ft_autogen/timestamp: /Users/stahlber/Projects/emsdk/upstream/emscripten/cache/s
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Gui/Qt6QSvgPluginConfig.cmake:
 
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6/QtPublicSbomOpsHelpers.cmake:
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Gui/Qt6QSvgIconPluginTargets.cmake:
 
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Gui/Qt6QSvgPluginAdditionalTargetInfo.cmake:
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Gui/Qt6QSvgIconPluginTargets-release.cmake:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Gui/Qt6QSvgIconPluginAdditionalTargetInfo.cmake:
 
@@ -647,10 +659,6 @@ ft_autogen/timestamp: /Users/stahlber/Projects/emsdk/upstream/emscripten/cache/s
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Core/Qt6WasmMacros.cmake:
 
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6/3rdparty/extra-cmake-modules/modules/ECMFindModuleHelpers.cmake:
-
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Core/Qt6CoreVersionlessAliasTargets.cmake:
-
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Core/Qt6CoreTargets-release.cmake:
 
 /Users/stahlber/Projects/emsdk/upstream/emscripten/cache/sysroot/include/bits/limits.h:
@@ -681,11 +689,9 @@ ft_autogen/timestamp: /Users/stahlber/Projects/emsdk/upstream/emscripten/cache/s
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6BundledLibpng/Qt6BundledLibpngVersionlessAliasTargets.cmake:
 
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/QUrl:
+
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6BundledLibpng/Qt6BundledLibpngTargets.cmake:
-
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6BundledHarfbuzz/Qt6BundledHarfbuzzConfigVersion.cmake:
-
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Gui/Qt6QWasmIntegrationPluginTargets-release.cmake:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qpair.h:
 
@@ -696,10 +702,6 @@ ft_autogen/timestamp: /Users/stahlber/Projects/emsdk/upstream/emscripten/cache/s
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Widgets/Qt6WidgetsDependencies.cmake:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6BundledLibjpeg/Qt6BundledLibjpegVersionlessAliasTargets.cmake:
-
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6/QtPublicAppleHelpers.cmake:
-
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Gui/Qt6QSvgPluginTargets-release.cmake:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6BundledLibjpeg/Qt6BundledLibjpegTargets.cmake:
 
@@ -719,6 +721,10 @@ ft_autogen/timestamp: /Users/stahlber/Projects/emsdk/upstream/emscripten/cache/s
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Core/Qt6CoreTargets.cmake:
 
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Gui/Qt6QWasmIntegrationPluginTargets-release.cmake:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6BundledHarfbuzz/Qt6BundledHarfbuzzConfigVersion.cmake:
+
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6BundledLibjpeg/Qt6BundledLibjpegTargets-release.cmake:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qnamespace.h:
@@ -732,8 +738,6 @@ ft_autogen/timestamp: /Users/stahlber/Projects/emsdk/upstream/emscripten/cache/s
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6BundledFreetype/Qt6BundledFreetypeConfigVersionImpl.cmake:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6BundledFreetype/Qt6BundledFreetypeConfigVersion.cmake:
-
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6BundledFreetype/Qt6BundledFreetypeAdditionalTargetInfo.cmake:
 
 /opt/homebrew/share/cmake/Modules/Compiler/Clang-CXX.cmake:
 
@@ -793,6 +797,10 @@ ft_autogen/timestamp: /Users/stahlber/Projects/emsdk/upstream/emscripten/cache/s
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6BundledFreetype/Qt6BundledFreetypeTargets.cmake:
 
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Gui/Qt6QSvgPluginTargets-release.cmake:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6/QtPublicAppleHelpers.cmake:
+
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6/FindWrapPNG.cmake:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6/QtFindWrapHelper.cmake:
@@ -839,6 +847,10 @@ ft_autogen/timestamp: /Users/stahlber/Projects/emsdk/upstream/emscripten/cache/s
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6/FindWrapAtomic.cmake:
 
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Core/Qt6CoreVersionlessAliasTargets.cmake:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6/3rdparty/extra-cmake-modules/modules/ECMFindModuleHelpers.cmake:
+
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Core/Qt6CoreAdditionalTargetInfo.cmake:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtWidgets/qtwidgetsglobal.h:
@@ -848,6 +860,8 @@ ft_autogen/timestamp: /Users/stahlber/Projects/emsdk/upstream/emscripten/cache/s
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtWidgets/qtwidgetsexports.h:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtWidgets/qtwidgets-config.h:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/QList:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtWidgets/qtabbar.h:
 
@@ -875,6 +889,8 @@ ft_autogen/timestamp: /Users/stahlber/Projects/emsdk/upstream/emscripten/cache/s
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Core/Qt6CoreDependencies.cmake:
 
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtNetwork/qtnetworkglobal.h:
+
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Gui/Qt6QICOPluginAdditionalTargetInfo.cmake:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtWidgets/QComboBox:
@@ -888,6 +904,20 @@ ft_autogen/timestamp: /Users/stahlber/Projects/emsdk/upstream/emscripten/cache/s
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6/Qt6ConfigVersionImpl.cmake:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtWidgets/QCheckBox:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtNetwork/qtnetworkexports.h:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtNetwork/qnetworkrequest.h:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtNetwork/qnetworkreply.h:
+
+/opt/homebrew/share/cmake/Modules/Internal/CheckFlagCommonConfig.cmake:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Gui/Qt6QTuioTouchPluginTargets.cmake:
+
+/Users/stahlber/Projects/emsdk/upstream/emscripten/cache/sysroot/include/stdlib.h:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtNetwork/qnetworkaccessmanager.h:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qdebug.h:
 
@@ -911,27 +941,47 @@ ft_autogen/timestamp: /Users/stahlber/Projects/emsdk/upstream/emscripten/cache/s
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtGui/qrgb.h:
 
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Gui/Qt6QWasmIntegrationPluginDependencies.cmake:
-
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Gui/Qt6QICOPluginDependencies.cmake:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtGui/qpolygon.h:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtGui/qpixelformat.h:
 
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Gui/Qt6QTuioTouchPluginDependencies.cmake:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtWidgets/qwidget.h:
+
 /opt/homebrew/share/cmake/Modules/CMakeGenericSystem.cmake:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtGui/qpicture.h:
 
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6/QtPublicGitHelpers.cmake:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtNetwork/QNetworkAccessManager:
+
+/opt/homebrew/share/cmake/Modules/CMakeCommonLanguageInclude.cmake:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6/Qt6Config.cmake:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtGui/qpalette.h:
+
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6/3rdparty/extra-cmake-modules/find-modules/FindEGL.cmake:
+
+/Users/stahlber/Projects/ft/mrcloader.cpp:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Gui/Qt6QJpegPluginTargets-release.cmake:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtGui/qimage.h:
 
-/Users/stahlber/Projects/ft/mrcloader.cpp:
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtGui/qtransform.h:
 
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtGui/qfont.h:
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtWidgets/qrubberband.h:
+
+/Users/stahlber/Qt/6.8.3/macos/lib/cmake/Qt6WidgetsTools/Qt6WidgetsToolsTargets.cmake:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6BundledPcre2/Qt6BundledPcre2ConfigVersion.cmake:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtGui/qfontmetrics.h:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtGui/qcursor.h:
 
@@ -947,19 +997,9 @@ ft_autogen/timestamp: /Users/stahlber/Projects/emsdk/upstream/emscripten/cache/s
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qvarlengtharray.h:
 
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6/FindGLESv2.cmake:
-
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtGui/qbrush.h:
-
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Gui/Qt6QGifPluginConfig.cmake:
-
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtWidgets/qstyle.h:
-
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qtaggedpointer.h:
-
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qutf8stringview.h:
-
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qmargins.h:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/q26numeric.h:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qtypes.h:
 
@@ -997,6 +1037,8 @@ ft_autogen/timestamp: /Users/stahlber/Projects/emsdk/upstream/emscripten/cache/s
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qtmetamacros.h:
 
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/QSharedDataPointer:
+
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qshareddata.h:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Gui/Qt6QSvgIconPluginDependencies.cmake:
@@ -1031,11 +1073,17 @@ ft_autogen/timestamp: /Users/stahlber/Projects/emsdk/upstream/emscripten/cache/s
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qtclasshelpermacros.h:
 
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Gui/Qt6QSvgPluginAdditionalTargetInfo.cmake:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6/QtPublicSbomOpsHelpers.cmake:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qutf8stringview.h:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qtaggedpointer.h:
+
 /Users/stahlber/Qt/6.8.3/macos/lib/cmake/Qt6GuiTools/Qt6GuiToolsDependencies.cmake:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qsysinfo.h:
-
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Gui/Qt6QSvgPluginTargets.cmake:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6BundledFreetype/Qt6BundledFreetypeTargets-release.cmake:
 
@@ -1043,13 +1091,9 @@ ft_autogen/timestamp: /Users/stahlber/Projects/emsdk/upstream/emscripten/cache/s
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qtresource.h:
 
-/opt/homebrew/share/cmake/Modules/CMakeCommonLanguageInclude.cmake:
-
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtGui/qpalette.h:
-
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6/Qt6Config.cmake:
-
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qstringlist.h:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/QObject:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtWidgets/QLineEdit:
 
@@ -1103,9 +1147,9 @@ ft_autogen/moc_predefs.h:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qobjectdefs.h:
 
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Gui/Qt6QTuioTouchPluginConfig.cmake:
-
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qobject_impl.h:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/QIODevice:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/q23utility.h:
 
@@ -1114,6 +1158,8 @@ ft_autogen/moc_predefs.h:
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qnumeric.h:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6/FindWrapPCRE2.cmake:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtNetwork/qhttpheaders.h:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qmap.h:
 
@@ -1127,16 +1173,6 @@ ft_autogen/moc_predefs.h:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qiterator.h:
 
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6/QtPublicSbomCpeHelpers.cmake:
-
-/Users/stahlber/Qt/6.8.3/macos/lib/cmake/Qt6CoreTools/Qt6CoreToolsConfigVersionImpl.cmake:
-
-/Users/stahlber/Qt/6.8.3/macos/lib/cmake/Qt6WidgetsTools/Qt6WidgetsToolsVersionlessTargets.cmake:
-
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6/FindWrapBundledLibjpegConfigExtra.cmake:
-
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtGui/qfontinfo.h:
-
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qiterable.h:
 
 /opt/homebrew/bin/cmake:
@@ -1148,6 +1184,10 @@ ft_autogen/moc_predefs.h:
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qstringalgorithms.h:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Gui/Qt6QICOPluginConfig.cmake:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qcomparehelpers.h:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtNetwork/qtnetwork-config.h:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qiodevicebase.h:
 
@@ -1167,31 +1207,19 @@ ft_autogen/moc_predefs.h:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qglobal.h:
 
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qatomic_cxx11.h:
-
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6/QtPublicFindPackageHelpers.cmake:
-
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qforeach.h:
-
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6BundledPcre2/Qt6BundledPcre2ConfigVersionImpl.cmake:
-
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtWidgets/qrubberband.h:
-
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtGui/qtransform.h:
 
 /Users/stahlber/Projects/emsdk/upstream/emscripten/cache/sysroot/include/stdint.h:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qflags.h:
 
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtNetwork/QNetworkReply:
+
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qexceptionhandling.h:
 
-/opt/homebrew/share/cmake/Modules/FeatureSummary.cmake:
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qtcore-config.h:
 
-/Users/stahlber/Qt/6.8.3/macos/lib/cmake/Qt6GuiTools/Qt6GuiToolsVersionlessTargets.cmake:
-
-/Users/stahlber/Qt/6.8.3/macos/lib/cmake/Qt6CoreTools/Qt6CoreToolsConfigVersion.cmake:
-
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qdatastream.h:
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Gui/Qt6QJpegPluginAdditionalTargetInfo.cmake:
 
 /Users/stahlber/Projects/emsdk/upstream/emscripten/cache/sysroot/include/stddef.h:
 
@@ -1207,11 +1235,13 @@ ft_autogen/moc_predefs.h:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6/QtInstallPaths.cmake:
 
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Gui/Qt6QJpegPluginAdditionalTargetInfo.cmake:
-
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qtcore-config.h:
-
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qcontainertools_impl.h:
+
+/opt/homebrew/share/cmake/Modules/FeatureSummary.cmake:
+
+/Users/stahlber/Qt/6.8.3/macos/lib/cmake/Qt6CoreTools/Qt6CoreToolsConfigVersion.cmake:
+
+/Users/stahlber/Qt/6.8.3/macos/lib/cmake/Qt6GuiTools/Qt6GuiToolsVersionlessTargets.cmake:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qcontainerfwd.h:
 
@@ -1224,22 +1254,6 @@ ft_autogen/moc_predefs.h:
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6BundledHarfbuzz/Qt6BundledHarfbuzzTargets-release.cmake:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qchar.h:
-
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6/Qt6ConfigExtras.cmake:
-
-/opt/homebrew/share/cmake/Modules/FindPackageHandleStandardArgs.cmake:
-
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qtextstream.h:
-
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6OpenGL/Qt6OpenGLTargets-release.cmake:
-
-/Users/stahlber/Projects/emsdk/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake:
-
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Network/Qt6QTlsBackendCertOnlyPluginAdditionalTargetInfo.cmake:
-
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qpoint.h:
-
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qatomic.h:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qyieldcpu.h:
 
@@ -1259,11 +1273,9 @@ ft_autogen/moc_predefs.h:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qstringliteral.h:
 
-/Users/stahlber/Qt/6.8.3/macos/lib/cmake/Qt6WidgetsTools/Qt6WidgetsToolsTargets.cmake:
+/opt/homebrew/share/cmake/Modules/Internal/CheckSourceCompiles.cmake:
 
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6BundledPcre2/Qt6BundledPcre2ConfigVersion.cmake:
-
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtGui/qfontmetrics.h:
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtNetwork/QNetworkRequest:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qmath.h:
 
@@ -1283,11 +1295,63 @@ ft_autogen/moc_predefs.h:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/q20functional.h:
 
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6BundledFreetype/Qt6BundledFreetypeAdditionalTargetInfo.cmake:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/QVariant:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6/QtPublicSbomCpeHelpers.cmake:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6/FindWrapBundledLibjpegConfigExtra.cmake:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtGui/qfontinfo.h:
+
+/Users/stahlber/Qt/6.8.3/macos/lib/cmake/Qt6CoreTools/Qt6CoreToolsConfigVersionImpl.cmake:
+
+/Users/stahlber/Qt/6.8.3/macos/lib/cmake/Qt6WidgetsTools/Qt6WidgetsToolsVersionlessTargets.cmake:
+
+/Users/stahlber/Qt/6.8.3/macos/lib/cmake/Qt6WidgetsTools/Qt6WidgetsToolsDependencies.cmake:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Gui/Qt6QICOPluginTargets-release.cmake:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qprocessordetection.h:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qxptype_traits.h:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/QString:
+
+/Users/stahlber/Projects/emsdk/upstream/emscripten/cache/sysroot/include/bits/stdint.h:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6BundledLibpng/Qt6BundledLibpngAdditionalTargetInfo.cmake:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6/Qt6ConfigExtras.cmake:
+
+/opt/homebrew/share/cmake/Modules/FindPackageHandleStandardArgs.cmake:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qtextstream.h:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6OpenGL/Qt6OpenGLTargets-release.cmake:
+
+/Users/stahlber/Projects/emsdk/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Network/Qt6QTlsBackendCertOnlyPluginAdditionalTargetInfo.cmake:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qpoint.h:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qatomic.h:
+
+/Users/stahlber/Qt/6.8.3/macos/lib/cmake/Qt6CoreTools/Qt6CoreToolsTargets.cmake:
+
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtWidgets/qtabwidget.h:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qline.h:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qbytearrayalgorithms.h:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6/QtPublicFindPackageHelpers.cmake:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qforeach.h:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qatomic_cxx11.h:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Widgets/Qt6WidgetsAdditionalTargetInfo.cmake:
 
@@ -1309,8 +1373,6 @@ ft_autogen/moc_predefs.h:
 
 /Users/stahlber/Projects/ft/ftwindow.cpp:
 
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qxptype_traits.h:
-
 /Users/stahlber/Qt/6.8.3/macos/lib/cmake/Qt6GuiTools/Qt6GuiToolsConfig.cmake:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtGui/qpen.h:
@@ -1319,15 +1381,7 @@ ft_autogen/moc_predefs.h:
 
 CMakeFiles/4.3.0/CMakeSystem.cmake:
 
-/Users/stahlber/Qt/6.8.3/macos/lib/cmake/Qt6WidgetsTools/Qt6WidgetsToolsDependencies.cmake:
-
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Gui/Qt6QICOPluginTargets-release.cmake:
-
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qprocessordetection.h:
-
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qlatin1stringview.h:
-
-/Users/stahlber/Qt/6.8.3/macos/lib/cmake/Qt6CoreTools/Qt6CoreToolsTargets.cmake:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6/QtPublicTestHelpers.cmake:
 
@@ -1335,19 +1389,9 @@ CMakeFiles/4.3.0/CMakeSystem.cmake:
 
 /Users/stahlber/Qt/6.8.3/macos/lib/cmake/Qt6CoreTools/Qt6CoreToolsConfig.cmake:
 
-/Users/stahlber/Projects/emsdk/upstream/emscripten/cache/sysroot/include/string.h:
-
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qgenericatomic.h:
 
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Gui/Qt6QSvgIconPluginTargets-release.cmake:
-
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qcomparehelpers.h:
-
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/q20utility.h:
-
-/Users/stahlber/Projects/emsdk/upstream/emscripten/cache/sysroot/include/bits/stdint.h:
-
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6BundledLibpng/Qt6BundledLibpngAdditionalTargetInfo.cmake:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6/FindWrapZLIB.cmake:
 
@@ -1359,13 +1403,19 @@ CMakeFiles/4.3.0/CMakeSystem.cmake:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qarraydatapointer.h:
 
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Gui/Qt6QWasmIntegrationPluginConfig.cmake:
-
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Gui/Qt6QSvgIconPluginTargets.cmake:
-
 /opt/homebrew/share/cmake/Modules/Compiler/CMakeCommonCompilerMacros.cmake:
 
 CMakeFiles/4.3.0/CMakeCXXCompiler.cmake:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6/FindGLESv2.cmake:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtGui/qbrush.h:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Gui/Qt6QGifPluginConfig.cmake:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtWidgets/qstyle.h:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qdatastream.h:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6BundledPcre2/Qt6BundledPcre2Targets.cmake:
 
@@ -1380,8 +1430,6 @@ CMakeFiles/4.3.0/CMakeCXXCompiler.cmake:
 /opt/homebrew/share/cmake/Modules/CMakeLanguageInformation.cmake:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qbindingstorage.h:
-
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Gui/Qt6QWasmIntegrationPluginAdditionalTargetInfo.cmake:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qobject.h:
 
@@ -1403,11 +1451,17 @@ CMakeFiles/4.3.0/CMakeCXXCompiler.cmake:
 
 /Users/stahlber/Qt/6.8.3/macos/lib/cmake/Qt6CoreTools/Qt6CoreToolsAdditionalTargetInfo.cmake:
 
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtGui/qfont.h:
+
 /Users/stahlber/Projects/emsdk/upstream/emscripten/cache/sysroot/include/assert.h:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qalgorithms.h:
 
 /Users/stahlber/Projects/ft/ftwindow.h:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Gui/Qt6QTuioTouchPluginTargets-release.cmake:
+
+/Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtWidgets/qabstractbutton.h:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qfunctionpointer.h:
 
@@ -1418,6 +1472,8 @@ CMakeFiles/4.3.0/CMakeCXXCompiler.cmake:
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtCore/qmetacontainer.h:
 
 /Users/stahlber/Projects/ft/fft.cpp:
+
+/Users/stahlber/Projects/emsdk/upstream/emscripten/cache/sysroot/include/string.h:
 
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6Gui/Qt6GuiConfigVersionImpl.cmake:
 
@@ -1432,7 +1488,5 @@ CMakeFiles/4.3.0/CMakeCXXCompiler.cmake:
 /Users/stahlber/Qt/6.8.3/wasm_singlethread/include/QtGui/qpixmap.h:
 
 /Users/stahlber/Projects/emsdk/upstream/emscripten/cache/sysroot/include/stdbool.h:
-
-/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6/QtPublicGitHelpers.cmake:
 
 /Users/stahlber/Projects/emsdk/upstream/emscripten/cache/sysroot/include/stdarg.h:
