@@ -316,12 +316,12 @@ void FtWindow::paintEvent(QPaintEvent *)
                           30 * 16, 280 * 16);
 
                 // Arrowhead at end of arc (~310 degrees = -50 degrees)
-                double aAngle = -50.0 * M_PI / 180.0;
+                double aAngle = 50.0 * M_PI / 180.0;
                 double ax = cx2 + rad * std::cos(aAngle);
-                double ay = cy2 - rad * std::sin(aAngle);
-                double arrowLen = rad * 1.4;
-                double arrowHalfW = rad * 0.56;
-                QPointF tangent(-std::sin(aAngle), -std::cos(aAngle));
+                double ay = cy2 + rad * std::sin(aAngle);
+                double arrowLen = rad * 1.0;
+                double arrowHalfW = rad * 0.3;
+                QPointF tangent(std::sin(aAngle), -std::cos(aAngle));
                 QPointF normal(std::cos(aAngle), std::sin(aAngle));
                 QPointF base(ax, ay);
                 QPointF tip = base + tangent * arrowLen;
@@ -750,12 +750,12 @@ void FtWindow::paintEvent(QPaintEvent *)
                 p.drawArc(QRectF(cx2 - rad, cy2 - rad, rad * 2, rad * 2),
                           30 * 16, 280 * 16);
 
-                double aAngle = -50.0 * M_PI / 180.0;
+                double aAngle = 50.0 * M_PI / 180.0;
                 double ax = cx2 + rad * std::cos(aAngle);
-                double ay = cy2 - rad * std::sin(aAngle);
-                double arrowLen = rad * 1.4;
-                double arrowHalfW = rad * 0.56;
-                QPointF tangent(-std::sin(aAngle), -std::cos(aAngle));
+                double ay = cy2 + rad * std::sin(aAngle);
+                double arrowLen = rad * 1.0;
+                double arrowHalfW = rad * 0.3;
+                QPointF tangent(std::sin(aAngle), -std::cos(aAngle));
                 QPointF normal(std::cos(aAngle), std::sin(aAngle));
                 QPointF base(ax, ay);
                 QPointF tip = base + tangent * arrowLen;
