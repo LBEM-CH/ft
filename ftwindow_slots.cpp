@@ -141,8 +141,8 @@ void FtWindow::onCreateImage()
 void FtWindow::onReloadImage()
 {
 #ifdef __EMSCRIPTEN__
-    // In WASM there is no filesystem path to reload from – do nothing
-    return;
+    if (m_imagePath.isEmpty()) return;
+    fetchAndLoadImage(m_imagePath);
 #else
     if (m_imagePath.isEmpty() || !QFile::exists(m_imagePath)) return;
 
@@ -371,8 +371,7 @@ void FtWindow::fetchAndLoadImage(const QString &relativePath)
             FetchCtx *c = static_cast<FetchCtx *>(arg);
             qDebug() << "Fetched" << sz << "bytes for" << c->path;
             QByteArray data(static_cast<const char *>(buf), sz);
-            QString fileName = c->path.section('/', -1);
-            c->self->loadImageData(fileName, data);
+            c->self->loadImageData(c->path, data);
             delete c;
         },
         // onerror
@@ -474,6 +473,10 @@ void FtWindow::computeFFT()
 {
     if (m_image.isNull()) return;
 
+    m_fftProgress = 0.0;
+    update();
+    QApplication::processEvents();
+
     QImage gray = m_image.convertToFormat(QImage::Format_Grayscale8);
     int w = gray.width();
     int h = gray.height();
@@ -497,7 +500,8 @@ void FtWindow::computeFFT()
             data[y * N + x] = Complex(row[x], 0.0);
     }
 
-    m_fftProgress = 0.0;
+    // Data prepared – show a small slice of progress
+    m_fftProgress = 0.02;
     update();
     QApplication::processEvents();
 
@@ -509,6 +513,11 @@ void FtWindow::computeFFT()
             for (int x = 0; x < N; x++) tmp[x] = data[y * N + x];
             fft1d(tmp, false);
             for (int x = 0; x < N; x++) data[y * N + x] = tmp[x];
+            if ((y & 31) == 0) {
+                m_fftProgress = 0.02 + 0.48 * y / N;
+                update();
+                QApplication::processEvents();
+            }
         }
         m_fftProgress = 0.5;
         update();
@@ -518,6 +527,11 @@ void FtWindow::computeFFT()
             for (int y = 0; y < N; y++) tmp[y] = data[y * N + x];
             fft1d(tmp, false);
             for (int y = 0; y < N; y++) data[y * N + x] = tmp[y];
+            if ((x & 31) == 0) {
+                m_fftProgress = 0.5 + 0.48 * x / N;
+                update();
+                QApplication::processEvents();
+            }
         }
         m_fftProgress = 1.0;
         update();
@@ -608,6 +622,11 @@ void FtWindow::computeInverseFFT()
             for (int x = 0; x < N; x++) tmp[x] = data[y * N + x];
             fft1d(tmp, true);
             for (int x = 0; x < N; x++) data[y * N + x] = tmp[x];
+            if ((y & 31) == 0) {
+                m_iftProgress = 0.5 * y / N;
+                update();
+                QApplication::processEvents();
+            }
         }
         m_iftProgress = 0.5;
         update();
@@ -617,6 +636,11 @@ void FtWindow::computeInverseFFT()
             for (int y = 0; y < N; y++) tmp[y] = data[y * N + x];
             fft1d(tmp, true);
             for (int y = 0; y < N; y++) data[y * N + x] = tmp[y];
+            if ((x & 31) == 0) {
+                m_iftProgress = 0.5 + 0.5 * x / N;
+                update();
+                QApplication::processEvents();
+            }
         }
         m_iftProgress = 1.0;
         update();

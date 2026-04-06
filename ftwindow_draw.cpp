@@ -369,9 +369,9 @@ void FtWindow::drawLattice(QPainter &p, const QRect &screenRect,
         }
     }
 
-    // Draw red arrows for u and v vectors
+    // Draw yellow arrows for u and v vectors
     auto drawArrow = [&](double tipSx, double tipSy, const QString &label) {
-        p.setPen(QPen(QColor(255, 80, 80), 2));
+        p.setPen(QPen(QColor(255, 220, 0), 4));
         p.drawLine(QPointF(scrCx, scrCy), QPointF(tipSx, tipSy));
 
         // Arrowhead
@@ -379,13 +379,13 @@ void FtWindow::drawLattice(QPainter &p, const QRect &screenRect,
         double len = std::sqrt(dx * dx + dy * dy);
         if (len > 5) {
             double ux2 = dx / len, uy2 = dy / len;
-            double aLen = std::min(10.0, len * 0.3);
+            double aLen = std::min(15.0, len * 0.45);
             double px1 = tipSx - aLen * (ux2 * 0.86 + uy2 * 0.5);
             double py1 = tipSy - aLen * (uy2 * 0.86 - ux2 * 0.5);
             double px2 = tipSx - aLen * (ux2 * 0.86 - uy2 * 0.5);
             double py2 = tipSy - aLen * (uy2 * 0.86 + ux2 * 0.5);
             p.setPen(Qt::NoPen);
-            p.setBrush(QColor(255, 80, 80));
+            p.setBrush(QColor(255, 220, 0));
             QPainterPath ah;
             ah.moveTo(tipSx, tipSy);
             ah.lineTo(px1, py1);
@@ -397,7 +397,7 @@ void FtWindow::drawLattice(QPainter &p, const QRect &screenRect,
         // Label
         QFont lf; lf.setPixelSize(11); lf.setBold(true);
         p.setFont(lf);
-        p.setPen(QColor(255, 80, 80));
+        p.setPen(QColor(255, 220, 0));
         p.drawText((int)(tipSx + 4), (int)(tipSy - 4), label);
     };
 
