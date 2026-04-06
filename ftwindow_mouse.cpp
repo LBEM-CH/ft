@@ -32,6 +32,8 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
                 m_imageRawPixels = m_history[i].rawPixels;
                 m_imageMinVal    = m_history[i].minVal;
                 m_imageMaxVal    = m_history[i].maxVal;
+                m_imageDispMin   = m_history[i].minVal;
+                m_imageDispMax   = m_history[i].maxVal;
                 m_pixelSize      = m_history[i].pixelSize;
             } else {
                 // Empty slot – clear panel 1
@@ -40,6 +42,8 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
                 m_imageRawPixels.clear();
                 m_imageMinVal    = 0;
                 m_imageMaxVal    = 0;
+                m_imageDispMin   = 0;
+                m_imageDispMax   = 0;
                 m_pixelSize      = 1.0;
             }
 
@@ -58,6 +62,16 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
             settings.setValue("lastFile", m_imagePath);
             settings.setValue("activeSlot", m_activeSlot);
             update();
+            return;
+        }
+    }
+
+    // Check histogram clicks – start drag for display range adjustment
+    for (int h = 0; h < NUM_HISTS; h++) {
+        if (!m_histRects[h].isNull() && m_histRects[h].contains(event->pos())) {
+            m_histDragging = true;
+            m_histDragTarget = h;
+            m_histDragStartX = event->pos().x();
             return;
         }
     }
@@ -375,6 +389,65 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
 
 void FtWindow::mouseReleaseEvent(QMouseEvent *event)
 {
+    if (m_histDragging) {
+        m_histDragging = false;
+        int h = m_histDragTarget;
+        m_histDragTarget = -1;
+        if (h >= 0 && h < NUM_HISTS && !m_histRects[h].isNull()) {
+            QRect hr = m_histRects[h];
+            // Map start and end X positions to value range
+            double globalMin = 0, globalMax = 0;
+            switch (h) {
+            case HIST_P1:       globalMin = m_imageMinVal; globalMax = m_imageMaxVal; break;
+            case HIST_POWER:    globalMin = m_powerMin;    globalMax = m_powerMax;    break;
+            case HIST_FT_LEFT:
+                if (m_displayMode == 0) { globalMin = m_cosMin;   globalMax = m_cosMax; }
+                else                    { globalMin = m_ampMin;   globalMax = m_ampMax; }
+                break;
+            case HIST_FT_RIGHT:
+                if (m_displayMode == 0) { globalMin = m_sinMin;   globalMax = m_sinMax; }
+                else                    { globalMin = m_phaseMin; globalMax = m_phaseMax; }
+                break;
+            }
+            double range = globalMax - globalMin;
+            if (range <= 0) range = 1;
+
+            int x1 = m_histDragStartX;
+            int x2 = event->pos().x();
+            if (x1 > x2) std::swap(x1, x2);
+            // Only apply if there was meaningful movement (> 3 pixels)
+            if (x2 - x1 > 3) {
+                double frac1 = std::clamp((x1 - hr.x()) / (double)hr.width(), 0.0, 1.0);
+                double frac2 = std::clamp((x2 - hr.x()) / (double)hr.width(), 0.0, 1.0);
+                double newMin = globalMin + frac1 * range;
+                double newMax = globalMin + frac2 * range;
+
+                switch (h) {
+                case HIST_P1:
+                    m_imageDispMin = newMin; m_imageDispMax = newMax;
+                    rebuildImageWithLUT();
+                    break;
+                case HIST_POWER:
+                    m_powerDispMin = newMin; m_powerDispMax = newMax;
+                    rebuildFTImageWithLUT(HIST_POWER);
+                    break;
+                case HIST_FT_LEFT:
+                    if (m_displayMode == 0) { m_cosDispMin = newMin; m_cosDispMax = newMax; }
+                    else                    { m_ampDispMin = newMin; m_ampDispMax = newMax; }
+                    rebuildFTImageWithLUT(HIST_FT_LEFT);
+                    break;
+                case HIST_FT_RIGHT:
+                    if (m_displayMode == 0) { m_sinDispMin = newMin; m_sinDispMax = newMax; }
+                    else                    { m_phaseDispMin = newMin; m_phaseDispMax = newMax; }
+                    rebuildFTImageWithLUT(HIST_FT_RIGHT);
+                    break;
+                }
+                update();
+            }
+        }
+        return;
+    }
+
     if (m_p1ToolDragging) {
         m_p1ToolDragging = false;
         if (m_ftComputed) {
@@ -561,6 +634,26 @@ void FtWindow::mouseMoveEvent(QMouseEvent *event)
 {
     m_mousePos = event->pos();
 
+    // Check if mouse is over a histogram – show tooltip
+    {
+        bool overHist = false;
+        for (int h = 0; h < NUM_HISTS; h++) {
+            if (!m_histRects[h].isNull() && m_histRects[h].contains(event->pos())) {
+                overHist = true;
+                break;
+            }
+        }
+        if (overHist)
+            setToolTip("Click to adjust display parameters");
+        else if (!m_histDragging)
+            setToolTip(QString());
+    }
+
+    if (m_histDragging) {
+        update();
+        return;
+    }
+
     if (m_p1ToolDragging && !m_image.isNull()) {
         if (m_p1EraserActive) p1EraserApply(event->pos());
         else if (m_p1BrushActive) p1BrushApply(event->pos());
@@ -642,6 +735,42 @@ void FtWindow::mouseMoveEvent(QMouseEvent *event)
     }
 
     update();
+}
+
+// ---------------------------------------------------------------------------
+//  Double-click – reset histogram display range to global min/max
+// ---------------------------------------------------------------------------
+void FtWindow::mouseDoubleClickEvent(QMouseEvent *event)
+{
+    for (int h = 0; h < NUM_HISTS; h++) {
+        if (!m_histRects[h].isNull() && m_histRects[h].contains(event->pos())) {
+            switch (h) {
+            case HIST_P1:
+                m_imageDispMin = m_imageMinVal;
+                m_imageDispMax = m_imageMaxVal;
+                rebuildImageWithLUT();
+                break;
+            case HIST_POWER:
+                m_powerDispMin = m_powerMin;
+                m_powerDispMax = m_powerMax;
+                rebuildFTImageWithLUT(HIST_POWER);
+                break;
+            case HIST_FT_LEFT:
+                if (m_displayMode == 0) { m_cosDispMin = m_cosMin; m_cosDispMax = m_cosMax; }
+                else                    { m_ampDispMin = m_ampMin; m_ampDispMax = m_ampMax; }
+                rebuildFTImageWithLUT(HIST_FT_LEFT);
+                break;
+            case HIST_FT_RIGHT:
+                if (m_displayMode == 0) { m_sinDispMin = m_sinMin; m_sinDispMax = m_sinMax; }
+                else                    { m_phaseDispMin = m_phaseMin; m_phaseDispMax = m_phaseMax; }
+                rebuildFTImageWithLUT(HIST_FT_RIGHT);
+                break;
+            }
+            update();
+            return;
+        }
+    }
+    QWidget::mouseDoubleClickEvent(event);
 }
 
 // ---------------------------------------------------------------------------

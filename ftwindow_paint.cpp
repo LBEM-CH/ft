@@ -807,7 +807,8 @@ void FtWindow::paintEvent(QPaintEvent *)
         double curVal = 0;
         bool hasCur = sampleValue(inner, m_zoom[0], imgW, imgH, m_imageRawPixels, curVal);
         drawMinMax(p, frame, m_imageMinVal, m_imageMaxVal, curVal, hasCur);
-        drawHistogram(p, frame, m_imageRawPixels, m_imageMinVal, m_imageMaxVal, hy - frame.bottom());
+        drawHistogram(p, frame, m_imageRawPixels, m_imageMinVal, m_imageMaxVal, hy - frame.bottom(),
+                      HIST_P1, m_imageDispMin, m_imageDispMax);
 
         // Pixel size label above top-left corner of image (outside frame)
         {
@@ -846,6 +847,14 @@ void FtWindow::paintEvent(QPaintEvent *)
             QRect mathRect(fx, fy, fw, fh);
 
             drawShadowRect(p, mathRect);
+
+            // Progress bar: light blue fill from left to right
+            if (m_mathProgress >= 0.0 && m_mathProgress <= 1.0) {
+                int progW = static_cast<int>(fw * m_mathProgress);
+                p.setPen(Qt::NoPen);
+                p.setBrush(QColor(180, 210, 255));
+                p.drawRect(fx + 1, fy + 1, progW, fh - 2);
+            }
 
             // Scale widget sizes relative to frame width
             int fontSize = std::clamp(fw / 30, 12, 32);
@@ -971,6 +980,26 @@ void FtWindow::paintEvent(QPaintEvent *)
         int panel2W = width() - panel2X;
         int panel2H = hy - 1;
 
+        // Helper: draw a small red cross at the Fourier-space origin
+        auto drawOriginCross = [&](const QRect &screenRect, const ZoomState &zoom,
+                                   int imgW, int imgH) {
+            QRectF src = zoom.visibleRect(imgW, imgH);
+            double originX = imgW / 2.0;
+            double originY = imgH / 2.0;
+            // Map image coordinate to screen coordinate
+            double sx = screenRect.x() + (originX - src.x()) / src.width()  * screenRect.width();
+            double sy = screenRect.y() + (originY - src.y()) / src.height() * screenRect.height();
+            // Cross arm length: 1/16 of image mapped to screen
+            double armImg = imgW / 16.0;
+            double armScreen = armImg / src.width() * screenRect.width();
+            p.save();
+            p.setClipRect(screenRect);
+            p.setPen(QPen(Qt::red, 1));
+            p.drawLine(QPointF(sx - armScreen, sy), QPointF(sx + armScreen, sy));
+            p.drawLine(QPointF(sx, sy - armScreen), QPointF(sx, sy + armScreen));
+            p.restore();
+        };
+
         if (m_displayMode == 2 || m_displayMode == 3) {
             int side = static_cast<int>(0.7 * std::min(panel2W, panel2H));
             int fx = panel2X + (panel2W - side) / 2;
@@ -1021,7 +1050,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 drawMinMax(p, frame, m_powerMin, m_powerMax, curVal, hasCur);
             }
 
-            drawHistogram(p, frame, m_powerVals, m_powerMin, m_powerMax, hy - frame.bottom());
+            drawHistogram(p, frame, m_powerVals, m_powerMin, m_powerMax, hy - frame.bottom(),
+                          HIST_POWER, m_powerDispMin, m_powerDispMax);
 
             if (m_bandpassActive)
                 drawBandpassRing(p, inner, m_zoom[1], m_fftN, m_fftN);
@@ -1046,6 +1076,7 @@ void FtWindow::paintEvent(QPaintEvent *)
             const QImage *img1, *img2;
             const std::vector<double> *vals1, *vals2;
             double min1, max1, min2, max2;
+            double dmin1, dmax1, dmin2, dmax2;
             QString label1, label2;
 
             if (m_displayMode == 0) {
@@ -1053,12 +1084,16 @@ void FtWindow::paintEvent(QPaintEvent *)
                 vals1 = &m_cosVals; vals2 = &m_sinVals;
                 min1 = m_cosMin; max1 = m_cosMax;
                 min2 = m_sinMin; max2 = m_sinMax;
+                dmin1 = m_cosDispMin; dmax1 = m_cosDispMax;
+                dmin2 = m_sinDispMin; dmax2 = m_sinDispMax;
                 label1 = "Cosinus"; label2 = "Sinus";
             } else {
                 img1 = &m_ampImg;  img2 = &m_phaseImg;
                 vals1 = &m_ampVals; vals2 = &m_phaseVals;
                 min1 = m_ampMin; max1 = m_ampMax;
                 min2 = m_phaseMin; max2 = m_phaseMax;
+                dmin1 = m_ampDispMin; dmax1 = m_ampDispMax;
+                dmin2 = m_phaseDispMin; dmax2 = m_phaseDispMax;
                 label1 = "Amplitude"; label2 = "Phase";
             }
 
@@ -1086,7 +1121,8 @@ void FtWindow::paintEvent(QPaintEvent *)
             double curVal1 = 0;
             bool hasCur1 = sampleValue(inner1, m_zoom[1], m_fftN, m_fftN, *vals1, curVal1);
             drawMinMax(p, frame1, min1, max1, curVal1, hasCur1);
-            drawHistogram(p, frame1, *vals1, min1, max1, hy - frame1.bottom());
+            drawHistogram(p, frame1, *vals1, min1, max1, hy - frame1.bottom(),
+                          HIST_FT_LEFT, dmin1, dmax1);
 
             drawImageWithFrame(p, frame2, *img2, m_zoom[2], m_fftN, m_fftN);
             drawAxes(p, frame2, m_zoom[2], m_fftN, m_fftN, true, m_pixelSize, true);
@@ -1094,7 +1130,8 @@ void FtWindow::paintEvent(QPaintEvent *)
             double curVal2 = 0;
             bool hasCur2 = sampleValue(inner2, m_zoom[2], m_fftN, m_fftN, *vals2, curVal2);
             drawMinMax(p, frame2, min2, max2, curVal2, hasCur2);
-            drawHistogram(p, frame2, *vals2, min2, max2, hy - frame2.bottom());
+            drawHistogram(p, frame2, *vals2, min2, max2, hy - frame2.bottom(),
+                          HIST_FT_RIGHT, dmin2, dmax2);
 
             if (m_bandpassActive) {
                 drawBandpassRing(p, inner1, m_zoom[1], m_fftN, m_fftN);
@@ -1129,6 +1166,14 @@ void FtWindow::paintEvent(QPaintEvent *)
         QRect ftMathRect(fx, fy, fw, fh);
 
         drawShadowRect(p, ftMathRect);
+
+        // Progress bar: light blue fill from left to right
+        if (m_ftMathProgress >= 0.0 && m_ftMathProgress <= 1.0) {
+            int progW = static_cast<int>(fw * m_ftMathProgress);
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(180, 210, 255));
+            p.drawRect(fx + 1, fy + 1, progW, fh - 2);
+        }
 
         // Scale widget sizes relative to frame width
         int fontSize = std::clamp(fw / 30, 12, 32);

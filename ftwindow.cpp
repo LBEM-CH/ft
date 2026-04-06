@@ -19,6 +19,16 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     connect(m_loadBtn, &QPushButton::clicked, this, &FtWindow::onLoadImage);
     new QShortcut(QKeySequence::Open, this, SLOT(onLoadImage()));
 
+    // Save button
+    m_saveBtn = new QPushButton("Save image", this);
+    m_saveBtn->setFixedSize(100, 30);
+    connect(m_saveBtn, &QPushButton::clicked, this, &FtWindow::onSaveImage);
+
+    // Create image button
+    m_createBtn = new QPushButton("Create image", this);
+    m_createBtn->setFixedSize(100, 30);
+    connect(m_createBtn, &QPushButton::clicked, this, &FtWindow::onCreateImage);
+
     // Reload button
     m_reloadBtn = new QPushButton("Reload image", this);
     m_reloadBtn->setFixedSize(100, 30);
@@ -329,6 +339,8 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
         m_imageRawPixels = m_history[m_activeSlot].rawPixels;
         m_imageMinVal    = m_history[m_activeSlot].minVal;
         m_imageMaxVal    = m_history[m_activeSlot].maxVal;
+        m_imageDispMin   = m_history[m_activeSlot].minVal;
+        m_imageDispMax   = m_history[m_activeSlot].maxVal;
         m_pixelSize      = m_history[m_activeSlot].pixelSize;
         if (!m_image.isNull()) {
             m_zoom[0].reset(m_image.width(), m_image.height());
@@ -345,6 +357,8 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
 void FtWindow::resizeEvent(QResizeEvent *)
 {
     m_loadBtn->move(8, 8);
+    m_saveBtn->move(8 + m_loadBtn->width() + 4, 8);
+    m_createBtn->move(8 + m_loadBtn->width() + 4, 8 + m_saveBtn->height() + 4);
     int hy0 = height() - height() / 5;
     m_reloadBtn->move(8, 8 + m_loadBtn->height() + 4);
     m_modeBtn->move(width() - m_modeBtn->width() - 8, 8);

@@ -17,6 +17,65 @@ void FtWindow::onLoadImage()
     loadImageFile(path);
 }
 
+void FtWindow::onSaveImage()
+{
+    if (m_image.isNull()) return;
+
+    QString path = QFileDialog::getSaveFileName(
+        this, "Save image as PNG", QString(),
+        "PNG Image (*.png)");
+    if (path.isEmpty()) return;
+
+    if (!path.endsWith(".png", Qt::CaseInsensitive))
+        path += ".png";
+
+    m_image.save(path, "PNG");
+}
+
+void FtWindow::onCreateImage()
+{
+    // If no slot is active, pick the first empty one (or last slot as fallback)
+    if (m_activeSlot < 0) {
+        m_activeSlot = HISTORY_SLOTS - 1;
+        for (int i = 0; i < HISTORY_SLOTS; i++) {
+            if (!m_history[i].occupied) { m_activeSlot = i; break; }
+        }
+    }
+
+    int sz = 1024;
+    m_image = QImage(sz, sz, QImage::Format_Grayscale8);
+    m_image.fill(0);
+    m_imageRawPixels.assign((size_t)sz * sz, 0.0);
+    m_imageMinVal = 0;
+    m_imageMaxVal = 0;
+    m_imageDispMin = 0;
+    m_imageDispMax = 0;
+    m_pixelSize = 1.0;
+    m_imagePath.clear();
+
+    m_history[m_activeSlot].image     = m_image;
+    m_history[m_activeSlot].path.clear();
+    m_history[m_activeSlot].rawPixels = m_imageRawPixels;
+    m_history[m_activeSlot].minVal    = 0;
+    m_history[m_activeSlot].maxVal    = 0;
+    m_history[m_activeSlot].pixelSize = 1.0;
+    m_history[m_activeSlot].occupied  = true;
+
+    m_ftComputed = false;
+    m_modeBtn->setText(modeLabel());
+    m_modeBtn->hide();
+    m_maskBtn->hide();
+
+    m_zoom[0].reset(sz, sz);
+    computeFFT();
+    m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
+
+    QSettings settings("ft", "ft");
+    settings.setValue("activeSlot", m_activeSlot);
+    saveHistory();
+    update();
+}
+
 void FtWindow::onReloadImage()
 {
     if (m_imagePath.isEmpty() || !QFile::exists(m_imagePath)) return;
@@ -29,6 +88,8 @@ void FtWindow::onReloadImage()
         m_imageRawPixels = std::move(r.rawPixels);
         m_imageMinVal = r.minVal;
         m_imageMaxVal = r.maxVal;
+        m_imageDispMin = r.minVal;
+        m_imageDispMax = r.maxVal;
         m_pixelSize = r.pixelSize;
         if (!m_image.isNull())
             padImageToSquare();
@@ -92,6 +153,8 @@ void FtWindow::loadImageFile(const QString &path)
         m_imageRawPixels = std::move(r.rawPixels);
         m_imageMinVal = r.minVal;
         m_imageMaxVal = r.maxVal;
+        m_imageDispMin = r.minVal;
+        m_imageDispMax = r.maxVal;
         m_pixelSize = r.pixelSize;
 
         if (m_image.isNull())
@@ -224,6 +287,8 @@ void FtWindow::extractImageData()
     }
     m_imageMinVal = *std::min_element(m_imageRawPixels.begin(), m_imageRawPixels.end());
     m_imageMaxVal = *std::max_element(m_imageRawPixels.begin(), m_imageRawPixels.end());
+    m_imageDispMin = m_imageMinVal;
+    m_imageDispMax = m_imageMaxVal;
 }
 
 // ---------------------------------------------------------------------------
@@ -483,6 +548,13 @@ void FtWindow::recomputeDisplayImages()
     std::tie(m_ampMin,   m_ampMax)   = mm(m_ampVals);
     std::tie(m_phaseMin, m_phaseMax) = mm(m_phaseVals);
     std::tie(m_powerMin, m_powerMax) = mm(m_powerVals);
+
+    // Initialize display ranges to global ranges
+    m_cosDispMin = m_cosMin;     m_cosDispMax = m_cosMax;
+    m_sinDispMin = m_sinMin;     m_sinDispMax = m_sinMax;
+    m_ampDispMin = m_ampMin;     m_ampDispMax = m_ampMax;
+    m_phaseDispMin = m_phaseMin; m_phaseDispMax = m_phaseMax;
+    m_powerDispMin = m_powerMin; m_powerDispMax = m_powerMax;
 }
 
 // ---------------------------------------------------------------------------
@@ -755,6 +827,8 @@ void FtWindow::rebuildImageFromRaw()
 
     m_imageMinVal = *std::min_element(m_imageRawPixels.begin(), m_imageRawPixels.end());
     m_imageMaxVal = *std::max_element(m_imageRawPixels.begin(), m_imageRawPixels.end());
+    m_imageDispMin = m_imageMinVal;
+    m_imageDispMax = m_imageMaxVal;
     double range = m_imageMaxVal - m_imageMinVal;
     double scale = (range > 0) ? 255.0 / range : 1.0;
 
@@ -764,6 +838,64 @@ void FtWindow::rebuildImageFromRaw()
         for (int x = 0; x < w; x++)
             row[x] = static_cast<uchar>(std::clamp(
                 (m_imageRawPixels[y * w + x] - m_imageMinVal) * scale, 0.0, 255.0));
+    }
+}
+
+void FtWindow::rebuildImageWithLUT()
+{
+    int w = m_image.width(), h = m_image.height();
+    if (m_imageRawPixels.empty() || (int)m_imageRawPixels.size() != w * h) return;
+
+    double dmin = m_imageDispMin, dmax = m_imageDispMax;
+    double range = dmax - dmin;
+    double scale = (range > 0) ? 255.0 / range : 1.0;
+
+    m_image = QImage(w, h, QImage::Format_Grayscale8);
+    for (int y = 0; y < h; y++) {
+        uchar *row = m_image.scanLine(y);
+        for (int x = 0; x < w; x++)
+            row[x] = static_cast<uchar>(std::clamp(
+                (m_imageRawPixels[y * w + x] - dmin) * scale, 0.0, 255.0));
+    }
+
+    // Also update the history slot
+    if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS)
+        m_history[m_activeSlot].image = m_image;
+}
+
+void FtWindow::rebuildFTImageWithLUT(int which)
+{
+    int N = m_fftN;
+    if (N == 0) return;
+
+    auto rebuild = [&](const std::vector<double> &vals, QImage &img, double dmin, double dmax) {
+        double range = dmax - dmin;
+        double scale = (range > 0) ? 255.0 / range : 1.0;
+        img = QImage(N, N, QImage::Format_Grayscale8);
+        for (int y = 0; y < N; y++) {
+            uchar *row = img.scanLine(y);
+            for (int x = 0; x < N; x++)
+                row[x] = static_cast<uchar>(std::clamp(
+                    (vals[y * N + x] - dmin) * scale, 0.0, 255.0));
+        }
+    };
+
+    switch (which) {
+    case HIST_POWER:
+        rebuild(m_powerVals, m_powerImg, m_powerDispMin, m_powerDispMax);
+        break;
+    case HIST_FT_LEFT:
+        if (m_displayMode == 0)
+            rebuild(m_cosVals, m_cosImg, m_cosDispMin, m_cosDispMax);
+        else if (m_displayMode == 1)
+            rebuild(m_ampVals, m_ampImg, m_ampDispMin, m_ampDispMax);
+        break;
+    case HIST_FT_RIGHT:
+        if (m_displayMode == 0)
+            rebuild(m_sinVals, m_sinImg, m_sinDispMin, m_sinDispMax);
+        else if (m_displayMode == 1)
+            rebuild(m_phaseVals, m_phaseImg, m_phaseDispMin, m_phaseDispMax);
+        break;
     }
 }
 
@@ -1311,8 +1443,16 @@ void FtWindow::onFtMathCompute()
         return std::make_pair(std::move(data), N);
     };
 
+    m_ftMathProgress = 0.0;
+    update(); QApplication::processEvents();
+
     auto [fft1data, N1] = computeSlotFFT(pix1, w1, h1);
+    m_ftMathProgress = 0.3;
+    update(); QApplication::processEvents();
+
     auto [fft2data, N2] = computeSlotFFT(pix2, w2, h2);
+    m_ftMathProgress = 0.6;
+    update(); QApplication::processEvents();
 
     // If FFT sizes differ, zero-pad the smaller one in frequency space
     // (insert zeros around the edges of the shifted FFT, keeping DC at center)
@@ -1360,6 +1500,9 @@ void FtWindow::onFtMathCompute()
         }
     }
 
+    m_ftMathProgress = 0.7;
+    update(); QApplication::processEvents();
+
     // Inverse FFT to get real-space image
     fftShift(result, N);
     {
@@ -1369,6 +1512,9 @@ void FtWindow::onFtMathCompute()
             fft1d(row, true);
             for (int x = 0; x < N; x++) result[y * N + x] = row[x];
         }
+        m_ftMathProgress = 0.85;
+        update(); QApplication::processEvents();
+
         std::vector<Complex> col(N);
         for (int x = 0; x < N; x++) {
             for (int y = 0; y < N; y++) col[y] = result[y * N + x];
@@ -1376,6 +1522,9 @@ void FtWindow::onFtMathCompute()
             for (int y = 0; y < N; y++) result[y * N + x] = col[y];
         }
     }
+
+    m_ftMathProgress = 0.95;
+    update(); QApplication::processEvents();
 
     // For multiplication (convolution) and division, cyclic-shift the result
     // so that the output feature is centered, matching real-space behavior.
@@ -1455,6 +1604,7 @@ void FtWindow::onFtMathCompute()
     m_history[outIdx].powerSpecImg = computePowerSpecMasked(m_image);
     saveHistory();
 
+    m_ftMathProgress = -1;
     onFtMathCancel();
 }
 
@@ -1539,6 +1689,9 @@ void FtWindow::onMathCompute()
         sh = S;
     };
 
+    m_mathProgress = 0.0;
+    update(); QApplication::processEvents();
+
     // For convolution/correlation, use zero-mean + zero-pad + rescale approach
     if (opIdx >= 4) {
         // Step 1: Subtract mean from each image (float to zero average)
@@ -1609,8 +1762,16 @@ void FtWindow::onMathCompute()
                 fb[y * N + x] = Complex(b[y * S + x], 0);
             }
 
+        m_mathProgress = 0.1;
+        update(); QApplication::processEvents();
+
         fft2d(fa, N, false);
+        m_mathProgress = 0.35;
+        update(); QApplication::processEvents();
+
         fft2d(fb, N, false);
+        m_mathProgress = 0.6;
+        update(); QApplication::processEvents();
 
         std::vector<Complex> fc(N * N);
         for (int i = 0; i < N * N; i++) {
@@ -1621,6 +1782,8 @@ void FtWindow::onMathCompute()
         }
 
         fft2d(fc, N, true);  // inverse FFT
+        m_mathProgress = 0.9;
+        update(); QApplication::processEvents();
 
         std::vector<double> result(S * S);
         // Center the result: cyclic shift so zero-lag is at (S/2, S/2)
@@ -1692,6 +1855,7 @@ void FtWindow::onMathCompute()
         computeFFT();
         m_history[outIdx].powerSpecImg = computePowerSpecMasked(m_image);
         saveHistory();
+        m_mathProgress = -1;
         onMathCancel();
         return;
     }
@@ -1733,6 +1897,9 @@ void FtWindow::onMathCompute()
 
     std::vector<double> result(S * S);
 
+    m_mathProgress = 0.3;
+    update(); QApplication::processEvents();
+
     if (opIdx <= 3) {
         // Wien filter noise estimate from range of b
         double bMin = *std::min_element(b.begin(), b.end());
@@ -1749,6 +1916,9 @@ void FtWindow::onMathCompute()
             }
         }
     }
+
+    m_mathProgress = 0.7;
+    update(); QApplication::processEvents();
 
     // Build the output QImage from the result
     double minVal = *std::min_element(result.begin(), result.end());
@@ -1809,5 +1979,6 @@ void FtWindow::onMathCompute()
     saveHistory();
 
     // Close the math overlay
+    m_mathProgress = -1;
     onMathCancel();
 }

@@ -218,7 +218,9 @@ void FtWindow::drawMinMax(QPainter &p, const QRect &frame,
 void FtWindow::drawHistogram(QPainter &p, const QRect &frame,
                               const std::vector<double> &vals,
                               double minVal, double maxVal,
-                              int availableBelow)
+                              int availableBelow,
+                              int histIndex,
+                              double dispMin, double dispMax)
 {
     if (vals.empty()) return;
 
@@ -226,6 +228,11 @@ void FtWindow::drawHistogram(QPainter &p, const QRect &frame,
     int histW = frame.width() / 2;
     int histX = frame.x() + (frame.width() - histW) / 2;
     int histY = frame.bottom() + histH;
+
+    // Store the histogram rect for mouse interaction
+    QRect histRect(histX, histY, histW, histH);
+    if (histIndex >= 0 && histIndex < NUM_HISTS)
+        m_histRects[histIndex] = histRect;
 
     const int nBins = 128;
     std::vector<int> bins(nBins, 0);
@@ -239,6 +246,20 @@ void FtWindow::drawHistogram(QPainter &p, const QRect &frame,
 
     int maxCount = *std::max_element(bins.begin(), bins.end());
     if (maxCount == 0) return;
+
+    // Draw lighter grey background above the histogram for the display range
+    bool hasCustomRange = (dispMin != dispMax) && (dispMin != minVal || dispMax != maxVal);
+    if (hasCustomRange) {
+        double fracLeft  = std::clamp((dispMin - minVal) / range, 0.0, 1.0);
+        double fracRight = std::clamp((dispMax - minVal) / range, 0.0, 1.0);
+        int x0 = histX + (int)(fracLeft * histW);
+        int x1 = histX + (int)(fracRight * histW);
+        if (x1 > x0) {
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(128, 128, 128));
+            p.drawRect(x0, histY, x1 - x0, histH);
+        }
+    }
 
     p.setPen(QPen(QColor(200, 200, 200), 1));
     p.setBrush(Qt::NoBrush);
@@ -269,6 +290,30 @@ void FtWindow::drawHistogram(QPainter &p, const QRect &frame,
                histY + histH + fm.ascent(), minStr);
     p.drawText(histX + histW + 2,
                histY + histH + fm.ascent(), maxStr);
+
+    // Draw drag selection preview
+    if (histIndex >= 0 && m_histDragging && m_histDragTarget == histIndex) {
+        int x1 = std::clamp(m_histDragStartX, histX, histX + histW);
+        int x2 = std::clamp(m_mousePos.x(), histX, histX + histW);
+        if (x1 > x2) std::swap(x1, x2);
+        if (x2 - x1 > 1) {
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(128, 128, 128, 120));
+            p.drawRect(x1, histY, x2 - x1, histH);
+        }
+    }
+
+    // Tooltip hint text above histogram
+    if (histIndex >= 0) {
+        p.setPen(QColor(180, 180, 180));
+        QFont hf;
+        hf.setPixelSize(9);
+        p.setFont(hf);
+        QFontMetrics hfm(hf);
+        QString hint = "Click to adjust display parameters";
+        int hintX = histX + (histW - hfm.horizontalAdvance(hint)) / 2;
+        p.drawText(hintX, histY - 2, hint);
+    }
 }
 
 void FtWindow::drawLattice(QPainter &p, const QRect &screenRect,

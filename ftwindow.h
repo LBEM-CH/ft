@@ -61,14 +61,17 @@ public:
 
 protected:
     void resizeEvent(QResizeEvent *)            override;
-    void mousePressEvent(QMouseEvent *event)    override;
-    void mouseReleaseEvent(QMouseEvent *event)  override;
-    void mouseMoveEvent(QMouseEvent *event)     override;
+    void mousePressEvent(QMouseEvent *event)      override;
+    void mouseReleaseEvent(QMouseEvent *event)    override;
+    void mouseMoveEvent(QMouseEvent *event)       override;
+    void mouseDoubleClickEvent(QMouseEvent *event) override;
     void wheelEvent(QWheelEvent *event)         override;
     void paintEvent(QPaintEvent *)              override;
 
 private slots:
     void onLoadImage();
+    void onSaveImage();
+    void onCreateImage();
     void onReloadImage();
     void onCycleMode();
     void onToggleMask(bool checked);
@@ -82,6 +85,8 @@ private:
     void computeFFT();
     void computeInverseFFT();
     void recomputeDisplayImages();
+    void rebuildImageWithLUT();      // rebuild m_image using display min/max
+    void rebuildFTImageWithLUT(int which); // rebuild FT display image for given mode
 
     // painting helpers
     QRect  upperArrowBounds() const;
@@ -99,10 +104,14 @@ private:
     void drawHistogram(QPainter &p, const QRect &frame,
                        const std::vector<double> &vals,
                        double minVal, double maxVal,
-                       int availableBelow = 200);
+                       int availableBelow = 200,
+                       int histIndex = -1,
+                       double dispMin = 0, double dispMax = 0);
 
     // ---- widgets ----
     QPushButton *m_loadBtn   = nullptr;
+    QPushButton *m_saveBtn   = nullptr;
+    QPushButton *m_createBtn = nullptr;
     QPushButton *m_reloadBtn = nullptr;
     QPushButton *m_modeBtn   = nullptr;
     QCheckBox   *m_maskBtn   = nullptr;
@@ -132,6 +141,25 @@ private:
     double m_ampMin = 0, m_ampMax = 0;
     double m_phaseMin = 0, m_phaseMax = 0;
     double m_powerMin = 0, m_powerMax = 0;
+
+    // ---- display LUT parameters (can differ from global min/max) ----
+    double m_imageDispMin = 0, m_imageDispMax = 0;
+    double m_cosDispMin = 0, m_cosDispMax = 0;
+    double m_sinDispMin = 0, m_sinDispMax = 0;
+    double m_ampDispMin = 0, m_ampDispMax = 0;
+    double m_phaseDispMin = 0, m_phaseDispMax = 0;
+    double m_powerDispMin = 0, m_powerDispMax = 0;
+
+    // ---- histogram interaction ----
+    static constexpr int HIST_P1 = 0;
+    static constexpr int HIST_POWER = 1;
+    static constexpr int HIST_FT_LEFT = 2;
+    static constexpr int HIST_FT_RIGHT = 3;
+    static constexpr int NUM_HISTS = 4;
+    QRect m_histRects[NUM_HISTS];        // screen rects of histograms
+    bool  m_histDragging = false;
+    int   m_histDragTarget = -1;         // which histogram
+    int   m_histDragStartX = 0;         // screen X at mouse press
 
     // ---- image history (panel 3) ----
     static constexpr int HISTORY_SLOTS = 16;
@@ -210,6 +238,7 @@ private:
     QLabel     *m_mathEqualsLabel = nullptr;
     void onMathCompute();
     void onMathCancel();
+    double m_mathProgress = -1;    // -1 = not computing, 0..1 = progress
 
     // Binning UI
     bool        m_binActive = false;
@@ -272,6 +301,7 @@ private:
     QPushButton *m_ftMathComputeBtn = nullptr;
     void onFtMathCompute();
     void onFtMathCancel();
+    double m_ftMathProgress = -1;  // -1 = not computing, 0..1 = progress
 
     // ---- Fourier crop ----
     bool        m_ftCropActive = false;
