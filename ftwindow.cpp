@@ -364,6 +364,7 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_applyBinBtn->hide();
 
     // Restore history and active slot
+#ifndef __EMSCRIPTEN__
     restoreHistory();
 
     QSettings settings("ft", "ft");
@@ -389,6 +390,11 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     } else {
         m_activeSlot = -1;
     }
+#else
+    m_displayMode = 3;
+    m_modeBtn->setText(modeLabel());
+    m_activeSlot = -1;
+#endif
 }
 
 // ---------------------------------------------------------------------------

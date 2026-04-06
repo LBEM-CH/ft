@@ -11,6 +11,7 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QFileDialog>
+#include <QBuffer>
 #include <QSettings>
 #include <QMouseEvent>
 #include <QWheelEvent>
@@ -20,7 +21,9 @@
 #include <QDebug>
 #include <cmath>
 #include <algorithm>
+#ifndef __EMSCRIPTEN__
 #include <thread>
+#endif
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846

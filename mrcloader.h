@@ -17,5 +17,6 @@ struct MrcResult {
 };
 
 MrcResult loadMrc(const QString &path);
+MrcResult loadMrcFromData(const QByteArray &fileData);
 
 #endif // MRCLOADER_H

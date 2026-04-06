@@ -5,6 +5,16 @@
 // ---------------------------------------------------------------------------
 void FtWindow::onLoadImage()
 {
+#ifdef __EMSCRIPTEN__
+    // In WASM, use QFileDialog::getOpenFileContent which maps to the browser
+    // file picker and returns the file data as a QByteArray.
+    QFileDialog::getOpenFileContent(
+        "Images (*.tif *.tiff *.jpg *.jpeg *.png *.mrc *.MRC)",
+        [this](const QString &fileName, const QByteArray &fileData) {
+            if (fileName.isEmpty() || fileData.isEmpty()) return;
+            loadImageData(fileName, fileData);
+        });
+#else
     QString startDir = QCoreApplication::applicationDirPath() + "/../EXAMPLE_IMAGES";
     if (!QDir(startDir).exists())
         startDir = QCoreApplication::applicationDirPath();
@@ -15,12 +25,22 @@ void FtWindow::onLoadImage()
 
     if (path.isEmpty()) return;
     loadImageFile(path);
+#endif
 }
 
 void FtWindow::onSaveImage()
 {
     if (m_image.isNull()) return;
 
+#ifdef __EMSCRIPTEN__
+    // In WASM, save image via browser download
+    QByteArray pngData;
+    QBuffer buf(&pngData);
+    buf.open(QIODevice::WriteOnly);
+    m_image.save(&buf, "PNG");
+    buf.close();
+    QFileDialog::saveFileContent(pngData, "image.png");
+#else
     QString path = QFileDialog::getSaveFileName(
         this, "Save image as PNG", QString(),
         "PNG Image (*.png)");
@@ -30,6 +50,7 @@ void FtWindow::onSaveImage()
         path += ".png";
 
     m_image.save(path, "PNG");
+#endif
 }
 
 void FtWindow::onCreateImage()
@@ -70,14 +91,20 @@ void FtWindow::onCreateImage()
     computeFFT();
     m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
 
+#ifndef __EMSCRIPTEN__
     QSettings settings("ft", "ft");
     settings.setValue("activeSlot", m_activeSlot);
+#endif
     saveHistory();
     update();
 }
 
 void FtWindow::onReloadImage()
 {
+#ifdef __EMSCRIPTEN__
+    // In WASM there is no filesystem path to reload from – do nothing
+    return;
+#else
     if (m_imagePath.isEmpty() || !QFile::exists(m_imagePath)) return;
 
     qDebug() << "Reloading image:" << m_imagePath;
@@ -112,22 +139,27 @@ void FtWindow::onReloadImage()
         computeFFT();
     }
     update();
+#endif // !__EMSCRIPTEN__
 }
 
 void FtWindow::onCycleMode()
 {
     m_displayMode = (m_displayMode + 1) % 4;
     m_modeBtn->setText(modeLabel());
+#ifndef __EMSCRIPTEN__
     QSettings settings("ft", "ft");
     settings.setValue("displayMode", m_displayMode);
+#endif
     update();
 }
 
 void FtWindow::onToggleMask(bool checked)
 {
     m_maskCenter = checked;
+#ifndef __EMSCRIPTEN__
     QSettings settings("ft", "ft");
     settings.setValue("maskCenter", checked);
+#endif
     recomputeDisplayImages();
     update();
 }
@@ -189,9 +221,11 @@ void FtWindow::loadImageFile(const QString &path)
         m_history[m_activeSlot].occupied     = true;
     }
 
+#ifndef __EMSCRIPTEN__
     QSettings settings("ft", "ft");
     settings.setValue("lastFile", path);
     settings.setValue("activeSlot", m_activeSlot);
+#endif
 
     m_ftComputed = false;
     m_modeBtn->setText(modeLabel());
@@ -202,6 +236,75 @@ void FtWindow::loadImageFile(const QString &path)
         m_zoom[0].reset(m_image.width(), m_image.height());
         computeFFT();
         // Store power spec thumbnail now that FFT is done
+        m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
+    }
+
+    saveHistory();
+    update();
+}
+
+void FtWindow::loadImageData(const QString &fileName, const QByteArray &fileData)
+{
+    qDebug() << "Loading image from data:" << fileName << "(" << fileData.size() << "bytes)";
+
+    // If no slot is active, pick the first empty one (or last slot as fallback)
+    if (m_activeSlot < 0) {
+        m_activeSlot = HISTORY_SLOTS - 1;
+        for (int i = 0; i < HISTORY_SLOTS; i++) {
+            if (!m_history[i].occupied) { m_activeSlot = i; break; }
+        }
+    }
+
+    if (fileName.endsWith(".mrc", Qt::CaseInsensitive)) {
+        MrcResult r = loadMrcFromData(fileData);
+        m_image = r.image;
+        m_imageRawPixels = std::move(r.rawPixels);
+        m_imageMinVal = r.minVal;
+        m_imageMaxVal = r.maxVal;
+        m_imageDispMin = r.minVal;
+        m_imageDispMax = r.maxVal;
+        m_pixelSize = r.pixelSize;
+
+        if (m_image.isNull())
+            qDebug() << "MRC load FAILED – image is null";
+        else {
+            qDebug() << "MRC load OK –" << m_image.width() << "x" << m_image.height();
+            padImageToSquare();
+        }
+    } else {
+        m_image.loadFromData(fileData);
+        m_pixelSize = 1.0;
+        if (m_image.isNull()) {
+            qDebug() << "Image load FAILED for:" << fileName;
+        } else {
+            qDebug() << "Image loaded:" << m_image.width() << "x" << m_image.height()
+                     << "format:" << m_image.format();
+            padImageToSquare();
+            extractImageData();
+        }
+    }
+
+    m_imagePath = fileName;
+
+    // Store in the active slot
+    if (!m_image.isNull()) {
+        m_history[m_activeSlot].image        = m_image;
+        m_history[m_activeSlot].path         = fileName;
+        m_history[m_activeSlot].rawPixels    = m_imageRawPixels;
+        m_history[m_activeSlot].minVal       = m_imageMinVal;
+        m_history[m_activeSlot].maxVal       = m_imageMaxVal;
+        m_history[m_activeSlot].pixelSize    = m_pixelSize;
+        m_history[m_activeSlot].occupied     = true;
+    }
+
+    m_ftComputed = false;
+    m_modeBtn->setText(modeLabel());
+    m_modeBtn->hide();
+    m_maskBtn->hide();
+
+    if (!m_image.isNull()) {
+        m_zoom[0].reset(m_image.width(), m_image.height());
+        computeFFT();
         m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
     }
 
@@ -326,6 +429,27 @@ void FtWindow::computeFFT()
     QApplication::processEvents();
 
     {
+#ifdef __EMSCRIPTEN__
+        // Single-threaded FFT for WASM (no pthreads)
+        std::vector<Complex> tmp(N);
+        for (int y = 0; y < N; y++) {
+            for (int x = 0; x < N; x++) tmp[x] = data[y * N + x];
+            fft1d(tmp, false);
+            for (int x = 0; x < N; x++) data[y * N + x] = tmp[x];
+        }
+        m_fftProgress = 0.5;
+        update();
+        QApplication::processEvents();
+
+        for (int x = 0; x < N; x++) {
+            for (int y = 0; y < N; y++) tmp[y] = data[y * N + x];
+            fft1d(tmp, false);
+            for (int y = 0; y < N; y++) data[y * N + x] = tmp[y];
+        }
+        m_fftProgress = 1.0;
+        update();
+        QApplication::processEvents();
+#else
         int nThreads = (int)std::thread::hardware_concurrency();
         if (nThreads < 1) nThreads = 1;
         int batchSize = nThreads * 16;
@@ -375,6 +499,7 @@ void FtWindow::computeFFT()
             update();
             QApplication::processEvents();
         }
+#endif
     }
 
     fftShift(data, N);
@@ -403,6 +528,27 @@ void FtWindow::computeInverseFFT()
     QApplication::processEvents();
 
     {
+#ifdef __EMSCRIPTEN__
+        // Single-threaded inverse FFT for WASM
+        std::vector<Complex> tmp(N);
+        for (int y = 0; y < N; y++) {
+            for (int x = 0; x < N; x++) tmp[x] = data[y * N + x];
+            fft1d(tmp, true);
+            for (int x = 0; x < N; x++) data[y * N + x] = tmp[x];
+        }
+        m_iftProgress = 0.5;
+        update();
+        QApplication::processEvents();
+
+        for (int x = 0; x < N; x++) {
+            for (int y = 0; y < N; y++) tmp[y] = data[y * N + x];
+            fft1d(tmp, true);
+            for (int y = 0; y < N; y++) data[y * N + x] = tmp[y];
+        }
+        m_iftProgress = 1.0;
+        update();
+        QApplication::processEvents();
+#else
         int nThreads = (int)std::thread::hardware_concurrency();
         if (nThreads < 1) nThreads = 1;
         int batchSize = nThreads * 16;
@@ -452,6 +598,7 @@ void FtWindow::computeInverseFFT()
             update();
             QApplication::processEvents();
         }
+#endif
     }
 
     m_iftProgress = -1;
@@ -636,6 +783,7 @@ QImage FtWindow::computePowerSpecMasked(const QImage &img)
 
 void FtWindow::saveHistory()
 {
+#ifndef __EMSCRIPTEN__
     QSettings settings("ft", "ft");
     for (int i = 0; i < HISTORY_SLOTS; i++) {
         QString key = QString("history/%1").arg(i);
@@ -645,10 +793,15 @@ void FtWindow::saveHistory()
             settings.remove(key);
     }
     settings.setValue("activeSlot", m_activeSlot);
+#endif
 }
 
 void FtWindow::restoreHistory()
 {
+#ifdef __EMSCRIPTEN__
+    // In WASM there is no filesystem to restore history from
+    return;
+#else
     QSettings settings("ft", "ft");
     for (int i = 0; i < HISTORY_SLOTS; i++) {
         QString key = QString("history/%1").arg(i);
@@ -712,6 +865,7 @@ void FtWindow::restoreHistory()
         m_history[i].powerSpecImg = computePowerSpecMasked(img);
         m_history[i].occupied     = true;
     }
+#endif // !__EMSCRIPTEN__
 }
 
 FtWindow::BufferSnapshot FtWindow::captureCurrentState() const

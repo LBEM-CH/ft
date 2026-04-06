@@ -58,9 +58,11 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
             }
 
             saveHistory();
+#ifndef __EMSCRIPTEN__
             QSettings settings("ft", "ft");
             settings.setValue("lastFile", m_imagePath);
             settings.setValue("activeSlot", m_activeSlot);
+#endif
             update();
             return;
         }
@@ -115,7 +117,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
     if (m_p1BtnRects[2].contains(event->pos()) && !m_image.isNull()) {
         deactivateAllP1Tools(); showP1ToolWidgets();
         storeUndoSnapshot();
-        m_image = m_image.flipped(Qt::Horizontal);
+        m_image = m_image.mirrored(true, false);
         extractImageData();
         if (m_ftComputed) computeFFT();
         update();
@@ -124,7 +126,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
     if (m_p1BtnRects[3].contains(event->pos()) && !m_image.isNull()) {
         deactivateAllP1Tools(); showP1ToolWidgets();
         storeUndoSnapshot();
-        m_image = m_image.flipped(Qt::Vertical);
+        m_image = m_image.mirrored(false, true);
         extractImageData();
         if (m_ftComputed) computeFFT();
         update();

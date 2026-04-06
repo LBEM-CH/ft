@@ -1,7 +1,9 @@
 #include "fft.h"
 #include <algorithm>
 #include <cmath>
+#ifndef __EMSCRIPTEN__
 #include <thread>
+#endif
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -121,9 +123,6 @@ void fft1d(std::vector<Complex> &data, bool inverse) {
 }
 
 void fft2d(std::vector<Complex> &data, int N, bool inverse) {
-    int nThreads = (int)std::thread::hardware_concurrency();
-    if (nThreads < 1) nThreads = 1;
-
     auto doRows = [&](int yStart, int yEnd) {
         std::vector<Complex> row(N);
         for (int y = yStart; y < yEnd; y++) {
@@ -134,6 +133,25 @@ void fft2d(std::vector<Complex> &data, int N, bool inverse) {
                 data[y * N + x] = row[x];
         }
     };
+
+    auto doCols = [&](int xStart, int xEnd) {
+        std::vector<Complex> col(N);
+        for (int x = xStart; x < xEnd; x++) {
+            for (int y = 0; y < N; y++)
+                col[y] = data[y * N + x];
+            fft1d(col, inverse);
+            for (int y = 0; y < N; y++)
+                data[y * N + x] = col[y];
+        }
+    };
+
+#ifdef __EMSCRIPTEN__
+    // Single-threaded for WASM
+    doRows(0, N);
+    doCols(0, N);
+#else
+    int nThreads = (int)std::thread::hardware_concurrency();
+    if (nThreads < 1) nThreads = 1;
 
     {
         std::vector<std::thread> threads;
@@ -147,17 +165,6 @@ void fft2d(std::vector<Complex> &data, int N, bool inverse) {
         for (auto &t : threads) t.join();
     }
 
-    auto doCols = [&](int xStart, int xEnd) {
-        std::vector<Complex> col(N);
-        for (int x = xStart; x < xEnd; x++) {
-            for (int y = 0; y < N; y++)
-                col[y] = data[y * N + x];
-            fft1d(col, inverse);
-            for (int y = 0; y < N; y++)
-                data[y * N + x] = col[y];
-        }
-    };
-
     {
         std::vector<std::thread> threads;
         int perThread = (N + nThreads - 1) / nThreads;
@@ -169,6 +176,7 @@ void fft2d(std::vector<Complex> &data, int N, bool inverse) {
         }
         for (auto &t : threads) t.join();
     }
+#endif
 }
 
 void fftShift(std::vector<Complex> &data, int N) {

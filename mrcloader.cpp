@@ -8,23 +8,34 @@
 
 MrcResult loadMrc(const QString &path)
 {
-    MrcResult result;
     QFile f(path);
 
     if (!f.open(QIODevice::ReadOnly)) {
         qDebug() << "MRC: Failed to open file:" << path;
-        return result;
+        return MrcResult();
     }
 
     qDebug() << "MRC: Opening file:" << path;
     qDebug() << "MRC: File size:" << f.size() << "bytes";
 
-    if (f.size() < 1024) {
-        qDebug() << "MRC: File too small for MRC header (need >= 1024 bytes)";
+    QByteArray fileData = f.readAll();
+    f.close();
+
+    return loadMrcFromData(fileData);
+}
+
+MrcResult loadMrcFromData(const QByteArray &fileData)
+{
+    MrcResult result;
+
+    qDebug() << "MRC: Data size:" << fileData.size() << "bytes";
+
+    if (fileData.size() < 1024) {
+        qDebug() << "MRC: Data too small for MRC header (need >= 1024 bytes)";
         return result;
     }
 
-    QByteArray hdr = f.read(1024);
+    QByteArray hdr = fileData.left(1024);
 
     // --- byte-order detection ---------------------------------------------------
     bool needSwap = false;
@@ -147,9 +158,9 @@ MrcResult loadMrc(const QString &path)
     if (nz < 0) nz = 1;            // treat nz<=0 as single slice
     if (nz == 0) nz = 1;
 
-    if (nsymbt < 0 || nsymbt > f.size() - 1024) {
+    if (nsymbt < 0 || nsymbt > fileData.size() - 1024) {
         qDebug() << "MRC: ERROR – nsymbt looks invalid:" << nsymbt
-                 << "(file size =" << f.size() << ")";
+                 << "(data size =" << fileData.size() << ")";
         return result;
     }
 
@@ -161,7 +172,6 @@ MrcResult loadMrc(const QString &path)
 
     // --- read pixel data --------------------------------------------------------
     qint64 dataOffset = 1024 + nsymbt;
-    f.seek(dataOffset);
     qDebug() << "MRC: Data offset =" << dataOffset;
 
     qint64 pixelCount = (qint64)nx * ny;
@@ -173,7 +183,7 @@ MrcResult loadMrc(const QString &path)
 
     if (mode == 0) {
         // 8-bit unsigned integers
-        QByteArray data = f.read(pixelCount);
+        QByteArray data = fileData.mid(dataOffset, pixelCount);
         if (data.size() < pixelCount) {
             qDebug() << "MRC: ERROR – not enough data for mode 0: expected"
                      << pixelCount << "got" << data.size();
@@ -196,7 +206,7 @@ MrcResult loadMrc(const QString &path)
         }
     } else if (mode == 1) {
         // 16-bit signed integers
-        QByteArray data = f.read(pixelCount * 2);
+        QByteArray data = fileData.mid(dataOffset, pixelCount * 2);
         if (data.size() < pixelCount * 2) {
             qDebug() << "MRC: ERROR – not enough data for mode 1: expected"
                      << pixelCount * 2 << "got" << data.size();
@@ -222,7 +232,7 @@ MrcResult loadMrc(const QString &path)
         }
     } else if (mode == 2) {
         // 32-bit floats
-        QByteArray data = f.read(pixelCount * 4);
+        QByteArray data = fileData.mid(dataOffset, pixelCount * 4);
         if (data.size() < pixelCount * 4) {
             qDebug() << "MRC: ERROR – not enough data for mode 2: expected"
                      << pixelCount * 4 << "got" << data.size();
@@ -250,7 +260,7 @@ MrcResult loadMrc(const QString &path)
         }
     } else if (mode == 6) {
         // 16-bit unsigned integers
-        QByteArray data = f.read(pixelCount * 2);
+        QByteArray data = fileData.mid(dataOffset, pixelCount * 2);
         if (data.size() < pixelCount * 2) {
             qDebug() << "MRC: ERROR – not enough data for mode 6: expected"
                      << pixelCount * 2 << "got" << data.size();
