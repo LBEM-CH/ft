@@ -1,0 +1,38 @@
+How to build and run the WASM server
+=====================================
+
+Prerequisites (already installed):
+  - Emscripten SDK at ~/Projects/emsdk (version 3.1.56)
+  - Qt 6.8.3 WASM kit at ~/Qt/6.8.3/wasm_singlethread/
+
+1. Rebuild (only needed after code changes):
+
+   source ~/Projects/emsdk/emsdk_env.sh
+   cd ~/Projects/ft
+   rm -rf build_wasm
+   mkdir build_wasm && cd build_wasm
+   ~/Qt/6.8.3/wasm_singlethread/bin/qt-cmake ..
+   cmake --build .
+   cp ~/Qt/6.8.3/wasm_singlethread/plugins/platforms/qtloader.js .
+   cp ~/Qt/6.8.3/wasm_singlethread/plugins/platforms/qtlogo.svg .
+   sed -e 's/@APPNAME@/ft/g' \
+       -e 's/@APPEXPORTNAME@/createQtAppInstance/g' \
+       -e 's/@PRELOAD@//g' \
+       ~/Qt/6.8.3/wasm_singlethread/plugins/platforms/wasm_shell.html > ft.html
+   ln -sfn ~/Projects/ft/EXAMPLE_IMAGES images
+
+2. Start the server:
+
+   cd ~/Projects/ft/build_wasm
+   python3 -m http.server 8080
+
+3. Open in browser:
+
+   Local:   http://localhost:8080/ft.html
+   Network: http://192.168.1.148:8080/ft.html
+            (use "ipconfig getifaddr en0" to find current IP)
+
+4. Stop the server:
+
+   Press Ctrl+C in the terminal, or:
+   lsof -ti:8080 | xargs kill -9

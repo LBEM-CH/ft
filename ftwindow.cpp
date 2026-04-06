@@ -15,23 +15,23 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
 
     // Load button
     m_loadBtn = new QPushButton("Load image", this);
-    m_loadBtn->setFixedSize(100, 30);
+    m_loadBtn->setFixedSize(130, 30);
     connect(m_loadBtn, &QPushButton::clicked, this, &FtWindow::onLoadImage);
     new QShortcut(QKeySequence::Open, this, SLOT(onLoadImage()));
 
     // Save button
     m_saveBtn = new QPushButton("Save image", this);
-    m_saveBtn->setFixedSize(100, 30);
+    m_saveBtn->setFixedSize(130, 30);
     connect(m_saveBtn, &QPushButton::clicked, this, &FtWindow::onSaveImage);
 
     // Create image button
     m_createBtn = new QPushButton("Create image", this);
-    m_createBtn->setFixedSize(100, 30);
+    m_createBtn->setFixedSize(130, 30);
     connect(m_createBtn, &QPushButton::clicked, this, &FtWindow::onCreateImage);
 
     // Reload button
     m_reloadBtn = new QPushButton("Reload image", this);
-    m_reloadBtn->setFixedSize(100, 30);
+    m_reloadBtn->setFixedSize(130, 30);
     connect(m_reloadBtn, &QPushButton::clicked, this, &FtWindow::onReloadImage);
 
     // Undo / Redo button
