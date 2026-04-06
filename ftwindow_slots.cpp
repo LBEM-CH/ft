@@ -1208,9 +1208,25 @@ void FtWindow::onMathCompute()
 
     if (pix1.empty() || pix2.empty()) return;
 
-    // Safety: if rawPixels size doesn't match w*h, derive dimensions from pixel count
-    if ((int)pix1.size() != w1 * h1) { w1 = h1 = (int)std::round(std::sqrt(pix1.size())); }
-    if ((int)pix2.size() != w2 * h2) { w2 = h2 = (int)std::round(std::sqrt(pix2.size())); }
+    // Safety: if rawPixels size doesn't match w*h, rebuild from the QImage
+    auto fixRawPixels = [&](std::vector<double> &pix, int idx, int w, int h) {
+        if ((int)pix.size() == w * h) return;
+        QImage img;
+        if (idx == m_activeSlot && !m_image.isNull())
+            img = m_image;
+        else if (idx >= 0 && idx < HISTORY_SLOTS && m_history[idx].occupied)
+            img = m_history[idx].image;
+        if (img.isNull()) return;
+        QImage gray = img.convertToFormat(QImage::Format_Grayscale8);
+        pix.resize((size_t)w * h);
+        for (int y = 0; y < h; y++) {
+            const uchar *row = gray.constScanLine(y);
+            for (int x = 0; x < w; x++)
+                pix[y * w + x] = row[x];
+        }
+    };
+    fixRawPixels(pix1, in1Idx, w1, h1);
+    fixRawPixels(pix2, in2Idx, w2, h2);
 
     // Pad a non-square image to square with average grey, centered
     auto padToSquare = [](std::vector<double> &src, int &sw, int &sh) {
@@ -1231,9 +1247,9 @@ void FtWindow::onMathCompute()
         sh = S;
     };
 
-    // For convolution/correlation, use zero-mean + zero-padded approach
+    // For convolution/correlation, use zero-mean + zero-pad + rescale approach
     if (opIdx >= 4) {
-        // Subtract mean from each image (float to zero average)
+        // Step 1: Subtract mean from each image (float to zero average)
         double mean1 = 0, mean2 = 0;
         for (double v : pix1) mean1 += v;
         mean1 /= pix1.size();
@@ -1242,22 +1258,64 @@ void FtWindow::onMathCompute()
         for (double &v : pix1) v -= mean1;
         for (double &v : pix2) v -= mean2;
 
-        // Determine S = square dimension of the larger image
-        int S = std::max({w1, h1, w2, h2});
+        // Step 2: Zero-pad each image to square (centered, zeros on outside)
+        auto zeroPadToSquare = [](std::vector<double> &src, int &sw, int &sh) {
+            if (sw == sh) return;
+            int sq = std::max(sw, sh);
+            std::vector<double> dst(sq * sq, 0.0);
+            int offX = (sq - sw) / 2;
+            int offY = (sq - sh) / 2;
+            for (int y = 0; y < sh; y++)
+                for (int x = 0; x < sw; x++)
+                    dst[(y + offY) * sq + (x + offX)] = src[y * sw + x];
+            src = std::move(dst);
+            sw = sq;
+            sh = sq;
+        };
+        zeroPadToSquare(pix1, w1, h1);
+        zeroPadToSquare(pix2, w2, h2);
+
+        // Step 3: Rescale both to S x S where S = larger square dimension
+        int S = std::max(w1, w2);
+        auto scaleToSize = [](const std::vector<double> &src, int sw, int S) {
+            if (sw == S) return src;
+            std::vector<double> dst(S * S);
+            for (int y = 0; y < S; y++) {
+                double srcY = y * (sw - 1.0) / (S - 1.0);
+                int y0 = (int)srcY;
+                int y1 = std::min(y0 + 1, sw - 1);
+                double fy = srcY - y0;
+                for (int x = 0; x < S; x++) {
+                    double srcX = x * (sw - 1.0) / (S - 1.0);
+                    int x0 = (int)srcX;
+                    int x1 = std::min(x0 + 1, sw - 1);
+                    double fx = srcX - x0;
+                    double v00 = src[y0 * sw + x0];
+                    double v10 = src[y0 * sw + x1];
+                    double v01 = src[y1 * sw + x0];
+                    double v11 = src[y1 * sw + x1];
+                    dst[y * S + x] = v00 * (1 - fx) * (1 - fy)
+                                   + v10 * fx       * (1 - fy)
+                                   + v01 * (1 - fx) * fy
+                                   + v11 * fx       * fy;
+                }
+            }
+            return dst;
+        };
+        std::vector<double> a = scaleToSize(pix1, w1, S);
+        std::vector<double> b = scaleToSize(pix2, w2, S);
+
+        // Step 4: FFT convolution/correlation
         int N = nextPow2(S);
         int halfS = S / 2;
 
-        // Zero-pad both images into N x N complex arrays (centered)
         std::vector<Complex> fa(N * N, Complex(0, 0));
         std::vector<Complex> fb(N * N, Complex(0, 0));
-        int off1X = (S - w1) / 2, off1Y = (S - h1) / 2;
-        int off2X = (S - w2) / 2, off2Y = (S - h2) / 2;
-        for (int y = 0; y < h1; y++)
-            for (int x = 0; x < w1; x++)
-                fa[(y + off1Y) * N + (x + off1X)] = Complex(pix1[y * w1 + x], 0);
-        for (int y = 0; y < h2; y++)
-            for (int x = 0; x < w2; x++)
-                fb[(y + off2Y) * N + (x + off2X)] = Complex(pix2[y * w2 + x], 0);
+        for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++) {
+                fa[y * N + x] = Complex(a[y * S + x], 0);
+                fb[y * N + x] = Complex(b[y * S + x], 0);
+            }
 
         fft2d(fa, N, false);
         fft2d(fb, N, false);
@@ -1273,18 +1331,18 @@ void FtWindow::onMathCompute()
         fft2d(fc, N, true);  // inverse FFT
 
         std::vector<double> result(S * S);
-        if (opIdx == 4) {
-            for (int y = 0; y < S; y++)
-                for (int x = 0; x < S; x++)
-                    result[y * S + x] = fc[y * N + x].real();
-        } else {
-            for (int y = 0; y < S; y++)
-                for (int x = 0; x < S; x++) {
-                    int fy = (y - halfS + N) % N;
-                    int fx = (x - halfS + N) % N;
-                    result[y * S + x] = fc[fy * N + fx].real();
-                }
-        }
+        // Center the result: cyclic shift so zero-lag is at (S/2, S/2)
+        // Convolution adds positions (+halfS), correlation subtracts (-halfS)
+        for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++) {
+                int fy = (opIdx == 4)
+                    ? (y + halfS) % N          // convolution
+                    : (y - halfS + N) % N;     // correlation
+                int fx = (opIdx == 4)
+                    ? (x + halfS) % N
+                    : (x - halfS + N) % N;
+                result[y * S + x] = fc[fy * N + fx].real();
+            }
 
         // Build the output QImage from the result
         double minVal = *std::min_element(result.begin(), result.end());

@@ -93,6 +93,7 @@ private:
     void drawAxes(QPainter &p, const QRect &frame, const ZoomState &zoom,
                   int imgW, int imgH, bool reciprocal, double pixelSize,
                   bool yAxisRight = false);
+    void drawShadowRect(QPainter &p, const QRect &rect);
     void drawMinMax(QPainter &p, const QRect &frame, double minVal, double maxVal,
                     double curVal, bool hasCur);
     void drawHistogram(QPainter &p, const QRect &frame,

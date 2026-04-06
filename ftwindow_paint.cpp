@@ -747,8 +747,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                                   .arg(m_pixelSize, 0, 'g', 4)
                                   .arg(QString::fromUtf8("\u00C5"));
 
-            // Resolution and pixel-size info below the bottom-right of the frame
-            int infoX = frame.right();
+            // Resolution and pixel-size info below the bottom-right corner of panel 1
+            int infoX = panel1W - 4;
             int infoY = frame.bottom() + 4 + 3 * (pfm.height() + 1);
 
             QString resLabel = QString("%1 x %2 pixels").arg(imgW).arg(imgH);
@@ -772,88 +772,7 @@ void FtWindow::paintEvent(QPaintEvent *)
             int fy = inner.y() + (inner.height() - fh) / 2;
             QRect mathRect(fx, fy, fw, fh);
 
-            // Shadow: per-pixel, darker towards the outside, directional offset
-            // Light from top-left: bottom-right gets full offset in both axes,
-            // bottom-left gets offset only to the right, upper-right only downward.
-            {
-                int shBlur = 28;
-                double shOffX = 10.0, shOffY = 10.0;
-                int maxAlpha = 140;
-
-                int sx0 = mathRect.left()  - shBlur;
-                int sy0 = mathRect.top()   - shBlur;
-                int sx1 = mathRect.right() + shBlur + (int)shOffX;
-                int sy1 = mathRect.bottom()+ shBlur + (int)shOffY;
-
-                QImage shadowImg(sx1 - sx0 + 1, sy1 - sy0 + 1, QImage::Format_ARGB32_Premultiplied);
-                shadowImg.fill(Qt::transparent);
-
-                int imgW2 = shadowImg.width(), imgH2 = shadowImg.height();
-
-                double frameL = mathRect.left()   - sx0;
-                double frameT = mathRect.top()    - sy0;
-                double frameR = mathRect.right()  - sx0;
-                double frameB = mathRect.bottom() - sy0;
-                double fcx = (frameL + frameR) / 2.0;
-                double fcy = (frameT + frameB) / 2.0;
-                double fhw = (frameR - frameL) / 2.0;
-                double fhh = (frameB - frameT) / 2.0;
-
-                for (int py = 0; py < imgH2; py++) {
-                    QRgb *line = reinterpret_cast<QRgb*>(shadowImg.scanLine(py));
-                    for (int px = 0; px < imgW2; px++) {
-                        // Skip pixels inside the frame (covered by white background)
-                        if (px >= frameL && px <= frameR && py >= frameT && py <= frameB)
-                            continue;
-
-                        // Position relative to frame center, normalized to edge
-                        double rx = (px - fcx) / fhw;  // -1 left edge, +1 right edge
-                        double ry = (py - fcy) / fhh;  // -1 top edge,  +1 bottom edge
-
-                        // Directional offset per edge:
-                        // right side & bottom get full offset, left & top get none
-                        // bottom-left corner: offset X only (rx<0, ry>0)
-                        // upper-right corner: offset Y only (rx>0, ry<0)
-                        double tx = std::clamp(0.5 + 0.5 * rx, 0.0, 1.0);  // 0 at left, 1 at right
-                        double ty = std::clamp(0.5 + 0.5 * ry, 0.0, 1.0);  // 0 at top, 1 at bottom
-                        double localOffX = shOffX * tx;
-                        double localOffY = shOffY * ty;
-
-                        // Source point on frame that casts this shadow
-                        double srcX = px - localOffX;
-                        double srcY = py - localOffY;
-
-                        // Distance from source point to frame rectangle
-                        double dx = std::max({frameL - srcX, srcX - frameR, 0.0});
-                        double dy = std::max({frameT - srcY, srcY - frameB, 0.0});
-                        double dist = std::sqrt(dx * dx + dy * dy);
-
-                        if (dist >= shBlur) continue;
-
-                        // Fade: darkest near frame, fading to transparent at outer edge
-                        double t = dist / shBlur;
-                        int alpha;
-                        if (dist <= 0)
-                            alpha = maxAlpha;
-                        else
-                            alpha = (int)(maxAlpha * (1.0 - t) * (1.0 - t));
-
-                        if (alpha > 0)
-                            line[px] = qRgba(0, 0, 0, alpha);
-                    }
-                }
-                p.drawImage(sx0, sy0, shadowImg);
-            }
-
-            // White background
-            p.setPen(Qt::NoPen);
-            p.setBrush(QColor(255, 255, 255));
-            p.drawRect(mathRect);
-
-            // Dark grey border, 3 pixels wide
-            p.setPen(QPen(QColor(60, 60, 60), 3));
-            p.setBrush(Qt::NoBrush);
-            p.drawRect(mathRect);
+            drawShadowRect(p, mathRect);
 
             // Scale widget sizes relative to frame width
             int fontSize = std::clamp(fw / 30, 12, 32);
@@ -1140,14 +1059,113 @@ void FtWindow::paintEvent(QPaintEvent *)
         p.setRenderHint(QPainter::Antialiasing, false);
     }
 
-    // ---- Bandpass/directional smooth label ------------------------------------
-    if (m_bandpassActive || m_directionalActive) {
-        QFont sf; sf.setPixelSize(11); p.setFont(sf);
-        p.setPen(Qt::white);
-        int hy2 = height() - height() / 5;
-        int bpX = width() - 250;
-        int bpY = hy2 - 90;
-        p.drawText(bpX, bpY + 15, "Smooth edge by pixels:");
+    // ---- Tool option rectangles (shadow + white background) --------------------
+    {
+        double sc2 = std::clamp(hy / 800.0, 0.5, 1.0);
+        int fs2 = std::max(9, static_cast<int>(11 * sc2));
+        int lh = std::max(16, static_cast<int>(26 * sc2));
+        int margin = 8;
+        QFont sf; sf.setPixelSize(fs2);
+        QFontMetrics fm(sf);
+
+        // Panel 2 tool option rectangles (bottom-right of panel 2)
+        bool p2Tool = m_bandpassActive || m_directionalActive || m_brushActive
+                      || m_eraserActive || m_latticeActive;
+        if (p2Tool) {
+            int nRows = 0;
+            int textW = 0;
+            if (m_bandpassActive || m_directionalActive) {
+                nRows = 3;
+                textW = fm.horizontalAdvance("Smooth edge by pixels:  000");
+            } else if (m_brushActive) {
+                nRows = 2;
+                textW = fm.horizontalAdvance("Paint brush Gaussian diameter:  000");
+            } else if (m_eraserActive) {
+                nRows = 1;
+                textW = fm.horizontalAdvance("Eraser Gaussian diameter:  000");
+            } else if (m_latticeActive) {
+                nRows = 4;
+                textW = fm.horizontalAdvance("Erase pixels outside of lattice  000");
+            }
+
+            int rw = textW + 2 * margin;
+            int rh = nRows * lh + 2 * margin;
+            int rx = width() - rw - margin;
+            int ry = hy - rh - margin;
+            QRect toolRect(rx, ry, rw, rh);
+            drawShadowRect(p, toolRect);
+
+            // Draw painted labels inside the rectangle
+            p.setFont(sf);
+            p.setPen(QColor(60, 60, 60));
+            int tx = rx + margin;
+            int ty = ry + margin;
+
+            if (m_bandpassActive || m_directionalActive) {
+                p.drawText(tx, ty + fm.ascent(), "Smooth edge by pixels:");
+                m_smoothEdit->move(tx + fm.horizontalAdvance("Smooth edge by pixels: "), ty);
+                m_bandEraseOutside->move(tx, ty + lh);
+                m_applyBandBtn->move(tx, ty + lh * 2);
+            } else if (m_brushActive) {
+                p.drawText(tx, ty + fm.ascent(), "Pixel value to enter:");
+                m_brushValueEdit->move(tx + fm.horizontalAdvance("Pixel value to enter: "), ty);
+                p.drawText(tx, ty + lh + fm.ascent(), "Paint brush Gaussian diameter:");
+                m_brushDiameterEdit->move(tx + fm.horizontalAdvance("Paint brush Gaussian diameter: "), ty + lh);
+            } else if (m_eraserActive) {
+                p.drawText(tx, ty + fm.ascent(), "Eraser Gaussian diameter:");
+                m_eraserDiameterEdit->move(tx + fm.horizontalAdvance("Eraser Gaussian diameter: "), ty);
+            } else if (m_latticeActive) {
+                p.drawText(tx, ty + fm.ascent(), "Smooth edge by pixels:");
+                m_latticeSmoothEdit->move(tx + fm.horizontalAdvance("Smooth edge by pixels: "), ty);
+                p.drawText(tx, ty + lh + fm.ascent(), "Diameter of dots:");
+                m_latticeDotDiamEdit->move(tx + fm.horizontalAdvance("Diameter of dots: "), ty + lh);
+                m_latticeEraseOutside->move(tx, ty + lh * 2);
+                m_latticeApplyBtn->move(tx, ty + lh * 3);
+            }
+        }
+
+        // Panel 1 tool option rectangles (bottom-left of panel 1)
+        bool p1Tool = m_p1EraserActive || m_p1BrushActive || m_binActive;
+        if (p1Tool) {
+            int nRows = 0;
+            int textW = 0;
+            if (m_p1EraserActive) {
+                nRows = 1;
+                textW = fm.horizontalAdvance("Eraser Gaussian diameter:  000");
+            } else if (m_p1BrushActive) {
+                nRows = 2;
+                textW = fm.horizontalAdvance("Paint brush Gaussian diameter:  000");
+            } else if (m_binActive) {
+                nRows = 3;
+                textW = fm.horizontalAdvance("Keep original image size  000");
+            }
+
+            int rw = textW + 2 * margin;
+            int rh = nRows * lh + 2 * margin;
+            int rx = margin;
+            int ry = hy - rh - margin;
+            QRect toolRect(rx, ry, rw, rh);
+            drawShadowRect(p, toolRect);
+
+            p.setFont(sf);
+            p.setPen(QColor(60, 60, 60));
+            int tx = rx + margin;
+            int ty = ry + margin;
+
+            if (m_p1EraserActive) {
+                p.drawText(tx, ty + fm.ascent(), "Eraser Gaussian diameter:");
+                m_p1EraserDiameterEdit->move(tx + fm.horizontalAdvance("Eraser Gaussian diameter: "), ty);
+            } else if (m_p1BrushActive) {
+                p.drawText(tx, ty + fm.ascent(), "Pixel value to enter:");
+                m_p1BrushValueEdit->move(tx + fm.horizontalAdvance("Pixel value to enter: "), ty);
+                p.drawText(tx, ty + lh + fm.ascent(), "Paint brush Gaussian diameter:");
+                m_p1BrushDiameterEdit->move(tx + fm.horizontalAdvance("Paint brush Gaussian diameter: "), ty + lh);
+            } else if (m_binActive) {
+                m_binCombo->move(tx, ty);
+                m_binKeepSizeBtn->move(tx, ty + lh);
+                m_applyBinBtn->move(tx, ty + lh * 2);
+            }
+        }
     }
 
     // ---- Panel 3: image history (below panel 1) – 2 rows × 8 columns ----------

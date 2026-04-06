@@ -3,6 +3,69 @@
 // ---------------------------------------------------------------------------
 //  Drawing helpers
 // ---------------------------------------------------------------------------
+void FtWindow::drawShadowRect(QPainter &p, const QRect &rect)
+{
+    // Shadow: per-pixel, darker towards the outside, directional offset
+    int shBlur = 28;
+    double shOffX = 10.0, shOffY = 10.0;
+    int maxAlpha = 140;
+
+    int sx0 = rect.left()  - shBlur;
+    int sy0 = rect.top()   - shBlur;
+    int sx1 = rect.right() + shBlur + (int)shOffX;
+    int sy1 = rect.bottom()+ shBlur + (int)shOffY;
+
+    QImage shadowImg(sx1 - sx0 + 1, sy1 - sy0 + 1, QImage::Format_ARGB32_Premultiplied);
+    shadowImg.fill(Qt::transparent);
+
+    int imgW2 = shadowImg.width(), imgH2 = shadowImg.height();
+
+    double frameL = rect.left()   - sx0;
+    double frameT = rect.top()    - sy0;
+    double frameR = rect.right()  - sx0;
+    double frameB = rect.bottom() - sy0;
+    double fcx = (frameL + frameR) / 2.0;
+    double fcy = (frameT + frameB) / 2.0;
+    double fhw = (frameR - frameL) / 2.0;
+    double fhh = (frameB - frameT) / 2.0;
+
+    for (int py = 0; py < imgH2; py++) {
+        QRgb *line = reinterpret_cast<QRgb*>(shadowImg.scanLine(py));
+        for (int px = 0; px < imgW2; px++) {
+            if (px >= frameL && px <= frameR && py >= frameT && py <= frameB)
+                continue;
+            double rx = (px - fcx) / fhw;
+            double ry = (py - fcy) / fhh;
+            double tx = std::clamp(0.5 + 0.5 * rx, 0.0, 1.0);
+            double ty = std::clamp(0.5 + 0.5 * ry, 0.0, 1.0);
+            double localOffX = shOffX * tx;
+            double localOffY = shOffY * ty;
+            double srcX = px - localOffX;
+            double srcY = py - localOffY;
+            double dx = std::max({frameL - srcX, srcX - frameR, 0.0});
+            double dy = std::max({frameT - srcY, srcY - frameB, 0.0});
+            double dist = std::sqrt(dx * dx + dy * dy);
+            if (dist >= shBlur) continue;
+            double t = dist / shBlur;
+            int alpha = (dist <= 0) ? maxAlpha
+                                    : (int)(maxAlpha * (1.0 - t) * (1.0 - t));
+            if (alpha > 0)
+                line[px] = qRgba(0, 0, 0, alpha);
+        }
+    }
+    p.drawImage(sx0, sy0, shadowImg);
+
+    // White background
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(255, 255, 255));
+    p.drawRect(rect);
+
+    // Dark grey border, 3 pixels wide
+    p.setPen(QPen(QColor(60, 60, 60), 3));
+    p.setBrush(Qt::NoBrush);
+    p.drawRect(rect);
+}
+
 void FtWindow::drawImageWithFrame(QPainter &p, const QRect &frame,
                                    const QImage &img,
                                    const ZoomState &zoom,

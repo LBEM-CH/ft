@@ -32,7 +32,7 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
 
     // Mask-center toggle button
     m_maskBtn = new QPushButton("mask center for display", this);
-    m_maskBtn->setFixedSize(180, 30);
+    m_maskBtn->setFixedSize(180, 22);
     m_maskBtn->setCheckable(true);
     m_maskBtn->setStyleSheet(
         "QPushButton        { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }"
@@ -256,44 +256,60 @@ void FtWindow::resizeEvent(QResizeEvent *)
     m_modeBtn->move(width() - m_modeBtn->width() - 8, 8);
     m_maskBtn->move(width() - m_maskBtn->width() - 8, 8 + m_modeBtn->height() + 4);
 
-    // Bandpass widgets: bottom-right of panel 2
+    // Scale factor for tool dialogue widgets based on panel height
     int hy = height() - height() / 5;
-    int bpX = width() - 250;
-    int bpY = hy - 90;
-    m_smoothEdit->move(bpX + 160, bpY);
-    m_bandEraseOutside->move(bpX, bpY + 28);
-    m_applyBandBtn->move(bpX, bpY + 54);
+    double sc = std::clamp(hy / 800.0, 0.5, 1.0);
+    int fontSize = std::max(9, static_cast<int>(11 * sc));
+    int editH    = std::max(16, static_cast<int>(22 * sc));
+    int btnH     = std::max(18, static_cast<int>(26 * sc));
 
-    // Brush/eraser widgets: bottom-right of panel 2
-    m_brushValueLabel->move(bpX, bpY);
-    m_brushValueEdit->move(bpX + 140, bpY - 2);
-    m_brushDiamLabel->move(bpX, bpY + 26);
-    m_brushDiameterEdit->move(bpX + 210, bpY + 24);
-    m_eraserDiamLabel->move(bpX, bpY);
-    m_eraserDiameterEdit->move(bpX + 180, bpY - 2);
+    // Styles for widgets on white rectangle background
+    QString editSS  = QString("background:white; color:black; border:1px solid #888; font-size: %1px;").arg(fontSize);
+    QString cbSS    = QString("color: #333; font-size: %1px;").arg(fontSize);
+    QString btnSS   = QString("QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; font-size: %1px; }").arg(fontSize);
 
-    // Lattice filter widgets: bottom-right of panel 2
-    m_latticeSmoothLabel->move(bpX, bpY);
-    m_latticeSmoothEdit->move(bpX + 160, bpY - 2);
-    m_latticeDotDiamLabel->move(bpX, bpY + 26);
-    m_latticeDotDiamEdit->move(bpX + 120, bpY + 24);
-    m_latticeEraseOutside->move(bpX, bpY + 52);
-    m_latticeApplyBtn->move(bpX, bpY + 78);
+    // Bandpass widgets (sizes only; positions set in paintEvent)
+    m_smoothEdit->setFixedSize(static_cast<int>(40 * sc), editH);
+    m_smoothEdit->setStyleSheet(editSS);
+    m_bandEraseOutside->setStyleSheet(cbSS);
+    m_applyBandBtn->setFixedSize(static_cast<int>(100 * sc), btnH);
+    m_applyBandBtn->setStyleSheet(btnSS);
 
-    // Panel 1 eraser/brush widgets: bottom-left of panel 1
-    int p1ToolX = 10;
-    int p1ToolY = hy - 90;
-    m_p1EraserDiamLabel->move(p1ToolX, p1ToolY);
-    m_p1EraserDiameterEdit->move(p1ToolX + 180, p1ToolY - 2);
-    m_p1BrushValueLabel->move(p1ToolX, p1ToolY);
-    m_p1BrushValueEdit->move(p1ToolX + 140, p1ToolY - 2);
-    m_p1BrushDiamLabel->move(p1ToolX, p1ToolY + 26);
-    m_p1BrushDiameterEdit->move(p1ToolX + 210, p1ToolY + 24);
+    // Brush/eraser widgets (sizes only)
+    m_brushValueEdit->setFixedSize(static_cast<int>(60 * sc), editH);
+    m_brushValueEdit->setStyleSheet(editSS);
+    m_brushDiameterEdit->setFixedSize(static_cast<int>(40 * sc), editH);
+    m_brushDiameterEdit->setStyleSheet(editSS);
+    m_eraserDiameterEdit->setFixedSize(static_cast<int>(40 * sc), editH);
+    m_eraserDiameterEdit->setStyleSheet(editSS);
 
-    // Binning widgets: bottom-left of panel 1
-    int binX = 10;
-    int binY = hy - 90;
-    m_binCombo->move(binX, binY);
-    m_binKeepSizeBtn->move(binX, binY + 30);
-    m_applyBinBtn->move(binX, binY + 60);
+    // Lattice filter widgets (sizes only)
+    m_latticeSmoothEdit->setFixedSize(static_cast<int>(40 * sc), editH);
+    m_latticeSmoothEdit->setStyleSheet(editSS);
+    m_latticeDotDiamEdit->setFixedSize(static_cast<int>(40 * sc), editH);
+    m_latticeDotDiamEdit->setStyleSheet(editSS);
+    m_latticeEraseOutside->setStyleSheet(cbSS);
+    m_latticeApplyBtn->setFixedSize(static_cast<int>(100 * sc), btnH);
+    m_latticeApplyBtn->setStyleSheet(btnSS);
+
+    // Panel 1 eraser/brush widgets (sizes only)
+    m_p1EraserDiameterEdit->setFixedSize(static_cast<int>(40 * sc), editH);
+    m_p1EraserDiameterEdit->setStyleSheet(editSS);
+    m_p1BrushValueEdit->setFixedSize(static_cast<int>(60 * sc), editH);
+    m_p1BrushValueEdit->setStyleSheet(editSS);
+    m_p1BrushDiameterEdit->setFixedSize(static_cast<int>(40 * sc), editH);
+    m_p1BrushDiameterEdit->setStyleSheet(editSS);
+
+    // Binning widgets (sizes only)
+    m_binCombo->setFixedSize(static_cast<int>(70 * sc), btnH);
+    m_binCombo->setStyleSheet(QString(
+        "QComboBox { background:white; color:black; border:1px solid #888;"
+        "  padding: 2px 4px; font-size: %1px; }"
+        "QComboBox::drop-down { width: %2px; }"
+        "QComboBox QAbstractItemView { background:white; color:black;"
+        "  selection-background-color:#ccc; min-width: 60px; padding: 4px;"
+        "  font-size: %1px; }").arg(fontSize).arg(static_cast<int>(20 * sc)));
+    m_binKeepSizeBtn->setStyleSheet(cbSS);
+    m_applyBinBtn->setFixedSize(static_cast<int>(110 * sc), btnH);
+    m_applyBinBtn->setStyleSheet(btnSS);
 }
