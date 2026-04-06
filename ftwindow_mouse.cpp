@@ -114,6 +114,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
     }
     if (m_p1BtnRects[2].contains(event->pos()) && !m_image.isNull()) {
         deactivateAllP1Tools(); showP1ToolWidgets();
+        storeUndoSnapshot();
         m_image = m_image.flipped(Qt::Horizontal);
         extractImageData();
         if (m_ftComputed) computeFFT();
@@ -122,6 +123,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
     }
     if (m_p1BtnRects[3].contains(event->pos()) && !m_image.isNull()) {
         deactivateAllP1Tools(); showP1ToolWidgets();
+        storeUndoSnapshot();
         m_image = m_image.flipped(Qt::Vertical);
         extractImageData();
         if (m_ftComputed) computeFFT();
@@ -154,6 +156,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         for (int i = 0; i < m_numDispItems; i++) {
             const DisplayItem &di = m_dispItems[i];
             if (di.valid && di.zoomIdx == 0 && di.screenRect.contains(event->pos())) {
+                storeUndoSnapshot();
                 if (m_p1EraserActive) p1EraserApply(event->pos());
                 else                  p1BrushApply(event->pos());
                 m_p1ToolDragging = true;
@@ -167,6 +170,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         for (int i = 0; i < m_numDispItems; i++) {
             const DisplayItem &di = m_dispItems[i];
             if (di.valid && di.zoomIdx == 0 && di.screenRect.contains(event->pos())) {
+                storeUndoSnapshot();
                 m_p1Dragging = true;
                 m_p1DragStart = event->pos();
                 return;
@@ -326,6 +330,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         for (int i = 0; i < m_numDispItems; i++) {
             const DisplayItem &di = m_dispItems[i];
             if (di.valid && di.zoomIdx >= 1 && di.screenRect.contains(event->pos())) {
+                storeUndoSnapshot();
                 m_p2Dragging = true;
                 m_p2DragStart = event->pos();
                 return;
@@ -403,6 +408,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         for (int i = 0; i < m_numDispItems; i++) {
             const DisplayItem &di = m_dispItems[i];
             if (di.valid && di.zoomIdx >= 1 && di.screenRect.contains(event->pos())) {
+                storeUndoSnapshot();
                 if (m_eraserActive) eraserApply(event->pos());
                 else                brushApply(event->pos());
                 m_toolDragging = true;

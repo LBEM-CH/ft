@@ -78,6 +78,7 @@ private slots:
     void onApplyBandpass();
     void onApplyEdgeTaper();
     void onApplyLineFilter();
+    void onUndoRedo();
 
 private:
     // loading / computation
@@ -115,6 +116,7 @@ private:
     QPushButton *m_saveBtn   = nullptr;
     QPushButton *m_createBtn = nullptr;
     QPushButton *m_reloadBtn = nullptr;
+    QPushButton *m_undoBtn   = nullptr;
     QPushButton *m_modeBtn   = nullptr;
     QCheckBox   *m_maskBtn   = nullptr;
 
@@ -179,9 +181,35 @@ private:
     QRect        m_historyRects[HISTORY_SLOTS];    // panel 3 screen rects
     QRect        m_powerSpecRects[HISTORY_SLOTS];  // panel 4 screen rects
 
+    struct BufferSnapshot {
+        bool valid = false;
+        int activeSlot = -1;
+        HistoryEntry history[HISTORY_SLOTS];
+        QImage image;
+        QString imagePath;
+        std::vector<double> imageRawPixels;
+        double imageMinVal = 0, imageMaxVal = 0;
+        double imageDispMin = 0, imageDispMax = 0;
+        double pixelSize = 1.0;
+        bool ftComputed = false;
+        int fftN = 0;
+        int origW = 0;
+        int origH = 0;
+        std::vector<Complex> fftData;
+    };
+
+    BufferSnapshot m_undoSnapshot;
+    BufferSnapshot m_redoSnapshot;
+    bool m_showRedo = false;
+
     static QImage computePowerSpecMasked(const QImage &img);
     void saveHistory();
     void restoreHistory();
+    BufferSnapshot captureCurrentState() const;
+    void applySnapshot(const BufferSnapshot &snapshot);
+    void storeUndoSnapshot();
+    void clearRedoSnapshot();
+    void updateUndoButton();
 
     // ---- zoom (0 = image, 1 = FT left/top, 2 = FT right/bottom) ----
     static constexpr int NUM_ZOOM = 3;

@@ -315,17 +315,24 @@ void FtWindow::paintEvent(QPaintEvent *)
                 p.drawArc(QRectF(cx2 - rad, cy2 - rad, rad * 2, rad * 2),
                           30 * 16, 280 * 16);
 
-                // arrowhead at end of arc (~310 degrees = -50 degrees)
+                // Arrowhead at end of arc (~310 degrees = -50 degrees)
                 double aAngle = -50.0 * M_PI / 180.0;
                 double ax = cx2 + rad * std::cos(aAngle);
                 double ay = cy2 - rad * std::sin(aAngle);
-                double sz = rad * 0.5;
+                double arrowLen = rad * 1.4;
+                double arrowHalfW = rad * 0.56;
+                QPointF tangent(std::sin(aAngle), -std::cos(aAngle));
+                QPointF normal(std::cos(aAngle), std::sin(aAngle));
+                QPointF base(ax, ay);
+                QPointF tip = base + tangent * arrowLen;
+                QPointF left = base + normal * arrowHalfW;
+                QPointF right = base - normal * arrowHalfW;
                 p.setPen(Qt::NoPen);
                 p.setBrush(m_rotateActive ? QColor(180, 180, 255) : Qt::white);
                 QPainterPath ah;
-                ah.moveTo(ax + sz * std::cos(aAngle + 0.3), ay - sz * std::sin(aAngle + 0.3));
-                ah.lineTo(ax - sz * 0.4 * std::cos(aAngle - 0.8), ay + sz * 0.4 * std::sin(aAngle - 0.8));
-                ah.lineTo(ax + sz * 0.4 * std::cos(aAngle + 1.5), ay - sz * 0.4 * std::sin(aAngle + 1.5));
+                ah.moveTo(tip);
+                ah.lineTo(left);
+                ah.lineTo(right);
                 ah.closeSubpath();
                 p.drawPath(ah);
 
@@ -746,13 +753,20 @@ void FtWindow::paintEvent(QPaintEvent *)
                 double aAngle = -50.0 * M_PI / 180.0;
                 double ax = cx2 + rad * std::cos(aAngle);
                 double ay = cy2 - rad * std::sin(aAngle);
-                double sz = rad * 0.5;
+                double arrowLen = rad * 1.4;
+                double arrowHalfW = rad * 0.56;
+                QPointF tangent(std::sin(aAngle), -std::cos(aAngle));
+                QPointF normal(std::cos(aAngle), std::sin(aAngle));
+                QPointF base(ax, ay);
+                QPointF tip = base + tangent * arrowLen;
+                QPointF left = base + normal * arrowHalfW;
+                QPointF right = base - normal * arrowHalfW;
                 p.setPen(Qt::NoPen);
                 p.setBrush(m_ftRotateActive ? QColor(180, 180, 255) : Qt::white);
                 QPainterPath ah;
-                ah.moveTo(ax + sz * std::cos(aAngle + 0.3), ay - sz * std::sin(aAngle + 0.3));
-                ah.lineTo(ax - sz * 0.4 * std::cos(aAngle - 0.8), ay + sz * 0.4 * std::sin(aAngle - 0.8));
-                ah.lineTo(ax + sz * 0.4 * std::cos(aAngle + 1.5), ay - sz * 0.4 * std::sin(aAngle + 1.5));
+                ah.moveTo(tip);
+                ah.lineTo(left);
+                ah.lineTo(right);
                 ah.closeSubpath();
                 p.drawPath(ah);
 

@@ -714,6 +714,100 @@ void FtWindow::restoreHistory()
     }
 }
 
+FtWindow::BufferSnapshot FtWindow::captureCurrentState() const
+{
+    BufferSnapshot snapshot;
+    snapshot.valid = true;
+    snapshot.activeSlot = m_activeSlot;
+    for (int i = 0; i < HISTORY_SLOTS; i++)
+        snapshot.history[i] = m_history[i];
+    snapshot.image = m_image;
+    snapshot.imagePath = m_imagePath;
+    snapshot.imageRawPixels = m_imageRawPixels;
+    snapshot.imageMinVal = m_imageMinVal;
+    snapshot.imageMaxVal = m_imageMaxVal;
+    snapshot.imageDispMin = m_imageDispMin;
+    snapshot.imageDispMax = m_imageDispMax;
+    snapshot.pixelSize = m_pixelSize;
+    snapshot.ftComputed = m_ftComputed;
+    snapshot.fftN = m_fftN;
+    snapshot.origW = m_origW;
+    snapshot.origH = m_origH;
+    snapshot.fftData = m_fftData;
+    return snapshot;
+}
+
+void FtWindow::applySnapshot(const BufferSnapshot &snapshot)
+{
+    if (!snapshot.valid) return;
+
+    m_activeSlot = snapshot.activeSlot;
+    for (int i = 0; i < HISTORY_SLOTS; i++)
+        m_history[i] = snapshot.history[i];
+    m_image = snapshot.image;
+    m_imagePath = snapshot.imagePath;
+    m_imageRawPixels = snapshot.imageRawPixels;
+    m_imageMinVal = snapshot.imageMinVal;
+    m_imageMaxVal = snapshot.imageMaxVal;
+    m_imageDispMin = snapshot.imageDispMin;
+    m_imageDispMax = snapshot.imageDispMax;
+    m_pixelSize = snapshot.pixelSize;
+    m_ftComputed = snapshot.ftComputed;
+    m_fftN = snapshot.fftN;
+    m_origW = snapshot.origW;
+    m_origH = snapshot.origH;
+    m_fftData = snapshot.fftData;
+
+    if (!m_image.isNull())
+        m_zoom[0].reset(m_image.width(), m_image.height());
+    if (m_ftComputed && m_fftN > 0) {
+        m_zoom[1].reset(m_fftN, m_fftN);
+        m_zoom[2].reset(m_fftN, m_fftN);
+        recomputeDisplayImages();
+    }
+
+    saveHistory();
+    update();
+}
+
+void FtWindow::clearRedoSnapshot()
+{
+    m_redoSnapshot = BufferSnapshot();
+    m_showRedo = false;
+    updateUndoButton();
+}
+
+void FtWindow::storeUndoSnapshot()
+{
+    m_undoSnapshot = captureCurrentState();
+    clearRedoSnapshot();
+    updateUndoButton();
+}
+
+void FtWindow::updateUndoButton()
+{
+    if (!m_undoBtn) return;
+    m_undoBtn->setText(m_showRedo ? "Redo last action" : "Undo last action");
+    bool enabled = m_showRedo ? m_redoSnapshot.valid : m_undoSnapshot.valid;
+    m_undoBtn->setEnabled(enabled);
+}
+
+void FtWindow::onUndoRedo()
+{
+    if (!m_showRedo) {
+        if (!m_undoSnapshot.valid) return;
+        m_redoSnapshot = captureCurrentState();
+        applySnapshot(m_undoSnapshot);
+        m_showRedo = true;
+    } else {
+        if (!m_redoSnapshot.valid) return;
+        m_undoSnapshot = captureCurrentState();
+        applySnapshot(m_redoSnapshot);
+        m_showRedo = false;
+    }
+    updateUndoButton();
+}
+
 void FtWindow::eraserApply(QPoint pos)
 {
     if (!m_ftComputed) return;
@@ -985,6 +1079,7 @@ void FtWindow::p1BrushApply(QPoint pos)
 void FtWindow::onApplyBandpass()
 {
     if (!m_ftComputed || m_fftN == 0) return;
+    storeUndoSnapshot();
 
     int N = m_fftN;
     int half = N / 2;
@@ -1034,6 +1129,7 @@ void FtWindow::onApplyBandpass()
 void FtWindow::onApplyLattice()
 {
     if (!m_ftComputed || m_fftN == 0) return;
+    storeUndoSnapshot();
 
     int N = m_fftN;
     int half = N / 2;
@@ -1104,6 +1200,7 @@ void FtWindow::onApplyLattice()
 void FtWindow::onApplyBinning()
 {
     if (m_image.isNull()) return;
+    storeUndoSnapshot();
 
     int binFactor = m_binCombo->currentData().toInt();
     if (binFactor <= 1) return;
@@ -1228,6 +1325,7 @@ void FtWindow::onApplyBinning()
 void FtWindow::onApplyEdgeTaper()
 {
     if (m_image.isNull()) return;
+    storeUndoSnapshot();
 
     int w = m_image.width();
     int h = m_image.height();
@@ -1295,6 +1393,7 @@ void FtWindow::onApplyEdgeTaper()
 void FtWindow::onApplyFtCrop()
 {
     if (!m_ftComputed || m_fftN == 0) return;
+    storeUndoSnapshot();
 
     int factor = m_ftCropCombo->currentData().toInt();
     if (factor <= 1) return;
@@ -1349,6 +1448,7 @@ void FtWindow::onApplyFtCrop()
 void FtWindow::onApplyDirectional()
 {
     if (!m_ftComputed || m_fftN == 0) return;
+    storeUndoSnapshot();
 
     int N = m_fftN;
     int half = N / 2;
@@ -1417,6 +1517,7 @@ void FtWindow::onApplyDirectional()
 void FtWindow::onApplyLineFilter()
 {
     if (!m_ftComputed || m_fftN == 0) return;
+    storeUndoSnapshot();
 
     bool okWidth = false;
     bool okAngle = false;
@@ -1467,6 +1568,8 @@ void FtWindow::onFtMathCancel()
 
 void FtWindow::onFtMathCompute()
 {
+    storeUndoSnapshot();
+
     int outIdx = m_ftMathOutCombo->currentIndex();
     int in1Idx = m_ftMathIn1Combo->currentIndex();
     int in2Idx = m_ftMathIn2Combo->currentIndex();
@@ -1724,6 +1827,8 @@ void FtWindow::onMathCancel()
 
 void FtWindow::onMathCompute()
 {
+    storeUndoSnapshot();
+
     int outIdx  = m_mathOutCombo->currentIndex();
     int in1Idx  = m_mathIn1Combo->currentIndex();
     int in2Idx  = m_mathIn2Combo->currentIndex();
