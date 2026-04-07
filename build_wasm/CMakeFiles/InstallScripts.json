@@ -1,7 +1,0 @@
-{
-	"InstallScripts" : 
-	[
-		"/Users/stahlber/Projects/ft/build_wasm/cmake_install.cmake"
-	],
-	"Parallel" : false
-}

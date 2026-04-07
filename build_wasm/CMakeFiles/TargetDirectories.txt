@@ -1,5 +1,0 @@
-/Users/stahlber/Projects/ft/build_wasm/CMakeFiles/ft.dir
-/Users/stahlber/Projects/ft/build_wasm/CMakeFiles/edit_cache.dir
-/Users/stahlber/Projects/ft/build_wasm/CMakeFiles/rebuild_cache.dir
-/Users/stahlber/Projects/ft/build_wasm/CMakeFiles/ft_autogen_timestamp_deps.dir
-/Users/stahlber/Projects/ft/build_wasm/CMakeFiles/ft_autogen.dir
