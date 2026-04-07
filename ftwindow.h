@@ -239,7 +239,7 @@ private:
 
     // ---- tool buttons ----
     static constexpr int P1_TOOL_BUTTONS = 10;
-    static constexpr int P2_TOOL_BUTTONS = 9;
+    static constexpr int P2_TOOL_BUTTONS = 10;
     QRect       m_p1BtnRects[P1_TOOL_BUTTONS];       // panel 1 left edge
     QRect       m_toolBtnRects[P2_TOOL_BUTTONS];     // panel 2 right edge
 
@@ -335,6 +335,21 @@ private:
     bool        m_ftRotateActive = false;
     bool        m_p2Dragging = false;
     QPoint      m_p2DragStart;
+
+    // ---- cross-section profile ----
+    bool        m_crossSectionActive = false;
+    bool        m_crossSectionDragging = false;
+    double      m_crossSectionAngle = 0.0;    // angle in degrees
+    QLineEdit  *m_crossSectionWidthEdit = nullptr;
+    std::vector<double> m_crossSectionProfile;  // 1D integrated profile
+    std::vector<bool>   m_crossSectionValid;    // true where data exists
+    int         m_crossSectionCenter = 0;       // center index in profile
+    double      m_crossSectionProjMin = 0;      // min projection distance (pixels from center)
+    double      m_crossSectionProjMax = 0;      // max projection distance (pixels from center)
+
+    void drawCrossSectionLines(QPainter &p, const QRect &screenRect,
+                               const ZoomState &zoom, int imgW, int imgH);
+    void computeCrossSectionProfile();
 
     // ---- lattice filter ----
     bool        m_latticeActive = false;

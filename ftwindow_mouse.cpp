@@ -191,6 +191,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         m_bandpassActive = false; m_directionalActive = false;
         m_lineFilterActive = false;
         m_latticeActive = false; m_ftRotateActive = false;
+        m_crossSectionActive = false;
         m_ftCropActive = false; m_ftMathActive = false;
     };
     auto showToolWidgets = [&]() {
@@ -213,6 +214,8 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         m_latticeDotDiamEdit->setVisible(m_latticeActive);
         m_latticeEraseOutside->setVisible(m_latticeActive);
         m_latticeApplyBtn->setVisible(m_latticeActive);
+
+        m_crossSectionWidthEdit->setVisible(m_crossSectionActive);
 
         m_ftCropCombo->setVisible(m_ftCropActive);
         m_ftCropKeepSizeBtn->setVisible(m_ftCropActive);
@@ -261,10 +264,20 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         m_ftRotateActive = !was; showToolWidgets(); update(); return;
     }
     if (m_toolBtnRects[7].contains(event->pos())) {
+        bool was = m_crossSectionActive; deactivateAllTools();
+        m_crossSectionActive = !was;
+        if (m_crossSectionActive && m_ftComputed) {
+            computeCrossSectionProfile();
+        } else {
+            m_crossSectionProfile.clear();
+        }
+        showToolWidgets(); update(); return;
+    }
+    if (m_toolBtnRects[8].contains(event->pos())) {
         bool was = m_ftCropActive; deactivateAllTools();
         m_ftCropActive = !was; showToolWidgets(); update(); return;
     }
-    if (m_toolBtnRects[8].contains(event->pos())) {
+    if (m_toolBtnRects[9].contains(event->pos())) {
         bool was = m_ftMathActive; deactivateAllTools();
         m_ftMathActive = !was; showToolWidgets(); update(); return;
     }
@@ -340,6 +353,24 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
                 storeUndoSnapshot();
                 m_p2Dragging = true;
                 m_p2DragStart = event->pos();
+                return;
+            }
+        }
+    }
+
+    // Cross-section: start drag on panel 2 FFT to rotate lines
+    if (m_crossSectionActive && m_ftComputed) {
+        for (int i = 0; i < m_numDispItems; i++) {
+            const DisplayItem &di = m_dispItems[i];
+            if (di.valid && di.zoomIdx >= 1 && di.screenRect.contains(event->pos())) {
+                m_crossSectionDragging = true;
+                m_toolDragging = true;
+                // Compute initial angle from mouse position relative to center
+                double ccx = di.screenRect.center().x();
+                double ccy = di.screenRect.center().y();
+                m_crossSectionAngle = std::atan2(event->pos().y() - ccy,
+                                                  event->pos().x() - ccx) * 180.0 / M_PI;
+                update();
                 return;
             }
         }
@@ -541,12 +572,19 @@ void FtWindow::mouseReleaseEvent(QMouseEvent *event)
     if (m_toolDragging) {
         bool wasPainting = (m_eraserActive || m_brushActive)
                            && m_bandDragging == 0 && m_dirDragging == 0
-                           && m_latticeDragging == 0;
+                           && m_latticeDragging == 0
+                           && !m_crossSectionDragging;
+        bool wasCrossSection = m_crossSectionDragging;
         m_toolDragging = false;
         m_bandDragging = 0;
         m_dirDragging = 0;
         m_latticeDragging = 0;
         m_lineDragging = false;
+        m_crossSectionDragging = false;
+        if (wasCrossSection && m_ftComputed) {
+            computeCrossSectionProfile();
+            update();
+        }
         if (wasPainting && m_ftComputed) {
             computeInverseFFT();
             update();
@@ -831,6 +869,19 @@ void FtWindow::mouseMoveEvent(QMouseEvent *event)
                     m_latticeVx = imgX - imgCenter;
                     m_latticeVy = imgY - imgCenter;
                 }
+                update();
+                break;
+            }
+            return;
+        }
+        if (m_crossSectionDragging) {
+            for (int i = 0; i < m_numDispItems; i++) {
+                const DisplayItem &di = m_dispItems[i];
+                if (!di.valid || di.zoomIdx < 1) continue;
+                double ccx = di.screenRect.center().x();
+                double ccy = di.screenRect.center().y();
+                m_crossSectionAngle = std::atan2(event->pos().y() - ccy,
+                                                  event->pos().x() - ccx) * 180.0 / M_PI;
                 update();
                 break;
             }

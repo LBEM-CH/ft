@@ -244,6 +244,18 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     connect(m_applyFtCropBtn, &QPushButton::clicked, this, &FtWindow::onApplyFtCrop);
     m_applyFtCropBtn->hide();
 
+    // Cross-section profile width widget
+    m_crossSectionWidthEdit = new QLineEdit("1.0", this);
+    m_crossSectionWidthEdit->setFixedSize(40, 22);
+    m_crossSectionWidthEdit->setStyleSheet("background:#222; color:white; border:1px solid #888;");
+    connect(m_crossSectionWidthEdit, &QLineEdit::textChanged, this, [this]() {
+        if (m_crossSectionActive && m_ftComputed) {
+            computeCrossSectionProfile();
+            update();
+        }
+    });
+    m_crossSectionWidthEdit->hide();
+
     // Panel 1 eraser parameter widgets
     m_p1EraserDiamLabel = new QLabel("Eraser Gaussian diameter:", this);
     m_p1EraserDiamLabel->setStyleSheet("color: white;");
@@ -473,6 +485,10 @@ void FtWindow::resizeEvent(QResizeEvent *)
     m_latticeEraseOutside->setStyleSheet(cbSS);
     m_latticeApplyBtn->setFixedSize(static_cast<int>(100 * sc), btnH);
     m_latticeApplyBtn->setStyleSheet(btnSS);
+
+    // Cross-section profile width widget (sizes only)
+    m_crossSectionWidthEdit->setFixedSize(static_cast<int>(40 * sc), editH);
+    m_crossSectionWidthEdit->setStyleSheet(editSS);
 
     // Fourier crop widgets (sizes only)
     m_ftCropCombo->setFixedSize(static_cast<int>(70 * sc), btnH);
