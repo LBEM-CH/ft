@@ -70,8 +70,8 @@ void FtWindow::paintEvent(QPaintEvent *)
             p.setPen(QPen(Qt::white, 1));
             if ((i == 0 && m_p1EraserActive) || (i == 1 && m_p1BrushActive) ||
                 (i == 4 && m_shiftActive) || (i == 5 && m_rotateActive) ||
-                (i == 6 && m_p1TaperActive) || (i == 7 && m_binActive) ||
-                (i == 8 && m_mathActive))
+                (i == 7 && m_p1TaperActive) || (i == 8 && m_binActive) ||
+                (i == 9 && m_mathActive))
                 p.setBrush(QColor(60, 60, 60));
             else
                 p.setBrush(QColor(0, 0, 0));
@@ -353,8 +353,45 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Taper edges icon (button 6): white square ring with black center
+            // Invert contrast icon (button 6): +/- sign
             if (i == 6) {
+                p.setRenderHint(QPainter::Antialiasing, true);
+                QRect ir = r.adjusted(3, 3, -3, -3);
+                int ix = ir.x(), iy2 = ir.y(), iw = ir.width(), ih = ir.height();
+                int voff = ih / 8;  // shift down to visually center
+                int lw = std::max(1, iw / 7);
+                p.setPen(QPen(Qt::white, lw));
+                // Plus sign (top-left)
+                int plusCx = ix + iw / 4;
+                int plusCy = iy2 + ih / 4 + voff;
+                int arm = iw / 5;
+                p.drawLine(plusCx - arm, plusCy, plusCx + arm, plusCy);
+                p.drawLine(plusCx, plusCy - arm, plusCx, plusCy + arm);
+                // Minus sign (bottom-right)
+                int minusCx = ix + iw * 3 / 4;
+                int minusCy = iy2 + ih * 3 / 4 + voff;
+                p.drawLine(minusCx - arm, minusCy, minusCx + arm, minusCy);
+                // Slash between
+                p.drawLine(ix + iw * 0.65, iy2 + ih * 0.2 + voff, ix + iw * 0.35, iy2 + ih * 0.8 + voff);
+                p.setRenderHint(QPainter::Antialiasing, false);
+
+                if (r.contains(m_mousePos)) {
+                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                    QFontMetrics ttfm(ttf);
+                    QString tip = "Invert contrast";
+                    int ttw = ttfm.horizontalAdvance(tip) + 8;
+                    int tth = ttfm.height() + 4;
+                    int ttx = r.right() + 4;
+                    int tty = r.center().y() - tth / 2;
+                    p.setPen(QPen(Qt::white, 1));
+                    p.setBrush(QColor(40, 40, 40));
+                    p.drawRect(ttx, tty, ttw, tth);
+                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                }
+            }
+
+            // Taper edges icon (button 7): white square ring with black center
+            if (i == 7) {
                 p.setRenderHint(QPainter::Antialiasing, true);
                 QColor col = m_p1TaperActive ? QColor(180, 180, 255) : Qt::white;
                 int side = static_cast<int>(btnSide * 0.85);
@@ -386,8 +423,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Bin image icon (button 7): 2x2 grid representing pixel binning
-            if (i == 7) {
+            // Bin image icon (button 8): 2x2 grid representing pixel binning
+            if (i == 8) {
                 if (m_binActive) {
                     p.setPen(QPen(Qt::white, 1));
                     p.setBrush(QColor(60, 60, 60));
@@ -427,8 +464,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Math calculations icon (button 8): Sigma/Sum sign
-            if (i == 8) {
+            // Math calculations icon (button 9): Sigma/Sum sign
+            if (i == 9) {
                 if (m_mathActive) {
                     p.setPen(QPen(Qt::white, 1));
                     p.setBrush(QColor(60, 60, 60));
@@ -864,6 +901,28 @@ void FtWindow::paintEvent(QPaintEvent *)
     // ---- Panel 1: loaded image ------------------------------------------------
     int panel1W = cx - 1;
     int panel1H = hy - 1;
+
+    // Invert contrast progress overlay
+    if (m_invertProgress >= 0.0 && m_invertProgress <= 1.0) {
+        int fw = static_cast<int>(panel1W * 0.50);
+        int fh = static_cast<int>(panel1H * 0.12);
+        int fx = (panel1W - fw) / 2;
+        int fy = (panel1H - fh) / 2;
+        QRect invertRect(fx, fy, fw, fh);
+
+        drawShadowRect(p, invertRect);
+
+        int progW = static_cast<int>(fw * m_invertProgress);
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(180, 210, 255));
+        p.drawRect(fx + 1, fy + 1, progW, fh - 2);
+
+        QFont f;
+        f.setPixelSize(std::max(14, fh / 3));
+        p.setFont(f);
+        p.setPen(Qt::white);
+        p.drawText(invertRect, Qt::AlignCenter, "Inverting contrast...");
+    }
 
     // Loading overlay (WASM image fetch in progress)
     if (m_loadingImage) {
@@ -1484,6 +1543,14 @@ void FtWindow::paintEvent(QPaintEvent *)
             QRect toolRect(rx, ry, rw, rh);
             drawShadowRect(p, toolRect);
 
+            // Blue progress fill for apply operations
+            if (m_toolProgress >= 0.0 && m_toolProgress <= 1.0) {
+                int progW = static_cast<int>(rw * m_toolProgress);
+                p.setPen(Qt::NoPen);
+                p.setBrush(QColor(180, 210, 255));
+                p.drawRect(rx + 1, ry + 1, progW, rh - 2);
+            }
+
             // Draw painted labels inside the rectangle
             p.setFont(sf);
             p.setPen(QColor(60, 60, 60));
@@ -1556,6 +1623,14 @@ void FtWindow::paintEvent(QPaintEvent *)
             int ry = hy - rh - margin;
             QRect toolRect(rx, ry, rw, rh);
             drawShadowRect(p, toolRect);
+
+            // Blue progress fill for apply operations
+            if (m_toolProgress >= 0.0 && m_toolProgress <= 1.0) {
+                int progW = static_cast<int>(rw * m_toolProgress);
+                p.setPen(Qt::NoPen);
+                p.setBrush(QColor(180, 210, 255));
+                p.drawRect(rx + 1, ry + 1, progW, rh - 2);
+            }
 
             p.setFont(sf);
             p.setPen(QColor(60, 60, 60));

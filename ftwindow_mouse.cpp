@@ -140,15 +140,20 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         bool was = m_rotateActive; deactivateAllP1Tools();
         m_rotateActive = !was; showP1ToolWidgets(); update(); return;
     }
-    if (m_p1BtnRects[6].contains(event->pos())) {
+    if (m_p1BtnRects[6].contains(event->pos()) && !m_image.isNull()) {
+        deactivateAllP1Tools(); showP1ToolWidgets();
+        onInvertContrast();
+        return;
+    }
+    if (m_p1BtnRects[7].contains(event->pos())) {
         bool was = m_p1TaperActive; deactivateAllP1Tools();
         m_p1TaperActive = !was; showP1ToolWidgets(); update(); return;
     }
-    if (m_p1BtnRects[7].contains(event->pos())) {
+    if (m_p1BtnRects[8].contains(event->pos())) {
         bool was = m_binActive; deactivateAllP1Tools();
         m_binActive = !was; showP1ToolWidgets(); update(); return;
     }
-    if (m_p1BtnRects[8].contains(event->pos())) {
+    if (m_p1BtnRects[9].contains(event->pos())) {
         bool was = m_mathActive; deactivateAllP1Tools();
         m_mathActive = !was; showP1ToolWidgets(); update(); return;
     }

@@ -11,6 +11,8 @@ void FtWindow::onLoadImage()
     items << "Exercise1-Photos/band_1995.png"
           << "Exercise1-Photos/brain.png"
           << "Exercise1-Photos/church.png"
+          << "Exercise1-Photos/jacques_andreas_2017.png"
+          << "Exercise1-Photos/jacques_titan.png"
           << "Exercise1-Photos/lorenz_1999.png"
           << "Exercise1-Photos/party_1995.png"
           << "Exercise1-Photos/plants.png"
@@ -20,7 +22,7 @@ void FtWindow::onLoadImage()
           << "Exercise3-2D-Crystal/2d_protein_crystal_1024.png"
           << "Exercise3-2D-Crystal/Polyhead_virus_512.png"
           << "Exercise4-Eyes/eyes.png"
-          << "Exercise5-Text/Dot_black_1024.png"
+          << "Exercise5-Text/Dot_black_center_1024.png"
           << "Exercise5-Text/Fourier_text_white_1024.png"
           << "Exercise5-Text/Fourier_text_black_1024.png"
           << "Exercise5-Text/Fourier_word_black_1024.png"
@@ -140,6 +142,26 @@ void FtWindow::onReloadImage()
 {
 #ifdef __EMSCRIPTEN__
     if (m_imagePath.isEmpty()) return;
+
+    // Start reload-button progress animation
+    m_reloadProgress = 0.0;
+    if (!m_reloadAnimTimer) {
+        m_reloadAnimTimer = new QTimer(this);
+        m_reloadAnimTimer->setInterval(80);
+        connect(m_reloadAnimTimer, &QTimer::timeout, this, [this]() {
+            m_reloadProgress = std::min(m_reloadProgress + 0.03, 0.95);
+            int pct = static_cast<int>(m_reloadProgress * 100);
+            m_reloadBtn->setStyleSheet(
+                QString("QPushButton { background: qlineargradient("
+                        "x1:0,y1:0,x2:1,y2:0,"
+                        "stop:0 rgb(180,210,255), stop:%1 rgb(180,210,255),"
+                        "stop:%2 white, stop:1 white); }")
+                .arg(pct / 100.0, 0, 'f', 3)
+                .arg((pct + 1) / 100.0, 0, 'f', 3));
+        });
+    }
+    m_reloadAnimTimer->start();
+
     fetchAndLoadImage(m_imagePath);
 #else
     if (m_imagePath.isEmpty() || !QFile::exists(m_imagePath)) return;
@@ -398,6 +420,9 @@ void FtWindow::fetchAndLoadImage(const QString &relativePath)
             qDebug() << "Fetched" << sz << "bytes for" << c->path;
             QByteArray data(static_cast<const char *>(buf), sz);
             c->self->m_loadingImage = false;
+            if (c->self->m_reloadAnimTimer) c->self->m_reloadAnimTimer->stop();
+            c->self->m_reloadBtn->setStyleSheet("");
+            c->self->m_reloadProgress = -1;
             c->self->loadImageData(c->path, data);
             delete c;
         },
@@ -406,6 +431,9 @@ void FtWindow::fetchAndLoadImage(const QString &relativePath)
             FetchCtx *c = static_cast<FetchCtx *>(arg);
             qWarning() << "Failed to fetch image:" << c->path;
             c->self->m_loadingImage = false;
+            if (c->self->m_reloadAnimTimer) c->self->m_reloadAnimTimer->stop();
+            c->self->m_reloadBtn->setStyleSheet("");
+            c->self->m_reloadProgress = -1;
             c->self->update();
             delete c;
         }
@@ -503,8 +531,7 @@ void FtWindow::computeFFT()
     if (m_image.isNull()) return;
 
     m_fftProgress = 0.0;
-    update();
-    QApplication::processEvents();
+    repaint();
 
     QImage gray = m_image.convertToFormat(QImage::Format_Grayscale8);
     int w = gray.width();
@@ -531,8 +558,7 @@ void FtWindow::computeFFT()
 
     // Data prepared – show a small slice of progress
     m_fftProgress = 0.02;
-    update();
-    QApplication::processEvents();
+    repaint();
 
     {
 #ifdef __EMSCRIPTEN__
@@ -544,12 +570,12 @@ void FtWindow::computeFFT()
             for (int x = 0; x < N; x++) data[y * N + x] = tmp[x];
             if ((y & 31) == 0) {
                 m_fftProgress = 0.02 + 0.48 * y / N;
-                update();
+                repaint();
                 QApplication::processEvents();
             }
         }
         m_fftProgress = 0.5;
-        update();
+        repaint();
         QApplication::processEvents();
 
         for (int x = 0; x < N; x++) {
@@ -558,12 +584,12 @@ void FtWindow::computeFFT()
             for (int y = 0; y < N; y++) data[y * N + x] = tmp[y];
             if ((x & 31) == 0) {
                 m_fftProgress = 0.5 + 0.48 * x / N;
-                update();
+                repaint();
                 QApplication::processEvents();
             }
         }
         m_fftProgress = 1.0;
-        update();
+        repaint();
         QApplication::processEvents();
 #else
         int nThreads = (int)std::thread::hardware_concurrency();
@@ -640,8 +666,7 @@ void FtWindow::computeInverseFFT()
     fftShift(data, N);
 
     m_iftProgress = 0.0;
-    update();
-    QApplication::processEvents();
+    repaint();
 
     {
 #ifdef __EMSCRIPTEN__
@@ -653,12 +678,12 @@ void FtWindow::computeInverseFFT()
             for (int x = 0; x < N; x++) data[y * N + x] = tmp[x];
             if ((y & 31) == 0) {
                 m_iftProgress = 0.5 * y / N;
-                update();
+                repaint();
                 QApplication::processEvents();
             }
         }
         m_iftProgress = 0.5;
-        update();
+        repaint();
         QApplication::processEvents();
 
         for (int x = 0; x < N; x++) {
@@ -667,12 +692,12 @@ void FtWindow::computeInverseFFT()
             for (int y = 0; y < N; y++) data[y * N + x] = tmp[y];
             if ((x & 31) == 0) {
                 m_iftProgress = 0.5 + 0.5 * x / N;
-                update();
+                repaint();
                 QApplication::processEvents();
             }
         }
         m_iftProgress = 1.0;
-        update();
+        repaint();
         QApplication::processEvents();
 #else
         int nThreads = (int)std::thread::hardware_concurrency();
@@ -1369,41 +1394,51 @@ void FtWindow::onApplyBandpass()
     if (smooth < 0) smooth = 0;
     bool eraseOutside = m_bandEraseOutside->isChecked();
 
-    for (int y = 0; y < N; y++) {
-        for (int x = 0; x < N; x++) {
-            double dx = x - half;
-            double dy = y - half;
-            double dist = std::sqrt(dx * dx + dy * dy);
+    m_toolProgress = 0.1;
+    update();
 
-            double factor = 1.0;
-            if (eraseOutside) {
-                if (dist < innerR) {
-                    double d = innerR - dist;
-                    factor = (smooth > 0 && d < smooth) ? (1.0 - d / smooth) : 0.0;
-                } else if (dist > outerR) {
-                    double d = dist - outerR;
-                    factor = (smooth > 0 && d < smooth) ? (1.0 - d / smooth) : 0.0;
-                } else {
-                    factor = 1.0;
-                }
-            } else {
-                if (dist >= innerR && dist <= outerR) {
-                    factor = 0.0;
-                } else if (smooth > 0 && dist < innerR && dist > innerR - smooth) {
-                    factor = (innerR - dist) / smooth;
-                } else if (smooth > 0 && dist > outerR && dist < outerR + smooth) {
-                    factor = (dist - outerR) / smooth;
+    chainSteps({
+        [this, N, half, innerR, outerR, smooth, eraseOutside]() {
+            for (int y = 0; y < N; y++) {
+                for (int x = 0; x < N; x++) {
+                    double dx = x - half;
+                    double dy = y - half;
+                    double dist = std::sqrt(dx * dx + dy * dy);
+
+                    double factor = 1.0;
+                    if (eraseOutside) {
+                        if (dist < innerR) {
+                            double d = innerR - dist;
+                            factor = (smooth > 0 && d < smooth) ? (1.0 - d / smooth) : 0.0;
+                        } else if (dist > outerR) {
+                            double d = dist - outerR;
+                            factor = (smooth > 0 && d < smooth) ? (1.0 - d / smooth) : 0.0;
+                        } else {
+                            factor = 1.0;
+                        }
+                    } else {
+                        if (dist >= innerR && dist <= outerR) {
+                            factor = 0.0;
+                        } else if (smooth > 0 && dist < innerR && dist > innerR - smooth) {
+                            factor = (innerR - dist) / smooth;
+                        } else if (smooth > 0 && dist > outerR && dist < outerR + smooth) {
+                            factor = (dist - outerR) / smooth;
+                        }
+                    }
+
+                    if (factor < 1.0)
+                        m_fftData[y * N + x] *= factor;
                 }
             }
-
-            if (factor < 1.0)
-                m_fftData[y * N + x] *= factor;
+            m_toolProgress = 0.5;
+        },
+        [this]() {
+            recomputeDisplayImages();
+            computeInverseFFT();
+            m_toolProgress = -1;
+            update();
         }
-    }
-
-    recomputeDisplayImages();
-    computeInverseFFT();
-    update();
+    });
 }
 
 void FtWindow::onApplyLattice()
@@ -1424,57 +1459,62 @@ void FtWindow::onApplyLattice()
     double det = ux * vy - uy * vx;
     if (std::abs(det) < 0.5) return;  // degenerate lattice
 
-    // Inverse lattice matrix for projecting pixel coords onto lattice basis
     double invUx =  vy / det, invUy = -vx / det;
     double invVx = -uy / det, invVy =  ux / det;
 
-    for (int y = 0; y < N; y++) {
-        for (int x = 0; x < N; x++) {
-            double dx = x - half;
-            double dy = y - half;
-
-            // Project onto lattice basis and find nearest lattice point
-            double fi = dx * invUx + dy * invUy;
-            double fj = dx * invVx + dy * invVy;
-            int i0 = (int)std::floor(fi);
-            int j0 = (int)std::floor(fj);
-
-            // Check the 4 nearest lattice points
-            double minDist = 1e18;
-            for (int di = 0; di <= 1; di++) {
-                for (int dj = 0; dj <= 1; dj++) {
-                    double lx = (i0 + di) * ux + (j0 + dj) * vx;
-                    double ly = (i0 + di) * uy + (j0 + dj) * vy;
-                    double ddx = dx - lx, ddy = dy - ly;
-                    double d = std::sqrt(ddx * ddx + ddy * ddy);
-                    if (d < minDist) minDist = d;
-                }
-            }
-
-            double factor = 1.0;
-            if (eraseOutside) {
-                // Keep pixels near lattice dots, erase everything else
-                if (minDist > dotR) {
-                    double d = minDist - dotR;
-                    factor = (smooth > 0 && d < smooth) ? (1.0 - d / smooth) : 0.0;
-                }
-            } else {
-                // Erase pixels near lattice dots, keep everything else
-                if (minDist <= dotR) {
-                    factor = 0.0;
-                } else if (smooth > 0 && minDist < dotR + smooth) {
-                    factor = (minDist - dotR) / smooth;
-                }
-            }
-
-            if (factor < 1.0)
-                m_fftData[y * N + x] *= factor;
-        }
-    }
-
-    recomputeDisplayImages();
-    computeInverseFFT();
+    m_toolProgress = 0.1;
     update();
+
+    chainSteps({
+        [this, N, half, dotR, smooth, eraseOutside, ux, uy, vx, vy, invUx, invUy, invVx, invVy]() {
+            for (int y = 0; y < N; y++) {
+                for (int x = 0; x < N; x++) {
+                    double dx = x - half;
+                    double dy = y - half;
+
+                    double fi = dx * invUx + dy * invUy;
+                    double fj = dx * invVx + dy * invVy;
+                    int i0 = (int)std::floor(fi);
+                    int j0 = (int)std::floor(fj);
+
+                    double minDist = 1e18;
+                    for (int di = 0; di <= 1; di++) {
+                        for (int dj = 0; dj <= 1; dj++) {
+                            double lx = (i0 + di) * ux + (j0 + dj) * vx;
+                            double ly = (i0 + di) * uy + (j0 + dj) * vy;
+                            double ddx = dx - lx, ddy = dy - ly;
+                            double d = std::sqrt(ddx * ddx + ddy * ddy);
+                            if (d < minDist) minDist = d;
+                        }
+                    }
+
+                    double factor = 1.0;
+                    if (eraseOutside) {
+                        if (minDist > dotR) {
+                            double d = minDist - dotR;
+                            factor = (smooth > 0 && d < smooth) ? (1.0 - d / smooth) : 0.0;
+                        }
+                    } else {
+                        if (minDist <= dotR) {
+                            factor = 0.0;
+                        } else if (smooth > 0 && minDist < dotR + smooth) {
+                            factor = (minDist - dotR) / smooth;
+                        }
+                    }
+
+                    if (factor < 1.0)
+                        m_fftData[y * N + x] *= factor;
+                }
+            }
+            m_toolProgress = 0.5;
+        },
+        [this]() {
+            recomputeDisplayImages();
+            computeInverseFFT();
+            m_toolProgress = -1;
+            update();
+        }
+    });
 }
 
 void FtWindow::onApplyBinning()
@@ -1488,118 +1528,195 @@ void FtWindow::onApplyBinning()
     int w = m_image.width();
     int h = m_image.height();
 
-    // Work on a copy of raw pixel values
     std::vector<double> &pix = m_imageRawPixels;
     if ((int)pix.size() != w * h) return;
 
     bool keepSize = m_binKeepSizeBtn->isChecked();
 
-    if (keepSize) {
-        // Average each NxN block and fill all pixels in that block with the average
-        for (int by = 0; by + binFactor <= h; by += binFactor) {
-            for (int bx = 0; bx + binFactor <= w; bx += binFactor) {
-                double sum = 0;
-                for (int dy = 0; dy < binFactor; dy++)
-                    for (int dx = 0; dx < binFactor; dx++)
-                        sum += pix[(by + dy) * w + (bx + dx)];
-                double avg = sum / (binFactor * binFactor);
-                for (int dy = 0; dy < binFactor; dy++)
-                    for (int dx = 0; dx < binFactor; dx++)
-                        pix[(by + dy) * w + (bx + dx)] = avg;
-            }
-        }
-        // Handle leftover columns (right edge)
-        int remX = w % binFactor;
-        if (remX > 0) {
-            int startX = w - remX;
-            for (int by = 0; by + binFactor <= h; by += binFactor) {
-                double sum = 0;
-                for (int dy = 0; dy < binFactor; dy++)
-                    for (int x = startX; x < w; x++)
-                        sum += pix[(by + dy) * w + x];
-                double avg = sum / (remX * binFactor);
-                for (int dy = 0; dy < binFactor; dy++)
-                    for (int x = startX; x < w; x++)
-                        pix[(by + dy) * w + x] = avg;
-            }
-        }
-        // Handle leftover rows (bottom edge)
-        int remY = h % binFactor;
-        if (remY > 0) {
-            int startY = h - remY;
-            for (int bx = 0; bx + binFactor <= w; bx += binFactor) {
-                double sum = 0;
-                for (int y = startY; y < h; y++)
-                    for (int dx = 0; dx < binFactor; dx++)
-                        sum += pix[y * w + (bx + dx)];
-                double avg = sum / (remY * binFactor);
-                for (int y = startY; y < h; y++)
-                    for (int dx = 0; dx < binFactor; dx++)
-                        pix[y * w + (bx + dx)] = avg;
-            }
-        }
-        // Handle bottom-right corner
-        int remX2 = w % binFactor, remY2 = h % binFactor;
-        if (remX2 > 0 && remY2 > 0) {
-            int startX = w - remX2, startY = h - remY2;
-            double sum = 0;
-            for (int y = startY; y < h; y++)
-                for (int x = startX; x < w; x++)
-                    sum += pix[y * w + x];
-            double avg = sum / (remX2 * remY2);
-            for (int y = startY; y < h; y++)
-                for (int x = startX; x < w; x++)
-                    pix[y * w + x] = avg;
-        }
-
-        m_imageMinVal = *std::min_element(pix.begin(), pix.end());
-        m_imageMaxVal = *std::max_element(pix.begin(), pix.end());
-        double range = m_imageMaxVal - m_imageMinVal;
-        double scale = (range > 0) ? 255.0 / range : 1.0;
-        m_image = QImage(w, h, QImage::Format_Grayscale8);
-        for (int y = 0; y < h; y++) {
-            uchar *row = m_image.scanLine(y);
-            for (int x = 0; x < w; x++)
-                row[x] = static_cast<uchar>(std::clamp(
-                    (pix[y * w + x] - m_imageMinVal) * scale, 0.0, 255.0));
-        }
-    } else {
-        // Shrink: each NxN block becomes one pixel
-        int newW = w / binFactor;
-        int newH = h / binFactor;
-        if (newW < 1 || newH < 1) return;
-
-        std::vector<double> newPix(newW * newH);
-        for (int by = 0; by < newH; by++) {
-            for (int bx = 0; bx < newW; bx++) {
-                double sum = 0;
-                for (int dy = 0; dy < binFactor; dy++)
-                    for (int dx = 0; dx < binFactor; dx++)
-                        sum += pix[(by * binFactor + dy) * w + (bx * binFactor + dx)];
-                newPix[by * newW + bx] = sum / (binFactor * binFactor);
-            }
-        }
-
-        m_imageRawPixels = std::move(newPix);
-        m_imageMinVal = *std::min_element(m_imageRawPixels.begin(), m_imageRawPixels.end());
-        m_imageMaxVal = *std::max_element(m_imageRawPixels.begin(), m_imageRawPixels.end());
-        double range = m_imageMaxVal - m_imageMinVal;
-        double scale = (range > 0) ? 255.0 / range : 1.0;
-        m_image = QImage(newW, newH, QImage::Format_Grayscale8);
-        for (int y = 0; y < newH; y++) {
-            uchar *row = m_image.scanLine(y);
-            for (int x = 0; x < newW; x++)
-                row[x] = static_cast<uchar>(std::clamp(
-                    (m_imageRawPixels[y * newW + x] - m_imageMinVal) * scale, 0.0, 255.0));
-        }
-        m_zoom[0].reset(newW, newH);
-        m_pixelSize *= binFactor;
-    }
-
-    if (m_ftComputed)
-        computeFFT();
-
+    m_toolProgress = 0.1;
     update();
+
+    chainSteps({
+        [this, binFactor, w, h, keepSize]() {
+            std::vector<double> &pix = m_imageRawPixels;
+            if (keepSize) {
+                for (int by = 0; by + binFactor <= h; by += binFactor) {
+                    for (int bx = 0; bx + binFactor <= w; bx += binFactor) {
+                        double sum = 0;
+                        for (int dy = 0; dy < binFactor; dy++)
+                            for (int dx = 0; dx < binFactor; dx++)
+                                sum += pix[(by + dy) * w + (bx + dx)];
+                        double avg = sum / (binFactor * binFactor);
+                        for (int dy = 0; dy < binFactor; dy++)
+                            for (int dx = 0; dx < binFactor; dx++)
+                                pix[(by + dy) * w + (bx + dx)] = avg;
+                    }
+                }
+                int remX = w % binFactor;
+                if (remX > 0) {
+                    int startX = w - remX;
+                    for (int by = 0; by + binFactor <= h; by += binFactor) {
+                        double sum = 0;
+                        for (int dy = 0; dy < binFactor; dy++)
+                            for (int x = startX; x < w; x++)
+                                sum += pix[(by + dy) * w + x];
+                        double avg = sum / (remX * binFactor);
+                        for (int dy = 0; dy < binFactor; dy++)
+                            for (int x = startX; x < w; x++)
+                                pix[(by + dy) * w + x] = avg;
+                    }
+                }
+                int remY = h % binFactor;
+                if (remY > 0) {
+                    int startY = h - remY;
+                    for (int bx = 0; bx + binFactor <= w; bx += binFactor) {
+                        double sum = 0;
+                        for (int y = startY; y < h; y++)
+                            for (int dx = 0; dx < binFactor; dx++)
+                                sum += pix[y * w + (bx + dx)];
+                        double avg = sum / (remY * binFactor);
+                        for (int y = startY; y < h; y++)
+                            for (int dx = 0; dx < binFactor; dx++)
+                                pix[y * w + (bx + dx)] = avg;
+                    }
+                }
+                int remX2 = w % binFactor, remY2 = h % binFactor;
+                if (remX2 > 0 && remY2 > 0) {
+                    int startX = w - remX2, startY = h - remY2;
+                    double sum = 0;
+                    for (int y = startY; y < h; y++)
+                        for (int x = startX; x < w; x++)
+                            sum += pix[y * w + x];
+                    double avg = sum / (remX2 * remY2);
+                    for (int y = startY; y < h; y++)
+                        for (int x = startX; x < w; x++)
+                            pix[y * w + x] = avg;
+                }
+
+                m_imageMinVal = *std::min_element(pix.begin(), pix.end());
+                m_imageMaxVal = *std::max_element(pix.begin(), pix.end());
+                double range = m_imageMaxVal - m_imageMinVal;
+                double scale = (range > 0) ? 255.0 / range : 1.0;
+                m_image = QImage(w, h, QImage::Format_Grayscale8);
+                for (int y = 0; y < h; y++) {
+                    uchar *row = m_image.scanLine(y);
+                    for (int x = 0; x < w; x++)
+                        row[x] = static_cast<uchar>(std::clamp(
+                            (pix[y * w + x] - m_imageMinVal) * scale, 0.0, 255.0));
+                }
+            } else {
+                int newW = w / binFactor;
+                int newH = h / binFactor;
+                if (newW < 1 || newH < 1) return;
+
+                std::vector<double> newPix(newW * newH);
+                for (int by = 0; by < newH; by++) {
+                    for (int bx = 0; bx < newW; bx++) {
+                        double sum = 0;
+                        for (int dy = 0; dy < binFactor; dy++)
+                            for (int dx = 0; dx < binFactor; dx++)
+                                sum += pix[(by * binFactor + dy) * w + (bx * binFactor + dx)];
+                        newPix[by * newW + bx] = sum / (binFactor * binFactor);
+                    }
+                }
+
+                m_imageRawPixels = std::move(newPix);
+                m_imageMinVal = *std::min_element(m_imageRawPixels.begin(), m_imageRawPixels.end());
+                m_imageMaxVal = *std::max_element(m_imageRawPixels.begin(), m_imageRawPixels.end());
+                double range = m_imageMaxVal - m_imageMinVal;
+                double scale = (range > 0) ? 255.0 / range : 1.0;
+                m_image = QImage(newW, newH, QImage::Format_Grayscale8);
+                for (int y = 0; y < newH; y++) {
+                    uchar *row = m_image.scanLine(y);
+                    for (int x = 0; x < newW; x++)
+                        row[x] = static_cast<uchar>(std::clamp(
+                            (m_imageRawPixels[y * newW + x] - m_imageMinVal) * scale, 0.0, 255.0));
+                }
+                m_zoom[0].reset(newW, newH);
+                m_pixelSize *= binFactor;
+            }
+            m_toolProgress = 0.5;
+        },
+        [this]() {
+            if (m_ftComputed)
+                computeFFT();
+            m_toolProgress = -1;
+            update();
+        }
+    });
+}
+
+void FtWindow::chainSteps(std::vector<std::function<void()>> steps)
+{
+#ifdef __EMSCRIPTEN__
+    if (steps.empty()) return;
+    auto q = std::make_shared<std::vector<std::function<void()>>>(std::move(steps));
+    auto run = std::make_shared<std::function<void()>>();
+    *run = [this, q, run]() {
+        if (q->empty()) return;
+        auto fn = std::move(q->front());
+        q->erase(q->begin());
+        fn();
+        update();
+        if (!q->empty())
+            QTimer::singleShot(20, this, [run]() { (*run)(); });
+    };
+    QTimer::singleShot(50, this, [run]() { (*run)(); });
+#else
+    for (auto &fn : steps) {
+        fn();
+        repaint();
+    }
+#endif
+}
+
+void FtWindow::onInvertContrast()
+{
+    if (m_image.isNull()) return;
+    storeUndoSnapshot();
+
+    int w = m_image.width();
+    int h = m_image.height();
+    if (m_imageRawPixels.empty() || (int)m_imageRawPixels.size() != w * h) return;
+
+    m_invertProgress = 0.1;
+    update();
+
+    chainSteps({
+        [this]() {
+            double sum = m_imageMinVal + m_imageMaxVal;
+            for (double &v : m_imageRawPixels)
+                v = sum - v;
+            m_invertProgress = 0.3;
+        },
+        [this]() {
+            rebuildImageFromRaw();
+            m_invertProgress = 0.5;
+        },
+        [this]() {
+            if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS) {
+                m_history[m_activeSlot].image     = m_image;
+                m_history[m_activeSlot].rawPixels = m_imageRawPixels;
+                m_history[m_activeSlot].minVal    = m_imageMinVal;
+                m_history[m_activeSlot].maxVal    = m_imageMaxVal;
+                m_history[m_activeSlot].occupied  = true;
+            }
+            if (m_ftComputed) {
+                // Optimisation: inverting pixel values (v → 255−v in 8-bit)
+                // negates every Fourier coefficient except DC.
+                // DC_new = 255·N² − DC_old.  O(N²) instead of O(N² log N).
+                int N = m_fftN;
+                int half = N / 2;
+                Complex oldDC = m_fftData[half * N + half];
+                for (auto &c : m_fftData) c = -c;
+                m_fftData[half * N + half] =
+                    Complex(255.0 * (double)N * N, 0.0) - oldDC;
+                recomputeDisplayImages();
+            }
+            saveHistory();
+            m_invertProgress = -1;
+        }
+    });
 }
 
 void FtWindow::onApplyEdgeTaper()
@@ -1634,40 +1751,50 @@ void FtWindow::onApplyEdgeTaper()
 
     double edgeAvg = edgeSum / edgeCount;
 
-    for (int y = 0; y < h; y++) {
-        for (int x = 0; x < w; x++) {
-            double dist = std::min({
-                static_cast<double>(x),
-                static_cast<double>(w - 1 - x),
-                static_cast<double>(y),
-                static_cast<double>(h - 1 - y)
-            });
-            if (dist >= taperWidth) continue;
-
-            double phase = (taperWidth - dist) / taperWidth;
-            double keep = 0.5 * (1.0 + std::cos(M_PI * phase));
-            double &pix = m_imageRawPixels[y * w + x];
-            pix = pix * keep + edgeAvg * (1.0 - keep);
-        }
-    }
-
-    rebuildImageFromRaw();
-    if (m_ftComputed)
-        computeFFT();
-
-    if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS) {
-        m_history[m_activeSlot].image = m_image;
-        m_history[m_activeSlot].rawPixels = m_imageRawPixels;
-        m_history[m_activeSlot].minVal = m_imageMinVal;
-        m_history[m_activeSlot].maxVal = m_imageMaxVal;
-        m_history[m_activeSlot].pixelSize = m_pixelSize;
-        m_history[m_activeSlot].occupied = true;
-        if (m_ftComputed)
-            m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
-    }
-
-    saveHistory();
+    m_toolProgress = 0.1;
     update();
+
+    chainSteps({
+        [this, w, h, taperWidth, edgeAvg]() {
+            for (int y = 0; y < h; y++) {
+                for (int x = 0; x < w; x++) {
+                    double dist = std::min({
+                        static_cast<double>(x),
+                        static_cast<double>(w - 1 - x),
+                        static_cast<double>(y),
+                        static_cast<double>(h - 1 - y)
+                    });
+                    if (dist >= taperWidth) continue;
+
+                    double phase = (taperWidth - dist) / taperWidth;
+                    double keep = 0.5 * (1.0 + std::cos(M_PI * phase));
+                    double &pix = m_imageRawPixels[y * w + x];
+                    pix = pix * keep + edgeAvg * (1.0 - keep);
+                }
+            }
+            rebuildImageFromRaw();
+            m_toolProgress = 0.5;
+        },
+        [this]() {
+            if (m_ftComputed)
+                computeFFT();
+
+            if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS) {
+                m_history[m_activeSlot].image = m_image;
+                m_history[m_activeSlot].rawPixels = m_imageRawPixels;
+                m_history[m_activeSlot].minVal = m_imageMinVal;
+                m_history[m_activeSlot].maxVal = m_imageMaxVal;
+                m_history[m_activeSlot].pixelSize = m_pixelSize;
+                m_history[m_activeSlot].occupied = true;
+                if (m_ftComputed)
+                    m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
+            }
+
+            saveHistory();
+            m_toolProgress = -1;
+            update();
+        }
+    });
 }
 
 void FtWindow::onApplyFtCrop()
@@ -1680,49 +1807,55 @@ void FtWindow::onApplyFtCrop()
 
     int N = m_fftN;
     int half = N / 2;
-    // Crop radius: pixels within half/factor of center are kept
     int cropHalf = half / factor;
     bool keepSize = m_ftCropKeepSizeBtn->isChecked();
 
-    if (keepSize) {
-        // Zero out pixels outside the crop square (centered at N/2, N/2)
-        for (int y = 0; y < N; y++) {
-            for (int x = 0; x < N; x++) {
-                int dx = std::abs(x - half);
-                int dy = std::abs(y - half);
-                if (dx > cropHalf || dy > cropHalf)
-                    m_fftData[y * N + x] = Complex(0.0, 0.0);
-            }
-        }
-        recomputeDisplayImages();
-        computeInverseFFT();
-    } else {
-        // Extract the central crop region into a smaller FFT
-        int newN = cropHalf * 2;
-        if (newN < 2) newN = 2;
-        newN = nextGoodFFTSize(newN);
-        cropHalf = newN / 2;
-
-        std::vector<Complex> newData(newN * newN, Complex(0.0, 0.0));
-        for (int y = 0; y < newN; y++) {
-            for (int x = 0; x < newN; x++) {
-                int srcX = half - cropHalf + x;
-                int srcY = half - cropHalf + y;
-                if (srcX >= 0 && srcX < N && srcY >= 0 && srcY < N)
-                    newData[y * newN + x] = m_fftData[srcY * N + srcX];
-            }
-        }
-
-        m_fftData = newData;
-        m_fftN = newN;
-        m_origW = newN;
-        m_origH = newN;
-        m_zoom[1].reset(newN, newN);
-        m_zoom[2].reset(newN, newN);
-        recomputeDisplayImages();
-        computeInverseFFT();
-    }
+    m_toolProgress = 0.1;
     update();
+
+    chainSteps({
+        [this, N, half, cropHalf, keepSize]() mutable {
+            if (keepSize) {
+                for (int y = 0; y < N; y++) {
+                    for (int x = 0; x < N; x++) {
+                        int dx = std::abs(x - half);
+                        int dy = std::abs(y - half);
+                        if (dx > cropHalf || dy > cropHalf)
+                            m_fftData[y * N + x] = Complex(0.0, 0.0);
+                    }
+                }
+            } else {
+                int newN = cropHalf * 2;
+                if (newN < 2) newN = 2;
+                newN = nextGoodFFTSize(newN);
+                cropHalf = newN / 2;
+
+                std::vector<Complex> newData(newN * newN, Complex(0.0, 0.0));
+                for (int y = 0; y < newN; y++) {
+                    for (int x = 0; x < newN; x++) {
+                        int srcX = half - cropHalf + x;
+                        int srcY = half - cropHalf + y;
+                        if (srcX >= 0 && srcX < N && srcY >= 0 && srcY < N)
+                            newData[y * newN + x] = m_fftData[srcY * N + srcX];
+                    }
+                }
+
+                m_fftData = newData;
+                m_fftN = newN;
+                m_origW = newN;
+                m_origH = newN;
+                m_zoom[1].reset(newN, newN);
+                m_zoom[2].reset(newN, newN);
+            }
+            m_toolProgress = 0.5;
+        },
+        [this]() {
+            recomputeDisplayImages();
+            computeInverseFFT();
+            m_toolProgress = -1;
+            update();
+        }
+    });
 }
 
 void FtWindow::onApplyDirectional()
@@ -1740,58 +1873,68 @@ void FtWindow::onApplyDirectional()
     while (a2 < a1) a2 += 360;
     if (a2 - a1 > 180) { std::swap(a1, a2); while (a2 < a1) a2 += 360; }
 
-    auto inRange = [](double a, double lo, double hi) {
-        while (a < lo) a += 360;
-        while (a > lo + 360) a -= 360;
-        return a <= hi;
-    };
+    m_toolProgress = 0.1;
+    update();
 
-    auto isInWedge = [&](double angle) -> bool {
-        return inRange(angle, a1, a2) || inRange(angle, a1 + 180, a2 + 180);
-    };
+    chainSteps({
+        [this, N, half, smooth, eraseOutside, a1, a2]() {
+            auto inRange = [](double a, double lo, double hi) {
+                while (a < lo) a += 360;
+                while (a > lo + 360) a -= 360;
+                return a <= hi;
+            };
 
-    auto wedgeDistance = [&](double angle) -> double {
-        auto distTo = [](double a, double lo, double hi) -> double {
-            while (a < lo - 180) a += 360;
-            while (a > lo + 180) a -= 360;
-            if (a >= lo && a <= hi) return 0;
-            return std::min(std::abs(a - lo), std::abs(a - hi));
-        };
-        return std::min(distTo(angle, a1, a2), distTo(angle, a1 + 180, a2 + 180));
-    };
+            auto isInWedge = [&](double angle) -> bool {
+                return inRange(angle, a1, a2) || inRange(angle, a1 + 180, a2 + 180);
+            };
 
-    for (int y = 0; y < N; y++) {
-        for (int x = 0; x < N; x++) {
-            double dx = x - half;
-            double dy = y - half;
-            if (dx == 0 && dy == 0) continue;
+            auto wedgeDistance = [&](double angle) -> double {
+                auto distTo = [](double a, double lo, double hi) -> double {
+                    while (a < lo - 180) a += 360;
+                    while (a > lo + 180) a -= 360;
+                    if (a >= lo && a <= hi) return 0;
+                    return std::min(std::abs(a - lo), std::abs(a - hi));
+                };
+                return std::min(distTo(angle, a1, a2), distTo(angle, a1 + 180, a2 + 180));
+            };
 
-            double angle = std::atan2(dy, dx) * 180.0 / M_PI;
-            bool inW = isInWedge(angle);
-            double edgeDist = wedgeDistance(angle);
+            for (int y = 0; y < N; y++) {
+                for (int x = 0; x < N; x++) {
+                    double dx = x - half;
+                    double dy = y - half;
+                    if (dx == 0 && dy == 0) continue;
 
-            double factor = 1.0;
-            if (eraseOutside) {
-                if (!inW) {
-                    factor = (smooth > 0 && edgeDist < smooth)
-                             ? (1.0 - edgeDist / smooth) : 0.0;
-                }
-            } else {
-                if (inW) {
-                    factor = 0.0;
-                } else if (smooth > 0 && edgeDist < smooth) {
-                    factor = edgeDist / smooth;
+                    double angle = std::atan2(dy, dx) * 180.0 / M_PI;
+                    bool inW = isInWedge(angle);
+                    double edgeDist = wedgeDistance(angle);
+
+                    double factor = 1.0;
+                    if (eraseOutside) {
+                        if (!inW) {
+                            factor = (smooth > 0 && edgeDist < smooth)
+                                     ? (1.0 - edgeDist / smooth) : 0.0;
+                        }
+                    } else {
+                        if (inW) {
+                            factor = 0.0;
+                        } else if (smooth > 0 && edgeDist < smooth) {
+                            factor = edgeDist / smooth;
+                        }
+                    }
+
+                    if (factor < 1.0)
+                        m_fftData[y * N + x] *= factor;
                 }
             }
-
-            if (factor < 1.0)
-                m_fftData[y * N + x] *= factor;
+            m_toolProgress = 0.5;
+        },
+        [this]() {
+            recomputeDisplayImages();
+            computeInverseFFT();
+            m_toolProgress = -1;
+            update();
         }
-    }
-
-    recomputeDisplayImages();
-    computeInverseFFT();
-    update();
+    });
 }
 
 void FtWindow::onApplyLineFilter()
@@ -1812,21 +1955,33 @@ void FtWindow::onApplyLineFilter()
     double normY =  std::cos(angle);
     double imgCenter = m_fftN / 2.0 + 0.5;
     bool eraseOutside = m_lineEraseOutsideBtn->isChecked();
+    int N = m_fftN;
+    double lineOff = m_lineOffset;
 
-    for (int y = 0; y < m_fftN; y++) {
-        for (int x = 0; x < m_fftN; x++) {
-            double relX = x - imgCenter;
-            double relY = y - imgCenter;
-            double dist = std::abs(relX * normX + relY * normY - m_lineOffset);
-            bool inside = dist <= halfWidth;
-            if ((eraseOutside && !inside) || (!eraseOutside && inside))
-                m_fftData[y * m_fftN + x] = Complex(0.0, 0.0);
-        }
-    }
-
-    recomputeDisplayImages();
-    computeInverseFFT();
+    m_toolProgress = 0.1;
     update();
+
+    chainSteps({
+        [this, N, halfWidth, normX, normY, imgCenter, eraseOutside, lineOff]() {
+            for (int y = 0; y < N; y++) {
+                for (int x = 0; x < N; x++) {
+                    double relX = x - imgCenter;
+                    double relY = y - imgCenter;
+                    double dist = std::abs(relX * normX + relY * normY - lineOff);
+                    bool inside = dist <= halfWidth;
+                    if ((eraseOutside && !inside) || (!eraseOutside && inside))
+                        m_fftData[y * N + x] = Complex(0.0, 0.0);
+                }
+            }
+            m_toolProgress = 0.5;
+        },
+        [this]() {
+            recomputeDisplayImages();
+            computeInverseFFT();
+            m_toolProgress = -1;
+            update();
+        }
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -1855,6 +2010,17 @@ void FtWindow::onFtMathCompute()
     int in2Idx = m_ftMathIn2Combo->currentIndex();
     int opIdx  = m_ftMathOpCombo->currentIndex();   // 0=+, 1=-, 2=*, 3=/
     bool conjugate = (m_ftMathConjCombo->currentIndex() == 1);
+
+#ifndef __EMSCRIPTEN__
+    {
+        QSettings settings("ft", "ft");
+        settings.setValue("ftMathOutIdx",  outIdx);
+        settings.setValue("ftMathIn1Idx",  in1Idx);
+        settings.setValue("ftMathOpIdx",   opIdx);
+        settings.setValue("ftMathIn2Idx",  in2Idx);
+        settings.setValue("ftMathConjIdx", conjugate ? 1 : 0);
+    }
+#endif
 
     // Helper: get raw pixels from a slot
     auto getSlotPixels = [&](int idx, int &w, int &h) -> std::vector<double> {
@@ -1928,168 +2094,180 @@ void FtWindow::onFtMathCompute()
     };
 
     m_ftMathProgress = 0.0;
-    update(); QApplication::processEvents();
+    update();
 
-    auto [fft1data, N1] = computeSlotFFT(pix1, w1, h1);
-    m_ftMathProgress = 0.3;
-    update(); QApplication::processEvents();
-
-    auto [fft2data, N2] = computeSlotFFT(pix2, w2, h2);
-    m_ftMathProgress = 0.6;
-    update(); QApplication::processEvents();
-
-    // If FFT sizes differ, zero-pad the smaller one in frequency space
-    // (insert zeros around the edges of the shifted FFT, keeping DC at center)
-    int N = std::max(N1, N2);
-    auto zeroPadFFT = [](const std::vector<Complex> &src, int srcN, int dstN) {
-        if (srcN == dstN) return src;
-        std::vector<Complex> dst(dstN * dstN, Complex(0.0, 0.0));
-        int off = (dstN - srcN) / 2;
-        for (int y = 0; y < srcN; y++)
-            for (int x = 0; x < srcN; x++)
-                dst[(y + off) * dstN + (x + off)] = src[y * srcN + x];
-        // Scale to preserve energy (area ratio)
-        double scale = (double)(dstN * dstN) / (double)(srcN * srcN);
-        for (auto &c : dst) c *= scale;
-        return dst;
+    struct FtMathWork {
+        std::vector<double> pix1, pix2;
+        int w1, h1, w2, h2;
+        int outIdx, in1Idx, in2Idx, opIdx;
+        bool conjugate;
+        std::vector<Complex> fft1data, fft2data, result;
+        int N1 = 0, N2 = 0, N = 0;
     };
-    if (N1 < N) fft1data = zeroPadFFT(fft1data, N1, N);
-    if (N2 < N) fft2data = zeroPadFFT(fft2data, N2, N);
+    auto st = std::make_shared<FtMathWork>();
+    st->pix1 = std::move(pix1); st->pix2 = std::move(pix2);
+    st->w1 = w1; st->h1 = h1; st->w2 = w2; st->h2 = h2;
+    st->outIdx = outIdx; st->in1Idx = in1Idx; st->in2Idx = in2Idx;
+    st->opIdx = opIdx; st->conjugate = conjugate;
 
-    // Apply complex conjugation to second input if selected
-    if (conjugate) {
-        for (auto &c : fft2data)
-            c = std::conj(c);
-    }
-
-    // Perform operation in Fourier space
-    std::vector<Complex> result(N * N);
-    if (opIdx == 3) {
-        // Wien filter division: A * conj(B) / (|B|^2 + noise)
-        double maxAmp = 0;
-        for (auto &c : fft2data)
-            maxAmp = std::max(maxAmp, std::abs(c));
-        double noise = std::max(maxAmp * maxAmp / 10000.0, 1e-10);
-        for (int i = 0; i < N * N; i++) {
-            double denom = std::norm(fft2data[i]) + noise;
-            result[i] = fft1data[i] * std::conj(fft2data[i]) / denom;
-        }
-    } else {
-        for (int i = 0; i < N * N; i++) {
-            switch (opIdx) {
-            case 0: result[i] = fft1data[i] + fft2data[i]; break;
-            case 1: result[i] = fft1data[i] - fft2data[i]; break;
-            case 2: result[i] = fft1data[i] * fft2data[i]; break;
+    chainSteps({
+        // Stage 1: FFT of input 1
+        [this, st, computeSlotFFT]() {
+            auto [d, n] = computeSlotFFT(st->pix1, st->w1, st->h1);
+            st->fft1data = std::move(d); st->N1 = n;
+            m_ftMathProgress = 0.3;
+        },
+        // Stage 2: FFT of input 2
+        [this, st, computeSlotFFT]() {
+            auto [d, n] = computeSlotFFT(st->pix2, st->w2, st->h2);
+            st->fft2data = std::move(d); st->N2 = n;
+            m_ftMathProgress = 0.6;
+        },
+        // Stage 3: zero-pad, conjugate, operation
+        [this, st]() {
+            st->N = std::max(st->N1, st->N2);
+            int N = st->N;
+            // Zero-pad smaller FFT
+            auto zeroPadFFT = [](const std::vector<Complex> &src, int srcN, int dstN) {
+                if (srcN == dstN) return src;
+                std::vector<Complex> dst(dstN * dstN, Complex(0.0, 0.0));
+                int off = (dstN - srcN) / 2;
+                for (int y = 0; y < srcN; y++)
+                    for (int x = 0; x < srcN; x++)
+                        dst[(y + off) * dstN + (x + off)] = src[y * srcN + x];
+                double scale = (double)(dstN * dstN) / (double)(srcN * srcN);
+                for (auto &c : dst) c *= scale;
+                return dst;
+            };
+            if (st->N1 < N) st->fft1data = zeroPadFFT(st->fft1data, st->N1, N);
+            if (st->N2 < N) st->fft2data = zeroPadFFT(st->fft2data, st->N2, N);
+            if (st->conjugate)
+                for (auto &c : st->fft2data) c = std::conj(c);
+            // Perform operation
+            st->result.resize(N * N);
+            if (st->opIdx == 3) {
+                double maxAmp = 0;
+                for (auto &c : st->fft2data)
+                    maxAmp = std::max(maxAmp, std::abs(c));
+                double noise = std::max(maxAmp * maxAmp / 10000.0, 1e-10);
+                for (int i = 0; i < N * N; i++) {
+                    double denom = std::norm(st->fft2data[i]) + noise;
+                    st->result[i] = st->fft1data[i] * std::conj(st->fft2data[i]) / denom;
+                }
+            } else {
+                for (int i = 0; i < N * N; i++) {
+                    switch (st->opIdx) {
+                    case 0: st->result[i] = st->fft1data[i] + st->fft2data[i]; break;
+                    case 1: st->result[i] = st->fft1data[i] - st->fft2data[i]; break;
+                    case 2: st->result[i] = st->fft1data[i] * st->fft2data[i]; break;
+                    }
+                }
             }
-        }
-    }
-
-    m_ftMathProgress = 0.7;
-    update(); QApplication::processEvents();
-
-    // Inverse FFT to get real-space image
-    fftShift(result, N);
-    {
-        std::vector<Complex> row(N);
-        for (int y = 0; y < N; y++) {
-            for (int x = 0; x < N; x++) row[x] = result[y * N + x];
-            fft1d(row, true);
-            for (int x = 0; x < N; x++) result[y * N + x] = row[x];
-        }
-        m_ftMathProgress = 0.85;
-        update(); QApplication::processEvents();
-
-        std::vector<Complex> col(N);
-        for (int x = 0; x < N; x++) {
-            for (int y = 0; y < N; y++) col[y] = result[y * N + x];
-            fft1d(col, true);
-            for (int y = 0; y < N; y++) result[y * N + x] = col[y];
-        }
-    }
-
-    m_ftMathProgress = 0.95;
-    update(); QApplication::processEvents();
-
-    // For multiplication (convolution) and division, cyclic-shift the result
-    // so that the output feature is centered, matching real-space behavior.
-    // Multiplication in Fourier space = convolution in real space.
-    int halfN = N / 2;
-    int outS = N;
-    std::vector<double> realResult(outS * outS);
-    if (opIdx == 2 || opIdx == 3) {
-        // Convolution/deconvolution: shift by +halfN to center
-        for (int y = 0; y < outS; y++)
-            for (int x = 0; x < outS; x++) {
-                int sy = (y + halfN) % N;
-                int sx = (x + halfN) % N;
-                realResult[y * outS + x] = result[sy * N + sx].real();
+            st->fft1data.clear(); st->fft2data.clear();
+            m_ftMathProgress = 0.7;
+        },
+        // Stage 4: inverse FFT rows
+        [this, st]() {
+            int N = st->N;
+            fftShift(st->result, N);
+            std::vector<Complex> row(N);
+            for (int y = 0; y < N; y++) {
+                for (int x = 0; x < N; x++) row[x] = st->result[y * N + x];
+                fft1d(row, true);
+                for (int x = 0; x < N; x++) st->result[y * N + x] = row[x];
             }
-    } else {
-        // Addition/subtraction: no shift needed
-        for (int y = 0; y < outS; y++)
-            for (int x = 0; x < outS; x++)
-                realResult[y * outS + x] = result[y * N + x].real();
-    }
+            m_ftMathProgress = 0.85;
+        },
+        // Stage 5: inverse FFT cols
+        [this, st]() {
+            int N = st->N;
+            std::vector<Complex> col(N);
+            for (int x = 0; x < N; x++) {
+                for (int y = 0; y < N; y++) col[y] = st->result[y * N + x];
+                fft1d(col, true);
+                for (int y = 0; y < N; y++) st->result[y * N + x] = col[y];
+            }
+            m_ftMathProgress = 0.95;
+        },
+        // Stage 6: build output, save to slot
+        [this, st]() {
+            int N = st->N;
+            int halfN = N / 2;
+            int outS = N;
+            std::vector<double> realResult(outS * outS);
+            if (st->opIdx == 2 || st->opIdx == 3) {
+                for (int y = 0; y < outS; y++)
+                    for (int x = 0; x < outS; x++) {
+                        int sy = (y + halfN) % N;
+                        int sx = (x + halfN) % N;
+                        realResult[y * outS + x] = st->result[sy * N + sx].real();
+                    }
+            } else {
+                for (int y = 0; y < outS; y++)
+                    for (int x = 0; x < outS; x++)
+                        realResult[y * outS + x] = st->result[y * N + x].real();
+            }
+            st->result.clear();
 
-    double minVal = *std::min_element(realResult.begin(), realResult.end());
-    double maxVal = *std::max_element(realResult.begin(), realResult.end());
-    double range  = maxVal - minVal;
-    double scale  = (range > 0) ? 255.0 / range : 1.0;
+            double minVal = *std::min_element(realResult.begin(), realResult.end());
+            double maxVal = *std::max_element(realResult.begin(), realResult.end());
+            double range  = maxVal - minVal;
+            double scale  = (range > 0) ? 255.0 / range : 1.0;
 
-    QImage outImg(outS, outS, QImage::Format_Grayscale8);
-    for (int y = 0; y < outS; y++) {
-        uchar *rw = outImg.scanLine(y);
-        for (int x = 0; x < outS; x++)
-            rw[x] = static_cast<uchar>(std::clamp(
-                (realResult[y * outS + x] - minVal) * scale, 0.0, 255.0));
-    }
+            QImage outImg(outS, outS, QImage::Format_Grayscale8);
+            for (int y = 0; y < outS; y++) {
+                uchar *rw = outImg.scanLine(y);
+                for (int x = 0; x < outS; x++)
+                    rw[x] = static_cast<uchar>(std::clamp(
+                        (realResult[y * outS + x] - minVal) * scale, 0.0, 255.0));
+            }
 
-    // Save current active image back to its slot before switching
-    if (m_activeSlot >= 0 && !m_image.isNull()) {
-        m_history[m_activeSlot].image        = m_image;
-        m_history[m_activeSlot].path         = m_imagePath;
-        m_history[m_activeSlot].rawPixels    = m_imageRawPixels;
-        m_history[m_activeSlot].minVal       = m_imageMinVal;
-        m_history[m_activeSlot].maxVal       = m_imageMaxVal;
-        m_history[m_activeSlot].pixelSize    = m_pixelSize;
-        m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
-        m_history[m_activeSlot].occupied     = true;
-    }
+            if (m_activeSlot >= 0 && !m_image.isNull()) {
+                m_history[m_activeSlot].image        = m_image;
+                m_history[m_activeSlot].path         = m_imagePath;
+                m_history[m_activeSlot].rawPixels    = m_imageRawPixels;
+                m_history[m_activeSlot].minVal       = m_imageMinVal;
+                m_history[m_activeSlot].maxVal       = m_imageMaxVal;
+                m_history[m_activeSlot].pixelSize    = m_pixelSize;
+                m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
+                m_history[m_activeSlot].occupied     = true;
+            }
 
-    // Store result in output slot
-    m_history[outIdx].image     = outImg;
-    m_history[outIdx].path      = QString("ftmath: %1 %2 %3")
-                                      .arg(QChar('A' + in1Idx))
-                                      .arg(m_ftMathOpCombo->currentText())
-                                      .arg(QChar('A' + in2Idx));
-    m_history[outIdx].rawPixels = std::move(realResult);
-    m_history[outIdx].minVal    = minVal;
-    m_history[outIdx].maxVal    = maxVal;
-    m_history[outIdx].pixelSize = 1.0;
-    m_history[outIdx].powerSpecImg = computePowerSpecMasked(outImg);
-    m_history[outIdx].occupied  = true;
+            int outIdx = st->outIdx;
+            m_history[outIdx].image     = outImg;
+            m_history[outIdx].path      = QString("ftmath: %1 %2 %3")
+                                              .arg(QChar('A' + st->in1Idx))
+                                              .arg(m_ftMathOpCombo->currentText())
+                                              .arg(QChar('A' + st->in2Idx));
+            m_history[outIdx].rawPixels = std::move(realResult);
+            m_history[outIdx].minVal    = minVal;
+            m_history[outIdx].maxVal    = maxVal;
+            m_history[outIdx].pixelSize = 1.0;
+            m_history[outIdx].powerSpecImg = computePowerSpecMasked(outImg);
+            m_history[outIdx].occupied  = true;
 
-    // Activate the output slot
-    m_activeSlot     = outIdx;
-    m_image          = m_history[outIdx].image;
-    m_imagePath      = m_history[outIdx].path;
-    m_imageRawPixels = m_history[outIdx].rawPixels;
-    m_imageMinVal    = m_history[outIdx].minVal;
-    m_imageMaxVal    = m_history[outIdx].maxVal;
-    m_pixelSize      = m_history[outIdx].pixelSize;
-    m_zoom[0].reset(m_image.width(), m_image.height());
+            m_activeSlot     = outIdx;
+            m_image          = m_history[outIdx].image;
+            m_imagePath      = m_history[outIdx].path;
+            m_imageRawPixels = m_history[outIdx].rawPixels;
+            m_imageMinVal    = m_history[outIdx].minVal;
+            m_imageMaxVal    = m_history[outIdx].maxVal;
+            m_pixelSize      = m_history[outIdx].pixelSize;
+            m_zoom[0].reset(m_image.width(), m_image.height());
 
-    m_ftComputed  = false;
-    m_modeBtn->setText(modeLabel());
-    m_modeBtn->hide();
-    m_maskBtn->hide();
+            m_ftComputed  = false;
+            m_modeBtn->setText(modeLabel());
+            m_modeBtn->hide();
+            m_maskBtn->hide();
 
-    computeFFT();
-    m_history[outIdx].powerSpecImg = computePowerSpecMasked(m_image);
-    saveHistory();
+            computeFFT();
+            m_history[outIdx].powerSpecImg = computePowerSpecMasked(m_image);
+            saveHistory();
 
-    m_ftMathProgress = -1;
-    onFtMathCancel();
+            m_ftMathProgress = -1;
+            onFtMathCancel();
+        }
+    });
 }
 
 void FtWindow::onMathCancel()
@@ -2113,6 +2291,16 @@ void FtWindow::onMathCompute()
     int in1Idx  = m_mathIn1Combo->currentIndex();
     int in2Idx  = m_mathIn2Combo->currentIndex();
     int opIdx   = m_mathOpCombo->currentIndex();  // 0=+, 1=-, 2=*, 3=/, 4=conv, 5=corr
+
+#ifndef __EMSCRIPTEN__
+    {
+        QSettings settings("ft", "ft");
+        settings.setValue("mathOutIdx", outIdx);
+        settings.setValue("mathIn1Idx", in1Idx);
+        settings.setValue("mathOpIdx",  opIdx);
+        settings.setValue("mathIn2Idx", in2Idx);
+    }
+#endif
 
     // Retrieve input images from history (or current if active)
     auto getSlotPixels = [&](int idx, int &w, int &h) -> std::vector<double> {
@@ -2176,116 +2364,61 @@ void FtWindow::onMathCompute()
     };
 
     m_mathProgress = 0.1;
-    update(); QApplication::processEvents();
+    update();
 
-    // For convolution/correlation, use zero-mean + zero-pad + rescale approach
-    if (opIdx >= 4) {
-        // Step 1: Subtract mean from each image (float to zero average)
-        double mean1 = 0, mean2 = 0;
-        for (double v : pix1) mean1 += v;
-        mean1 /= pix1.size();
-        for (double v : pix2) mean2 += v;
-        mean2 /= pix2.size();
-        for (double &v : pix1) v -= mean1;
-        for (double &v : pix2) v -= mean2;
+    struct MathWork {
+        std::vector<double> pix1, pix2;
+        int w1, h1, w2, h2;
+        int outIdx, in1Idx, in2Idx, opIdx;
+    };
+    auto st = std::make_shared<MathWork>();
+    st->pix1 = std::move(pix1); st->pix2 = std::move(pix2);
+    st->w1 = w1; st->h1 = h1; st->w2 = w2; st->h2 = h2;
+    st->outIdx = outIdx; st->in1Idx = in1Idx; st->in2Idx = in2Idx; st->opIdx = opIdx;
 
-        // Step 2: Zero-pad each image to square (centered, zeros on outside)
-        auto zeroPadToSquare = [](std::vector<double> &src, int &sw, int &sh) {
-            if (sw == sh) return;
-            int sq = std::max(sw, sh);
-            std::vector<double> dst(sq * sq, 0.0);
-            int offX = (sq - sw) / 2;
-            int offY = (sq - sh) / 2;
-            for (int y = 0; y < sh; y++)
-                for (int x = 0; x < sw; x++)
-                    dst[(y + offY) * sq + (x + offX)] = src[y * sw + x];
-            src = std::move(dst);
-            sw = sq;
-            sh = sq;
-        };
-        zeroPadToSquare(pix1, w1, h1);
-        zeroPadToSquare(pix2, w2, h2);
-
-        // Step 3: Rescale both to S x S where S = larger square dimension
-        int S = std::max(w1, w2);
-        auto scaleToSize = [](const std::vector<double> &src, int sw, int S) {
-            if (sw == S) return src;
-            std::vector<double> dst(S * S);
-            for (int y = 0; y < S; y++) {
-                double srcY = y * (sw - 1.0) / (S - 1.0);
-                int y0 = (int)srcY;
-                int y1 = std::min(y0 + 1, sw - 1);
-                double fy = srcY - y0;
-                for (int x = 0; x < S; x++) {
-                    double srcX = x * (sw - 1.0) / (S - 1.0);
-                    int x0 = (int)srcX;
-                    int x1 = std::min(x0 + 1, sw - 1);
-                    double fx = srcX - x0;
-                    double v00 = src[y0 * sw + x0];
-                    double v10 = src[y0 * sw + x1];
-                    double v01 = src[y1 * sw + x0];
-                    double v11 = src[y1 * sw + x1];
-                    dst[y * S + x] = v00 * (1 - fx) * (1 - fy)
-                                   + v10 * fx       * (1 - fy)
-                                   + v01 * (1 - fx) * fy
-                                   + v11 * fx       * fy;
-                }
-            }
-            return dst;
-        };
-        std::vector<double> a = scaleToSize(pix1, w1, S);
-        std::vector<double> b = scaleToSize(pix2, w2, S);
-
-        // Step 4: FFT convolution/correlation
-        int N = nextGoodFFTSize(S);
-        int halfS = S / 2;
-
-        std::vector<Complex> fa(N * N, Complex(0, 0));
-        std::vector<Complex> fb(N * N, Complex(0, 0));
-        for (int y = 0; y < S; y++)
+    // Helper lambdas (stateless, captured by value)
+    auto zeroPadToSquareFn = [](std::vector<double> &src, int &sw, int &sh) {
+        if (sw == sh) return;
+        int sq = std::max(sw, sh);
+        std::vector<double> dst(sq * sq, 0.0);
+        int offX = (sq - sw) / 2;
+        int offY = (sq - sh) / 2;
+        for (int y = 0; y < sh; y++)
+            for (int x = 0; x < sw; x++)
+                dst[(y + offY) * sq + (x + offX)] = src[y * sw + x];
+        src = std::move(dst);
+        sw = sq;
+        sh = sq;
+    };
+    auto scaleToSizeFn = [](const std::vector<double> &src, int sw, int S) {
+        if (sw == S) return src;
+        std::vector<double> dst(S * S);
+        for (int y = 0; y < S; y++) {
+            double srcY = y * (sw - 1.0) / (S - 1.0);
+            int y0 = (int)srcY;
+            int y1 = std::min(y0 + 1, sw - 1);
+            double fy = srcY - y0;
             for (int x = 0; x < S; x++) {
-                fa[y * N + x] = Complex(a[y * S + x], 0);
-                fb[y * N + x] = Complex(b[y * S + x], 0);
+                double srcX = x * (sw - 1.0) / (S - 1.0);
+                int x0 = (int)srcX;
+                int x1 = std::min(x0 + 1, sw - 1);
+                double fx = srcX - x0;
+                double v00 = src[y0 * sw + x0];
+                double v10 = src[y0 * sw + x1];
+                double v01 = src[y1 * sw + x0];
+                double v11 = src[y1 * sw + x1];
+                dst[y * S + x] = v00 * (1 - fx) * (1 - fy)
+                               + v10 * fx       * (1 - fy)
+                               + v01 * (1 - fx) * fy
+                               + v11 * fx       * fy;
             }
-
-        m_mathProgress = 0.1;
-        update(); QApplication::processEvents();
-
-        fft2d(fa, N, false);
-        m_mathProgress = 0.35;
-        update(); QApplication::processEvents();
-
-        fft2d(fb, N, false);
-        m_mathProgress = 0.6;
-        update(); QApplication::processEvents();
-
-        std::vector<Complex> fc(N * N);
-        for (int i = 0; i < N * N; i++) {
-            if (opIdx == 4)
-                fc[i] = fa[i] * fb[i];             // convolution
-            else
-                fc[i] = fa[i] * std::conj(fb[i]);  // cross-correlation
         }
+        return dst;
+    };
 
-        fft2d(fc, N, true);  // inverse FFT
-        m_mathProgress = 0.9;
-        update(); QApplication::processEvents();
-
-        std::vector<double> result(S * S);
-        // Center the result: cyclic shift so zero-lag is at (S/2, S/2)
-        // Convolution adds positions (+halfS), correlation subtracts (-halfS)
-        for (int y = 0; y < S; y++)
-            for (int x = 0; x < S; x++) {
-                int fy = (opIdx == 4)
-                    ? (y + halfS) % N          // convolution
-                    : (y - halfS + N) % N;     // correlation
-                int fx = (opIdx == 4)
-                    ? (x + halfS) % N
-                    : (x - halfS + N) % N;
-                result[y * S + x] = fc[fy * N + fx].real();
-            }
-
-        // Build the output QImage from the result
+    // Lambda to save result to slot and finish
+    auto finishMath = [this](std::shared_ptr<MathWork> st,
+                             std::vector<double> result, int S) {
         double minVal = *std::min_element(result.begin(), result.end());
         double maxVal = *std::max_element(result.begin(), result.end());
         double range  = maxVal - minVal;
@@ -2298,8 +2431,6 @@ void FtWindow::onMathCompute()
                 row[x] = static_cast<uchar>(std::clamp(
                     (result[y * S + x] - minVal) * scale, 0.0, 255.0));
         }
-
-        // Save current active image back to its slot before switching
         if (m_activeSlot >= 0 && !m_image.isNull()) {
             m_history[m_activeSlot].image        = m_image;
             m_history[m_activeSlot].path         = m_imagePath;
@@ -2310,13 +2441,12 @@ void FtWindow::onMathCompute()
             m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
             m_history[m_activeSlot].occupied     = true;
         }
-
-        // Store result in output slot
+        int outIdx = st->outIdx;
         m_history[outIdx].image     = outImg;
         m_history[outIdx].path      = QString("math: %1 %2 %3")
-                                          .arg(QChar('a' + in1Idx))
+                                          .arg(QChar('a' + st->in1Idx))
                                           .arg(m_mathOpCombo->currentText())
-                                          .arg(QChar('a' + in2Idx));
+                                          .arg(QChar('a' + st->in2Idx));
         m_history[outIdx].rawPixels = std::move(result);
         m_history[outIdx].minVal    = minVal;
         m_history[outIdx].maxVal    = maxVal;
@@ -2343,128 +2473,126 @@ void FtWindow::onMathCompute()
         saveHistory();
         m_mathProgress = -1;
         onMathCancel();
-        return;
-    }
-
-    // For arithmetic operations (+, -, *, /), pad to square and scale
-    padToSquare(pix1, w1, h1);
-    padToSquare(pix2, w2, h2);
-
-    int S = std::max(w1, w2);
-
-    auto scaleToSize = [](const std::vector<double> &src, int sw, int S) {
-        if (sw == S) return src;
-        std::vector<double> dst(S * S);
-        for (int y = 0; y < S; y++) {
-            double srcY = y * (sw - 1.0) / (S - 1.0);
-            int y0 = (int)srcY;
-            int y1 = std::min(y0 + 1, sw - 1);
-            double fy = srcY - y0;
-            for (int x = 0; x < S; x++) {
-                double srcX = x * (sw - 1.0) / (S - 1.0);
-                int x0 = (int)srcX;
-                int x1 = std::min(x0 + 1, sw - 1);
-                double fx = srcX - x0;
-                double v00 = src[y0 * sw + x0];
-                double v10 = src[y0 * sw + x1];
-                double v01 = src[y1 * sw + x0];
-                double v11 = src[y1 * sw + x1];
-                dst[y * S + x] = v00 * (1 - fx) * (1 - fy)
-                               + v10 * fx       * (1 - fy)
-                               + v01 * (1 - fx) * fy
-                               + v11 * fx       * fy;
-            }
-        }
-        return dst;
     };
 
-    std::vector<double> a = scaleToSize(pix1, w1, S);
-    std::vector<double> b = scaleToSize(pix2, w2, S);
+    if (opIdx >= 4) {
+        // Convolution/correlation path
+        struct ConvWork {
+            std::vector<Complex> fa, fb, fc;
+            std::vector<double> a, b;
+            int S = 0, N = 0;
+        };
+        auto cw = std::make_shared<ConvWork>();
 
-    std::vector<double> result(S * S);
+        chainSteps({
+            // Stage 1: prep data
+            [this, st, cw, zeroPadToSquareFn, scaleToSizeFn]() mutable {
+                double mean1 = 0, mean2 = 0;
+                for (double v : st->pix1) mean1 += v;
+                mean1 /= st->pix1.size();
+                for (double v : st->pix2) mean2 += v;
+                mean2 /= st->pix2.size();
+                for (double &v : st->pix1) v -= mean1;
+                for (double &v : st->pix2) v -= mean2;
 
-    m_mathProgress = 0.3;
-    update(); QApplication::processEvents();
+                zeroPadToSquareFn(st->pix1, st->w1, st->h1);
+                zeroPadToSquareFn(st->pix2, st->w2, st->h2);
 
-    if (opIdx <= 3) {
-        // Wien filter noise estimate from range of b
-        double bMin = *std::min_element(b.begin(), b.end());
-        double bMax = *std::max_element(b.begin(), b.end());
-        double noise = std::max(std::abs((bMax - bMin) / 100.0), 1.0);
+                cw->S = std::max(st->w1, st->w2);
+                cw->a = scaleToSizeFn(st->pix1, st->w1, cw->S);
+                cw->b = scaleToSizeFn(st->pix2, st->w2, cw->S);
+                st->pix1.clear(); st->pix2.clear();
 
-        // Pixel-wise operations: +, -, *, / (Wien)
-        for (int i = 0; i < S * S; i++) {
-            switch (opIdx) {
-            case 0: result[i] = a[i] + b[i]; break;
-            case 1: result[i] = a[i] - b[i]; break;
-            case 2: result[i] = a[i] * b[i]; break;
-            case 3: result[i] = a[i] * b[i] / (b[i] * b[i] + noise); break;
+                cw->N = nextGoodFFTSize(cw->S);
+                int N = cw->N, S = cw->S;
+                cw->fa.assign(N * N, Complex(0, 0));
+                cw->fb.assign(N * N, Complex(0, 0));
+                for (int y = 0; y < S; y++)
+                    for (int x = 0; x < S; x++) {
+                        cw->fa[y * N + x] = Complex(cw->a[y * S + x], 0);
+                        cw->fb[y * N + x] = Complex(cw->b[y * S + x], 0);
+                    }
+                cw->a.clear(); cw->b.clear();
+                m_mathProgress = 0.15;
+            },
+            // Stage 2: FFT of a
+            [this, cw]() {
+                fft2d(cw->fa, cw->N, false);
+                m_mathProgress = 0.35;
+            },
+            // Stage 3: FFT of b
+            [this, cw]() {
+                fft2d(cw->fb, cw->N, false);
+                m_mathProgress = 0.6;
+            },
+            // Stage 4: multiply + inverse FFT
+            [this, st, cw]() {
+                int N = cw->N;
+                cw->fc.resize(N * N);
+                for (int i = 0; i < N * N; i++) {
+                    if (st->opIdx == 4)
+                        cw->fc[i] = cw->fa[i] * cw->fb[i];
+                    else
+                        cw->fc[i] = cw->fa[i] * std::conj(cw->fb[i]);
+                }
+                cw->fa.clear(); cw->fb.clear();
+                fft2d(cw->fc, N, true);
+                m_mathProgress = 0.9;
+            },
+            // Stage 5: build result and finish
+            [this, st, cw, finishMath]() {
+                int S = cw->S, N = cw->N;
+                int halfS = S / 2;
+                std::vector<double> result(S * S);
+                for (int y = 0; y < S; y++)
+                    for (int x = 0; x < S; x++) {
+                        int fy = (st->opIdx == 4)
+                            ? (y + halfS) % N
+                            : (y - halfS + N) % N;
+                        int fx = (st->opIdx == 4)
+                            ? (x + halfS) % N
+                            : (x - halfS + N) % N;
+                        result[y * S + x] = cw->fc[fy * N + fx].real();
+                    }
+                cw->fc.clear();
+                finishMath(st, std::move(result), S);
             }
-        }
+        });
+    } else {
+        // Arithmetic operations path (+, -, *, /)
+        chainSteps({
+            // Stage 1: pad, scale, compute
+            [this, st, padToSquare, scaleToSizeFn]() mutable {
+                padToSquare(st->pix1, st->w1, st->h1);
+                padToSquare(st->pix2, st->w2, st->h2);
+                int S = std::max(st->w1, st->w2);
+                std::vector<double> a = scaleToSizeFn(st->pix1, st->w1, S);
+                std::vector<double> b = scaleToSizeFn(st->pix2, st->w2, S);
+                st->pix1.clear(); st->pix2.clear();
+
+                // Store S in w1 for later use
+                st->w1 = S;
+                st->pix1.resize(S * S);
+
+                double bMin = *std::min_element(b.begin(), b.end());
+                double bMax = *std::max_element(b.begin(), b.end());
+                double noise = std::max(std::abs((bMax - bMin) / 100.0), 1.0);
+
+                for (int i = 0; i < S * S; i++) {
+                    switch (st->opIdx) {
+                    case 0: st->pix1[i] = a[i] + b[i]; break;
+                    case 1: st->pix1[i] = a[i] - b[i]; break;
+                    case 2: st->pix1[i] = a[i] * b[i]; break;
+                    case 3: st->pix1[i] = a[i] * b[i] / (b[i] * b[i] + noise); break;
+                    }
+                }
+                m_mathProgress = 0.7;
+            },
+            // Stage 2: finish
+            [this, st, finishMath]() {
+                int S = st->w1;
+                finishMath(st, std::move(st->pix1), S);
+            }
+        });
     }
-
-    m_mathProgress = 0.7;
-    update(); QApplication::processEvents();
-
-    // Build the output QImage from the result
-    double minVal = *std::min_element(result.begin(), result.end());
-    double maxVal = *std::max_element(result.begin(), result.end());
-    double range  = maxVal - minVal;
-    double scale  = (range > 0) ? 255.0 / range : 1.0;
-
-    QImage outImg(S, S, QImage::Format_Grayscale8);
-    for (int y = 0; y < S; y++) {
-        uchar *row = outImg.scanLine(y);
-        for (int x = 0; x < S; x++)
-            row[x] = static_cast<uchar>(std::clamp(
-                (result[y * S + x] - minVal) * scale, 0.0, 255.0));
-    }
-
-    // Save current active image back to its slot before switching
-    if (m_activeSlot >= 0 && !m_image.isNull()) {
-        m_history[m_activeSlot].image        = m_image;
-        m_history[m_activeSlot].path         = m_imagePath;
-        m_history[m_activeSlot].rawPixels    = m_imageRawPixels;
-        m_history[m_activeSlot].minVal       = m_imageMinVal;
-        m_history[m_activeSlot].maxVal       = m_imageMaxVal;
-        m_history[m_activeSlot].pixelSize    = m_pixelSize;
-        m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
-        m_history[m_activeSlot].occupied     = true;
-    }
-
-    // Store result in output slot
-    m_history[outIdx].image     = outImg;
-    m_history[outIdx].path      = QString("math: %1 %2 %3")
-                                      .arg(QChar('a' + in1Idx))
-                                      .arg(m_mathOpCombo->currentText())
-                                      .arg(QChar('a' + in2Idx));
-    m_history[outIdx].rawPixels = std::move(result);
-    m_history[outIdx].minVal    = minVal;
-    m_history[outIdx].maxVal    = maxVal;
-    m_history[outIdx].pixelSize = 1.0;
-    m_history[outIdx].powerSpecImg = computePowerSpecMasked(outImg);
-    m_history[outIdx].occupied  = true;
-
-    // Activate the output slot as the current display
-    m_activeSlot     = outIdx;
-    m_image          = m_history[outIdx].image;
-    m_imagePath      = m_history[outIdx].path;
-    m_imageRawPixels = m_history[outIdx].rawPixels;
-    m_imageMinVal    = m_history[outIdx].minVal;
-    m_imageMaxVal    = m_history[outIdx].maxVal;
-    m_pixelSize      = m_history[outIdx].pixelSize;
-    m_zoom[0].reset(m_image.width(), m_image.height());
-
-    m_ftComputed  = false;
-    m_modeBtn->setText(modeLabel());
-    m_modeBtn->hide();
-    m_maskBtn->hide();
-
-    computeFFT();
-    m_history[outIdx].powerSpecImg = computePowerSpecMasked(m_image);
-    saveHistory();
-
-    // Close the math overlay
-    m_mathProgress = -1;
-    onMathCancel();
 }

@@ -19,6 +19,7 @@
 #include <QFont>
 #include <QFontMetrics>
 #include <QShortcut>
+#include <QTimer>
 #include <QDebug>
 #include <cmath>
 #include <algorithm>

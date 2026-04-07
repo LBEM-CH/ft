@@ -378,6 +378,18 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_maskBtn->setChecked(m_maskCenter);
     m_displayMode = settings.value("displayMode", 3).toInt();
     m_modeBtn->setText(modeLabel());
+
+    // Restore math combo selections
+    m_mathOutCombo->setCurrentIndex(settings.value("mathOutIdx", 0).toInt());
+    m_mathIn1Combo->setCurrentIndex(settings.value("mathIn1Idx", 0).toInt());
+    m_mathOpCombo->setCurrentIndex(settings.value("mathOpIdx", 0).toInt());
+    m_mathIn2Combo->setCurrentIndex(settings.value("mathIn2Idx", 0).toInt());
+    m_ftMathOutCombo->setCurrentIndex(settings.value("ftMathOutIdx", 0).toInt());
+    m_ftMathIn1Combo->setCurrentIndex(settings.value("ftMathIn1Idx", 0).toInt());
+    m_ftMathOpCombo->setCurrentIndex(settings.value("ftMathOpIdx", 0).toInt());
+    m_ftMathIn2Combo->setCurrentIndex(settings.value("ftMathIn2Idx", 0).toInt());
+    m_ftMathConjCombo->setCurrentIndex(settings.value("ftMathConjIdx", 0).toInt());
+
     m_activeSlot = settings.value("activeSlot", -1).toInt();
     if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS
         && m_history[m_activeSlot].occupied) {

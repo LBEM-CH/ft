@@ -12,7 +12,10 @@
 #include <emscripten.h>
 #endif
 #include <vector>
+#include <functional>
 #include "fft.h"          // Complex, nextPow2, fft2d, fftShift, floatToImage
+
+class QTimer;
 
 // ---- zoom state for one display panel ----
 struct ZoomState {
@@ -81,6 +84,7 @@ private slots:
     void onToggleMask(bool checked);
     void onApplyBandpass();
     void onApplyEdgeTaper();
+    void onInvertContrast();
     void onApplyLineFilter();
     void onUndoRedo();
 
@@ -96,6 +100,7 @@ private:
     void computeFFT();
     void computeInverseFFT();
     void recomputeDisplayImages();
+    void chainSteps(std::vector<std::function<void()>> steps);
     void rebuildImageWithLUT();      // rebuild m_image using display min/max
     void rebuildFTImageWithLUT(int which); // rebuild FT display image for given mode
 
@@ -233,7 +238,7 @@ private:
     QPoint      m_mousePos;         // current mouse position
 
     // ---- tool buttons ----
-    static constexpr int P1_TOOL_BUTTONS = 9;
+    static constexpr int P1_TOOL_BUTTONS = 10;
     static constexpr int P2_TOOL_BUTTONS = 9;
     QRect       m_p1BtnRects[P1_TOOL_BUTTONS];       // panel 1 left edge
     QRect       m_toolBtnRects[P2_TOOL_BUTTONS];     // panel 2 right edge
@@ -285,6 +290,7 @@ private:
     void onMathCompute();
     void onMathCancel();
     double m_mathProgress = -1;    // -1 = not computing, 0..1 = progress
+    double m_invertProgress = -1;   // -1 = not computing, 0..1 = progress
 
     // Binning UI
     bool        m_binActive = false;
@@ -360,6 +366,10 @@ private:
     void onFtMathCompute();
     void onFtMathCancel();
     double m_ftMathProgress = -1;  // -1 = not computing, 0..1 = progress
+    double m_toolProgress = -1;    // progress for tool-option rectangles
+
+    QTimer *m_reloadAnimTimer = nullptr;
+    double  m_reloadProgress = -1;  // reload button animation (-1 = idle)
 
     // ---- Fourier crop ----
     bool        m_ftCropActive = false;
