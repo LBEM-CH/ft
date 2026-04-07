@@ -1,9 +1,39 @@
 How to build and run the WASM server
 =====================================
 
-Prerequisites (already installed):
-  - Emscripten SDK at ~/Projects/emsdk (version 3.1.56)
+Prerequisites:
+  - Emscripten SDK at ~/Projects/emsdk (version 3.1.56, required by Qt 6.8)
   - Qt 6.8.3 WASM kit at ~/Qt/6.8.3/wasm_singlethread/
+  - cmake (install via: brew install cmake)
+  - python3 (for aqtinstall and the dev server)
+  - git
+
+0. Install prerequisites (one-time setup on macOS):
+
+   a) Install Emscripten SDK 3.1.56:
+
+      cd ~/Projects
+      git clone https://github.com/emscripten-core/emsdk.git
+      cd emsdk
+      ./emsdk install 3.1.56
+      ./emsdk activate 3.1.56
+      source ./emsdk_env.sh
+      em++ --version              # verify it works
+
+   b) Install Qt 6.8.3 WASM kit using aqtinstall:
+
+      pip3 install aqtinstall
+      aqt install-qt all_os wasm 6.8.3 wasm_singlethread --outputdir ~/Qt
+      aqt install-qt mac desktop 6.8.3 --outputdir ~/Qt
+
+      This installs the WASM kit to ~/Qt/6.8.3/wasm_singlethread/
+      and the macOS host Qt to ~/Qt/6.8.3/macos/ (required for
+      cross-compilation).
+
+      Fix execute permissions (aqtinstall does not set them):
+      chmod +x ~/Qt/6.8.3/wasm_singlethread/bin/qt-cmake \
+               ~/Qt/6.8.3/wasm_singlethread/bin/qt-cmake-create \
+               ~/Qt/6.8.3/wasm_singlethread/bin/qt-configure-module
 
 1. Rebuild (only needed after code changes):
 
@@ -11,7 +41,9 @@ Prerequisites (already installed):
    cd ~/Projects/ft
    rm -rf build_wasm
    mkdir build_wasm && cd build_wasm
-   ~/Qt/6.8.3/wasm_singlethread/bin/qt-cmake ..
+   ~/Qt/6.8.3/wasm_singlethread/bin/qt-cmake \
+       -DQT_HOST_PATH=$HOME/Qt/6.8.3/macos \
+       -DQT_HOST_PATH_CMAKE_DIR=$HOME/Qt/6.8.3/macos/lib/cmake ..
    cmake --build .
    cp ~/Qt/6.8.3/wasm_singlethread/plugins/platforms/qtloader.js .
    cp ~/Qt/6.8.3/wasm_singlethread/plugins/platforms/qtlogo.svg .
@@ -24,6 +56,7 @@ Prerequisites (already installed):
 2. Start the server:
 
    cd ~/Projects/ft/build_wasm
+   ipconfig getifaddr en0
    python3 -m http.server 8080
 
 3. Open in browser:

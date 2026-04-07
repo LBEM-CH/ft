@@ -21,7 +21,6 @@ set(CMAKE_CXX_SIMULATE_ID "")
 set(CMAKE_CXX_COMPILER_FRONTEND_VARIANT "GNU")
 set(CMAKE_CXX_COMPILER_APPLE_SYSROOT "")
 set(CMAKE_CXX_SIMULATE_VERSION "")
-set(CMAKE_CXX_COMPILER_ARCHITECTURE_ID "")
 
 
 
@@ -30,7 +29,7 @@ set(CMAKE_AR "/Users/stahlber/Projects/emsdk/upstream/emscripten/emar")
 set(CMAKE_CXX_COMPILER_AR "/Users/stahlber/Projects/emsdk/upstream/emscripten/emar")
 set(CMAKE_RANLIB "/Users/stahlber/Projects/emsdk/upstream/emscripten/emranlib")
 set(CMAKE_CXX_COMPILER_RANLIB "/Users/stahlber/Projects/emsdk/upstream/emscripten/emranlib")
-set(CMAKE_LINKER "/usr/bin/ld")
+set(CMAKE_LINKER "/opt/homebrew/anaconda3/bin/ld")
 set(CMAKE_LINKER_LINK "")
 set(CMAKE_LINKER_LLD "")
 set(CMAKE_CXX_COMPILER_LINKER "")
@@ -98,5 +97,4 @@ set(CMAKE_CXX_IMPLICIT_LINK_FRAMEWORK_DIRECTORIES "")
 set(CMAKE_CXX_COMPILER_CLANG_RESOURCE_DIR "")
 
 set(CMAKE_CXX_COMPILER_IMPORT_STD "")
-set(CMAKE_CXX_COMPILER_IMPORT_STD_ERROR_MESSAGE  "")
-set(CMAKE_CXX_STDLIB_MODULES_JSON "")
+

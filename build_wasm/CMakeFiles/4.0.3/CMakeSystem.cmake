@@ -1,6 +1,6 @@
-set(CMAKE_HOST_SYSTEM "Darwin-25.3.0")
+set(CMAKE_HOST_SYSTEM "Darwin-25.4.0")
 set(CMAKE_HOST_SYSTEM_NAME "Darwin")
-set(CMAKE_HOST_SYSTEM_VERSION "25.3.0")
+set(CMAKE_HOST_SYSTEM_VERSION "25.4.0")
 set(CMAKE_HOST_SYSTEM_PROCESSOR "arm64")
 
 include("/Users/stahlber/Qt/6.8.3/wasm_singlethread/lib/cmake/Qt6/qt.toolchain.cmake")

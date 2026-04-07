@@ -13725,8 +13725,8 @@ var ___cxa_decrement_exception_refcount = createExportWrapper('__cxa_decrement_e
 var ___cxa_increment_exception_refcount = createExportWrapper('__cxa_increment_exception_refcount');
 var ___cxa_can_catch = createExportWrapper('__cxa_can_catch');
 var ___cxa_is_pointer_type = createExportWrapper('__cxa_is_pointer_type');
-var ___start_em_js = Module['___start_em_js'] = 8588520;
-var ___stop_em_js = Module['___stop_em_js'] = 8589610;
+var ___start_em_js = Module['___start_em_js'] = 8589048;
+var ___stop_em_js = Module['___stop_em_js'] = 8590138;
 function invoke_vii(index,a1,a2) {
   var sp = stackSave();
   try {

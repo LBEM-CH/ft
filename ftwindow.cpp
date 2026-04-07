@@ -40,6 +40,11 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     connect(m_undoBtn, &QPushButton::clicked, this, &FtWindow::onUndoRedo);
     updateUndoButton();
 
+    // Fullscreen toggle button
+    m_fullscreenBtn = new QPushButton("Go fullscreen", this);
+    m_fullscreenBtn->setFixedSize(180, 30);
+    connect(m_fullscreenBtn, &QPushButton::clicked, this, &FtWindow::onToggleFullscreen);
+
     // Mode cycle button
     m_modeBtn = new QPushButton(modeLabel(), this);
     m_modeBtn->setFixedSize(180, 30);
@@ -49,6 +54,7 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     // Mask-center toggle checkbox
     m_maskBtn = new QCheckBox("mask center for display", this);
     m_maskBtn->setStyleSheet("color: white;");
+    m_maskBtn->adjustSize();
     connect(m_maskBtn, &QCheckBox::toggled, this, &FtWindow::onToggleMask);
     m_maskBtn->hide();
 
@@ -408,8 +414,9 @@ void FtWindow::resizeEvent(QResizeEvent *)
     int hy0 = height() - height() / 5;
     m_reloadBtn->move(8, 8 + m_loadBtn->height() + 4);
     m_undoBtn->move((width() - m_undoBtn->width()) / 2, 70);
-    m_modeBtn->move(width() - m_modeBtn->width() - 8, 8);
-    m_maskBtn->move(width() - m_maskBtn->width() - 8, 8 + m_modeBtn->height() + 4);
+    m_fullscreenBtn->move(width() - m_fullscreenBtn->width() - 8, 8);
+    m_modeBtn->move(width() - m_modeBtn->width() - 8, 8 + m_fullscreenBtn->height() + 4);
+    m_maskBtn->move(width() - m_maskBtn->width() - 8, 8 + m_fullscreenBtn->height() + 4 + m_modeBtn->height() + 4);
 
     // Scale factor for tool dialogue widgets based on panel height
     int hy = height() - height() / 5;

@@ -865,6 +865,23 @@ void FtWindow::paintEvent(QPaintEvent *)
     int panel1W = cx - 1;
     int panel1H = hy - 1;
 
+    // Loading overlay (WASM image fetch in progress)
+    if (m_loadingImage) {
+        int fw = static_cast<int>(panel1W * 0.50);
+        int fh = static_cast<int>(panel1H * 0.12);
+        int fx = (panel1W - fw) / 2;
+        int fy = (panel1H - fh) / 2;
+        QRect loadRect(fx, fy, fw, fh);
+
+        drawShadowRect(p, loadRect);
+
+        QFont f;
+        f.setPixelSize(std::max(14, fh / 3));
+        p.setFont(f);
+        p.setPen(Qt::white);
+        p.drawText(loadRect, Qt::AlignCenter, "Loading image...");
+    }
+
     if (!m_image.isNull()) {
         int side1 = static_cast<int>(0.7 * std::min(panel1W, panel1H));
         int imgX = (panel1W - side1) / 2;

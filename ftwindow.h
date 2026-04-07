@@ -77,6 +77,7 @@ private slots:
     void onCreateImage();
     void onReloadImage();
     void onCycleMode();
+    void onToggleFullscreen();
     void onToggleMask(bool checked);
     void onApplyBandpass();
     void onApplyEdgeTaper();
@@ -124,10 +125,12 @@ private:
     QPushButton *m_createBtn = nullptr;
     QPushButton *m_reloadBtn = nullptr;
     QPushButton *m_undoBtn   = nullptr;
+    QPushButton *m_fullscreenBtn = nullptr;
     QPushButton *m_modeBtn   = nullptr;
     QCheckBox   *m_maskBtn   = nullptr;
 
     // ---- loaded image ----
+    bool                m_loadingImage = false;
     QImage              m_image;
     QString             m_imagePath;
     std::vector<double> m_imageRawPixels;

@@ -20,17 +20,27 @@ void FtWindow::onLoadImage()
           << "Exercise2-Restauration/restauration.png"
           << "Exercise3-2D-Crystal/raw.png"
           << "Exercise4-Eyes/eyes.png"
+          << "Exercise5-Text/Dot_black_1024.png"
           << "Exercise5-Text/F.png"
           << "Exercise5-Text/Fourier.png"
+          << "Exercise5-Text/Fourier_text_1024.png"
+          << "Exercise5-Text/Fourier_text_black_1024.png"
+          << "Exercise5-Text/Fourier_word_black_1024.png"
           << "Exercise5-Text/Fouriertext.png"
           << "Exercise5-Text/Fshift.png"
+          << "Exercise5-Text/Letter_f_black_1024.png"
+          << "Exercise5-Text/Ring_black_1024.png"
+          << "Exercise5-Text/Smiley_black_1024.png"
+          << "Exercise5-Text/Smiley_small_black_1024.png"
           << "Exercise5-Text/e.png"
           << "Exercise5-Text/in.png"
           << "Exercise5-Text/o.png"
           << "Exercise5-Text/oshift.png"
           << "Exercise6-Photo-Multiplication/andreas.png"
-          << "Exercise7-Proteins/apoartcns_010.png"
-          << "Exercise7-Proteins/apoartcns_016.png"
+          << "Exercise7-Proteins/apoferritin_1024.png"
+          << "Exercise7-Proteins/apoferritin_1024_anisotropic.png"
+          << "Exercise7-Proteins/apoferritin_2048.png"
+          << "Exercise7-Proteins/apoferritin_2048_anisotropic.png"
           << "Exercise8-2D-Crystal/Pol-4-512.png"
           << "Exercise9-Apple/APPL0000000100.mrc"
           << "Exercise9-Apple/APPL0012345604.mrc"
@@ -190,6 +200,17 @@ void FtWindow::onCycleMode()
     settings.setValue("displayMode", m_displayMode);
 #endif
     update();
+}
+
+void FtWindow::onToggleFullscreen()
+{
+    if (isFullScreen()) {
+        showNormal();
+        m_fullscreenBtn->setText("Go fullscreen");
+    } else {
+        showFullScreen();
+        m_fullscreenBtn->setText("Leave fullscreen");
+    }
 }
 
 void FtWindow::onToggleMask(bool checked)
@@ -360,6 +381,9 @@ void FtWindow::fetchAndLoadImage(const QString &relativePath)
     };
     FetchCtx *ctx = new FetchCtx{this, relativePath};
 
+    m_loadingImage = true;
+    update();
+
     QString urlStr = QStringLiteral("images/") + relativePath;
     qDebug() << "Fetching:" << urlStr;
 
@@ -371,6 +395,7 @@ void FtWindow::fetchAndLoadImage(const QString &relativePath)
             FetchCtx *c = static_cast<FetchCtx *>(arg);
             qDebug() << "Fetched" << sz << "bytes for" << c->path;
             QByteArray data(static_cast<const char *>(buf), sz);
+            c->self->m_loadingImage = false;
             c->self->loadImageData(c->path, data);
             delete c;
         },
@@ -378,6 +403,8 @@ void FtWindow::fetchAndLoadImage(const QString &relativePath)
         [](void *arg) {
             FetchCtx *c = static_cast<FetchCtx *>(arg);
             qWarning() << "Failed to fetch image:" << c->path;
+            c->self->m_loadingImage = false;
+            c->self->update();
             delete c;
         }
     );
