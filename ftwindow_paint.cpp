@@ -1495,28 +1495,28 @@ void FtWindow::paintEvent(QPaintEvent *)
             while (angleDeg < -180.0) angleDeg += 360.0;
 
             // Draw semi-transparent wedge (pie slice with arc) between initial and current direction
-            // Light blue for positive angle, light green for negative angle
+            // Positive angle = counter-clockwise = green; Negative angle = clockwise = blue
             {
                 double startEx = ccx + radius * std::cos(a1);
                 double startEy = ccy + radius * std::sin(a1);
 
                 QColor fillColor = (angleDeg >= 0)
-                    ? QColor(100, 180, 255, 80)    // light blue, semi-transparent
-                    : QColor(100, 255, 140, 80);   // light green, semi-transparent
+                    ? QColor(100, 255, 140, 80)    // light green, semi-transparent
+                    : QColor(100, 180, 255, 80);   // light blue, semi-transparent
                 QColor edgeColor = (angleDeg >= 0)
-                    ? QColor(60, 130, 220)          // blue, opaque
-                    : QColor(60, 200, 100);         // green, opaque
+                    ? QColor(60, 200, 100)          // green, opaque
+                    : QColor(60, 130, 220);         // blue, opaque
 
-                // Qt arc angles: measured counter-clockwise in 1/16th degrees
-                // from 3-o'clock. Our a1/angle2 are math angles (CCW from +X).
-                // Qt's drawPie/arcTo uses the same convention but in 1/16 degree units.
-                double startDeg16 = -a1 * 180.0 / M_PI * 16.0;
-                double spanDeg16  = -(angle2 - a1) * 180.0 / M_PI * 16.0;
+                // Qt arcTo: start angle is CCW from 3-o'clock in degrees,
+                // but screen Y is flipped, so negate the math angles.
+                // Span sign: positive = CCW in Qt (screen CW in math).
+                double qtStart = -a1 * 180.0 / M_PI;
+                double qtSpan  = -angleDeg;  // angleDeg is already the wrapped difference
 
                 QPainterPath wedge;
                 wedge.moveTo(ccx, ccy);
                 wedge.arcTo(ccx - radius, ccy - radius, radius * 2, radius * 2,
-                            startDeg16 / 16.0, spanDeg16 / 16.0);
+                            qtStart, qtSpan);
                 wedge.closeSubpath();
                 p.setPen(Qt::NoPen);
                 p.setBrush(fillColor);
