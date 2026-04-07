@@ -28,8 +28,8 @@ events:
     checks:
       - "Performing Test HAVE_STDATOMIC"
     directories:
-      source: "/Users/stahlber/Projects/ft/build_wasm/CMakeFiles/CMakeScratch/TryCompile-k6LxVV"
-      binary: "/Users/stahlber/Projects/ft/build_wasm/CMakeFiles/CMakeScratch/TryCompile-k6LxVV"
+      source: "/Users/stahlber/Projects/ft/build_wasm/CMakeFiles/CMakeScratch/TryCompile-yShlJ5"
+      binary: "/Users/stahlber/Projects/ft/build_wasm/CMakeFiles/CMakeScratch/TryCompile-yShlJ5"
     cmakeVariables:
       CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS: "CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS-NOTFOUND"
       CMAKE_CXX_FLAGS: ""
@@ -45,15 +45,15 @@ events:
       variable: "HAVE_STDATOMIC"
       cached: true
       stdout: |
-        Change Dir: '/Users/stahlber/Projects/ft/build_wasm/CMakeFiles/CMakeScratch/TryCompile-k6LxVV'
+        Change Dir: '/Users/stahlber/Projects/ft/build_wasm/CMakeFiles/CMakeScratch/TryCompile-yShlJ5'
         
-        Run Build Command(s): /opt/homebrew/bin/cmake -E env VERBOSE=1 /usr/bin/make -f Makefile cmTC_bb87c/fast
-        /Applications/Xcode.app/Contents/Developer/usr/bin/make  -f CMakeFiles/cmTC_bb87c.dir/build.make CMakeFiles/cmTC_bb87c.dir/build
-        Building CXX object CMakeFiles/cmTC_bb87c.dir/src.cxx.o
-        /Users/stahlber/Projects/emsdk/upstream/emscripten/em++ -DHAVE_STDATOMIC  -std=gnu++17 -MD -MT CMakeFiles/cmTC_bb87c.dir/src.cxx.o -MF CMakeFiles/cmTC_bb87c.dir/src.cxx.o.d -o CMakeFiles/cmTC_bb87c.dir/src.cxx.o -c /Users/stahlber/Projects/ft/build_wasm/CMakeFiles/CMakeScratch/TryCompile-k6LxVV/src.cxx
-        Linking CXX executable cmTC_bb87c.js
-        /opt/homebrew/bin/cmake -E cmake_link_script CMakeFiles/cmTC_bb87c.dir/link.txt --verbose=1
-        /Users/stahlber/Projects/emsdk/upstream/emscripten/em++ -L/usr/local/include  @CMakeFiles/cmTC_bb87c.dir/objects1.rsp -o cmTC_bb87c.js
+        Run Build Command(s): /opt/homebrew/bin/cmake -E env VERBOSE=1 /usr/bin/make -f Makefile cmTC_c50a2/fast
+        /Applications/Xcode.app/Contents/Developer/usr/bin/make  -f CMakeFiles/cmTC_c50a2.dir/build.make CMakeFiles/cmTC_c50a2.dir/build
+        Building CXX object CMakeFiles/cmTC_c50a2.dir/src.cxx.o
+        /Users/stahlber/Projects/emsdk/upstream/emscripten/em++ -DHAVE_STDATOMIC  -std=gnu++17 -MD -MT CMakeFiles/cmTC_c50a2.dir/src.cxx.o -MF CMakeFiles/cmTC_c50a2.dir/src.cxx.o.d -o CMakeFiles/cmTC_c50a2.dir/src.cxx.o -c /Users/stahlber/Projects/ft/build_wasm/CMakeFiles/CMakeScratch/TryCompile-yShlJ5/src.cxx
+        Linking CXX executable cmTC_c50a2.js
+        /opt/homebrew/bin/cmake -E cmake_link_script CMakeFiles/cmTC_c50a2.dir/link.txt --verbose=1
+        /Users/stahlber/Projects/emsdk/upstream/emscripten/em++ -L/usr/local/include  @CMakeFiles/cmTC_c50a2.dir/objects1.rsp -o cmTC_c50a2.js
         
       exitCode: 0
   -
@@ -75,8 +75,8 @@ events:
     checks:
       - "Performing Test HAVE_GETTIME"
     directories:
-      source: "/Users/stahlber/Projects/ft/build_wasm/CMakeFiles/CMakeScratch/TryCompile-ZhDgO4"
-      binary: "/Users/stahlber/Projects/ft/build_wasm/CMakeFiles/CMakeScratch/TryCompile-ZhDgO4"
+      source: "/Users/stahlber/Projects/ft/build_wasm/CMakeFiles/CMakeScratch/TryCompile-9xONlt"
+      binary: "/Users/stahlber/Projects/ft/build_wasm/CMakeFiles/CMakeScratch/TryCompile-9xONlt"
     cmakeVariables:
       CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS: "CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS-NOTFOUND"
       CMAKE_CXX_FLAGS: ""
@@ -92,15 +92,15 @@ events:
       variable: "HAVE_GETTIME"
       cached: true
       stdout: |
-        Change Dir: '/Users/stahlber/Projects/ft/build_wasm/CMakeFiles/CMakeScratch/TryCompile-ZhDgO4'
+        Change Dir: '/Users/stahlber/Projects/ft/build_wasm/CMakeFiles/CMakeScratch/TryCompile-9xONlt'
         
-        Run Build Command(s): /opt/homebrew/bin/cmake -E env VERBOSE=1 /usr/bin/make -f Makefile cmTC_514ca/fast
-        /Applications/Xcode.app/Contents/Developer/usr/bin/make  -f CMakeFiles/cmTC_514ca.dir/build.make CMakeFiles/cmTC_514ca.dir/build
-        Building CXX object CMakeFiles/cmTC_514ca.dir/src.cxx.o
-        /Users/stahlber/Projects/emsdk/upstream/emscripten/em++ -DHAVE_GETTIME  -std=gnu++17 -MD -MT CMakeFiles/cmTC_514ca.dir/src.cxx.o -MF CMakeFiles/cmTC_514ca.dir/src.cxx.o.d -o CMakeFiles/cmTC_514ca.dir/src.cxx.o -c /Users/stahlber/Projects/ft/build_wasm/CMakeFiles/CMakeScratch/TryCompile-ZhDgO4/src.cxx
-        Linking CXX executable cmTC_514ca.js
-        /opt/homebrew/bin/cmake -E cmake_link_script CMakeFiles/cmTC_514ca.dir/link.txt --verbose=1
-        /Users/stahlber/Projects/emsdk/upstream/emscripten/em++ -L/usr/local/include  @CMakeFiles/cmTC_514ca.dir/objects1.rsp -o cmTC_514ca.js
+        Run Build Command(s): /opt/homebrew/bin/cmake -E env VERBOSE=1 /usr/bin/make -f Makefile cmTC_f2f6c/fast
+        /Applications/Xcode.app/Contents/Developer/usr/bin/make  -f CMakeFiles/cmTC_f2f6c.dir/build.make CMakeFiles/cmTC_f2f6c.dir/build
+        Building CXX object CMakeFiles/cmTC_f2f6c.dir/src.cxx.o
+        /Users/stahlber/Projects/emsdk/upstream/emscripten/em++ -DHAVE_GETTIME  -std=gnu++17 -MD -MT CMakeFiles/cmTC_f2f6c.dir/src.cxx.o -MF CMakeFiles/cmTC_f2f6c.dir/src.cxx.o.d -o CMakeFiles/cmTC_f2f6c.dir/src.cxx.o -c /Users/stahlber/Projects/ft/build_wasm/CMakeFiles/CMakeScratch/TryCompile-9xONlt/src.cxx
+        Linking CXX executable cmTC_f2f6c.js
+        /opt/homebrew/bin/cmake -E cmake_link_script CMakeFiles/cmTC_f2f6c.dir/link.txt --verbose=1
+        /Users/stahlber/Projects/emsdk/upstream/emscripten/em++ -L/usr/local/include  @CMakeFiles/cmTC_f2f6c.dir/objects1.rsp -o cmTC_f2f6c.js
         
       exitCode: 0
   -
@@ -122,8 +122,8 @@ events:
     checks:
       - "Performing Test HAVE_SHM_OPEN_SHM_UNLINK"
     directories:
-      source: "/Users/stahlber/Projects/ft/build_wasm/CMakeFiles/CMakeScratch/TryCompile-zJGVAX"
-      binary: "/Users/stahlber/Projects/ft/build_wasm/CMakeFiles/CMakeScratch/TryCompile-zJGVAX"
+      source: "/Users/stahlber/Projects/ft/build_wasm/CMakeFiles/CMakeScratch/TryCompile-yB5zsg"
+      binary: "/Users/stahlber/Projects/ft/build_wasm/CMakeFiles/CMakeScratch/TryCompile-yB5zsg"
     cmakeVariables:
       CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS: "CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS-NOTFOUND"
       CMAKE_CXX_FLAGS: ""
@@ -139,15 +139,15 @@ events:
       variable: "HAVE_SHM_OPEN_SHM_UNLINK"
       cached: true
       stdout: |
-        Change Dir: '/Users/stahlber/Projects/ft/build_wasm/CMakeFiles/CMakeScratch/TryCompile-zJGVAX'
+        Change Dir: '/Users/stahlber/Projects/ft/build_wasm/CMakeFiles/CMakeScratch/TryCompile-yB5zsg'
         
-        Run Build Command(s): /opt/homebrew/bin/cmake -E env VERBOSE=1 /usr/bin/make -f Makefile cmTC_4a409/fast
-        /Applications/Xcode.app/Contents/Developer/usr/bin/make  -f CMakeFiles/cmTC_4a409.dir/build.make CMakeFiles/cmTC_4a409.dir/build
-        Building CXX object CMakeFiles/cmTC_4a409.dir/src.cxx.o
-        /Users/stahlber/Projects/emsdk/upstream/emscripten/em++ -DHAVE_SHM_OPEN_SHM_UNLINK  -std=gnu++17 -MD -MT CMakeFiles/cmTC_4a409.dir/src.cxx.o -MF CMakeFiles/cmTC_4a409.dir/src.cxx.o.d -o CMakeFiles/cmTC_4a409.dir/src.cxx.o -c /Users/stahlber/Projects/ft/build_wasm/CMakeFiles/CMakeScratch/TryCompile-zJGVAX/src.cxx
-        Linking CXX executable cmTC_4a409.js
-        /opt/homebrew/bin/cmake -E cmake_link_script CMakeFiles/cmTC_4a409.dir/link.txt --verbose=1
-        /Users/stahlber/Projects/emsdk/upstream/emscripten/em++ -L/usr/local/include  @CMakeFiles/cmTC_4a409.dir/objects1.rsp -o cmTC_4a409.js
+        Run Build Command(s): /opt/homebrew/bin/cmake -E env VERBOSE=1 /usr/bin/make -f Makefile cmTC_597b4/fast
+        /Applications/Xcode.app/Contents/Developer/usr/bin/make  -f CMakeFiles/cmTC_597b4.dir/build.make CMakeFiles/cmTC_597b4.dir/build
+        Building CXX object CMakeFiles/cmTC_597b4.dir/src.cxx.o
+        /Users/stahlber/Projects/emsdk/upstream/emscripten/em++ -DHAVE_SHM_OPEN_SHM_UNLINK  -std=gnu++17 -MD -MT CMakeFiles/cmTC_597b4.dir/src.cxx.o -MF CMakeFiles/cmTC_597b4.dir/src.cxx.o.d -o CMakeFiles/cmTC_597b4.dir/src.cxx.o -c /Users/stahlber/Projects/ft/build_wasm/CMakeFiles/CMakeScratch/TryCompile-yB5zsg/src.cxx
+        Linking CXX executable cmTC_597b4.js
+        /opt/homebrew/bin/cmake -E cmake_link_script CMakeFiles/cmTC_597b4.dir/link.txt --verbose=1
+        /Users/stahlber/Projects/emsdk/upstream/emscripten/em++ -L/usr/local/include  @CMakeFiles/cmTC_597b4.dir/objects1.rsp -o cmTC_597b4.js
         
       exitCode: 0
   -
@@ -169,8 +169,8 @@ events:
     checks:
       - "Performing Test HAVE_EGL"
     directories:
-      source: "/Users/stahlber/Projects/ft/build_wasm/CMakeFiles/CMakeScratch/TryCompile-rfFVXx"
-      binary: "/Users/stahlber/Projects/ft/build_wasm/CMakeFiles/CMakeScratch/TryCompile-rfFVXx"
+      source: "/Users/stahlber/Projects/ft/build_wasm/CMakeFiles/CMakeScratch/TryCompile-aKkkm1"
+      binary: "/Users/stahlber/Projects/ft/build_wasm/CMakeFiles/CMakeScratch/TryCompile-aKkkm1"
     cmakeVariables:
       CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS: "CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS-NOTFOUND"
       CMAKE_CXX_FLAGS: ""
@@ -186,15 +186,15 @@ events:
       variable: "HAVE_EGL"
       cached: true
       stdout: |
-        Change Dir: '/Users/stahlber/Projects/ft/build_wasm/CMakeFiles/CMakeScratch/TryCompile-rfFVXx'
+        Change Dir: '/Users/stahlber/Projects/ft/build_wasm/CMakeFiles/CMakeScratch/TryCompile-aKkkm1'
         
-        Run Build Command(s): /opt/homebrew/bin/cmake -E env VERBOSE=1 /usr/bin/make -f Makefile cmTC_90075/fast
-        /Applications/Xcode.app/Contents/Developer/usr/bin/make  -f CMakeFiles/cmTC_90075.dir/build.make CMakeFiles/cmTC_90075.dir/build
-        Building CXX object CMakeFiles/cmTC_90075.dir/src.cxx.o
-        /Users/stahlber/Projects/emsdk/upstream/emscripten/em++ -DHAVE_EGL  -std=gnu++17 -MD -MT CMakeFiles/cmTC_90075.dir/src.cxx.o -MF CMakeFiles/cmTC_90075.dir/src.cxx.o.d -o CMakeFiles/cmTC_90075.dir/src.cxx.o -c /Users/stahlber/Projects/ft/build_wasm/CMakeFiles/CMakeScratch/TryCompile-rfFVXx/src.cxx
-        Linking CXX executable cmTC_90075.js
-        /opt/homebrew/bin/cmake -E cmake_link_script CMakeFiles/cmTC_90075.dir/link.txt --verbose=1
-        /Users/stahlber/Projects/emsdk/upstream/emscripten/em++ -L/usr/local/include  @CMakeFiles/cmTC_90075.dir/objects1.rsp -o cmTC_90075.js
+        Run Build Command(s): /opt/homebrew/bin/cmake -E env VERBOSE=1 /usr/bin/make -f Makefile cmTC_b3346/fast
+        /Applications/Xcode.app/Contents/Developer/usr/bin/make  -f CMakeFiles/cmTC_b3346.dir/build.make CMakeFiles/cmTC_b3346.dir/build
+        Building CXX object CMakeFiles/cmTC_b3346.dir/src.cxx.o
+        /Users/stahlber/Projects/emsdk/upstream/emscripten/em++ -DHAVE_EGL  -std=gnu++17 -MD -MT CMakeFiles/cmTC_b3346.dir/src.cxx.o -MF CMakeFiles/cmTC_b3346.dir/src.cxx.o.d -o CMakeFiles/cmTC_b3346.dir/src.cxx.o -c /Users/stahlber/Projects/ft/build_wasm/CMakeFiles/CMakeScratch/TryCompile-aKkkm1/src.cxx
+        Linking CXX executable cmTC_b3346.js
+        /opt/homebrew/bin/cmake -E cmake_link_script CMakeFiles/cmTC_b3346.dir/link.txt --verbose=1
+        /Users/stahlber/Projects/emsdk/upstream/emscripten/em++ -L/usr/local/include  @CMakeFiles/cmTC_b3346.dir/objects1.rsp -o cmTC_b3346.js
         
       exitCode: 0
 ...

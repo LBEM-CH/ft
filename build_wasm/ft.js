@@ -982,6 +982,11 @@ function dbg(...args) {
 // end include: runtime_debug.js
 // === Body ===
 
+var ASM_CONSTS = {
+  8589048: () => { return document.fullscreenElement ? 1 : 0; },  
+ 8589095: () => { document.exitFullscreen(); },  
+ 8589126: () => { document.documentElement.requestFullscreen(); }
+};
 function jsHaveAsyncify() { return typeof Asyncify !== "undefined"; }
 function jsHaveJspi() { return typeof Asyncify !== "undefined" && !!Asyncify.makeAsyncFunction && !!WebAssembly.Function; }
 function __asyncjs__qt_jspi_suspend_js() { return Asyncify.handleAsync(async () => { ++Module.qtJspiSuspensionCounter; await new Promise(resolve => { Module.qtAsyncifyWakeUp.push(resolve); }); }); }
@@ -6855,6 +6860,48 @@ function qt_asyncify_resume_js() { let wakeUp = Module.qtAsyncifyWakeUp; if (wak
 
   var _abort = () => {
       abort('native code called abort()');
+    };
+
+  var readEmAsmArgsArray = [];
+  var readEmAsmArgs = (sigPtr, buf) => {
+      // Nobody should have mutated _readEmAsmArgsArray underneath us to be something else than an array.
+      assert(Array.isArray(readEmAsmArgsArray));
+      // The input buffer is allocated on the stack, so it must be stack-aligned.
+      assert(buf % 16 == 0);
+      readEmAsmArgsArray.length = 0;
+      var ch;
+      // Most arguments are i32s, so shift the buffer pointer so it is a plain
+      // index into HEAP32.
+      while (ch = HEAPU8[sigPtr++]) {
+        var chr = String.fromCharCode(ch);
+        var validChars = ['d', 'f', 'i', 'p'];
+        // In WASM_BIGINT mode we support passing i64 values as bigint.
+        validChars.push('j');
+        assert(validChars.includes(chr), `Invalid character ${ch}("${chr}") in readEmAsmArgs! Use only [${validChars}], and do not specify "v" for void return argument.`);
+        // Floats are always passed as doubles, so all types except for 'i'
+        // are 8 bytes and require alignment.
+        var wide = (ch != 105);
+        wide &= (ch != 112);
+        buf += wide && (buf % 8) ? 4 : 0;
+        readEmAsmArgsArray.push(
+          // Special case for pointers under wasm64 or CAN_ADDRESS_2GB mode.
+          ch == 112 ? HEAPU32[((buf)>>2)] :
+          ch == 106 ? HEAP64[((buf)>>3)] :
+          ch == 105 ?
+            HEAP32[((buf)>>2)] :
+            HEAPF64[((buf)>>3)]
+        );
+        buf += wide ? 8 : 4;
+      }
+      return readEmAsmArgsArray;
+    };
+  var runEmAsmFunction = (code, sigPtr, argbuf) => {
+      var args = readEmAsmArgs(sigPtr, argbuf);
+      assert(ASM_CONSTS.hasOwnProperty(code), `No EM_ASM constant found at address ${code}.  The loaded WebAssembly file is likely out of sync with the generated JavaScript.`);
+      return ASM_CONSTS[code](...args);
+    };
+  var _emscripten_asm_const_int = (code, sigPtr, argbuf) => {
+      return runEmAsmFunction(code, sigPtr, argbuf);
     };
 
   var handleException = (e) => {
@@ -12923,6 +12970,8 @@ var wasmImports = {
   /** @export */
   abort: _abort,
   /** @export */
+  emscripten_asm_const_int: _emscripten_asm_const_int,
+  /** @export */
   emscripten_async_call: _emscripten_async_call,
   /** @export */
   emscripten_async_wget_data: _emscripten_async_wget_data,
@@ -13725,8 +13774,8 @@ var ___cxa_decrement_exception_refcount = createExportWrapper('__cxa_decrement_e
 var ___cxa_increment_exception_refcount = createExportWrapper('__cxa_increment_exception_refcount');
 var ___cxa_can_catch = createExportWrapper('__cxa_can_catch');
 var ___cxa_is_pointer_type = createExportWrapper('__cxa_is_pointer_type');
-var ___start_em_js = Module['___start_em_js'] = 8589048;
-var ___stop_em_js = Module['___stop_em_js'] = 8590138;
+var ___start_em_js = Module['___start_em_js'] = 8589176;
+var ___stop_em_js = Module['___stop_em_js'] = 8590266;
 function invoke_vii(index,a1,a2) {
   var sp = stackSave();
   try {
@@ -14483,7 +14532,7 @@ var missingLibrarySymbols = [
   'readSockaddr',
   'writeSockaddr',
   'convertPCtoSourceLocation',
-  'readEmAsmArgs',
+  'runMainThreadEmAsm',
   'listenOnce',
   'autoResumeAudioContext',
   'getDynCaller',
@@ -14648,6 +14697,8 @@ var unexportedSymbols = [
   'emscriptenLog',
   'UNWIND_CACHE',
   'readEmAsmArgsArray',
+  'readEmAsmArgs',
+  'runEmAsmFunction',
   'jstoi_q',
   'jstoi_s',
   'getExecutableName',

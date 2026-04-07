@@ -15,40 +15,28 @@ void FtWindow::onLoadImage()
           << "Exercise1-Photos/party_1995.png"
           << "Exercise1-Photos/plants.png"
           << "Exercise1-Photos/simon_1999.png"
-          << "Exercise1-Photos/simon_2015.png"
           << "Exercise1-Photos/thomas_1999.png"
           << "Exercise2-Restauration/restauration.png"
-          << "Exercise3-2D-Crystal/raw.png"
+          << "Exercise3-2D-Crystal/2d_protein_crystal_1024.png"
+          << "Exercise3-2D-Crystal/Polyhead_virus_512.png"
           << "Exercise4-Eyes/eyes.png"
           << "Exercise5-Text/Dot_black_1024.png"
-          << "Exercise5-Text/F.png"
-          << "Exercise5-Text/Fourier.png"
-          << "Exercise5-Text/Fourier_text_1024.png"
+          << "Exercise5-Text/Fourier_text_white_1024.png"
           << "Exercise5-Text/Fourier_text_black_1024.png"
           << "Exercise5-Text/Fourier_word_black_1024.png"
-          << "Exercise5-Text/Fouriertext.png"
-          << "Exercise5-Text/Fshift.png"
           << "Exercise5-Text/Letter_f_black_1024.png"
+          << "Exercise5-Text/Letter_o_white_center_1024.png"
+          << "Exercise5-Text/Letter_o_white_corner_1024.png"
           << "Exercise5-Text/Ring_black_1024.png"
           << "Exercise5-Text/Smiley_black_1024.png"
           << "Exercise5-Text/Smiley_small_black_1024.png"
-          << "Exercise5-Text/e.png"
-          << "Exercise5-Text/in.png"
-          << "Exercise5-Text/o.png"
-          << "Exercise5-Text/oshift.png"
           << "Exercise6-Photo-Multiplication/andreas.png"
-          << "Exercise7-Proteins/apoferritin_1024.png"
-          << "Exercise7-Proteins/apoferritin_1024_anisotropic.png"
-          << "Exercise7-Proteins/apoferritin_2048.png"
-          << "Exercise7-Proteins/apoferritin_2048_anisotropic.png"
-          << "Exercise8-2D-Crystal/Pol-4-512.png"
-          << "Exercise9-Apple/APPL0000000100.mrc"
-          << "Exercise9-Apple/APPL0012345604.mrc"
-          << "Exercise9-Apple/apple_clean.png"
-          << "Exercise9-Apple/apple_corners_labeled.png"
-          << "Exercise9-Apple/apple_noisy.png"
-          << "Exercise9-Apple/apple_very_noisy.png"
-          << "Own_Images/blank_1024.png";
+          << "Exercise7-Single_particle_EM/apoferritin_1024.png"
+          << "Exercise7-Single_particle_EM/apoferritin_1024_anisotropic.png"
+          << "Exercise8-Apple/apple_clean.png"
+          << "Exercise8-Apple/apple_corners_labeled.png"
+          << "Exercise8-Apple/apple_noisy.png"
+          << "Exercise8-Apple/apple_very_noisy.png";
 
     // Use non-blocking open() instead of exec() for WASM compatibility
     auto *dlg = new QInputDialog(this);
@@ -204,6 +192,19 @@ void FtWindow::onCycleMode()
 
 void FtWindow::onToggleFullscreen()
 {
+#ifdef __EMSCRIPTEN__
+    // Use the browser Fullscreen API via JavaScript
+    bool isFS = EM_ASM_INT({
+        return document.fullscreenElement ? 1 : 0;
+    });
+    if (isFS) {
+        EM_ASM({ document.exitFullscreen(); });
+        m_fullscreenBtn->setText("Go fullscreen");
+    } else {
+        EM_ASM({ document.documentElement.requestFullscreen(); });
+        m_fullscreenBtn->setText("Leave fullscreen");
+    }
+#else
     if (isFullScreen()) {
         showNormal();
         m_fullscreenBtn->setText("Go fullscreen");
@@ -211,6 +212,7 @@ void FtWindow::onToggleFullscreen()
         showFullScreen();
         m_fullscreenBtn->setText("Leave fullscreen");
     }
+#endif
 }
 
 void FtWindow::onToggleMask(bool checked)
@@ -2173,7 +2175,7 @@ void FtWindow::onMathCompute()
         sh = S;
     };
 
-    m_mathProgress = 0.0;
+    m_mathProgress = 0.1;
     update(); QApplication::processEvents();
 
     // For convolution/correlation, use zero-mean + zero-pad + rescale approach
