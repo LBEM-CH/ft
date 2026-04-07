@@ -1494,13 +1494,11 @@ void FtWindow::paintEvent(QPaintEvent *)
             while (angleDeg > 180.0) angleDeg -= 360.0;
             while (angleDeg < -180.0) angleDeg += 360.0;
 
-            // Draw semi-transparent triangle between initial direction and current direction
+            // Draw semi-transparent wedge (pie slice with arc) between initial and current direction
             // Light blue for positive angle, light green for negative angle
             {
                 double startEx = ccx + radius * std::cos(a1);
                 double startEy = ccy + radius * std::sin(a1);
-                double curEx   = ccx + radius * std::cos(angle2);
-                double curEy   = ccy + radius * std::sin(angle2);
 
                 QColor fillColor = (angleDeg >= 0)
                     ? QColor(100, 180, 255, 80)    // light blue, semi-transparent
@@ -1509,14 +1507,20 @@ void FtWindow::paintEvent(QPaintEvent *)
                     ? QColor(60, 130, 220)          // blue, opaque
                     : QColor(60, 200, 100);         // green, opaque
 
-                QPainterPath tri;
-                tri.moveTo(ccx, ccy);
-                tri.lineTo(startEx, startEy);
-                tri.lineTo(curEx, curEy);
-                tri.closeSubpath();
+                // Qt arc angles: measured counter-clockwise in 1/16th degrees
+                // from 3-o'clock. Our a1/angle2 are math angles (CCW from +X).
+                // Qt's drawPie/arcTo uses the same convention but in 1/16 degree units.
+                double startDeg16 = -a1 * 180.0 / M_PI * 16.0;
+                double spanDeg16  = -(angle2 - a1) * 180.0 / M_PI * 16.0;
+
+                QPainterPath wedge;
+                wedge.moveTo(ccx, ccy);
+                wedge.arcTo(ccx - radius, ccy - radius, radius * 2, radius * 2,
+                            startDeg16 / 16.0, spanDeg16 / 16.0);
+                wedge.closeSubpath();
                 p.setPen(Qt::NoPen);
                 p.setBrush(fillColor);
-                p.drawPath(tri);
+                p.drawPath(wedge);
 
                 // Draw the initial-direction edge as opaque colored line
                 p.setPen(QPen(edgeColor, 2));
