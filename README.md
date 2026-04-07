@@ -118,6 +118,10 @@ C:\Qt\6.8.3\msvc2022_64\bin\windeployqt.exe build\Release\ft.exe
 
 Use the **Load image** button to open an image file, then click the **FT** arrow to compute the Fourier transform.
 
+## WebAssembly (WASM) build
+
+To build and deploy the application as a WebAssembly app that runs in a browser, see [WASM_SERVER.txt](WASM_SERVER.txt) for full instructions on installing Emscripten, the Qt WASM kit, and running a local web server.
+
 ## License
 
 See [LICENSE](LICENSE) for details.

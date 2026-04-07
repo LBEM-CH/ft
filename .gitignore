@@ -1,3 +1,4 @@
 build/
+build_wasm
 .DS_Store
 compile_commands.json
