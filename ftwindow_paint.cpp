@@ -78,33 +78,66 @@ void FtWindow::paintEvent(QPaintEvent *)
                 p.setBrush(QColor(0, 0, 0));
             p.drawRect(r);
 
-            // Eraser icon (button 0): reuse panel 2 eraser icon
+            // Eraser icon (button 0): pencil eraser tilted at an angle
             if (i == 0) {
                 p.setRenderHint(QPainter::Antialiasing, true);
                 QRect ir = r.adjusted(3, 3, -3, -3);
-                int ix = ir.x(), iy2 = ir.y(), iw = ir.width(), ih = ir.height();
+                double ix = ir.x(), iy2 = ir.y(), iw = ir.width(), ih = ir.height();
 
-                QPainterPath ep;
-                ep.moveTo(ix + iw * 0.2, iy2 + ih * 0.1);
-                ep.lineTo(ix + iw * 0.9, iy2 + ih * 0.1);
-                ep.lineTo(ix + iw * 0.8, iy2 + ih * 0.9);
-                ep.lineTo(ix + iw * 0.1, iy2 + ih * 0.9);
-                ep.closeSubpath();
+                // Body (wooden pencil shaft) — tilted parallelogram
+                QPainterPath body;
+                body.moveTo(ix + iw * 0.30, iy2 + ih * 0.08);
+                body.lineTo(ix + iw * 0.85, iy2 + ih * 0.08);
+                body.lineTo(ix + iw * 0.70, iy2 + ih * 0.50);
+                body.lineTo(ix + iw * 0.15, iy2 + ih * 0.50);
+                body.closeSubpath();
+                p.setPen(QPen(QColor(160, 130, 90), std::max(1, (int)(iw * 0.04))));
+                p.setBrush(QColor(210, 185, 140));
+                p.drawPath(body);
+
+                // Highlight stripe on body
+                QPainterPath stripe;
+                stripe.moveTo(ix + iw * 0.33, iy2 + ih * 0.18);
+                stripe.lineTo(ix + iw * 0.82, iy2 + ih * 0.18);
+                stripe.lineTo(ix + iw * 0.78, iy2 + ih * 0.30);
+                stripe.lineTo(ix + iw * 0.29, iy2 + ih * 0.30);
+                stripe.closeSubpath();
                 p.setPen(Qt::NoPen);
-                p.setBrush(QColor(200, 180, 160));
-                p.drawPath(ep);
+                p.setBrush(QColor(225, 200, 160));
+                p.drawPath(stripe);
 
-                QPainterPath tp;
-                tp.moveTo(ix + iw * 0.1, iy2 + ih * 0.9);
-                tp.lineTo(ix + iw * 0.15, iy2 + ih * 0.55);
-                tp.lineTo(ix + iw * 0.85, iy2 + ih * 0.55);
-                tp.lineTo(ix + iw * 0.8, iy2 + ih * 0.9);
-                tp.closeSubpath();
-                p.setBrush(QColor(230, 100, 100));
-                p.drawPath(tp);
+                // Metal ferrule band
+                QPainterPath ferrule;
+                ferrule.moveTo(ix + iw * 0.15, iy2 + ih * 0.50);
+                ferrule.lineTo(ix + iw * 0.70, iy2 + ih * 0.50);
+                ferrule.lineTo(ix + iw * 0.65, iy2 + ih * 0.62);
+                ferrule.lineTo(ix + iw * 0.10, iy2 + ih * 0.62);
+                ferrule.closeSubpath();
+                p.setPen(QPen(QColor(140, 140, 140), std::max(1, (int)(iw * 0.03))));
+                p.setBrush(QColor(190, 195, 200));
+                p.drawPath(ferrule);
 
-                p.setPen(QPen(QColor(120, 80, 60), std::max(1, iw / 10)));
-                p.drawLine(ix + iw * 0.15, iy2 + ih * 0.55, ix + iw * 0.85, iy2 + ih * 0.55);
+                // Pink eraser tip
+                QPainterPath eraser;
+                eraser.moveTo(ix + iw * 0.10, iy2 + ih * 0.62);
+                eraser.lineTo(ix + iw * 0.65, iy2 + ih * 0.62);
+                eraser.lineTo(ix + iw * 0.55, iy2 + ih * 0.92);
+                eraser.lineTo(ix + iw * 0.00, iy2 + ih * 0.92);
+                eraser.closeSubpath();
+                p.setPen(QPen(QColor(180, 70, 80), std::max(1, (int)(iw * 0.04))));
+                p.setBrush(QColor(235, 120, 130));
+                p.drawPath(eraser);
+
+                // Eraser highlight
+                QPainterPath eHighlight;
+                eHighlight.moveTo(ix + iw * 0.12, iy2 + ih * 0.66);
+                eHighlight.lineTo(ix + iw * 0.50, iy2 + ih * 0.66);
+                eHighlight.lineTo(ix + iw * 0.47, iy2 + ih * 0.76);
+                eHighlight.lineTo(ix + iw * 0.09, iy2 + ih * 0.76);
+                eHighlight.closeSubpath();
+                p.setPen(Qt::NoPen);
+                p.setBrush(QColor(245, 160, 165));
+                p.drawPath(eHighlight);
 
                 p.setRenderHint(QPainter::Antialiasing, false);
 
@@ -650,33 +683,66 @@ void FtWindow::paintEvent(QPaintEvent *)
                 p.setBrush(QColor(0, 0, 0));
             p.drawRect(r);
 
-            // Eraser icon in first button
+            // Eraser icon in first button: pencil eraser tilted at an angle
             if (i == 0) {
                 p.setRenderHint(QPainter::Antialiasing, true);
                 QRect ir = r.adjusted(3, 3, -3, -3);
-                int ix = ir.x(), iy = ir.y(), iw = ir.width(), ih = ir.height();
+                double ix = ir.x(), iy = ir.y(), iw = ir.width(), ih = ir.height();
 
-                QPainterPath ep;
-                ep.moveTo(ix + iw * 0.2, iy + ih * 0.1);
-                ep.lineTo(ix + iw * 0.9, iy + ih * 0.1);
-                ep.lineTo(ix + iw * 0.8, iy + ih * 0.9);
-                ep.lineTo(ix + iw * 0.1, iy + ih * 0.9);
-                ep.closeSubpath();
+                // Body (wooden pencil shaft)
+                QPainterPath body;
+                body.moveTo(ix + iw * 0.30, iy + ih * 0.08);
+                body.lineTo(ix + iw * 0.85, iy + ih * 0.08);
+                body.lineTo(ix + iw * 0.70, iy + ih * 0.50);
+                body.lineTo(ix + iw * 0.15, iy + ih * 0.50);
+                body.closeSubpath();
+                p.setPen(QPen(QColor(160, 130, 90), std::max(1, (int)(iw * 0.04))));
+                p.setBrush(QColor(210, 185, 140));
+                p.drawPath(body);
+
+                // Highlight stripe on body
+                QPainterPath stripe;
+                stripe.moveTo(ix + iw * 0.33, iy + ih * 0.18);
+                stripe.lineTo(ix + iw * 0.82, iy + ih * 0.18);
+                stripe.lineTo(ix + iw * 0.78, iy + ih * 0.30);
+                stripe.lineTo(ix + iw * 0.29, iy + ih * 0.30);
+                stripe.closeSubpath();
                 p.setPen(Qt::NoPen);
-                p.setBrush(QColor(200, 180, 160));
-                p.drawPath(ep);
+                p.setBrush(QColor(225, 200, 160));
+                p.drawPath(stripe);
 
-                QPainterPath tp;
-                tp.moveTo(ix + iw * 0.1, iy + ih * 0.9);
-                tp.lineTo(ix + iw * 0.15, iy + ih * 0.55);
-                tp.lineTo(ix + iw * 0.85, iy + ih * 0.55);
-                tp.lineTo(ix + iw * 0.8, iy + ih * 0.9);
-                tp.closeSubpath();
-                p.setBrush(QColor(230, 100, 100));
-                p.drawPath(tp);
+                // Metal ferrule band
+                QPainterPath ferrule;
+                ferrule.moveTo(ix + iw * 0.15, iy + ih * 0.50);
+                ferrule.lineTo(ix + iw * 0.70, iy + ih * 0.50);
+                ferrule.lineTo(ix + iw * 0.65, iy + ih * 0.62);
+                ferrule.lineTo(ix + iw * 0.10, iy + ih * 0.62);
+                ferrule.closeSubpath();
+                p.setPen(QPen(QColor(140, 140, 140), std::max(1, (int)(iw * 0.03))));
+                p.setBrush(QColor(190, 195, 200));
+                p.drawPath(ferrule);
 
-                p.setPen(QPen(QColor(120, 80, 60), std::max(1, iw / 10)));
-                p.drawLine(ix + iw * 0.15, iy + ih * 0.55, ix + iw * 0.85, iy + ih * 0.55);
+                // Pink eraser tip
+                QPainterPath eraser;
+                eraser.moveTo(ix + iw * 0.10, iy + ih * 0.62);
+                eraser.lineTo(ix + iw * 0.65, iy + ih * 0.62);
+                eraser.lineTo(ix + iw * 0.55, iy + ih * 0.92);
+                eraser.lineTo(ix + iw * 0.00, iy + ih * 0.92);
+                eraser.closeSubpath();
+                p.setPen(QPen(QColor(180, 70, 80), std::max(1, (int)(iw * 0.04))));
+                p.setBrush(QColor(235, 120, 130));
+                p.drawPath(eraser);
+
+                // Eraser highlight
+                QPainterPath eHighlight;
+                eHighlight.moveTo(ix + iw * 0.12, iy + ih * 0.66);
+                eHighlight.lineTo(ix + iw * 0.50, iy + ih * 0.66);
+                eHighlight.lineTo(ix + iw * 0.47, iy + ih * 0.76);
+                eHighlight.lineTo(ix + iw * 0.09, iy + ih * 0.76);
+                eHighlight.closeSubpath();
+                p.setPen(Qt::NoPen);
+                p.setBrush(QColor(245, 160, 165));
+                p.drawPath(eHighlight);
 
                 p.setRenderHint(QPainter::Antialiasing, false);
 
