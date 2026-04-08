@@ -249,6 +249,8 @@ private:
     bool        m_rotateActive = false;
     bool        m_p1Dragging = false;
     QPoint      m_p1DragStart;         // screen pos at drag start
+    bool        m_p1PanDragging = false;
+    QPoint      m_p1PanStart;          // screen pos at pan drag start
     bool        m_p1EraserActive = false;
     bool        m_p1BrushActive = false;
     bool        m_p1TaperActive = false;
@@ -363,6 +365,8 @@ private:
     bool        m_ftRotateActive = false;
     bool        m_p2Dragging = false;
     QPoint      m_p2DragStart;
+    bool        m_p2PanDragging = false;
+    QPoint      m_p2PanStart;
 
     // ---- cross-section profile ----
     bool        m_crossSectionActive = false;

@@ -522,55 +522,48 @@ void FtWindow::paintEvent(QPaintEvent *)
                     p.drawRect(r);
                 }
 
-                QColor col = m_peakPickActive ? QColor(100, 255, 100) : QColor(0, 200, 0);
                 int m = std::max(2, btnSide / 8);
                 QRect inner = r.adjusted(m, m, -m, -m);
+                int icx = inner.x() + inner.width() / 2;
+                int icy = inner.y() + inner.height() / 2;
+
+                // Blue checkmark in center (drawn first, underneath)
+                if (!m_peaks.empty()) {
+                    p.setRenderHint(QPainter::Antialiasing, true);
+                    int checkW = inner.width() * 2 / 5;
+                    int checkH = inner.height() / 4;
+                    p.setPen(QPen(QColor(100, 180, 255), std::max(1, btnSide / 12)));
+                    p.setBrush(Qt::NoBrush);
+                    p.drawLine(icx - checkW, icy,
+                               icx - checkW / 3, icy + checkH);
+                    p.drawLine(icx - checkW / 3, icy + checkH,
+                               icx + checkW, icy - checkH / 2);
+                    p.setRenderHint(QPainter::Antialiasing, false);
+                }
+
+                // Four equally spaced green pluses (drawn on top)
+                QColor col = m_peakPickActive ? QColor(100, 255, 100) : QColor(0, 200, 0);
                 int armLen = inner.width() / 7;
                 int lw = std::max(1, btnSide / 16);
                 p.setPen(QPen(col, lw));
 
-                // Four pluses in upper 2/3 of icon
-                int plusAreaH = inner.height() * 2 / 3;
-                // Top-left plus
                 int cx1 = inner.x() + inner.width() / 5;
-                int cy1 = inner.y() + plusAreaH / 4;
-                p.drawLine(cx1 - armLen, cy1, cx1 + armLen, cy1);
-                p.drawLine(cx1, cy1 - armLen, cx1, cy1 + armLen);
-
-                // Top-right plus
+                int cy1 = inner.y() + inner.height() / 5;
                 int cx2 = inner.x() + inner.width() * 4 / 5;
                 int cy2 = cy1;
-                p.drawLine(cx2 - armLen, cy2, cx2 + armLen, cy2);
-                p.drawLine(cx2, cy2 - armLen, cx2, cy2 + armLen);
-
-                // Bottom-left plus
                 int cx3 = cx1;
-                int cy3 = inner.y() + plusAreaH * 3 / 4;
-                p.drawLine(cx3 - armLen, cy3, cx3 + armLen, cy3);
-                p.drawLine(cx3, cy3 - armLen, cx3, cy3 + armLen);
-
-                // Bottom-right plus
+                int cy3 = inner.y() + inner.height() * 4 / 5;
                 int cx4 = cx2;
                 int cy4 = cy3;
+
+                p.drawLine(cx1 - armLen, cy1, cx1 + armLen, cy1);
+                p.drawLine(cx1, cy1 - armLen, cx1, cy1 + armLen);
+                p.drawLine(cx2 - armLen, cy2, cx2 + armLen, cy2);
+                p.drawLine(cx2, cy2 - armLen, cx2, cy2 + armLen);
+                p.drawLine(cx3 - armLen, cy3, cx3 + armLen, cy3);
+                p.drawLine(cx3, cy3 - armLen, cx3, cy3 + armLen);
                 p.drawLine(cx4 - armLen, cy4, cx4 + armLen, cy4);
                 p.drawLine(cx4, cy4 - armLen, cx4, cy4 + armLen);
-
-                // Blue checkmark underneath when peaks are available
-                if (!m_peaks.empty()) {
-                    p.setRenderHint(QPainter::Antialiasing, true);
-                    int checkY = inner.y() + plusAreaH + inner.height() / 12;
-                    int checkCx = inner.x() + inner.width() / 2;
-                    int checkW = inner.width() * 2 / 5;
-                    int checkH = inner.height() / 5;
-                    p.setPen(QPen(QColor(100, 180, 255), std::max(1, btnSide / 12)));
-                    p.setBrush(Qt::NoBrush);
-                    // Checkmark: short leg down-right, then long leg up-right
-                    p.drawLine(checkCx - checkW, checkY,
-                               checkCx - checkW / 3, checkY + checkH);
-                    p.drawLine(checkCx - checkW / 3, checkY + checkH,
-                               checkCx + checkW, checkY - checkH / 2);
-                    p.setRenderHint(QPainter::Antialiasing, false);
-                }
 
                 if (r.contains(m_mousePos)) {
                     QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);

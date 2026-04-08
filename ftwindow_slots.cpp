@@ -2633,37 +2633,39 @@ void FtWindow::runPeakSearch()
     double exclR = m_peakExclRadiusSlider->value();
     double exclR2 = exclR * exclR;
 
+    // Build sorted index of all pixels above threshold (descending by value)
+    std::vector<int> candidates;
+    candidates.reserve(n / 4);
+    for (int i = 0; i < n; i++) {
+        if (src.rawPixels[i] > threshold)
+            candidates.push_back(i);
+    }
+    std::sort(candidates.begin(), candidates.end(), [&](int a, int b) {
+        return src.rawPixels[a] > src.rawPixels[b];
+    });
+
     std::vector<bool> excluded(n, false);
+    int exclRi = static_cast<int>(std::ceil(exclR));
 
-    while (true) {
-        // Find the highest non-excluded pixel above threshold
-        double bestVal = threshold;
-        int bestIdx = -1;
-        for (int i = 0; i < n; i++) {
-            if (!excluded[i] && src.rawPixels[i] > bestVal) {
-                bestVal = src.rawPixels[i];
-                bestIdx = i;
-            }
-        }
-        if (bestIdx < 0) break;
+    for (int idx : candidates) {
+        if (excluded[idx]) continue;
 
-        int px = bestIdx % w;
-        int py = bestIdx / w;
+        int px = idx % w;
+        int py = idx / w;
         m_peaks.push_back({px, py});
 
         // Mark exclusion zone
-        int r = static_cast<int>(std::ceil(exclR));
-        int y0 = std::max(0, py - r);
-        int y1 = std::min(h - 1, py + r);
-        int x0 = std::max(0, px - r);
-        int x1 = std::min(w - 1, px + r);
+        int y0 = std::max(0, py - exclRi);
+        int y1 = std::min(h - 1, py + exclRi);
+        int x0 = std::max(0, px - exclRi);
+        int x1 = std::min(w - 1, px + exclRi);
         for (int yy = y0; yy <= y1; yy++) {
+            double dy = yy - py;
+            double dy2 = dy * dy;
             for (int xx = x0; xx <= x1; xx++) {
                 double dx = xx - px;
-                double dy = yy - py;
-                if (dx * dx + dy * dy <= exclR2) {
+                if (dx * dx + dy2 <= exclR2)
                     excluded[yy * w + xx] = true;
-                }
             }
         }
     }
@@ -2831,5 +2833,13 @@ void FtWindow::onExtractCompute()
     m_ftComputed = false;
 
     saveHistory();
+#ifndef __EMSCRIPTEN__
+    {
+        QSettings settings("ft", "ft");
+        settings.setValue("extractSourceIdx", m_extractSourceCombo->currentIndex());
+        settings.setValue("extractTargetIdx", m_extractTargetCombo->currentIndex());
+        settings.setValue("extractSizeIdx", m_extractSizeCombo->currentIndex());
+    }
+#endif
     update();
 }

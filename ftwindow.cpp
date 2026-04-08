@@ -533,6 +533,11 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_peakThresholdSlider->setValue(settings.value("peakThreshold", 750).toInt());
     m_peakExclRadiusSlider->setValue(settings.value("peakExclRadius", 32).toInt());
 
+    // Restore extract particles settings
+    m_extractSourceCombo->setCurrentIndex(settings.value("extractSourceIdx", 0).toInt());
+    m_extractTargetCombo->setCurrentIndex(settings.value("extractTargetIdx", 1).toInt());
+    m_extractSizeCombo->setCurrentIndex(settings.value("extractSizeIdx", 0).toInt());
+
     m_activeSlot = settings.value("activeSlot", -1).toInt();
     if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS
         && m_history[m_activeSlot].occupied) {

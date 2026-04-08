@@ -355,9 +355,7 @@ void FtWindow::drawLattice(QPainter &p, const QRect &screenRect,
                                          std::sqrt(m_latticeVx * m_latticeVx + m_latticeVy * m_latticeVy))) + 2;
     if (maxIdx > 200) maxIdx = 200;
 
-    // Draw lattice dots
-    p.setPen(Qt::NoPen);
-    p.setBrush(QColor(100, 160, 255, 120));
+    // Draw lattice dots with light blue edge for contrast
     for (int i = -maxIdx; i <= maxIdx; i++) {
         for (int j = -maxIdx; j <= maxIdx; j++) {
             double lx = i * m_latticeUx + j * m_latticeVx;
@@ -365,6 +363,8 @@ void FtWindow::drawLattice(QPainter &p, const QRect &screenRect,
             if (std::abs(lx) > halfN || std::abs(ly) > halfN) continue;
             double sx = scrCx + lx * scaleX;
             double sy = scrCy + ly * scaleY;
+            p.setPen(QPen(QColor(150, 200, 255), std::max(1.0, dotR * 0.3)));
+            p.setBrush(QColor(100, 160, 255, 180));
             p.drawEllipse(QPointF(sx, sy), dotR, dotR);
         }
     }
@@ -395,10 +395,10 @@ void FtWindow::drawLattice(QPainter &p, const QRect &screenRect,
         }
 
         // Label
-        QFont lf; lf.setPixelSize(11); lf.setBold(true);
+        QFont lf; lf.setPixelSize(18); lf.setBold(true);
         p.setFont(lf);
         p.setPen(QColor(255, 220, 0));
-        p.drawText((int)(tipSx + 4), (int)(tipSy - 4), label);
+        p.drawText((int)(tipSx + 6), (int)(tipSy - 6), label);
     };
 
     double uTipX = scrCx + uScrX, uTipY = scrCy + uScrY;

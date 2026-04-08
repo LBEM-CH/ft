@@ -217,6 +217,19 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         }
     }
 
+    // Pan zoomed panel 1 image (no tool active, zoom > 1)
+    if (!m_p1EraserActive && !m_p1BrushActive && !m_shiftActive && !m_rotateActive
+        && !m_image.isNull() && m_zoom[0].factor > 1.0) {
+        for (int i = 0; i < m_numDispItems; i++) {
+            const DisplayItem &di = m_dispItems[i];
+            if (di.valid && di.zoomIdx == 0 && di.screenRect.contains(event->pos())) {
+                m_p1PanDragging = true;
+                m_p1PanStart = event->pos();
+                return;
+            }
+        }
+    }
+
     // Check tool button clicks (panel 2 right edge)
     auto deactivateAllTools = [&]() {
         m_eraserActive = false; m_brushActive = false;
@@ -487,6 +500,23 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         }
     }
 
+    // Pan zoomed panel 2 image (no tool dragging, zoom > 1)
+    if (!m_eraserActive && !m_brushActive && !m_ftRotateActive
+        && !m_bandpassActive && !m_directionalActive && !m_lineFilterActive
+        && !m_latticeActive && !m_crossSectionActive
+        && m_ftComputed) {
+        for (int i = 0; i < m_numDispItems; i++) {
+            const DisplayItem &di = m_dispItems[i];
+            if (di.valid && di.zoomIdx >= 1
+                && m_zoom[di.zoomIdx].factor > 1.0
+                && di.screenRect.contains(event->pos())) {
+                m_p2PanDragging = true;
+                m_p2PanStart = event->pos();
+                return;
+            }
+        }
+    }
+
     // FT arrow
     if (!m_image.isNull()) {
         QRect arrowRect = upperArrowBounds();
@@ -599,6 +629,14 @@ void FtWindow::mouseReleaseEvent(QMouseEvent *event)
             computeFFT();
             update();
         }
+    }
+
+    if (m_p1PanDragging) {
+        m_p1PanDragging = false;
+    }
+
+    if (m_p2PanDragging) {
+        m_p2PanDragging = false;
     }
 
     if (m_toolDragging) {
@@ -813,6 +851,58 @@ void FtWindow::mouseMoveEvent(QMouseEvent *event)
         return;
     }
 
+    if (m_p1PanDragging && !m_image.isNull()) {
+        for (int i = 0; i < m_numDispItems; i++) {
+            const DisplayItem &di = m_dispItems[i];
+            if (!di.valid || di.zoomIdx != 0) continue;
+            ZoomState &z = m_zoom[0];
+            QRectF src = z.visibleRect(di.imgW, di.imgH);
+            double dxImg = (event->pos().x() - m_p1PanStart.x())
+                           / (double)di.screenRect.width() * src.width();
+            double dyImg = (event->pos().y() - m_p1PanStart.y())
+                           / (double)di.screenRect.height() * src.height();
+            z.centerX -= dxImg;
+            z.centerY -= dyImg;
+            double hw = src.width() / 2.0, hh = src.height() / 2.0;
+            z.centerX = std::clamp(z.centerX, hw, (double)di.imgW - hw);
+            z.centerY = std::clamp(z.centerY, hh, (double)di.imgH - hh);
+            m_p1PanStart = event->pos();
+            update();
+            break;
+        }
+        return;
+    }
+
+    if (m_p2PanDragging && m_ftComputed) {
+        for (int i = 0; i < m_numDispItems; i++) {
+            const DisplayItem &di = m_dispItems[i];
+            if (!di.valid || di.zoomIdx < 1) continue;
+            ZoomState &z = m_zoom[di.zoomIdx];
+            QRectF src = z.visibleRect(di.imgW, di.imgH);
+            double dxImg = (event->pos().x() - m_p2PanStart.x())
+                           / (double)di.screenRect.width() * src.width();
+            double dyImg = (event->pos().y() - m_p2PanStart.y())
+                           / (double)di.screenRect.height() * src.height();
+            z.centerX -= dxImg;
+            z.centerY -= dyImg;
+            double hw = src.width() / 2.0, hh = src.height() / 2.0;
+            z.centerX = std::clamp(z.centerX, hw, (double)di.imgW - hw);
+            z.centerY = std::clamp(z.centerY, hh, (double)di.imgH - hh);
+
+            // Sync both FT panels if in cos/sin or amp/phase mode
+            if ((m_displayMode == 0 || m_displayMode == 1) &&
+                (di.zoomIdx == 1 || di.zoomIdx == 2)) {
+                int other = (di.zoomIdx == 1) ? 2 : 1;
+                m_zoom[other] = z;
+            }
+
+            m_p2PanStart = event->pos();
+            update();
+            break;
+        }
+        return;
+    }
+
     if (m_toolDragging && m_ftComputed) {
         if (m_bandDragging > 0 && m_fftN > 0) {
             double halfN = m_fftN / 2.0;
@@ -894,12 +984,15 @@ void FtWindow::mouseMoveEvent(QMouseEvent *event)
                               / (double)di.screenRect.width() * src.width();
                 double imgY = src.y() + (event->pos().y() - di.screenRect.y())
                               / (double)di.screenRect.height() * src.height();
+                // Round to 0.1 pixel precision for fine control
+                double vx = std::round((imgX - imgCenter) * 10.0) / 10.0;
+                double vy = std::round((imgY - imgCenter) * 10.0) / 10.0;
                 if (m_latticeDragging == 1) {
-                    m_latticeUx = imgX - imgCenter;
-                    m_latticeUy = imgY - imgCenter;
+                    m_latticeUx = vx;
+                    m_latticeUy = vy;
                 } else {
-                    m_latticeVx = imgX - imgCenter;
-                    m_latticeVy = imgY - imgCenter;
+                    m_latticeVx = vx;
+                    m_latticeVy = vy;
                 }
                 update();
                 break;
