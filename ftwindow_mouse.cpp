@@ -83,6 +83,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         m_p1EraserActive = false; m_p1BrushActive = false;
         m_shiftActive = false; m_rotateActive = false;
         m_p1TaperActive = false; m_binActive = false; m_mathActive = false;
+        m_peakPickActive = false; m_extractActive = false;
     };
     auto showP1ToolWidgets = [&]() {
         m_p1EraserDiameterEdit->setVisible(m_p1EraserActive);
@@ -100,6 +101,20 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         m_mathIn2Combo->setVisible(m_mathActive);
         m_mathCancelBtn->setVisible(m_mathActive);
         m_mathComputeBtn->setVisible(m_mathActive);
+        m_peakSourceCombo->setVisible(m_peakPickActive);
+        m_peakThresholdSlider->setVisible(m_peakPickActive);
+        m_peakThresholdLabel->setVisible(m_peakPickActive);
+        m_peakExclLabel->setVisible(m_peakPickActive);
+        m_peakExclRadiusSlider->setVisible(m_peakPickActive);
+        m_peakCancelBtn->setVisible(m_peakPickActive);
+        m_peakComputeBtn->setVisible(m_peakPickActive);
+        m_peakShowPosBtn->setVisible(m_peakPickActive);
+        bool showExtract = m_extractActive && !m_peaks.empty();
+        m_extractSourceCombo->setVisible(showExtract);
+        m_extractTargetCombo->setVisible(showExtract);
+        m_extractSizeCombo->setVisible(showExtract);
+        m_extractCancelBtn->setVisible(showExtract);
+        m_extractComputeBtn->setVisible(showExtract);
     };
     if (m_p1BtnRects[0].contains(event->pos())) {
         bool was = m_p1EraserActive; deactivateAllP1Tools();
@@ -156,6 +171,23 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
     if (m_p1BtnRects[9].contains(event->pos())) {
         bool was = m_mathActive; deactivateAllP1Tools();
         m_mathActive = !was; showP1ToolWidgets(); update(); return;
+    }
+    if (m_p1BtnRects[10].contains(event->pos())) {
+        bool was = m_peakPickActive; deactivateAllP1Tools();
+        m_peakPickActive = !was;
+        if (m_peakPickActive) {
+            m_peakThresholdSlider->setValue(750);
+            if (m_activeSlot >= 0)
+                m_peakSourceCombo->setCurrentIndex(m_activeSlot);
+        }
+        showP1ToolWidgets(); update(); return;
+    }
+    if (m_p1BtnRects[11].contains(event->pos())) {
+        bool was = m_extractActive; deactivateAllP1Tools();
+        m_extractActive = !was;
+        if (m_extractActive && m_activeSlot >= 0)
+            m_extractSourceCombo->setCurrentIndex(m_activeSlot);
+        showP1ToolWidgets(); update(); return;
     }
 
     // Panel 1 eraser/brush: start drag on panel 1 image

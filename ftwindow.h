@@ -8,6 +8,7 @@
 #include <QLabel>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QSlider>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #endif
@@ -238,7 +239,7 @@ private:
     QPoint      m_mousePos;         // current mouse position
 
     // ---- tool buttons ----
-    static constexpr int P1_TOOL_BUTTONS = 10;
+    static constexpr int P1_TOOL_BUTTONS = 12;
     static constexpr int P2_TOOL_BUTTONS = 10;
     QRect       m_p1BtnRects[P1_TOOL_BUTTONS];       // panel 1 left edge
     QRect       m_toolBtnRects[P2_TOOL_BUTTONS];     // panel 2 right edge
@@ -267,6 +268,33 @@ private:
     void p1EraserApply(QPoint pos);
     void p1BrushApply(QPoint pos);
     void rebuildImageFromRaw();
+
+    // Particle picking
+    bool        m_peakPickActive = false;
+    QComboBox  *m_peakSourceCombo     = nullptr;
+    QSlider    *m_peakThresholdSlider = nullptr;
+    QLabel     *m_peakThresholdLabel  = nullptr;
+    QLabel     *m_peakExclLabel       = nullptr;
+    QSlider    *m_peakExclRadiusSlider = nullptr;
+    QPushButton *m_peakCancelBtn      = nullptr;
+    QPushButton *m_peakComputeBtn     = nullptr;
+    QPushButton *m_peakShowPosBtn     = nullptr;
+    bool        m_peakShowPositions   = true;
+    struct PeakCoord { int x; int y; };
+    std::vector<PeakCoord> m_peaks;
+    void runPeakSearch();
+    void onPeakCancel();
+    void onPeakCompute();
+
+    // Extract particles
+    bool        m_extractActive = false;
+    QComboBox  *m_extractSourceCombo = nullptr;
+    QComboBox  *m_extractTargetCombo = nullptr;
+    QComboBox  *m_extractSizeCombo   = nullptr;
+    QPushButton *m_extractCancelBtn  = nullptr;
+    QPushButton *m_extractComputeBtn = nullptr;
+    void onExtractCancel();
+    void onExtractCompute();
 
     // Panel 2 tools
     bool        m_eraserActive = false;
@@ -354,7 +382,7 @@ private:
     // ---- lattice filter ----
     bool        m_latticeActive = false;
     double      m_latticeUx = 20, m_latticeUy = 0;
-    double      m_latticeVx = 0,  m_latticeVy = 20;
+    double      m_latticeVx = 0,  m_latticeVy = -20;
     int         m_latticeDragging = 0;   // 0=none, 1=u, 2=v
 
     QLabel     *m_latticeSmoothLabel  = nullptr;

@@ -775,6 +775,18 @@ void FtWindow::computeInverseFFT()
                 (m_imageRawPixels[y * outW + x] - m_imageMinVal) * scale, 0.0, 255.0));
     }
 
+    m_imageDispMin = m_imageMinVal;
+    m_imageDispMax = m_imageMaxVal;
+
+    // Sync the active history slot so tools (e.g. particle picking) see the updated map
+    if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS) {
+        m_history[m_activeSlot].image     = m_image;
+        m_history[m_activeSlot].rawPixels = m_imageRawPixels;
+        m_history[m_activeSlot].minVal    = m_imageMinVal;
+        m_history[m_activeSlot].maxVal    = m_imageMaxVal;
+        m_history[m_activeSlot].occupied  = true;
+    }
+
     m_zoom[0].reset(outW, outH);
     update();
 }
@@ -2595,4 +2607,229 @@ void FtWindow::onMathCompute()
             }
         });
     }
+}
+
+// ---------------------------------------------------------------------------
+//  Particle picking – peak search with exclusion radius
+// ---------------------------------------------------------------------------
+void FtWindow::runPeakSearch()
+{
+    m_peaks.clear();
+
+    // Use the selected source buffer for peak search
+    int srcIdx = m_peakSourceCombo->currentIndex();
+    if (srcIdx < 0 || srcIdx >= HISTORY_SLOTS || !m_history[srcIdx].occupied) return;
+
+    const auto &src = m_history[srcIdx];
+    int w = src.image.width();
+    int h = src.image.height();
+    int n = static_cast<int>(src.rawPixels.size());
+    if (n != w * h || n == 0) return;
+
+    double srcMin = src.minVal;
+    double srcMax = src.maxVal;
+    double threshold = srcMin + (srcMax - srcMin)
+                       * m_peakThresholdSlider->value() / 1000.0;
+    double exclR = m_peakExclRadiusSlider->value();
+    double exclR2 = exclR * exclR;
+
+    std::vector<bool> excluded(n, false);
+
+    while (true) {
+        // Find the highest non-excluded pixel above threshold
+        double bestVal = threshold;
+        int bestIdx = -1;
+        for (int i = 0; i < n; i++) {
+            if (!excluded[i] && src.rawPixels[i] > bestVal) {
+                bestVal = src.rawPixels[i];
+                bestIdx = i;
+            }
+        }
+        if (bestIdx < 0) break;
+
+        int px = bestIdx % w;
+        int py = bestIdx / w;
+        m_peaks.push_back({px, py});
+
+        // Mark exclusion zone
+        int r = static_cast<int>(std::ceil(exclR));
+        int y0 = std::max(0, py - r);
+        int y1 = std::min(h - 1, py + r);
+        int x0 = std::max(0, px - r);
+        int x1 = std::min(w - 1, px + r);
+        for (int yy = y0; yy <= y1; yy++) {
+            for (int xx = x0; xx <= x1; xx++) {
+                double dx = xx - px;
+                double dy = yy - py;
+                if (dx * dx + dy * dy <= exclR2) {
+                    excluded[yy * w + xx] = true;
+                }
+            }
+        }
+    }
+}
+
+void FtWindow::onPeakCancel()
+{
+    m_peakPickActive = false;
+    m_peaks.clear();
+    m_peakSourceCombo->hide();
+    m_peakThresholdSlider->hide();
+    m_peakThresholdLabel->hide();
+    m_peakExclLabel->hide();
+    m_peakExclRadiusSlider->hide();
+    m_peakCancelBtn->hide();
+    m_peakComputeBtn->hide();
+    m_peakShowPosBtn->hide();
+    update();
+}
+
+void FtWindow::onPeakCompute()
+{
+    // Refresh min/max of the selected source buffer before computing
+    int srcIdx = m_peakSourceCombo->currentIndex();
+    if (srcIdx >= 0 && srcIdx < HISTORY_SLOTS && m_history[srcIdx].occupied) {
+        const auto &pix = m_history[srcIdx].rawPixels;
+        if (!pix.empty()) {
+            double mn = pix[0], mx = pix[0];
+            for (size_t i = 1; i < pix.size(); i++) {
+                if (pix[i] < mn) mn = pix[i];
+                if (pix[i] > mx) mx = pix[i];
+            }
+            m_history[srcIdx].minVal = mn;
+            m_history[srcIdx].maxVal = mx;
+        }
+    }
+    runPeakSearch();
+#ifndef __EMSCRIPTEN__
+    {
+        QSettings settings("ft", "ft");
+        settings.setValue("peakSourceIdx", m_peakSourceCombo->currentIndex());
+        settings.setValue("peakThreshold", m_peakThresholdSlider->value());
+        settings.setValue("peakExclRadius", m_peakExclRadiusSlider->value());
+    }
+#endif
+    update();
+}
+
+// ---------------------------------------------------------------------------
+//  Extract particles – tile picked particles into a target buffer
+// ---------------------------------------------------------------------------
+void FtWindow::onExtractCancel()
+{
+    m_extractActive = false;
+    m_extractSourceCombo->hide();
+    m_extractTargetCombo->hide();
+    m_extractSizeCombo->hide();
+    m_extractCancelBtn->hide();
+    m_extractComputeBtn->hide();
+    update();
+}
+
+void FtWindow::onExtractCompute()
+{
+    if (m_peaks.empty()) return;
+
+    int srcIdx = m_extractSourceCombo->currentIndex();
+    int tgtIdx = m_extractTargetCombo->currentIndex();
+    if (srcIdx < 0 || srcIdx >= HISTORY_SLOTS || !m_history[srcIdx].occupied) return;
+    if (tgtIdx < 0 || tgtIdx >= HISTORY_SLOTS) return;
+
+    int boxSize = m_extractSizeCombo->currentData().toInt();
+    int tilesPerRow = 1024 / boxSize;   // 16 for 64, 8 for 128
+    int maxParticles = tilesPerRow * tilesPerRow;  // 256 for 64, 64 for 128
+
+    const auto &srcEntry = m_history[srcIdx];
+    int srcW = srcEntry.image.width();
+    int srcH = srcEntry.image.height();
+    const auto &srcPix = srcEntry.rawPixels;
+
+    // Create 1024x1024 black target image
+    int outSize = 1024;
+    std::vector<double> outPix(outSize * outSize, 0.0);
+
+    int half = boxSize / 2;
+    int nExtracted = std::min(static_cast<int>(m_peaks.size()), maxParticles);
+
+    for (int p = 0; p < nExtracted; p++) {
+        int col = p % tilesPerRow;
+        int row = p / tilesPerRow;
+        int tileX0 = col * boxSize;
+        int tileY0 = row * boxSize;
+
+        int cx = m_peaks[p].x;
+        int cy = m_peaks[p].y;
+
+        // First pass: compute average of valid (in-bounds) pixels
+        double sum = 0.0;
+        int count = 0;
+        for (int dy = 0; dy < boxSize; dy++) {
+            for (int dx = 0; dx < boxSize; dx++) {
+                int sx = cx - half + dx;
+                int sy = cy - half + dy;
+                if (sx >= 0 && sx < srcW && sy >= 0 && sy < srcH) {
+                    sum += srcPix[sy * srcW + sx];
+                    count++;
+                }
+            }
+        }
+        double avg = (count > 0) ? sum / count : 0.0;
+
+        // Second pass: extract pixels, fill out-of-bounds with average
+        for (int dy = 0; dy < boxSize; dy++) {
+            for (int dx = 0; dx < boxSize; dx++) {
+                int sx = cx - half + dx;
+                int sy = cy - half + dy;
+                double val = avg;
+                if (sx >= 0 && sx < srcW && sy >= 0 && sy < srcH)
+                    val = srcPix[sy * srcW + sx];
+                outPix[(tileY0 + dy) * outSize + (tileX0 + dx)] = val;
+            }
+        }
+    }
+
+    // Compute min/max
+    double mn = outPix[0], mx = outPix[0];
+    for (size_t i = 1; i < outPix.size(); i++) {
+        if (outPix[i] < mn) mn = outPix[i];
+        if (outPix[i] > mx) mx = outPix[i];
+    }
+    double range = mx - mn;
+    double scale = (range > 0) ? 255.0 / range : 1.0;
+
+    // Build QImage
+    QImage outImg(outSize, outSize, QImage::Format_Grayscale8);
+    for (int y = 0; y < outSize; y++) {
+        uchar *row = outImg.scanLine(y);
+        for (int x = 0; x < outSize; x++)
+            row[x] = static_cast<uchar>(std::clamp(
+                (outPix[y * outSize + x] - mn) * scale, 0.0, 255.0));
+    }
+
+    // Store into target history slot
+    storeUndoSnapshot();
+    m_history[tgtIdx].image     = outImg;
+    m_history[tgtIdx].rawPixels = std::move(outPix);
+    m_history[tgtIdx].minVal    = mn;
+    m_history[tgtIdx].maxVal    = mx;
+    m_history[tgtIdx].pixelSize = srcEntry.pixelSize;
+    m_history[tgtIdx].path.clear();
+    m_history[tgtIdx].occupied  = true;
+    m_history[tgtIdx].powerSpecImg = computePowerSpecMasked(outImg);
+
+    // Switch display to the target slot
+    m_activeSlot     = tgtIdx;
+    m_image          = m_history[tgtIdx].image;
+    m_imagePath.clear();
+    m_imageRawPixels = m_history[tgtIdx].rawPixels;
+    m_imageMinVal    = mn;
+    m_imageMaxVal    = mx;
+    m_imageDispMin   = mn;
+    m_imageDispMax   = mx;
+    m_pixelSize      = m_history[tgtIdx].pixelSize;
+    m_zoom[0].reset(outSize, outSize);
+    m_ftComputed = false;
+
+    saveHistory();
+    update();
 }

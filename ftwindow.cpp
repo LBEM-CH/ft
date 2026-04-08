@@ -381,6 +381,132 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     connect(m_applyBinBtn, &QPushButton::clicked, this, &FtWindow::onApplyBinning);
     m_applyBinBtn->hide();
 
+    // Particle picking widgets
+    m_peakSourceCombo = new QComboBox(this);
+    for (int i = 0; i < HISTORY_SLOTS; i++)
+        m_peakSourceCombo->addItem(QString(QChar('a' + i)));
+    m_peakSourceCombo->setFixedSize(70, 28);
+    m_peakSourceCombo->setStyleSheet(
+        "QComboBox { background:#222; color:white; border:1px solid #888;"
+        "  padding: 2px 8px; }"
+        "QComboBox::drop-down { width: 20px; }"
+        "QComboBox QAbstractItemView { background:#222; color:white;"
+        "  selection-background-color:#555; min-width: 60px; padding: 4px; }");
+    m_peakSourceCombo->hide();
+    connect(m_peakSourceCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int idx) {
+        if (!m_peakPickActive) return;
+        // Reset slider to 75% for the newly selected source buffer
+        m_peakThresholdSlider->setValue(750);
+        m_peaks.clear();
+        update();
+    });
+
+    m_peakThresholdLabel = new QLabel("Threshold:", this);
+    m_peakThresholdLabel->setStyleSheet("color: #333;");
+    m_peakThresholdLabel->hide();
+    m_peakThresholdSlider = new QSlider(Qt::Horizontal, this);
+    m_peakThresholdSlider->setRange(0, 1000);
+    m_peakThresholdSlider->setValue(750);  // 75% default
+    m_peakThresholdSlider->setFixedSize(200, 22);
+    m_peakThresholdSlider->setStyleSheet(
+        "QSlider::groove:horizontal { background:#888; height:6px; border-radius:3px; }"
+        "QSlider::handle:horizontal { background:white; border:1px solid #555; width:14px; margin:-5px 0; border-radius:7px; }");
+    m_peakThresholdSlider->hide();
+    connect(m_peakThresholdSlider, &QSlider::valueChanged, this, [this]() {
+        if (m_peakPickActive) update();  // just update threshold display
+    });
+
+    m_peakExclLabel = new QLabel("Exclusion radius:", this);
+    m_peakExclLabel->setStyleSheet("color: #333;");
+    m_peakExclLabel->hide();
+    m_peakExclRadiusSlider = new QSlider(Qt::Horizontal, this);
+    m_peakExclRadiusSlider->setRange(32, 200);
+    m_peakExclRadiusSlider->setValue(32);
+    m_peakExclRadiusSlider->setFixedSize(200, 22);
+    m_peakExclRadiusSlider->setStyleSheet(
+        "QSlider::groove:horizontal { background:#888; height:6px; border-radius:3px; }"
+        "QSlider::handle:horizontal { background:white; border:1px solid #555; width:14px; margin:-5px 0; border-radius:7px; }");
+    m_peakExclRadiusSlider->hide();
+    connect(m_peakExclRadiusSlider, &QSlider::valueChanged, this, [this]() {
+        if (m_peakPickActive) update();
+    });
+
+    m_peakCancelBtn = new QPushButton("Cancel", this);
+    m_peakCancelBtn->setFixedSize(80, 26);
+    m_peakCancelBtn->setStyleSheet(
+        "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }");
+    connect(m_peakCancelBtn, &QPushButton::clicked, this, &FtWindow::onPeakCancel);
+    m_peakCancelBtn->hide();
+
+    m_peakComputeBtn = new QPushButton("Compute", this);
+    m_peakComputeBtn->setFixedSize(80, 26);
+    m_peakComputeBtn->setStyleSheet(
+        "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }");
+    connect(m_peakComputeBtn, &QPushButton::clicked, this, &FtWindow::onPeakCompute);
+    m_peakComputeBtn->hide();
+
+    m_peakShowPosBtn = new QPushButton("Hide positions", this);
+    m_peakShowPosBtn->setFixedSize(110, 26);
+    m_peakShowPosBtn->setStyleSheet(
+        "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }");
+    connect(m_peakShowPosBtn, &QPushButton::clicked, this, [this]() {
+        m_peakShowPositions = !m_peakShowPositions;
+        m_peakShowPosBtn->setText(m_peakShowPositions ? "Hide positions" : "Show positions");
+        update();
+    });
+    m_peakShowPosBtn->hide();
+
+    // Extract particles widgets
+    m_extractSourceCombo = new QComboBox(this);
+    for (int i = 0; i < HISTORY_SLOTS; i++)
+        m_extractSourceCombo->addItem(QString(QChar('a' + i)));
+    m_extractSourceCombo->setFixedSize(70, 28);
+    m_extractSourceCombo->setStyleSheet(
+        "QComboBox { background:#222; color:white; border:1px solid #888;"
+        "  padding: 2px 8px; }"
+        "QComboBox::drop-down { width: 20px; }"
+        "QComboBox QAbstractItemView { background:#222; color:white;"
+        "  selection-background-color:#555; min-width: 60px; padding: 4px; }");
+    m_extractSourceCombo->hide();
+
+    m_extractTargetCombo = new QComboBox(this);
+    for (int i = 0; i < HISTORY_SLOTS; i++)
+        m_extractTargetCombo->addItem(QString(QChar('a' + i)));
+    m_extractTargetCombo->setFixedSize(70, 28);
+    m_extractTargetCombo->setStyleSheet(
+        "QComboBox { background:#222; color:white; border:1px solid #888;"
+        "  padding: 2px 8px; }"
+        "QComboBox::drop-down { width: 20px; }"
+        "QComboBox QAbstractItemView { background:#222; color:white;"
+        "  selection-background-color:#555; min-width: 60px; padding: 4px; }");
+    m_extractTargetCombo->hide();
+
+    m_extractSizeCombo = new QComboBox(this);
+    m_extractSizeCombo->addItem("64", 64);
+    m_extractSizeCombo->addItem("128", 128);
+    m_extractSizeCombo->setFixedSize(70, 28);
+    m_extractSizeCombo->setStyleSheet(
+        "QComboBox { background:#222; color:white; border:1px solid #888;"
+        "  padding: 2px 8px; }"
+        "QComboBox::drop-down { width: 20px; }"
+        "QComboBox QAbstractItemView { background:#222; color:white;"
+        "  selection-background-color:#555; min-width: 60px; padding: 4px; }");
+    m_extractSizeCombo->hide();
+
+    m_extractCancelBtn = new QPushButton("Cancel", this);
+    m_extractCancelBtn->setFixedSize(80, 26);
+    m_extractCancelBtn->setStyleSheet(
+        "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }");
+    connect(m_extractCancelBtn, &QPushButton::clicked, this, &FtWindow::onExtractCancel);
+    m_extractCancelBtn->hide();
+
+    m_extractComputeBtn = new QPushButton("Compute", this);
+    m_extractComputeBtn->setFixedSize(80, 26);
+    m_extractComputeBtn->setStyleSheet(
+        "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }");
+    connect(m_extractComputeBtn, &QPushButton::clicked, this, &FtWindow::onExtractCompute);
+    m_extractComputeBtn->hide();
+
     // Restore history and active slot
 #ifndef __EMSCRIPTEN__
     restoreHistory();
@@ -401,6 +527,11 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_ftMathOpCombo->setCurrentIndex(settings.value("ftMathOpIdx", 0).toInt());
     m_ftMathIn2Combo->setCurrentIndex(settings.value("ftMathIn2Idx", 0).toInt());
     m_ftMathConjCombo->setCurrentIndex(settings.value("ftMathConjIdx", 0).toInt());
+
+    // Restore particle picking settings
+    m_peakSourceCombo->setCurrentIndex(settings.value("peakSourceIdx", 0).toInt());
+    m_peakThresholdSlider->setValue(settings.value("peakThreshold", 750).toInt());
+    m_peakExclRadiusSlider->setValue(settings.value("peakExclRadius", 32).toInt());
 
     m_activeSlot = settings.value("activeSlot", -1).toInt();
     if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS
@@ -514,6 +645,43 @@ void FtWindow::resizeEvent(QResizeEvent *)
     m_p1TaperWidthEdit->setStyleSheet(editSS);
     m_applyP1TaperBtn->setFixedSize(static_cast<int>(130 * sc), btnH);
     m_applyP1TaperBtn->setStyleSheet(btnSS);
+
+    // Particle picking widgets (sizes only)
+    m_peakSourceCombo->setFixedSize(static_cast<int>(70 * sc), btnH);
+    m_peakSourceCombo->setStyleSheet(QString(
+        "QComboBox { background:white; color:black; border:1px solid #888;"
+        "  padding: 2px 4px; font-size: %1px; }"
+        "QComboBox::drop-down { width: %2px; }"
+        "QComboBox QAbstractItemView { background:white; color:black;"
+        "  selection-background-color:#ccc; min-width: 60px; padding: 4px;"
+        "  font-size: %1px; }").arg(fontSize).arg(static_cast<int>(20 * sc)));
+    m_peakThresholdSlider->setFixedSize(static_cast<int>(200 * sc), editH);
+    m_peakExclRadiusSlider->setFixedSize(static_cast<int>(200 * sc), editH);
+    m_peakCancelBtn->setFixedSize(static_cast<int>(80 * sc), btnH);
+    m_peakCancelBtn->setStyleSheet(btnSS);
+    m_peakComputeBtn->setFixedSize(static_cast<int>(80 * sc), btnH);
+    m_peakComputeBtn->setStyleSheet(btnSS);
+    m_peakShowPosBtn->setFixedSize(static_cast<int>(110 * sc), btnH);
+    m_peakShowPosBtn->setStyleSheet(btnSS);
+
+    // Extract particles widgets (sizes only)
+    auto extractComboSS = QString(
+        "QComboBox { background:white; color:black; border:1px solid #888;"
+        "  padding: 2px 4px; font-size: %1px; }"
+        "QComboBox::drop-down { width: %2px; }"
+        "QComboBox QAbstractItemView { background:white; color:black;"
+        "  selection-background-color:#ccc; min-width: 60px; padding: 4px;"
+        "  font-size: %1px; }").arg(fontSize).arg(static_cast<int>(20 * sc));
+    m_extractSourceCombo->setFixedSize(static_cast<int>(70 * sc), btnH);
+    m_extractSourceCombo->setStyleSheet(extractComboSS);
+    m_extractTargetCombo->setFixedSize(static_cast<int>(70 * sc), btnH);
+    m_extractTargetCombo->setStyleSheet(extractComboSS);
+    m_extractSizeCombo->setFixedSize(static_cast<int>(70 * sc), btnH);
+    m_extractSizeCombo->setStyleSheet(extractComboSS);
+    m_extractCancelBtn->setFixedSize(static_cast<int>(80 * sc), btnH);
+    m_extractCancelBtn->setStyleSheet(btnSS);
+    m_extractComputeBtn->setFixedSize(static_cast<int>(80 * sc), btnH);
+    m_extractComputeBtn->setStyleSheet(btnSS);
 
     // Binning widgets (sizes only)
     m_binCombo->setFixedSize(static_cast<int>(70 * sc), btnH);

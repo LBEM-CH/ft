@@ -71,7 +71,8 @@ void FtWindow::paintEvent(QPaintEvent *)
             if ((i == 0 && m_p1EraserActive) || (i == 1 && m_p1BrushActive) ||
                 (i == 4 && m_shiftActive) || (i == 5 && m_rotateActive) ||
                 (i == 7 && m_p1TaperActive) || (i == 8 && m_binActive) ||
-                (i == 9 && m_mathActive))
+                (i == 9 && m_mathActive) || (i == 10 && m_peakPickActive) ||
+                (i == 11 && m_extractActive))
                 p.setBrush(QColor(60, 60, 60));
             else
                 p.setBrush(QColor(0, 0, 0));
@@ -359,12 +360,12 @@ void FtWindow::paintEvent(QPaintEvent *)
                 QRect ir = r.adjusted(3, 3, -3, -3);
                 int ix = ir.x(), iy2 = ir.y(), iw = ir.width(), ih = ir.height();
                 int voff = ih / 8;  // shift down to visually center
-                int lw = std::max(1, iw / 7);
+                int lw = std::max(1, iw / 12);
                 p.setPen(QPen(Qt::white, lw));
                 // Plus sign (top-left)
                 int plusCx = ix + iw / 4;
                 int plusCy = iy2 + ih / 4 + voff;
-                int arm = iw / 5;
+                int arm = iw / 7;
                 p.drawLine(plusCx - arm, plusCy, plusCx + arm, plusCy);
                 p.drawLine(plusCx, plusCy - arm, plusCx, plusCy + arm);
                 // Minus sign (bottom-right)
@@ -372,7 +373,7 @@ void FtWindow::paintEvent(QPaintEvent *)
                 int minusCy = iy2 + ih * 3 / 4 + voff;
                 p.drawLine(minusCx - arm, minusCy, minusCx + arm, minusCy);
                 // Slash between
-                p.drawLine(ix + iw * 0.65, iy2 + ih * 0.2 + voff, ix + iw * 0.35, iy2 + ih * 0.8 + voff);
+                p.drawLine(ix + iw * 0.60, iy2 + ih * 0.25 + voff, ix + iw * 0.40, iy2 + ih * 0.75 + voff);
                 p.setRenderHint(QPainter::Antialiasing, false);
 
                 if (r.contains(m_mousePos)) {
@@ -502,6 +503,131 @@ void FtWindow::paintEvent(QPaintEvent *)
                     QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
                     QFontMetrics ttfm(ttf);
                     QString tip = "Math calculations";
+                    int ttw = ttfm.horizontalAdvance(tip) + 8;
+                    int tth = ttfm.height() + 4;
+                    int ttx = r.right() + 4;
+                    int tty = r.center().y() - tth / 2;
+                    p.setPen(QPen(Qt::white, 1));
+                    p.setBrush(QColor(40, 40, 40));
+                    p.drawRect(ttx, tty, ttw, tth);
+                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                }
+            }
+
+            // Particle picking icon (button 10): four green plus signs in 2x2 grid
+            if (i == 10) {
+                if (m_peakPickActive) {
+                    p.setPen(QPen(Qt::white, 1));
+                    p.setBrush(QColor(60, 60, 60));
+                    p.drawRect(r);
+                }
+
+                QColor col = m_peakPickActive ? QColor(100, 255, 100) : QColor(0, 200, 0);
+                int m = std::max(2, btnSide / 8);
+                QRect inner = r.adjusted(m, m, -m, -m);
+                int armLen = inner.width() / 7;
+                int lw = std::max(1, btnSide / 16);
+                p.setPen(QPen(col, lw));
+
+                // Four pluses in upper 2/3 of icon
+                int plusAreaH = inner.height() * 2 / 3;
+                // Top-left plus
+                int cx1 = inner.x() + inner.width() / 5;
+                int cy1 = inner.y() + plusAreaH / 4;
+                p.drawLine(cx1 - armLen, cy1, cx1 + armLen, cy1);
+                p.drawLine(cx1, cy1 - armLen, cx1, cy1 + armLen);
+
+                // Top-right plus
+                int cx2 = inner.x() + inner.width() * 4 / 5;
+                int cy2 = cy1;
+                p.drawLine(cx2 - armLen, cy2, cx2 + armLen, cy2);
+                p.drawLine(cx2, cy2 - armLen, cx2, cy2 + armLen);
+
+                // Bottom-left plus
+                int cx3 = cx1;
+                int cy3 = inner.y() + plusAreaH * 3 / 4;
+                p.drawLine(cx3 - armLen, cy3, cx3 + armLen, cy3);
+                p.drawLine(cx3, cy3 - armLen, cx3, cy3 + armLen);
+
+                // Bottom-right plus
+                int cx4 = cx2;
+                int cy4 = cy3;
+                p.drawLine(cx4 - armLen, cy4, cx4 + armLen, cy4);
+                p.drawLine(cx4, cy4 - armLen, cx4, cy4 + armLen);
+
+                // Blue checkmark underneath when peaks are available
+                if (!m_peaks.empty()) {
+                    p.setRenderHint(QPainter::Antialiasing, true);
+                    int checkY = inner.y() + plusAreaH + inner.height() / 12;
+                    int checkCx = inner.x() + inner.width() / 2;
+                    int checkW = inner.width() * 2 / 5;
+                    int checkH = inner.height() / 5;
+                    p.setPen(QPen(QColor(100, 180, 255), std::max(1, btnSide / 12)));
+                    p.setBrush(Qt::NoBrush);
+                    // Checkmark: short leg down-right, then long leg up-right
+                    p.drawLine(checkCx - checkW, checkY,
+                               checkCx - checkW / 3, checkY + checkH);
+                    p.drawLine(checkCx - checkW / 3, checkY + checkH,
+                               checkCx + checkW, checkY - checkH / 2);
+                    p.setRenderHint(QPainter::Antialiasing, false);
+                }
+
+                if (r.contains(m_mousePos)) {
+                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                    QFontMetrics ttfm(ttf);
+                    QString tip = "Particle picking";
+                    int ttw = ttfm.horizontalAdvance(tip) + 8;
+                    int tth = ttfm.height() + 4;
+                    int ttx = r.right() + 4;
+                    int tty = r.center().y() - tth / 2;
+                    p.setPen(QPen(Qt::white, 1));
+                    p.setBrush(QColor(40, 40, 40));
+                    p.drawRect(ttx, tty, ttw, tth);
+                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                }
+            }
+
+            // Extract particles icon (button 11): white smiley face
+            if (i == 11) {
+                if (m_extractActive) {
+                    p.setPen(QPen(Qt::white, 1));
+                    p.setBrush(QColor(60, 60, 60));
+                    p.drawRect(r);
+                }
+
+                p.setRenderHint(QPainter::Antialiasing, true);
+                double cx2 = r.x() + r.width() / 2.0;
+                double cy2 = r.y() + r.height() / 2.0;
+                double rad = std::min(r.width(), r.height()) * 0.35;
+                QColor col = m_extractActive ? QColor(180, 180, 255) : Qt::white;
+
+                // Face circle
+                p.setPen(QPen(col, std::max(1, (int)(rad * 0.15))));
+                p.setBrush(Qt::NoBrush);
+                p.drawEllipse(QPointF(cx2, cy2), rad, rad);
+
+                // Left eye
+                double eyeY = cy2 - rad * 0.25;
+                double eyeR = rad * 0.12;
+                p.setPen(Qt::NoPen);
+                p.setBrush(col);
+                p.drawEllipse(QPointF(cx2 - rad * 0.35, eyeY), eyeR, eyeR);
+                // Right eye
+                p.drawEllipse(QPointF(cx2 + rad * 0.35, eyeY), eyeR, eyeR);
+
+                // Smile arc
+                double smileR = rad * 0.55;
+                QRectF smileRect(cx2 - smileR, cy2 - smileR * 0.3, smileR * 2, smileR * 1.4);
+                p.setPen(QPen(col, std::max(1, (int)(rad * 0.12))));
+                p.setBrush(Qt::NoBrush);
+                p.drawArc(smileRect, -20 * 16, -140 * 16);
+
+                p.setRenderHint(QPainter::Antialiasing, false);
+
+                if (r.contains(m_mousePos)) {
+                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                    QFontMetrics ttfm(ttf);
+                    QString tip = "Extract particles";
                     int ttw = ttfm.horizontalAdvance(tip) + 8;
                     int tth = ttfm.height() + 4;
                     int ttx = r.right() + 4;
@@ -985,6 +1111,28 @@ void FtWindow::paintEvent(QPaintEvent *)
         }
 
         drawImageWithFrame(p, frame, m_image, m_zoom[0], imgW, imgH);
+
+        // Draw peak markers as green plus signs
+        if (m_peakPickActive && m_peakShowPositions && !m_peaks.empty()) {
+            QRect target = frame.adjusted(2, 2, -2, -2);
+            QRectF src = m_zoom[0].visibleRect(imgW, imgH);
+            p.save();
+            p.setClipRect(target);
+            int armLen = std::max(3, target.width() / 80);
+            int penW = 1;
+            p.setPen(QPen(QColor(0, 255, 0), penW));
+            for (const auto &pk : m_peaks) {
+                // Convert image coords to screen coords
+                double sx = target.x() + (pk.x - src.x()) / src.width() * target.width();
+                double sy = target.y() + (pk.y - src.y()) / src.height() * target.height();
+                int screenX = static_cast<int>(sx);
+                int screenY = static_cast<int>(sy);
+                p.drawLine(screenX - armLen, screenY, screenX + armLen, screenY);
+                p.drawLine(screenX, screenY - armLen, screenX, screenY + armLen);
+            }
+            p.restore();
+        }
+
         drawAxes(p, frame, m_zoom[0], imgW, imgH, false, m_pixelSize);
 
         QRect inner = frame.adjusted(2, 2, -2, -2);
@@ -1585,12 +1733,16 @@ void FtWindow::paintEvent(QPaintEvent *)
                 int r4 = m_applyLineBtn->width();
                 textW = std::max({r1, r2, r3, r4});
             } else if (m_latticeActive) {
-                nRows = 4;
+                nRows = 5;
                 int r1 = fm.horizontalAdvance("Smooth edge by pixels: ") + m_latticeSmoothEdit->width();
                 int r2 = fm.horizontalAdvance("Diameter of dots: ") + m_latticeDotDiamEdit->width();
                 int r3 = fm.horizontalAdvance("Erase pixels outside of lattice");
-                int r4 = m_latticeApplyBtn->width();
-                textW = std::max({r1, r2, r3, r4});
+                QString vecStr = QString("u=<%1,%2>  v=<%3,%4>")
+                    .arg(m_latticeUx, 0, 'f', 1).arg(m_latticeUy, 0, 'f', 1)
+                    .arg(m_latticeVx, 0, 'f', 1).arg(m_latticeVy, 0, 'f', 1);
+                int r4 = fm.horizontalAdvance(vecStr);
+                int r5 = m_latticeApplyBtn->width();
+                textW = std::max({r1, r2, r3, r4, r5});
             } else if (m_crossSectionActive) {
                 nRows = 1;
                 textW = fm.horizontalAdvance("Integration width in % of image size: ") + m_crossSectionWidthEdit->width();
@@ -1649,7 +1801,11 @@ void FtWindow::paintEvent(QPaintEvent *)
                 p.drawText(tx, ty + lh + fm.ascent(), "Diameter of dots:");
                 m_latticeDotDiamEdit->move(tx + fm.horizontalAdvance("Diameter of dots: "), ty + lh);
                 m_latticeEraseOutside->move(tx, ty + lh * 2);
-                m_latticeApplyBtn->move(tx, ty + lh * 3);
+                QString vecStr = QString("u=<%1,%2>  v=<%3,%4>")
+                    .arg(m_latticeUx, 0, 'f', 1).arg(m_latticeUy, 0, 'f', 1)
+                    .arg(m_latticeVx, 0, 'f', 1).arg(m_latticeVy, 0, 'f', 1);
+                p.drawText(tx, ty + lh * 3 + fm.ascent(), vecStr);
+                m_latticeApplyBtn->move(tx, ty + lh * 4);
             } else if (m_crossSectionActive) {
                 p.drawText(tx, ty + fm.ascent(), "Integration width in % of image size:");
                 m_crossSectionWidthEdit->move(tx + fm.horizontalAdvance("Integration width in % of image size: "), ty);
@@ -1661,7 +1817,7 @@ void FtWindow::paintEvent(QPaintEvent *)
         }
 
         // Panel 1 tool option rectangles (bottom-left of panel 1)
-        bool p1Tool = m_p1EraserActive || m_p1BrushActive || m_p1TaperActive || m_binActive;
+        bool p1Tool = m_p1EraserActive || m_p1BrushActive || m_p1TaperActive || m_binActive || m_peakPickActive || m_extractActive;
         if (p1Tool) {
             int nRows = 0;
             int textW = 0;
@@ -1684,6 +1840,39 @@ void FtWindow::paintEvent(QPaintEvent *)
                 int r2 = fm.horizontalAdvance("Keep original image size");
                 int r3 = m_applyBinBtn->width();
                 textW = std::max({r1, r2, r3});
+            } else if (m_peakPickActive) {
+                nRows = 5;
+                // Determine threshold range from selected source buffer
+                int srcIdx = m_peakSourceCombo->currentIndex();
+                double srcMin = m_imageMinVal, srcMax = m_imageMaxVal;
+                if (srcIdx >= 0 && srcIdx < HISTORY_SLOTS && m_history[srcIdx].occupied) {
+                    srcMin = m_history[srcIdx].minVal;
+                    srcMax = m_history[srcIdx].maxVal;
+                }
+                double threshVal = srcMin + (srcMax - srcMin)
+                                   * m_peakThresholdSlider->value() / 1000.0;
+                QString threshStr = QString("Threshold: %1").arg(threshVal, 0, 'g', 5);
+                int r0 = fm.horizontalAdvance("Picking source map: ") + m_peakSourceCombo->width()
+                         + 8 + m_peakShowPosBtn->width();
+                int r1 = fm.horizontalAdvance(threshStr + "  ") + m_peakThresholdSlider->width();
+                QString exclStr = QString("Exclusion radius: %1 ").arg(m_peakExclRadiusSlider->value());
+                int r2 = fm.horizontalAdvance(exclStr) + m_peakExclRadiusSlider->width();
+                QString peakStr = QString("Peaks found: %1").arg(m_peaks.size());
+                int r3 = fm.horizontalAdvance(peakStr);
+                int r4 = m_peakCancelBtn->width() + 8 + m_peakComputeBtn->width();
+                textW = std::max({r0, r1, r2, r3, r4});
+            } else if (m_extractActive) {
+                if (m_peaks.empty()) {
+                    nRows = 1;
+                    textW = fm.horizontalAdvance("First prepare a particle position list");
+                } else {
+                    nRows = 4;
+                    int r0 = fm.horizontalAdvance("Source image: ") + m_extractSourceCombo->width();
+                    int r1 = fm.horizontalAdvance("Target image: ") + m_extractTargetCombo->width();
+                    int r2 = fm.horizontalAdvance("Particle size: ") + m_extractSizeCombo->width();
+                    int r3 = m_extractCancelBtn->width() + 8 + m_extractComputeBtn->width();
+                    textW = std::max({r0, r1, r2, r3});
+                }
             }
 
             int rw = textW * 6 / 5 + 2 * margin;
@@ -1722,6 +1911,46 @@ void FtWindow::paintEvent(QPaintEvent *)
                 m_binCombo->move(tx, ty);
                 m_binKeepSizeBtn->move(tx, ty + lh);
                 m_applyBinBtn->move(tx, ty + lh * 2);
+            } else if (m_peakPickActive) {
+                // Row 0: source map combo + show/hide button top-right
+                p.drawText(tx, ty + fm.ascent(), "Picking source map:");
+                m_peakSourceCombo->move(tx + fm.horizontalAdvance("Picking source map: "), ty);
+                m_peakShowPosBtn->move(rx + rw - margin - m_peakShowPosBtn->width(), ty);
+                // Row 1: threshold slider
+                int srcIdx = m_peakSourceCombo->currentIndex();
+                double srcMin = m_imageMinVal, srcMax = m_imageMaxVal;
+                if (srcIdx >= 0 && srcIdx < HISTORY_SLOTS && m_history[srcIdx].occupied) {
+                    srcMin = m_history[srcIdx].minVal;
+                    srcMax = m_history[srcIdx].maxVal;
+                }
+                double threshVal = srcMin + (srcMax - srcMin)
+                                   * m_peakThresholdSlider->value() / 1000.0;
+                QString threshStr = QString("Threshold: %1 ").arg(threshVal, 0, 'g', 5);
+                p.drawText(tx, ty + lh + fm.ascent(), threshStr);
+                m_peakThresholdSlider->move(tx + fm.horizontalAdvance(threshStr), ty + lh);
+                // Row 2: exclusion radius slider
+                QString exclStr2 = QString("Exclusion radius: %1 ").arg(m_peakExclRadiusSlider->value());
+                p.drawText(tx, ty + lh * 2 + fm.ascent(), exclStr2);
+                m_peakExclRadiusSlider->move(tx + fm.horizontalAdvance(exclStr2), ty + lh * 2);
+                // Row 3: peaks found
+                QString peakStr = QString("Peaks found: %1").arg(m_peaks.size());
+                p.drawText(tx, ty + lh * 3 + fm.ascent(), peakStr);
+                // Row 4: Cancel (left) + Compute (right)
+                m_peakCancelBtn->move(tx, ty + lh * 4);
+                m_peakComputeBtn->move(rx + rw - margin - m_peakComputeBtn->width(), ty + lh * 4);
+            } else if (m_extractActive) {
+                if (m_peaks.empty()) {
+                    p.drawText(tx, ty + fm.ascent(), "First prepare a particle position list");
+                } else {
+                    p.drawText(tx, ty + fm.ascent(), "Source image:");
+                    m_extractSourceCombo->move(tx + fm.horizontalAdvance("Source image: "), ty);
+                    p.drawText(tx, ty + lh + fm.ascent(), "Target image:");
+                    m_extractTargetCombo->move(tx + fm.horizontalAdvance("Target image: "), ty + lh);
+                    p.drawText(tx, ty + lh * 2 + fm.ascent(), "Particle size:");
+                    m_extractSizeCombo->move(tx + fm.horizontalAdvance("Particle size: "), ty + lh * 2);
+                    m_extractCancelBtn->move(tx, ty + lh * 3);
+                    m_extractComputeBtn->move(rx + rw - margin - m_extractComputeBtn->width(), ty + lh * 3);
+                }
             }
         }
     }
