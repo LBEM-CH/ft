@@ -72,7 +72,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 (i == 4 && m_shiftActive) || (i == 5 && m_rotateActive) ||
                 (i == 7 && m_p1TaperActive) || (i == 8 && m_binActive) ||
                 (i == 9 && m_mathActive) || (i == 10 && m_peakPickActive) ||
-                (i == 11 && m_extractActive))
+                (i == 11 && m_extractActive) || (i == 12 && m_gaborActive) ||
+                (i == 13 && m_hessianActive))
                 p.setBrush(QColor(60, 60, 60));
             else
                 p.setBrush(QColor(0, 0, 0));
@@ -654,6 +655,60 @@ void FtWindow::paintEvent(QPaintEvent *)
                     QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
                     QFontMetrics ttfm(ttf);
                     QString tip = "Extract particles";
+                    int ttw = ttfm.horizontalAdvance(tip) + 8;
+                    int tth = ttfm.height() + 4;
+                    int ttx = r.right() + 4;
+                    int tty = r.center().y() - tth / 2;
+                    p.setPen(QPen(Qt::white, 1));
+                    p.setBrush(QColor(40, 40, 40));
+                    p.drawRect(ttx, tty, ttw, tth);
+                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                }
+            }
+
+            // Hessian filter icon (button 13): letter "H"
+            if (i == 13) {
+                p.setRenderHint(QPainter::Antialiasing, true);
+                QFont gf;
+                gf.setBold(true);
+                gf.setPixelSize(std::max(10, (int)(btnSide * 0.75)));
+                p.setFont(gf);
+                p.setPen(QPen(Qt::white, 1));
+                p.setBrush(Qt::NoBrush);
+                p.drawText(r, Qt::AlignCenter, "H");
+                p.setRenderHint(QPainter::Antialiasing, false);
+
+                if (r.contains(m_mousePos)) {
+                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                    QFontMetrics ttfm(ttf);
+                    QString tip = "Hessian filter";
+                    int ttw = ttfm.horizontalAdvance(tip) + 8;
+                    int tth = ttfm.height() + 4;
+                    int ttx = r.right() + 4;
+                    int tty = r.center().y() - tth / 2;
+                    p.setPen(QPen(Qt::white, 1));
+                    p.setBrush(QColor(40, 40, 40));
+                    p.drawRect(ttx, tty, ttw, tth);
+                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                }
+            }
+
+            // Gabor filter icon (button 12): letter "G"
+            if (i == 12) {
+                p.setRenderHint(QPainter::Antialiasing, true);
+                QFont gf;
+                gf.setBold(true);
+                gf.setPixelSize(std::max(10, (int)(btnSide * 0.75)));
+                p.setFont(gf);
+                p.setPen(QPen(Qt::white, 1));
+                p.setBrush(Qt::NoBrush);
+                p.drawText(r, Qt::AlignCenter, "G");
+                p.setRenderHint(QPainter::Antialiasing, false);
+
+                if (r.contains(m_mousePos)) {
+                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                    QFontMetrics ttfm(ttf);
+                    QString tip = "Gabor filter";
                     int ttw = ttfm.horizontalAdvance(tip) + 8;
                     int tth = ttfm.height() + 4;
                     int ttx = r.right() + 4;
@@ -1876,7 +1931,7 @@ void FtWindow::paintEvent(QPaintEvent *)
         }
 
         // Panel 1 tool option rectangles (bottom-left of panel 1)
-        bool p1Tool = m_p1EraserActive || m_p1BrushActive || m_p1TaperActive || m_binActive || m_peakPickActive || m_extractActive;
+        bool p1Tool = m_p1EraserActive || m_p1BrushActive || m_p1TaperActive || m_binActive || m_peakPickActive || m_extractActive || m_gaborActive || m_hessianActive;
         if (p1Tool) {
             int nRows = 0;
             int textW = 0;
@@ -1932,6 +1987,20 @@ void FtWindow::paintEvent(QPaintEvent *)
                     int r3 = m_extractCancelBtn->width() + 8 + m_extractComputeBtn->width();
                     textW = std::max({r0, r1, r2, r3});
                 }
+            } else if (m_gaborActive) {
+                nRows = 5;
+                int r0 = fm.horizontalAdvance("Sigma (envelope): ")     + m_gaborSigmaEdit->width();
+                int r1 = fm.horizontalAdvance("Wavelength lambda: ")    + m_gaborLambdaEdit->width();
+                int r2 = fm.horizontalAdvance("Orientation (deg): ")    + m_gaborThetaEdit->width();
+                int r3 = fm.horizontalAdvance("Aspect ratio gamma: ")   + m_gaborGammaEdit->width();
+                int r4 = m_gaborCancelBtn->width() + 8 + m_gaborComputeBtn->width();
+                textW = std::max({r0, r1, r2, r3, r4});
+            } else if (m_hessianActive) {
+                nRows = 3;
+                int r0 = fm.horizontalAdvance("Sigma (smoothing): ")       + m_hessianSigmaEdit->width();
+                int r1 = fm.horizontalAdvance("Polarity (+1/-1): ")        + m_hessianPolarityEdit->width();
+                int r2 = m_hessianCancelBtn->width() + 8 + m_hessianComputeBtn->width();
+                textW = std::max({r0, r1, r2});
             }
 
             int rw = textW * 6 / 5 + 2 * margin;
@@ -2010,6 +2079,24 @@ void FtWindow::paintEvent(QPaintEvent *)
                     m_extractCancelBtn->move(tx, ty + lh * 3);
                     m_extractComputeBtn->move(rx + rw - margin - m_extractComputeBtn->width(), ty + lh * 3);
                 }
+            } else if (m_gaborActive) {
+                p.drawText(tx, ty + fm.ascent(), "Sigma (envelope):");
+                m_gaborSigmaEdit->move(tx + fm.horizontalAdvance("Sigma (envelope): "), ty);
+                p.drawText(tx, ty + lh + fm.ascent(), "Wavelength lambda:");
+                m_gaborLambdaEdit->move(tx + fm.horizontalAdvance("Wavelength lambda: "), ty + lh);
+                p.drawText(tx, ty + lh * 2 + fm.ascent(), "Orientation (deg):");
+                m_gaborThetaEdit->move(tx + fm.horizontalAdvance("Orientation (deg): "), ty + lh * 2);
+                p.drawText(tx, ty + lh * 3 + fm.ascent(), "Aspect ratio gamma:");
+                m_gaborGammaEdit->move(tx + fm.horizontalAdvance("Aspect ratio gamma: "), ty + lh * 3);
+                m_gaborCancelBtn->move(tx, ty + lh * 4);
+                m_gaborComputeBtn->move(rx + rw - margin - m_gaborComputeBtn->width(), ty + lh * 4);
+            } else if (m_hessianActive) {
+                p.drawText(tx, ty + fm.ascent(), "Sigma (smoothing):");
+                m_hessianSigmaEdit->move(tx + fm.horizontalAdvance("Sigma (smoothing): "), ty);
+                p.drawText(tx, ty + lh + fm.ascent(), "Polarity (+1/-1):");
+                m_hessianPolarityEdit->move(tx + fm.horizontalAdvance("Polarity (+1/-1): "), ty + lh);
+                m_hessianCancelBtn->move(tx, ty + lh * 2);
+                m_hessianComputeBtn->move(rx + rw - margin - m_hessianComputeBtn->width(), ty + lh * 2);
             }
         }
     }

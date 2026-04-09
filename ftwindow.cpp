@@ -294,6 +294,53 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     connect(m_applyP1TaperBtn, &QPushButton::clicked, this, &FtWindow::onApplyEdgeTaper);
     m_applyP1TaperBtn->hide();
 
+    // Gabor filter widgets
+    auto makeGaborEdit = [this](const QString &def) {
+        auto *e = new QLineEdit(def, this);
+        e->setFixedSize(60, 22);
+        e->setStyleSheet("background:#222; color:white; border:1px solid #888;");
+        e->hide();
+        return e;
+    };
+    m_gaborSigmaEdit  = makeGaborEdit("4");
+    m_gaborLambdaEdit = makeGaborEdit("8");
+    m_gaborThetaEdit  = makeGaborEdit("0");
+    m_gaborGammaEdit  = makeGaborEdit("0.5");
+    m_gaborCancelBtn = new QPushButton("Cancel", this);
+    m_gaborCancelBtn->setFixedSize(80, 26);
+    m_gaborCancelBtn->setStyleSheet(
+        "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }");
+    connect(m_gaborCancelBtn, &QPushButton::clicked, this, &FtWindow::onGaborCancel);
+    m_gaborCancelBtn->hide();
+    m_gaborComputeBtn = new QPushButton("Compute", this);
+    m_gaborComputeBtn->setFixedSize(80, 26);
+    m_gaborComputeBtn->setStyleSheet(
+        "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }");
+    connect(m_gaborComputeBtn, &QPushButton::clicked, this, &FtWindow::onApplyGaborFilter);
+    m_gaborComputeBtn->hide();
+
+    // Hessian filter widgets
+    m_hessianSigmaEdit = new QLineEdit("2", this);
+    m_hessianSigmaEdit->setFixedSize(60, 22);
+    m_hessianSigmaEdit->setStyleSheet("background:#222; color:white; border:1px solid #888;");
+    m_hessianSigmaEdit->hide();
+    m_hessianPolarityEdit = new QLineEdit("1", this);
+    m_hessianPolarityEdit->setFixedSize(60, 22);
+    m_hessianPolarityEdit->setStyleSheet("background:#222; color:white; border:1px solid #888;");
+    m_hessianPolarityEdit->hide();
+    m_hessianCancelBtn = new QPushButton("Cancel", this);
+    m_hessianCancelBtn->setFixedSize(80, 26);
+    m_hessianCancelBtn->setStyleSheet(
+        "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }");
+    connect(m_hessianCancelBtn, &QPushButton::clicked, this, &FtWindow::onHessianCancel);
+    m_hessianCancelBtn->hide();
+    m_hessianComputeBtn = new QPushButton("Compute", this);
+    m_hessianComputeBtn->setFixedSize(80, 26);
+    m_hessianComputeBtn->setStyleSheet(
+        "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }");
+    connect(m_hessianComputeBtn, &QPushButton::clicked, this, &FtWindow::onApplyHessianFilter);
+    m_hessianComputeBtn->hide();
+
     // Math calculation widgets (hidden until math button is active)
     auto mathComboStyle = [](QComboBox *cb) {
         cb->setStyleSheet(
@@ -650,6 +697,30 @@ void FtWindow::resizeEvent(QResizeEvent *)
     m_p1TaperWidthEdit->setStyleSheet(editSS);
     m_applyP1TaperBtn->setFixedSize(static_cast<int>(130 * sc), btnH);
     m_applyP1TaperBtn->setStyleSheet(btnSS);
+
+    // Gabor filter widgets (sizes only)
+    m_gaborSigmaEdit->setFixedSize(static_cast<int>(60 * sc), editH);
+    m_gaborSigmaEdit->setStyleSheet(editSS);
+    m_gaborLambdaEdit->setFixedSize(static_cast<int>(60 * sc), editH);
+    m_gaborLambdaEdit->setStyleSheet(editSS);
+    m_gaborThetaEdit->setFixedSize(static_cast<int>(60 * sc), editH);
+    m_gaborThetaEdit->setStyleSheet(editSS);
+    m_gaborGammaEdit->setFixedSize(static_cast<int>(60 * sc), editH);
+    m_gaborGammaEdit->setStyleSheet(editSS);
+    m_gaborCancelBtn->setFixedSize(static_cast<int>(80 * sc), btnH);
+    m_gaborCancelBtn->setStyleSheet(btnSS);
+    m_gaborComputeBtn->setFixedSize(static_cast<int>(80 * sc), btnH);
+    m_gaborComputeBtn->setStyleSheet(btnSS);
+
+    // Hessian filter widgets (sizes only)
+    m_hessianSigmaEdit->setFixedSize(static_cast<int>(60 * sc), editH);
+    m_hessianSigmaEdit->setStyleSheet(editSS);
+    m_hessianPolarityEdit->setFixedSize(static_cast<int>(60 * sc), editH);
+    m_hessianPolarityEdit->setStyleSheet(editSS);
+    m_hessianCancelBtn->setFixedSize(static_cast<int>(80 * sc), btnH);
+    m_hessianCancelBtn->setStyleSheet(btnSS);
+    m_hessianComputeBtn->setFixedSize(static_cast<int>(80 * sc), btnH);
+    m_hessianComputeBtn->setStyleSheet(btnSS);
 
     // Particle picking widgets (sizes only)
     m_peakSourceCombo->setFixedSize(static_cast<int>(70 * sc), btnH);

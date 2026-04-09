@@ -84,6 +84,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         m_shiftActive = false; m_rotateActive = false;
         m_p1TaperActive = false; m_binActive = false; m_mathActive = false;
         m_peakPickActive = false; m_extractActive = false;
+        m_gaborActive = false; m_hessianActive = false;
     };
     auto showP1ToolWidgets = [&]() {
         m_p1EraserDiameterEdit->setVisible(m_p1EraserActive);
@@ -115,6 +116,16 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         m_extractSizeCombo->setVisible(showExtract);
         m_extractCancelBtn->setVisible(showExtract);
         m_extractComputeBtn->setVisible(showExtract);
+        m_gaborSigmaEdit->setVisible(m_gaborActive);
+        m_gaborLambdaEdit->setVisible(m_gaborActive);
+        m_gaborThetaEdit->setVisible(m_gaborActive);
+        m_gaborGammaEdit->setVisible(m_gaborActive);
+        m_gaborCancelBtn->setVisible(m_gaborActive);
+        m_gaborComputeBtn->setVisible(m_gaborActive);
+        m_hessianSigmaEdit->setVisible(m_hessianActive);
+        m_hessianPolarityEdit->setVisible(m_hessianActive);
+        m_hessianCancelBtn->setVisible(m_hessianActive);
+        m_hessianComputeBtn->setVisible(m_hessianActive);
     };
     if (m_p1BtnRects[0].contains(event->pos())) {
         bool was = m_p1EraserActive; deactivateAllP1Tools();
@@ -188,6 +199,14 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         if (m_extractActive && m_activeSlot >= 0)
             m_extractSourceCombo->setCurrentIndex(m_activeSlot);
         showP1ToolWidgets(); update(); return;
+    }
+    if (m_p1BtnRects[12].contains(event->pos())) {
+        bool was = m_gaborActive; deactivateAllP1Tools();
+        m_gaborActive = !was; showP1ToolWidgets(); update(); return;
+    }
+    if (m_p1BtnRects[13].contains(event->pos())) {
+        bool was = m_hessianActive; deactivateAllP1Tools();
+        m_hessianActive = !was; showP1ToolWidgets(); update(); return;
     }
 
     // Panel 1 eraser/brush: start drag on panel 1 image

@@ -87,6 +87,10 @@ private slots:
     void onApplyEdgeTaper();
     void onInvertContrast();
     void onApplyLineFilter();
+    void onApplyGaborFilter();
+    void onGaborCancel();
+    void onApplyHessianFilter();
+    void onHessianCancel();
     void onUndoRedo();
 
 private:
@@ -239,7 +243,7 @@ private:
     QPoint      m_mousePos;         // current mouse position
 
     // ---- tool buttons ----
-    static constexpr int P1_TOOL_BUTTONS = 12;
+    static constexpr int P1_TOOL_BUTTONS = 14;
     static constexpr int P2_TOOL_BUTTONS = 10;
     QRect       m_p1BtnRects[P1_TOOL_BUTTONS];       // panel 1 left edge
     QRect       m_toolBtnRects[P2_TOOL_BUTTONS];     // panel 2 right edge
@@ -287,6 +291,22 @@ private:
     void runPeakSearch();
     void onPeakCancel();
     void onPeakCompute();
+
+    // Gabor filter
+    bool        m_gaborActive = false;
+    QLineEdit  *m_gaborSigmaEdit   = nullptr;
+    QLineEdit  *m_gaborLambdaEdit  = nullptr;
+    QLineEdit  *m_gaborThetaEdit   = nullptr;
+    QLineEdit  *m_gaborGammaEdit   = nullptr;
+    QPushButton *m_gaborCancelBtn  = nullptr;
+    QPushButton *m_gaborComputeBtn = nullptr;
+
+    // Hessian filter
+    bool        m_hessianActive = false;
+    QLineEdit  *m_hessianSigmaEdit    = nullptr;
+    QLineEdit  *m_hessianPolarityEdit = nullptr;
+    QPushButton *m_hessianCancelBtn   = nullptr;
+    QPushButton *m_hessianComputeBtn  = nullptr;
 
     // Extract particles
     bool        m_extractActive = false;

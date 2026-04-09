@@ -1809,6 +1809,276 @@ void FtWindow::onApplyEdgeTaper()
     });
 }
 
+void FtWindow::onGaborCancel()
+{
+    m_gaborActive = false;
+    m_gaborSigmaEdit->hide();
+    m_gaborLambdaEdit->hide();
+    m_gaborThetaEdit->hide();
+    m_gaborGammaEdit->hide();
+    m_gaborCancelBtn->hide();
+    m_gaborComputeBtn->hide();
+    update();
+}
+
+void FtWindow::onApplyGaborFilter()
+{
+    if (m_image.isNull()) return;
+
+    // Read parameters from the parameter window
+    bool okS = false, okL = false, okT = false, okG = false;
+    double sigma  = m_gaborSigmaEdit->text().toDouble(&okS);
+    double lambda = m_gaborLambdaEdit->text().toDouble(&okL);
+    double thetaDeg = m_gaborThetaEdit->text().toDouble(&okT);
+    double gamma  = m_gaborGammaEdit->text().toDouble(&okG);
+    if (!okS || sigma  <= 0.0) sigma  = 4.0;
+    if (!okL || lambda <= 0.0) lambda = 8.0;
+    if (!okT)                  thetaDeg = 0.0;
+    if (!okG || gamma  <= 0.0) gamma  = 0.5;
+    const double theta = thetaDeg * M_PI / 180.0;
+    const double psi   = 0.0;
+
+    storeUndoSnapshot();
+
+    int w = m_image.width();
+    int h = m_image.height();
+    if ((int)m_imageRawPixels.size() != w * h) return;
+
+    int khalf = std::max(1, (int)std::ceil(3.0 * sigma));
+    int ksize = 2 * khalf + 1;
+
+    std::vector<double> kernel(ksize * ksize);
+    double kernelSum = 0.0;
+    double cosT = std::cos(theta);
+    double sinT = std::sin(theta);
+    for (int ky = -khalf; ky <= khalf; ky++) {
+        for (int kx = -khalf; kx <= khalf; kx++) {
+            double xr =  kx * cosT + ky * sinT;
+            double yr = -kx * sinT + ky * cosT;
+            double env = std::exp(-(xr * xr + gamma * gamma * yr * yr)
+                                   / (2.0 * sigma * sigma));
+            double carrier = std::cos(2.0 * M_PI * xr / lambda + psi);
+            double v = env * carrier;
+            kernel[(ky + khalf) * ksize + (kx + khalf)] = v;
+            kernelSum += v;
+        }
+    }
+    // Zero-mean kernel so DC is removed — typical for Gabor edge/texture response.
+    double kmean = kernelSum / (ksize * ksize);
+    for (double &v : kernel) v -= kmean;
+
+    m_toolProgress = 0.1;
+    update();
+
+    chainSteps({
+        [this, w, h, ksize, khalf, kernel]() {
+            std::vector<double> out(w * h, 0.0);
+            for (int y = 0; y < h; y++) {
+                for (int x = 0; x < w; x++) {
+                    double acc = 0.0;
+                    for (int ky = -khalf; ky <= khalf; ky++) {
+                        int sy = y + ky;
+                        if (sy < 0) sy = -sy;
+                        else if (sy >= h) sy = 2 * h - 2 - sy;
+                        if (sy < 0 || sy >= h) continue;
+                        for (int kx = -khalf; kx <= khalf; kx++) {
+                            int sx = x + kx;
+                            if (sx < 0) sx = -sx;
+                            else if (sx >= w) sx = 2 * w - 2 - sx;
+                            if (sx < 0 || sx >= w) continue;
+                            acc += m_imageRawPixels[sy * w + sx]
+                                 * kernel[(ky + khalf) * ksize + (kx + khalf)];
+                        }
+                    }
+                    out[y * w + x] = acc;
+                }
+            }
+            m_imageRawPixels = std::move(out);
+
+            // Recompute min/max from filtered values
+            m_imageMinVal = m_imageRawPixels[0];
+            m_imageMaxVal = m_imageRawPixels[0];
+            for (double v : m_imageRawPixels) {
+                if (v < m_imageMinVal) m_imageMinVal = v;
+                if (v > m_imageMaxVal) m_imageMaxVal = v;
+            }
+            m_imageDispMin = m_imageMinVal;
+            m_imageDispMax = m_imageMaxVal;
+
+            rebuildImageFromRaw();
+            m_toolProgress = 0.5;
+        },
+        [this]() {
+            if (m_ftComputed)
+                computeFFT();
+
+            if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS) {
+                m_history[m_activeSlot].image     = m_image;
+                m_history[m_activeSlot].rawPixels = m_imageRawPixels;
+                m_history[m_activeSlot].minVal    = m_imageMinVal;
+                m_history[m_activeSlot].maxVal    = m_imageMaxVal;
+                m_history[m_activeSlot].pixelSize = m_pixelSize;
+                m_history[m_activeSlot].occupied  = true;
+                if (m_ftComputed)
+                    m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
+            }
+
+            saveHistory();
+            m_toolProgress = -1;
+            update();
+        }
+    });
+}
+
+void FtWindow::onHessianCancel()
+{
+    m_hessianActive = false;
+    m_hessianSigmaEdit->hide();
+    m_hessianPolarityEdit->hide();
+    m_hessianCancelBtn->hide();
+    m_hessianComputeBtn->hide();
+    update();
+}
+
+void FtWindow::onApplyHessianFilter()
+{
+    if (m_image.isNull()) return;
+
+    bool okS = false, okP = false;
+    double sigma    = m_hessianSigmaEdit->text().toDouble(&okS);
+    double polarity = m_hessianPolarityEdit->text().toDouble(&okP);
+    if (!okS || sigma <= 0.0) sigma = 2.0;
+    if (!okP || polarity == 0.0) polarity = 1.0;
+    polarity = (polarity > 0.0) ? 1.0 : -1.0;
+
+    storeUndoSnapshot();
+
+    int w = m_image.width();
+    int h = m_image.height();
+    if ((int)m_imageRawPixels.size() != w * h) return;
+
+    // Build 1D Gaussian kernel for separable smoothing
+    int khalf = std::max(1, (int)std::ceil(3.0 * sigma));
+    int ksize = 2 * khalf + 1;
+    std::vector<double> gk(ksize);
+    double gsum = 0.0;
+    for (int i = -khalf; i <= khalf; i++) {
+        double v = std::exp(-(i * i) / (2.0 * sigma * sigma));
+        gk[i + khalf] = v;
+        gsum += v;
+    }
+    for (double &v : gk) v /= gsum;
+
+    m_toolProgress = 0.1;
+    update();
+
+    chainSteps({
+        [this, w, h, ksize, khalf, gk, sigma, polarity]() {
+            // Separable Gaussian smoothing with reflect boundaries
+            std::vector<double> tmp(w * h, 0.0);
+            std::vector<double> sm(w * h, 0.0);
+
+            // Horizontal pass
+            for (int y = 0; y < h; y++) {
+                for (int x = 0; x < w; x++) {
+                    double acc = 0.0;
+                    for (int k = -khalf; k <= khalf; k++) {
+                        int sx = x + k;
+                        if (sx < 0) sx = -sx;
+                        else if (sx >= w) sx = 2 * w - 2 - sx;
+                        if (sx < 0) sx = 0;
+                        if (sx >= w) sx = w - 1;
+                        acc += m_imageRawPixels[y * w + sx] * gk[k + khalf];
+                    }
+                    tmp[y * w + x] = acc;
+                }
+            }
+            // Vertical pass
+            for (int y = 0; y < h; y++) {
+                for (int x = 0; x < w; x++) {
+                    double acc = 0.0;
+                    for (int k = -khalf; k <= khalf; k++) {
+                        int sy = y + k;
+                        if (sy < 0) sy = -sy;
+                        else if (sy >= h) sy = 2 * h - 2 - sy;
+                        if (sy < 0) sy = 0;
+                        if (sy >= h) sy = h - 1;
+                        acc += tmp[sy * w + x] * gk[k + khalf];
+                    }
+                    sm[y * w + x] = acc;
+                }
+            }
+
+            // Hessian via 3x3 finite differences on the smoothed image,
+            // gamma-normalised by sigma^2 to make the response scale-comparable.
+            std::vector<double> out(w * h, 0.0);
+            auto S = [&](int x, int y) -> double {
+                if (x < 0) x = 0; else if (x >= w) x = w - 1;
+                if (y < 0) y = 0; else if (y >= h) y = h - 1;
+                return sm[y * w + x];
+            };
+            const double s2 = sigma * sigma;
+            for (int y = 0; y < h; y++) {
+                for (int x = 0; x < w; x++) {
+                    double Ixx = S(x + 1, y) - 2.0 * S(x, y) + S(x - 1, y);
+                    double Iyy = S(x, y + 1) - 2.0 * S(x, y) + S(x, y - 1);
+                    double Ixy = (S(x + 1, y + 1) - S(x - 1, y + 1)
+                                - S(x + 1, y - 1) + S(x - 1, y - 1)) * 0.25;
+                    Ixx *= s2; Iyy *= s2; Ixy *= s2;
+
+                    double tr = Ixx + Iyy;
+                    double diff = Ixx - Iyy;
+                    double disc = std::sqrt(diff * diff + 4.0 * Ixy * Ixy);
+                    double l1 = 0.5 * (tr + disc);  // larger eigenvalue
+                    double l2 = 0.5 * (tr - disc);  // smaller eigenvalue
+
+                    // Eigenvalue with largest magnitude — strongest curvature
+                    double lambda = (std::fabs(l1) >= std::fabs(l2)) ? l1 : l2;
+
+                    // Bright ridges (polarity=+1): bright line on dark background -> lambda < 0
+                    // Dark  ridges (polarity=-1): dark  line on bright background -> lambda > 0
+                    double resp = -polarity * lambda;
+                    if (resp < 0.0) resp = 0.0;
+                    out[y * w + x] = resp;
+                }
+            }
+
+            m_imageRawPixels = std::move(out);
+
+            m_imageMinVal = m_imageRawPixels[0];
+            m_imageMaxVal = m_imageRawPixels[0];
+            for (double v : m_imageRawPixels) {
+                if (v < m_imageMinVal) m_imageMinVal = v;
+                if (v > m_imageMaxVal) m_imageMaxVal = v;
+            }
+            m_imageDispMin = m_imageMinVal;
+            m_imageDispMax = m_imageMaxVal;
+
+            rebuildImageFromRaw();
+            m_toolProgress = 0.5;
+        },
+        [this]() {
+            if (m_ftComputed)
+                computeFFT();
+
+            if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS) {
+                m_history[m_activeSlot].image     = m_image;
+                m_history[m_activeSlot].rawPixels = m_imageRawPixels;
+                m_history[m_activeSlot].minVal    = m_imageMinVal;
+                m_history[m_activeSlot].maxVal    = m_imageMaxVal;
+                m_history[m_activeSlot].pixelSize = m_pixelSize;
+                m_history[m_activeSlot].occupied  = true;
+                if (m_ftComputed)
+                    m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
+            }
+
+            saveHistory();
+            m_toolProgress = -1;
+            update();
+        }
+    });
+}
+
 void FtWindow::onApplyFtCrop()
 {
     if (!m_ftComputed || m_fftN == 0) return;
