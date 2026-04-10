@@ -1082,6 +1082,10 @@ void FtWindow::wheelEvent(QWheelEvent *event)
 {
     QPoint pos = event->position().toPoint();
 
+    // Trackpad scroll events have phases (Begin/Update/End/Momentum);
+    // mouse wheel events have NoScrollPhase.
+    bool isTrackpad = (event->phase() != Qt::NoScrollPhase);
+
     for (int i = 0; i < m_numDispItems; i++) {
         const DisplayItem &di = m_dispItems[i];
         if (!di.valid || di.zoomIdx < 0) continue;
@@ -1089,31 +1093,59 @@ void FtWindow::wheelEvent(QWheelEvent *event)
 
         ZoomState &z = m_zoom[di.zoomIdx];
 
-        double step = event->angleDelta().y() > 0 ? 1.15 : 1.0 / 1.15;
-        double newFactor = z.factor * step;
-        if (newFactor < 1.0) newFactor = 1.0;
-        if (newFactor > 64.0) newFactor = 64.0;
-
-        if (newFactor <= 1.0) {
-            z.reset(di.imgW, di.imgH);
-        } else {
+        if (isTrackpad && z.factor > 1.0) {
+            // Trackpad two-finger scroll while zoomed → pan
             QRectF src = z.visibleRect(di.imgW, di.imgH);
-            double relX = (pos.x() - di.screenRect.x()) / (double)di.screenRect.width();
-            double relY = (pos.y() - di.screenRect.y()) / (double)di.screenRect.height();
-            double imgX = src.x() + relX * src.width();
-            double imgY = src.y() + relY * src.height();
+            // Use pixelDelta if available, otherwise fall back to angleDelta
+            double dx, dy;
+            if (!event->pixelDelta().isNull()) {
+                dx = event->pixelDelta().x();
+                dy = event->pixelDelta().y();
+            } else {
+                dx = event->angleDelta().x() * 0.5;
+                dy = event->angleDelta().y() * 0.5;
+            }
+            double dxImg = -dx / (double)di.screenRect.width() * src.width();
+            double dyImg = -dy / (double)di.screenRect.height() * src.height();
 
-            z.factor = newFactor;
-            double newVW = di.imgW / newFactor;
-            double newVH = di.imgH / newFactor;
-            z.centerX = imgX + (0.5 - relX) * newVW;
-            z.centerY = imgY + (0.5 - relY) * newVH;
+            z.centerX += dxImg;
+            z.centerY += dyImg;
+            double hw = src.width() / 2.0, hh = src.height() / 2.0;
+            z.centerX = std::clamp(z.centerX, hw, (double)di.imgW - hw);
+            z.centerY = std::clamp(z.centerY, hh, (double)di.imgH - hh);
+        } else if (isTrackpad) {
+            // Trackpad but not zoomed in — ignore (pinch handles zoom)
+            event->accept();
+            return;
+        } else {
+            // Mouse scroll wheel → zoom
+            double step = event->angleDelta().y() > 0 ? 1.15 : 1.0 / 1.15;
+            double newFactor = z.factor * step;
+            if (newFactor < 1.0) newFactor = 1.0;
+            if (newFactor > 64.0) newFactor = 64.0;
 
-            double hw = newVW / 2.0, hh = newVH / 2.0;
-            z.centerX = std::clamp(z.centerX, hw, di.imgW - hw);
-            z.centerY = std::clamp(z.centerY, hh, di.imgH - hh);
+            if (newFactor <= 1.0) {
+                z.reset(di.imgW, di.imgH);
+            } else {
+                QRectF src = z.visibleRect(di.imgW, di.imgH);
+                double relX = (pos.x() - di.screenRect.x()) / (double)di.screenRect.width();
+                double relY = (pos.y() - di.screenRect.y()) / (double)di.screenRect.height();
+                double imgX = src.x() + relX * src.width();
+                double imgY = src.y() + relY * src.height();
+
+                z.factor = newFactor;
+                double newVW = di.imgW / newFactor;
+                double newVH = di.imgH / newFactor;
+                z.centerX = imgX + (0.5 - relX) * newVW;
+                z.centerY = imgY + (0.5 - relY) * newVH;
+
+                double hw = newVW / 2.0, hh = newVH / 2.0;
+                z.centerX = std::clamp(z.centerX, hw, di.imgW - hw);
+                z.centerY = std::clamp(z.centerY, hh, di.imgH - hh);
+            }
         }
 
+        // Sync both FT panels if in cos/sin or amp/phase mode
         if ((m_displayMode == 0 || m_displayMode == 1) &&
             (di.zoomIdx == 1 || di.zoomIdx == 2)) {
             int other = (di.zoomIdx == 1) ? 2 : 1;
@@ -1124,4 +1156,59 @@ void FtWindow::wheelEvent(QWheelEvent *event)
         event->accept();
         return;
     }
+}
+
+// Pinch-to-zoom via native gesture events (macOS trackpad)
+bool FtWindow::event(QEvent *event)
+{
+    if (event->type() == QEvent::NativeGesture) {
+        auto *ge = static_cast<QNativeGestureEvent *>(event);
+        if (ge->gestureType() == Qt::ZoomNativeGesture) {
+            QPoint pos = ge->position().toPoint();
+            for (int i = 0; i < m_numDispItems; i++) {
+                const DisplayItem &di = m_dispItems[i];
+                if (!di.valid || di.zoomIdx < 0) continue;
+                if (!di.screenRect.contains(pos)) continue;
+
+                ZoomState &z = m_zoom[di.zoomIdx];
+
+                // ge->value() is the scale delta (e.g. 0.02 for a small zoom-in)
+                double step = 1.0 + ge->value();
+                double newFactor = z.factor * step;
+                if (newFactor < 1.0) newFactor = 1.0;
+                if (newFactor > 64.0) newFactor = 64.0;
+
+                if (newFactor <= 1.0) {
+                    z.reset(di.imgW, di.imgH);
+                } else {
+                    QRectF src = z.visibleRect(di.imgW, di.imgH);
+                    double relX = (pos.x() - di.screenRect.x()) / (double)di.screenRect.width();
+                    double relY = (pos.y() - di.screenRect.y()) / (double)di.screenRect.height();
+                    double imgX = src.x() + relX * src.width();
+                    double imgY = src.y() + relY * src.height();
+
+                    z.factor = newFactor;
+                    double newVW = di.imgW / newFactor;
+                    double newVH = di.imgH / newFactor;
+                    z.centerX = imgX + (0.5 - relX) * newVW;
+                    z.centerY = imgY + (0.5 - relY) * newVH;
+
+                    double hw = newVW / 2.0, hh = newVH / 2.0;
+                    z.centerX = std::clamp(z.centerX, hw, di.imgW - hw);
+                    z.centerY = std::clamp(z.centerY, hh, di.imgH - hh);
+                }
+
+                if ((m_displayMode == 0 || m_displayMode == 1) &&
+                    (di.zoomIdx == 1 || di.zoomIdx == 2)) {
+                    int other = (di.zoomIdx == 1) ? 2 : 1;
+                    m_zoom[other] = m_zoom[di.zoomIdx];
+                }
+
+                update();
+                event->accept();
+                return true;
+            }
+        }
+    }
+    return QWidget::event(event);
 }

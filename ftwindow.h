@@ -13,6 +13,7 @@
 #include <emscripten.h>
 #endif
 #include <vector>
+#include <deque>
 #include <functional>
 #include "fft.h"          // Complex, nextPow2, fft2d, fftShift, floatToImage
 
@@ -73,6 +74,7 @@ protected:
     void mouseMoveEvent(QMouseEvent *event)       override;
     void mouseDoubleClickEvent(QMouseEvent *event) override;
     void wheelEvent(QWheelEvent *event)         override;
+    bool event(QEvent *event)                  override;
     void paintEvent(QPaintEvent *)              override;
 
 private slots:
@@ -91,7 +93,8 @@ private slots:
     void onGaborCancel();
     void onApplyHessianFilter();
     void onHessianCancel();
-    void onUndoRedo();
+    void onUndo();
+    void onRedo();
 
 private:
     // loading / computation
@@ -135,6 +138,7 @@ private:
     QPushButton *m_createBtn = nullptr;
     QPushButton *m_reloadBtn = nullptr;
     QPushButton *m_undoBtn   = nullptr;
+    QPushButton *m_redoBtn   = nullptr;
     QPushButton *m_fullscreenBtn = nullptr;
     QPushButton *m_modeBtn   = nullptr;
     QCheckBox   *m_maskBtn   = nullptr;
@@ -218,9 +222,9 @@ private:
         std::vector<Complex> fftData;
     };
 
-    BufferSnapshot m_undoSnapshot;
-    BufferSnapshot m_redoSnapshot;
-    bool m_showRedo = false;
+    static constexpr int MAX_UNDO = 10;
+    std::deque<BufferSnapshot> m_undoStack;
+    std::deque<BufferSnapshot> m_redoStack;
 
     static QImage computePowerSpecMasked(const QImage &img);
     void saveHistory();
@@ -228,8 +232,8 @@ private:
     BufferSnapshot captureCurrentState() const;
     void applySnapshot(const BufferSnapshot &snapshot);
     void storeUndoSnapshot();
-    void clearRedoSnapshot();
-    void updateUndoButton();
+    void clearRedoStack();
+    void updateUndoRedoButtons();
 
     // ---- zoom (0 = image, 1 = FT left/top, 2 = FT right/bottom) ----
     static constexpr int NUM_ZOOM = 3;

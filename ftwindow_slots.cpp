@@ -1087,42 +1087,55 @@ void FtWindow::applySnapshot(const BufferSnapshot &snapshot)
     update();
 }
 
-void FtWindow::clearRedoSnapshot()
+void FtWindow::clearRedoStack()
 {
-    m_redoSnapshot = BufferSnapshot();
-    m_showRedo = false;
-    updateUndoButton();
+    m_redoStack.clear();
+    updateUndoRedoButtons();
 }
 
 void FtWindow::storeUndoSnapshot()
 {
-    m_undoSnapshot = captureCurrentState();
-    clearRedoSnapshot();
-    updateUndoButton();
+    m_undoStack.push_back(captureCurrentState());
+    if ((int)m_undoStack.size() > MAX_UNDO)
+        m_undoStack.pop_front();
+    clearRedoStack();
+    updateUndoRedoButtons();
 }
 
-void FtWindow::updateUndoButton()
+void FtWindow::updateUndoRedoButtons()
 {
-    if (!m_undoBtn) return;
-    m_undoBtn->setText(m_showRedo ? "Redo last action" : "Undo last action");
-    bool enabled = m_showRedo ? m_redoSnapshot.valid : m_undoSnapshot.valid;
-    m_undoBtn->setEnabled(enabled);
-}
-
-void FtWindow::onUndoRedo()
-{
-    if (!m_showRedo) {
-        if (!m_undoSnapshot.valid) return;
-        m_redoSnapshot = captureCurrentState();
-        applySnapshot(m_undoSnapshot);
-        m_showRedo = true;
-    } else {
-        if (!m_redoSnapshot.valid) return;
-        m_undoSnapshot = captureCurrentState();
-        applySnapshot(m_redoSnapshot);
-        m_showRedo = false;
+    if (m_undoBtn) {
+        int n = (int)m_undoStack.size();
+        m_undoBtn->setText(QString("Undo (%1)").arg(n));
+        m_undoBtn->setEnabled(n > 0);
     }
-    updateUndoButton();
+    if (m_redoBtn) {
+        int n = (int)m_redoStack.size();
+        m_redoBtn->setText(QString("Redo (%1)").arg(n));
+        m_redoBtn->setEnabled(n > 0);
+    }
+}
+
+void FtWindow::onUndo()
+{
+    if (m_undoStack.empty()) return;
+    m_redoStack.push_back(captureCurrentState());
+    if ((int)m_redoStack.size() > MAX_UNDO)
+        m_redoStack.pop_front();
+    applySnapshot(m_undoStack.back());
+    m_undoStack.pop_back();
+    updateUndoRedoButtons();
+}
+
+void FtWindow::onRedo()
+{
+    if (m_redoStack.empty()) return;
+    m_undoStack.push_back(captureCurrentState());
+    if ((int)m_undoStack.size() > MAX_UNDO)
+        m_undoStack.pop_front();
+    applySnapshot(m_redoStack.back());
+    m_redoStack.pop_back();
+    updateUndoRedoButtons();
 }
 
 void FtWindow::eraserApply(QPoint pos)
@@ -1207,6 +1220,10 @@ void FtWindow::brushApply(QPoint pos)
             double sigma = diam / 2.0;
             int rad = (sigma > 0.5) ? (int)std::ceil(sigma * 3) : 0;
 
+            // Determine paint mode from which display data the panel shows
+            bool paintSin   = (di.rawVals == &m_sinVals);
+            bool paintPower = (di.rawVals == &m_powerVals);
+
             for (int dy = -rad; dy <= rad; dy++) {
                 for (int dx = -rad; dx <= rad; dx++) {
                     int px = ix + dx, py = iy + dy;
@@ -1216,12 +1233,33 @@ void FtWindow::brushApply(QPoint pos)
                     if (sigma > 0.5)
                         weight = std::exp(-(dx*dx + dy*dy) / (2.0 * sigma * sigma));
 
-                    double paintVal = val * weight;
-                    m_fftData[py * m_fftN + px] += Complex(paintVal, 0);
-                    // Friedel mate
-                    int fpx = (m_fftN - px) % m_fftN;
-                    int fpy = (m_fftN - py) % m_fftN;
-                    m_fftData[fpy * m_fftN + fpx] += Complex(paintVal, 0);
+                    int idx  = py * m_fftN + px;
+                    int fpx  = (m_fftN - px) % m_fftN;
+                    int fpy  = (m_fftN - py) % m_fftN;
+                    int fidx = fpy * m_fftN + fpx;
+
+                    if (paintPower) {
+                        // val is in log(1 + amp^2) display units
+                        double targetAmp = std::sqrt(std::max(0.0, std::exp(val) - 1.0));
+                        Complex cur = m_fftData[idx];
+                        double curAmp = std::abs(cur);
+                        double phase  = (curAmp > 0) ? std::arg(cur) : 0.0;
+                        // blend current amplitude toward target
+                        double newAmp = curAmp + weight * (targetAmp - curAmp);
+                        Complex newVal = std::polar(newAmp, phase);
+                        m_fftData[idx]  = newVal;
+                        m_fftData[fidx] = std::conj(newVal);   // Friedel mate
+                    } else if (paintSin) {
+                        // paint into imaginary (sine) component
+                        double paintVal = val * weight;
+                        m_fftData[idx]  += Complex(0, paintVal);
+                        m_fftData[fidx] += Complex(0, -paintVal); // antisymmetric
+                    } else {
+                        // cosine (real) component – original behaviour
+                        double paintVal = val * weight;
+                        m_fftData[idx]  += Complex(paintVal, 0);
+                        m_fftData[fidx] += Complex(paintVal, 0);  // symmetric
+                    }
                 }
             }
             recomputeDisplayImages();
