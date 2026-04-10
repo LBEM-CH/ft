@@ -1162,6 +1162,32 @@ void FtWindow::paintEvent(QPaintEvent *)
         }
     }
 
+    // Helper: draw zoom/pan overlay vertically at top-right of a frame
+    auto drawZoomPanOverlay = [&](const QRect &frame, const ZoomState &zoom) {
+        p.save();
+        QFont zf;
+        zf.setPixelSize(11);
+        p.setFont(zf);
+        QFontMetrics zfm(zf);
+
+        QString zoomTxt = QString("Zoom: %1x").arg(zoom.factor, 0, 'f', 1);
+        QString panTxt  = QString("Pan: x=%1, y=%2")
+                              .arg(zoom.centerX, 0, 'f', 1)
+                              .arg(zoom.centerY, 0, 'f', 1);
+
+        int lineH = zfm.height() + 2;
+        int maxW  = std::max(zfm.horizontalAdvance(zoomTxt),
+                             zfm.horizontalAdvance(panTxt));
+        int bx = frame.right() + 4;
+        int by = frame.top();
+
+        p.setPen(QColor(180, 180, 180));
+        p.drawText(bx, by + zfm.ascent(), zoomTxt);
+        p.drawText(bx, by + lineH + zfm.ascent(), panTxt);
+        Q_UNUSED(maxW);
+        p.restore();
+    };
+
     // ---- Panel 1: loaded image ------------------------------------------------
     int panel1W = cx - 1;
     int panel1H = hy - 1;
@@ -1248,6 +1274,7 @@ void FtWindow::paintEvent(QPaintEvent *)
         }
 
         drawAxes(p, frame, m_zoom[0], imgW, imgH, false, m_pixelSize);
+        drawZoomPanOverlay(frame, m_zoom[0]);
 
         QRect inner = frame.adjusted(2, 2, -2, -2);
         double curVal = 0;
@@ -1462,15 +1489,22 @@ void FtWindow::paintEvent(QPaintEvent *)
             }
             p.setPen(QColor(200, 200, 200));
             QFont lf; lf.setPixelSize(28); p.setFont(lf);
-            if (m_displayMode == 3)
+            if (m_displayMode == 3) {
                 p.drawText(frame.x(), frame.y() - 4, "Powerspectrum");
-            else
+                QFontMetrics lfm(lf);
+                QFont sf; sf.setPixelSize(14); p.setFont(sf);
+                p.drawText(frame.x() + lfm.horizontalAdvance("Powerspectrum") + 4,
+                           frame.y() - 4, "displayed as log(1 + amp*amp)");
+                p.setFont(lf);
+            } else {
                 p.drawText(frame.x(), frame.y() - 4, "Complex Fourier Transform");
+            }
 
             const QImage &img = (m_displayMode == 3) ? m_powerImg : m_complexImg;
             drawImageWithFrame(p, frame, img, m_zoom[1], m_fftN, m_fftN);
             drawOriginCross(frame.adjusted(2, 2, -2, -2), m_zoom[1], m_fftN, m_fftN);
             drawAxes(p, frame, m_zoom[1], m_fftN, m_fftN, true, m_pixelSize);
+            drawZoomPanOverlay(frame, m_zoom[1]);
 
             QRect inner = frame.adjusted(2, 2, -2, -2);
             double curVal = 0;
@@ -1499,6 +1533,51 @@ void FtWindow::paintEvent(QPaintEvent *)
 
             drawHistogram(p, frame, m_powerVals, m_powerMin, m_powerMax, hy - frame.bottom(),
                           HIST_POWER, m_powerDispMin, m_powerDispMax);
+
+            // Color wheel for complex FT mode
+            if (m_displayMode == 2) {
+                int availBelow = hy - frame.bottom();
+                int histH = std::max(16, availBelow / 3);
+                int histW = frame.width() / 2;
+                int histX = frame.x() + (frame.width() - histW) / 2;
+                int histY = frame.bottom() + histH;
+
+                int wheelD = std::min(histH, histX - frame.x() - 4);
+                if (wheelD > 8) {
+                    int wcx = histX - wheelD / 2 - 4;
+                    int wcy = histY + histH / 2;
+                    int r = wheelD / 2;
+
+                    QImage wheelImg(wheelD, wheelD, QImage::Format_ARGB32);
+                    wheelImg.fill(Qt::transparent);
+                    for (int wy = 0; wy < wheelD; wy++) {
+                        QRgb *row = reinterpret_cast<QRgb *>(wheelImg.scanLine(wy));
+                        for (int wx = 0; wx < wheelD; wx++) {
+                            double dx = wx - r + 0.5;
+                            double dy = wy - r + 0.5;
+                            double dist = std::sqrt(dx * dx + dy * dy);
+                            if (dist <= r) {
+                                double angle = std::atan2(dy, dx) * 180.0 / M_PI;
+                                double hue = angle + 180.0;
+                                QColor c = QColor::fromHsvF(hue / 360.0, 1.0, 1.0);
+                                row[wx] = c.rgba();
+                            }
+                        }
+                    }
+                    p.drawImage(wcx - r, wcy - r, wheelImg);
+
+                    // Phase labels at cardinal directions
+                    QFont wf; wf.setPixelSize(9); p.setFont(wf); p.setPen(Qt::white);
+                    QFontMetrics wfm(wf);
+                    int lr = r + 2;
+                    p.drawText(wcx + lr, wcy + wfm.ascent() / 2, QString::fromUtf8("0\u00B0"));
+                    QString s180 = QString::fromUtf8("\u00B1180\u00B0");
+                    p.drawText(wcx - lr - wfm.horizontalAdvance(s180), wcy + wfm.ascent() / 2, s180);
+                    p.drawText(wcx - wfm.horizontalAdvance("90") / 2, wcy + lr + wfm.ascent(), QString::fromUtf8("90\u00B0"));
+                    QString sn90 = QString::fromUtf8("-90\u00B0");
+                    p.drawText(wcx - wfm.horizontalAdvance(sn90) / 2, wcy - lr, sn90);
+                }
+            }
 
             if (m_lineFilterActive)
                 drawLineFilter(p, inner, m_zoom[1], m_fftN, m_fftN);
@@ -1564,11 +1643,19 @@ void FtWindow::paintEvent(QPaintEvent *)
             lf.setPixelSize(28);
             p.setFont(lf);
             p.drawText(frame1.x(), frame1.y() - 4, label1);
+            if (m_displayMode == 1) {
+                QFontMetrics lfm(lf);
+                QFont sf; sf.setPixelSize(14); p.setFont(sf);
+                p.drawText(frame1.x() + lfm.horizontalAdvance(label1) + 4,
+                           frame1.y() - 4, "displayed as log(1+amp)");
+                p.setFont(lf);
+            }
             p.drawText(frame2.x(), frame2.y() - 4, label2);
 
             drawImageWithFrame(p, frame1, *img1, m_zoom[1], m_fftN, m_fftN);
             drawOriginCross(frame1.adjusted(2, 2, -2, -2), m_zoom[1], m_fftN, m_fftN);
             drawAxes(p, frame1, m_zoom[1], m_fftN, m_fftN, true, m_pixelSize);
+            drawZoomPanOverlay(frame1, m_zoom[1]);
             QRect inner1 = frame1.adjusted(2, 2, -2, -2);
             double curVal1 = 0;
             bool hasCur1 = sampleValue(inner1, m_zoom[1], m_fftN, m_fftN, *vals1, curVal1);
@@ -1579,6 +1666,7 @@ void FtWindow::paintEvent(QPaintEvent *)
             drawImageWithFrame(p, frame2, *img2, m_zoom[2], m_fftN, m_fftN);
             drawOriginCross(frame2.adjusted(2, 2, -2, -2), m_zoom[2], m_fftN, m_fftN);
             drawAxes(p, frame2, m_zoom[2], m_fftN, m_fftN, true, m_pixelSize, true);
+            drawZoomPanOverlay(frame2, m_zoom[2]);
             QRect inner2 = frame2.adjusted(2, 2, -2, -2);
             double curVal2 = 0;
             bool hasCur2 = sampleValue(inner2, m_zoom[2], m_fftN, m_fftN, *vals2, curVal2);
@@ -1825,12 +1913,27 @@ void FtWindow::paintEvent(QPaintEvent *)
         if (p2Tool) {
             int nRows = 0;
             int textW = 0;
-            if (m_bandpassActive || m_directionalActive) {
-                nRows = 3;
+            if (m_bandpassActive) {
+                nRows = 4;
                 int r1 = fm.horizontalAdvance("Smooth edge by pixels: ") + m_smoothEdit->width();
                 int r2 = fm.horizontalAdvance("Erase pixels outside of band");
-                int r3 = m_applyBandBtn->width();
-                textW = std::max({r1, r2, r3});
+                double halfN = m_fftN / 2.0;
+                QString diamStr = QString("Inner d=%1  Outer d=%2")
+                    .arg(m_bandInnerR * 2.0 * halfN, 0, 'f', 1)
+                    .arg(m_bandOuterR * 2.0 * halfN, 0, 'f', 1);
+                int r3 = fm.horizontalAdvance(diamStr);
+                int r4 = m_applyBandBtn->width();
+                textW = std::max({r1, r2, r3, r4});
+            } else if (m_directionalActive) {
+                nRows = 4;
+                int r1 = fm.horizontalAdvance("Smooth edge by pixels: ") + m_smoothEdit->width();
+                int r2 = fm.horizontalAdvance("Erase pixels outside of band");
+                QString angleStr = QString("Angle 1=%1\u00B0  Angle 2=%2\u00B0")
+                    .arg(m_dirAngle1, 0, 'f', 1)
+                    .arg(m_dirAngle2, 0, 'f', 1);
+                int r3 = fm.horizontalAdvance(angleStr);
+                int r4 = m_applyBandBtn->width();
+                textW = std::max({r1, r2, r3, r4});
             } else if (m_brushActive) {
                 nRows = 2;
                 int r1 = fm.horizontalAdvance("Pixel value to enter: ") + m_brushValueEdit->width();
@@ -1889,11 +1992,25 @@ void FtWindow::paintEvent(QPaintEvent *)
             int tx = rx + margin;
             int ty = ry + margin;
 
-            if (m_bandpassActive || m_directionalActive) {
+            if (m_bandpassActive) {
                 p.drawText(tx, ty + fm.ascent(), "Smooth edge by pixels:");
                 m_smoothEdit->move(tx + fm.horizontalAdvance("Smooth edge by pixels: "), ty);
                 m_bandEraseOutside->move(tx, ty + lh);
-                m_applyBandBtn->move(tx, ty + lh * 2);
+                double halfN = m_fftN / 2.0;
+                QString diamStr = QString("Inner d=%1  Outer d=%2")
+                    .arg(m_bandInnerR * 2.0 * halfN, 0, 'f', 1)
+                    .arg(m_bandOuterR * 2.0 * halfN, 0, 'f', 1);
+                p.drawText(tx, ty + lh * 2 + fm.ascent(), diamStr);
+                m_applyBandBtn->move(tx, ty + lh * 3);
+            } else if (m_directionalActive) {
+                p.drawText(tx, ty + fm.ascent(), "Smooth edge by pixels:");
+                m_smoothEdit->move(tx + fm.horizontalAdvance("Smooth edge by pixels: "), ty);
+                m_bandEraseOutside->move(tx, ty + lh);
+                QString angleStr = QString("Angle 1=%1\u00B0  Angle 2=%2\u00B0")
+                    .arg(m_dirAngle1, 0, 'f', 1)
+                    .arg(m_dirAngle2, 0, 'f', 1);
+                p.drawText(tx, ty + lh * 2 + fm.ascent(), angleStr);
+                m_applyBandBtn->move(tx, ty + lh * 3);
             } else if (m_brushActive) {
                 p.drawText(tx, ty + fm.ascent(), "Pixel value to enter:");
                 m_brushValueEdit->move(tx + fm.horizontalAdvance("Pixel value to enter: "), ty);
