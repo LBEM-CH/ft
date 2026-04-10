@@ -85,6 +85,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         m_p1TaperActive = false; m_binActive = false; m_mathActive = false;
         m_peakPickActive = false; m_extractActive = false;
         m_gaborActive = false; m_hessianActive = false;
+        m_amyloidActive = false; m_amyloidPlacing = 0;
     };
     auto showP1ToolWidgets = [&]() {
         m_p1EraserDiameterEdit->setVisible(m_p1EraserActive);
@@ -126,6 +127,15 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         m_hessianPolarityEdit->setVisible(m_hessianActive);
         m_hessianCancelBtn->setVisible(m_hessianActive);
         m_hessianComputeBtn->setVisible(m_hessianActive);
+        m_amyloidRiseEdit->setVisible(m_amyloidActive);
+        m_amyloidTwistEdit->setVisible(m_amyloidActive);
+        m_amyloidDiamEdit->setVisible(m_amyloidActive);
+        m_amyloidSmoothEdit->setVisible(m_amyloidActive);
+        m_amyloidNoiseBtn->setVisible(m_amyloidActive);
+        m_amyloidNoiseEdit->setVisible(m_amyloidActive);
+        m_amyloidSignalBtn->setVisible(m_amyloidActive);
+        m_amyloidCancelBtn->setVisible(m_amyloidActive);
+        m_amyloidComputeBtn->setVisible(m_amyloidActive);
     };
     if (m_p1BtnRects[0].contains(event->pos())) {
         bool was = m_p1EraserActive; deactivateAllP1Tools();
@@ -207,6 +217,86 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
     if (m_p1BtnRects[13].contains(event->pos())) {
         bool was = m_hessianActive; deactivateAllP1Tools();
         m_hessianActive = !was; showP1ToolWidgets(); update(); return;
+    }
+    if (m_p1BtnRects[14].contains(event->pos())) {
+        bool was = m_amyloidActive; deactivateAllP1Tools();
+        m_amyloidActive = !was;
+        if (!m_amyloidActive) { m_amyloidPlacing = 0; }
+        showP1ToolWidgets(); update(); return;
+    }
+
+    // Amyloid filament: click on panel 1 image to place/drag control points
+    if (m_amyloidActive && !m_image.isNull()) {
+        for (int i = 0; i < m_numDispItems; i++) {
+            const DisplayItem &di = m_dispItems[i];
+            if (di.valid && di.zoomIdx == 0 && di.screenRect.contains(event->pos())) {
+                QRect target = di.screenRect.adjusted(2, 2, -2, -2);
+                QRectF src = m_zoom[0].visibleRect(m_image.width(), m_image.height());
+
+                // Convert screen to image coords
+                double imgX = src.x() + (event->pos().x() - target.x()) * src.width() / target.width();
+                double imgY = src.y() + (event->pos().y() - target.y()) * src.height() / target.height();
+
+                // Check if clicking near an existing control point (for dragging)
+                double hitR = src.width() / target.width() * 8; // 8 screen pixels
+                for (int fi = (int)m_amyloidFilaments.size() - 1; fi >= 0; fi--) {
+                    auto &fil = m_amyloidFilaments[fi];
+                    for (int pi = 0; pi < (int)fil.pts.size(); pi++) {
+                        double dx = fil.pts[pi].x() - imgX;
+                        double dy = fil.pts[pi].y() - imgY;
+                        if (dx * dx + dy * dy < hitR * hitR) {
+                            m_amyloidDragFil = fi;
+                            m_amyloidDragPt = pi;
+                            m_amyloidRendered = false;
+                            return;
+                        }
+                    }
+                }
+
+                // Check if clicking near a segment to insert a new control point
+                for (int fi = (int)m_amyloidFilaments.size() - 1; fi >= 0; fi--) {
+                    auto &fil = m_amyloidFilaments[fi];
+                    for (int pi = 0; pi + 1 < (int)fil.pts.size(); pi++) {
+                        QPointF a = fil.pts[pi], b = fil.pts[pi + 1];
+                        // Distance from point to segment
+                        double abx = b.x() - a.x(), aby = b.y() - a.y();
+                        double len2 = abx * abx + aby * aby;
+                        if (len2 < 1e-6) continue;
+                        double t = ((imgX - a.x()) * abx + (imgY - a.y()) * aby) / len2;
+                        if (t < 0.05 || t > 0.95) continue;
+                        double px = a.x() + t * abx, py = a.y() + t * aby;
+                        double d2 = (imgX - px) * (imgX - px) + (imgY - py) * (imgY - py);
+                        if (d2 < hitR * hitR) {
+                            // Insert new control point and start dragging it
+                            fil.pts.insert(fil.pts.begin() + pi + 1, QPointF(imgX, imgY));
+                            m_amyloidDragFil = fi;
+                            m_amyloidDragPt = pi + 1;
+                            m_amyloidRendered = false;
+                            update();
+                            return;
+                        }
+                    }
+                }
+
+                // Placing new filament points
+                if (m_amyloidPlacing == 0) {
+                    m_amyloidStartPt = QPointF(imgX, imgY);
+                    m_amyloidPlacing = 1;
+                    m_amyloidRendered = false;
+                    update();
+                    return;
+                } else if (m_amyloidPlacing == 1) {
+                    AmyloidFilament fil;
+                    fil.pts.push_back(m_amyloidStartPt);
+                    fil.pts.push_back(QPointF(imgX, imgY));
+                    m_amyloidFilaments.push_back(fil);
+                    m_amyloidPlacing = 0;
+                    m_amyloidRendered = false;
+                    update();
+                    return;
+                }
+            }
+        }
     }
 
     // Panel 1 eraser/brush: start drag on panel 1 image
@@ -642,6 +732,12 @@ void FtWindow::mouseReleaseEvent(QMouseEvent *event)
         return;
     }
 
+    if (m_amyloidDragFil >= 0) {
+        m_amyloidDragFil = -1;
+        m_amyloidDragPt = -1;
+        update();
+    }
+
     if (m_p1ToolDragging) {
         m_p1ToolDragging = false;
         if (m_ftComputed) {
@@ -862,6 +958,24 @@ void FtWindow::mouseMoveEvent(QMouseEvent *event)
     if (m_histDragging) {
         update();
         return;
+    }
+
+    // Amyloid control point dragging
+    if (m_amyloidDragFil >= 0 && m_amyloidDragPt >= 0 && !m_image.isNull()) {
+        for (int i = 0; i < m_numDispItems; i++) {
+            const DisplayItem &di = m_dispItems[i];
+            if (!di.valid || di.zoomIdx != 0) continue;
+            QRect target = di.screenRect.adjusted(2, 2, -2, -2);
+            QRectF src = m_zoom[0].visibleRect(m_image.width(), m_image.height());
+            double imgX = src.x() + (event->pos().x() - target.x()) * src.width() / target.width();
+            double imgY = src.y() + (event->pos().y() - target.y()) * src.height() / target.height();
+            imgX = std::max(0.0, std::min((double)m_image.width() - 1, imgX));
+            imgY = std::max(0.0, std::min((double)m_image.height() - 1, imgY));
+            auto &fil = m_amyloidFilaments[m_amyloidDragFil];
+            fil.pts[m_amyloidDragPt] = QPointF(imgX, imgY);
+            update();
+            return;
+        }
     }
 
     if (m_p1ToolDragging && !m_image.isNull()) {
