@@ -1162,6 +1162,32 @@ void FtWindow::paintEvent(QPaintEvent *)
         }
     }
 
+    // Helper: draw zoom/pan overlay vertically at top-right of a frame
+    auto drawZoomPanOverlay = [&](const QRect &frame, const ZoomState &zoom) {
+        p.save();
+        QFont zf;
+        zf.setPixelSize(11);
+        p.setFont(zf);
+        QFontMetrics zfm(zf);
+
+        QString zoomTxt = QString("Zoom: %1x").arg(zoom.factor, 0, 'f', 1);
+        QString panTxt  = QString("Pan: x=%1, y=%2")
+                              .arg(zoom.centerX, 0, 'f', 1)
+                              .arg(zoom.centerY, 0, 'f', 1);
+
+        int lineH = zfm.height() + 2;
+        int maxW  = std::max(zfm.horizontalAdvance(zoomTxt),
+                             zfm.horizontalAdvance(panTxt));
+        int bx = frame.right() + 4;
+        int by = frame.top();
+
+        p.setPen(QColor(180, 180, 180));
+        p.drawText(bx, by + zfm.ascent(), zoomTxt);
+        p.drawText(bx, by + lineH + zfm.ascent(), panTxt);
+        Q_UNUSED(maxW);
+        p.restore();
+    };
+
     // ---- Panel 1: loaded image ------------------------------------------------
     int panel1W = cx - 1;
     int panel1H = hy - 1;
@@ -1248,6 +1274,7 @@ void FtWindow::paintEvent(QPaintEvent *)
         }
 
         drawAxes(p, frame, m_zoom[0], imgW, imgH, false, m_pixelSize);
+        drawZoomPanOverlay(frame, m_zoom[0]);
 
         QRect inner = frame.adjusted(2, 2, -2, -2);
         double curVal = 0;
@@ -1471,6 +1498,7 @@ void FtWindow::paintEvent(QPaintEvent *)
             drawImageWithFrame(p, frame, img, m_zoom[1], m_fftN, m_fftN);
             drawOriginCross(frame.adjusted(2, 2, -2, -2), m_zoom[1], m_fftN, m_fftN);
             drawAxes(p, frame, m_zoom[1], m_fftN, m_fftN, true, m_pixelSize);
+            drawZoomPanOverlay(frame, m_zoom[1]);
 
             QRect inner = frame.adjusted(2, 2, -2, -2);
             double curVal = 0;
@@ -1569,6 +1597,7 @@ void FtWindow::paintEvent(QPaintEvent *)
             drawImageWithFrame(p, frame1, *img1, m_zoom[1], m_fftN, m_fftN);
             drawOriginCross(frame1.adjusted(2, 2, -2, -2), m_zoom[1], m_fftN, m_fftN);
             drawAxes(p, frame1, m_zoom[1], m_fftN, m_fftN, true, m_pixelSize);
+            drawZoomPanOverlay(frame1, m_zoom[1]);
             QRect inner1 = frame1.adjusted(2, 2, -2, -2);
             double curVal1 = 0;
             bool hasCur1 = sampleValue(inner1, m_zoom[1], m_fftN, m_fftN, *vals1, curVal1);
@@ -1579,6 +1608,7 @@ void FtWindow::paintEvent(QPaintEvent *)
             drawImageWithFrame(p, frame2, *img2, m_zoom[2], m_fftN, m_fftN);
             drawOriginCross(frame2.adjusted(2, 2, -2, -2), m_zoom[2], m_fftN, m_fftN);
             drawAxes(p, frame2, m_zoom[2], m_fftN, m_fftN, true, m_pixelSize, true);
+            drawZoomPanOverlay(frame2, m_zoom[2]);
             QRect inner2 = frame2.adjusted(2, 2, -2, -2);
             double curVal2 = 0;
             bool hasCur2 = sampleValue(inner2, m_zoom[2], m_fftN, m_fftN, *vals2, curVal2);
@@ -1825,7 +1855,7 @@ void FtWindow::paintEvent(QPaintEvent *)
         if (p2Tool) {
             int nRows = 0;
             int textW = 0;
-            if (m_bandpassActive || m_directionalActive) {
+            if (m_bandpassActive) {
                 nRows = 4;
                 int r1 = fm.horizontalAdvance("Smooth edge by pixels: ") + m_smoothEdit->width();
                 int r2 = fm.horizontalAdvance("Erase pixels outside of band");
@@ -1834,6 +1864,16 @@ void FtWindow::paintEvent(QPaintEvent *)
                     .arg(m_bandInnerR * 2.0 * halfN, 0, 'f', 1)
                     .arg(m_bandOuterR * 2.0 * halfN, 0, 'f', 1);
                 int r3 = fm.horizontalAdvance(diamStr);
+                int r4 = m_applyBandBtn->width();
+                textW = std::max({r1, r2, r3, r4});
+            } else if (m_directionalActive) {
+                nRows = 4;
+                int r1 = fm.horizontalAdvance("Smooth edge by pixels: ") + m_smoothEdit->width();
+                int r2 = fm.horizontalAdvance("Erase pixels outside of band");
+                QString angleStr = QString("Angle 1=%1\u00B0  Angle 2=%2\u00B0")
+                    .arg(m_dirAngle1, 0, 'f', 1)
+                    .arg(m_dirAngle2, 0, 'f', 1);
+                int r3 = fm.horizontalAdvance(angleStr);
                 int r4 = m_applyBandBtn->width();
                 textW = std::max({r1, r2, r3, r4});
             } else if (m_brushActive) {
@@ -1894,11 +1934,25 @@ void FtWindow::paintEvent(QPaintEvent *)
             int tx = rx + margin;
             int ty = ry + margin;
 
-            if (m_bandpassActive || m_directionalActive) {
+            if (m_bandpassActive) {
                 p.drawText(tx, ty + fm.ascent(), "Smooth edge by pixels:");
                 m_smoothEdit->move(tx + fm.horizontalAdvance("Smooth edge by pixels: "), ty);
                 m_bandEraseOutside->move(tx, ty + lh);
-                m_applyBandBtn->move(tx, ty + lh * 2);
+                double halfN = m_fftN / 2.0;
+                QString diamStr = QString("Inner d=%1  Outer d=%2")
+                    .arg(m_bandInnerR * 2.0 * halfN, 0, 'f', 1)
+                    .arg(m_bandOuterR * 2.0 * halfN, 0, 'f', 1);
+                p.drawText(tx, ty + lh * 2 + fm.ascent(), diamStr);
+                m_applyBandBtn->move(tx, ty + lh * 3);
+            } else if (m_directionalActive) {
+                p.drawText(tx, ty + fm.ascent(), "Smooth edge by pixels:");
+                m_smoothEdit->move(tx + fm.horizontalAdvance("Smooth edge by pixels: "), ty);
+                m_bandEraseOutside->move(tx, ty + lh);
+                QString angleStr = QString("Angle 1=%1\u00B0  Angle 2=%2\u00B0")
+                    .arg(m_dirAngle1, 0, 'f', 1)
+                    .arg(m_dirAngle2, 0, 'f', 1);
+                p.drawText(tx, ty + lh * 2 + fm.ascent(), angleStr);
+                m_applyBandBtn->move(tx, ty + lh * 3);
             } else if (m_brushActive) {
                 p.drawText(tx, ty + fm.ascent(), "Pixel value to enter:");
                 m_brushValueEdit->move(tx + fm.horizontalAdvance("Pixel value to enter: "), ty);

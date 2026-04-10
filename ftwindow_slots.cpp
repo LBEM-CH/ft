@@ -209,6 +209,10 @@ void FtWindow::onCycleMode()
     QSettings settings("ft", "ft");
     settings.setValue("displayMode", m_displayMode);
 #endif
+    if (m_brushActive && m_ftComputed) {
+        double bv = brushValue();
+        m_brushValueEdit->setText(bv > 0 ? QString::number(2.0 * bv, 'g', 5) : "1");
+    }
     update();
 }
 
@@ -526,7 +530,7 @@ void FtWindow::extractImageData()
 // ---------------------------------------------------------------------------
 //  FFT
 // ---------------------------------------------------------------------------
-void FtWindow::computeFFT()
+void FtWindow::computeFFT(bool keepZoom)
 {
     if (m_image.isNull()) return;
 
@@ -653,8 +657,10 @@ void FtWindow::computeFFT()
     m_modeBtn->show();
     m_maskBtn->show();
 
-    m_zoom[1].reset(N, N);
-    m_zoom[2].reset(N, N);
+    if (!keepZoom) {
+        m_zoom[1].reset(N, N);
+        m_zoom[2].reset(N, N);
+    }
 }
 
 void FtWindow::computeInverseFFT()
@@ -1054,7 +1060,7 @@ FtWindow::BufferSnapshot FtWindow::captureCurrentState() const
     return snapshot;
 }
 
-void FtWindow::applySnapshot(const BufferSnapshot &snapshot)
+void FtWindow::applySnapshot(const BufferSnapshot &snapshot, bool keepZoom)
 {
     if (!snapshot.valid) return;
 
@@ -1075,13 +1081,16 @@ void FtWindow::applySnapshot(const BufferSnapshot &snapshot)
     m_origH = snapshot.origH;
     m_fftData = snapshot.fftData;
 
-    if (!m_image.isNull())
-        m_zoom[0].reset(m_image.width(), m_image.height());
-    if (m_ftComputed && m_fftN > 0) {
-        m_zoom[1].reset(m_fftN, m_fftN);
-        m_zoom[2].reset(m_fftN, m_fftN);
-        recomputeDisplayImages();
+    if (!keepZoom) {
+        if (!m_image.isNull())
+            m_zoom[0].reset(m_image.width(), m_image.height());
+        if (m_ftComputed && m_fftN > 0) {
+            m_zoom[1].reset(m_fftN, m_fftN);
+            m_zoom[2].reset(m_fftN, m_fftN);
+        }
     }
+    if (m_ftComputed && m_fftN > 0)
+        recomputeDisplayImages();
 
     saveHistory();
     update();
@@ -1122,7 +1131,7 @@ void FtWindow::onUndo()
     m_redoStack.push_back(captureCurrentState());
     if ((int)m_redoStack.size() > MAX_UNDO)
         m_redoStack.pop_front();
-    applySnapshot(m_undoStack.back());
+    applySnapshot(m_undoStack.back(), true);
     m_undoStack.pop_back();
     updateUndoRedoButtons();
 }
@@ -1133,7 +1142,7 @@ void FtWindow::onRedo()
     m_undoStack.push_back(captureCurrentState());
     if ((int)m_undoStack.size() > MAX_UNDO)
         m_undoStack.pop_front();
-    applySnapshot(m_redoStack.back());
+    applySnapshot(m_redoStack.back(), true);
     m_redoStack.pop_back();
     updateUndoRedoButtons();
 }
@@ -1184,18 +1193,25 @@ void FtWindow::eraserApply(QPoint pos)
 
 double FtWindow::brushValue() const
 {
-    if (!m_ftComputed || m_fftN == 0) return 1.0;
-    int half = m_fftN / 2;
-    double maxAmp = 0;
-    for (int y = 0; y < m_fftN; y++) {
-        for (int x = 0; x < m_fftN; x++) {
-            if (std::abs(x - half) <= 1 && std::abs(y - half) <= 1)
-                continue;
-            double a = std::abs(m_fftData[y * m_fftN + x]);
-            if (a > maxAmp) maxAmp = a;
+    if (!m_ftComputed || m_fftN == 0) return 0.0;
+    switch (m_displayMode) {
+    case 0:  return m_cosMax;
+    case 1:  return m_ampMax;
+    case 3:  return m_powerMax;
+    default: {
+        int half = m_fftN / 2;
+        double maxAmp = 0;
+        for (int y = 0; y < m_fftN; y++) {
+            for (int x = 0; x < m_fftN; x++) {
+                if (std::abs(x - half) <= 1 && std::abs(y - half) <= 1)
+                    continue;
+                double a = std::abs(m_fftData[y * m_fftN + x]);
+                if (a > maxAmp) maxAmp = a;
+            }
         }
+        return maxAmp;
     }
-    return maxAmp;
+    }
 }
 
 void FtWindow::brushApply(QPoint pos)

@@ -105,7 +105,7 @@ private:
 #endif
     void padImageToSquare();
     void extractImageData();
-    void computeFFT();
+    void computeFFT(bool keepZoom = false);
     void computeInverseFFT();
     void recomputeDisplayImages();
     void chainSteps(std::vector<std::function<void()>> steps);
@@ -230,7 +230,7 @@ private:
     void saveHistory();
     void restoreHistory();
     BufferSnapshot captureCurrentState() const;
-    void applySnapshot(const BufferSnapshot &snapshot);
+    void applySnapshot(const BufferSnapshot &snapshot, bool keepZoom = false);
     void storeUndoSnapshot();
     void clearRedoStack();
     void updateUndoRedoButtons();
@@ -362,7 +362,7 @@ private:
 
     // ---- bandpass filter ----
     bool        m_bandpassActive = false;
-    double      m_bandInnerR = 0.3;        // fraction of N/2 (0..1)
+    double      m_bandInnerR = 0.1;        // fraction of N/2 (0..1)
     double      m_bandOuterR = 0.6;        // fraction of N/2 (0..1)
     int         m_bandDragging = 0;        // 0=none, 1=inner, 2=outer
 
@@ -409,8 +409,8 @@ private:
 
     // ---- lattice filter ----
     bool        m_latticeActive = false;
-    double      m_latticeUx = 20, m_latticeUy = 0;
-    double      m_latticeVx = 0,  m_latticeVy = -20;
+    double      m_latticeUx = 16, m_latticeUy = 0;
+    double      m_latticeVx = 0,  m_latticeVy = -16;
     int         m_latticeDragging = 0;   // 0=none, 1=u, 2=v
 
     QLabel     *m_latticeSmoothLabel  = nullptr;

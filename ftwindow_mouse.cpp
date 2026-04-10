@@ -52,10 +52,8 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
             m_modeBtn->hide();
             m_maskBtn->hide();
 
-            if (!m_image.isNull()) {
-                m_zoom[0].reset(m_image.width(), m_image.height());
-                computeFFT();
-            }
+            if (!m_image.isNull())
+                computeFFT(true);
 
             saveHistory();
 #ifndef __EMSCRIPTEN__
@@ -303,7 +301,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         m_brushActive = !was;
         if (m_brushActive && m_ftComputed) {
             double bv = brushValue();
-            m_brushValueEdit->setText(bv > 0 ? QString::number(bv, 'g', 5) : "1");
+            m_brushValueEdit->setText(bv > 0 ? QString::number(2.0 * bv, 'g', 5) : "1");
         }
         showToolWidgets(); update(); return;
     }
