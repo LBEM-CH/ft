@@ -34,11 +34,14 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_reloadBtn->setFixedSize(130, 30);
     connect(m_reloadBtn, &QPushButton::clicked, this, &FtWindow::onReloadImage);
 
-    // Undo / Redo button
-    m_undoBtn = new QPushButton("Undo last action", this);
-    m_undoBtn->setFixedSize(140, 30);
-    connect(m_undoBtn, &QPushButton::clicked, this, &FtWindow::onUndoRedo);
-    updateUndoButton();
+    // Undo / Redo buttons
+    m_undoBtn = new QPushButton("Undo", this);
+    m_undoBtn->setFixedSize(70, 30);
+    connect(m_undoBtn, &QPushButton::clicked, this, &FtWindow::onUndo);
+    m_redoBtn = new QPushButton("Redo", this);
+    m_redoBtn->setFixedSize(70, 30);
+    connect(m_redoBtn, &QPushButton::clicked, this, &FtWindow::onRedo);
+    updateUndoRedoButtons();
 
     // Fullscreen toggle button
     m_fullscreenBtn = new QPushButton("Go fullscreen", this);
@@ -834,7 +837,8 @@ void FtWindow::resizeEvent(QResizeEvent *)
     m_createBtn->move(8 + m_loadBtn->width() + 4, 8 + m_saveBtn->height() + 4);
     int hy0 = height() - height() / 5;
     m_reloadBtn->move(8, 8 + m_loadBtn->height() + 4);
-    m_undoBtn->move((width() - m_undoBtn->width()) / 2, 70);
+    m_undoBtn->move((width() - 144) / 2, 70);
+    m_redoBtn->move((width() - 144) / 2 + 74, 70);
     m_fullscreenBtn->move(width() - m_fullscreenBtn->width() - 8, 8);
     m_modeBtn->move(width() - m_modeBtn->width() - 8, 8 + m_fullscreenBtn->height() + 4);
     m_maskBtn->move(width() - m_maskBtn->width() - 8, 8 + m_fullscreenBtn->height() + 4 + m_modeBtn->height() + 4);

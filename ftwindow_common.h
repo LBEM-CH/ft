@@ -16,6 +16,7 @@
 #include <QSettings>
 #include <QMouseEvent>
 #include <QWheelEvent>
+#include <QNativeGestureEvent>
 #include <QFont>
 #include <QFontMetrics>
 #include <QShortcut>
