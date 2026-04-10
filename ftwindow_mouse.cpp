@@ -301,7 +301,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         m_brushActive = !was;
         if (m_brushActive && m_ftComputed) {
             double bv = brushValue();
-            m_brushValueEdit->setText(bv > 0 ? QString::number(2.0 * bv, 'g', 5) : "1");
+            m_brushValueEdit->setText(bv > 0 ? QString::number(bv, 'g', 5) : "1");
         }
         showToolWidgets(); update(); return;
     }

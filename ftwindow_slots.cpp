@@ -209,9 +209,11 @@ void FtWindow::onCycleMode()
     QSettings settings("ft", "ft");
     settings.setValue("displayMode", m_displayMode);
 #endif
+    // Sync zoom/pan between both FT panels
+    m_zoom[2] = m_zoom[1];
     if (m_brushActive && m_ftComputed) {
         double bv = brushValue();
-        m_brushValueEdit->setText(bv > 0 ? QString::number(2.0 * bv, 'g', 5) : "1");
+        m_brushValueEdit->setText(bv > 0 ? QString::number(bv, 'g', 5) : "1");
     }
     update();
 }
@@ -1168,6 +1170,8 @@ void FtWindow::eraserApply(QPoint pos)
             double sigma = diam / 2.0;
             int rad = (sigma > 0.5) ? (int)std::ceil(sigma * 3) : 0;
 
+            bool erasePhase = (di.rawVals == &m_phaseVals);
+
             for (int dy = -rad; dy <= rad; dy++) {
                 for (int dx = -rad; dx <= rad; dx++) {
                     int px = ix + dx, py = iy + dy;
@@ -1177,15 +1181,28 @@ void FtWindow::eraserApply(QPoint pos)
                     if (sigma > 0.5)
                         weight = std::exp(-(dx*dx + dy*dy) / (2.0 * sigma * sigma));
 
-                    m_fftData[py * m_fftN + px] *= (1.0 - weight);
-                    // Friedel mate
-                    int fpx = (m_fftN - px) % m_fftN;
-                    int fpy = (m_fftN - py) % m_fftN;
-                    m_fftData[fpy * m_fftN + fpx] *= (1.0 - weight);
+                    int idx  = py * m_fftN + px;
+                    int fpx  = (m_fftN - px) % m_fftN;
+                    int fpy  = (m_fftN - py) % m_fftN;
+                    int fidx = fpy * m_fftN + fpx;
+
+                    if (erasePhase) {
+                        // Blend phase toward zero, keep amplitude
+                        Complex cur = m_fftData[idx];
+                        double amp = std::abs(cur);
+                        double phase = std::arg(cur);
+                        double newPhase = phase * (1.0 - weight);
+                        Complex newVal = std::polar(amp, newPhase);
+                        m_fftData[idx]  = newVal;
+                        m_fftData[fidx] = std::conj(newVal);
+                    } else {
+                        m_fftData[idx]  *= (1.0 - weight);
+                        m_fftData[fidx] *= (1.0 - weight);
+                    }
                 }
             }
             recomputeDisplayImages();
-            update();
+            repaint();
         }
         return;
     }
@@ -1197,20 +1214,9 @@ double FtWindow::brushValue() const
     switch (m_displayMode) {
     case 0:  return m_cosMax;
     case 1:  return m_ampMax;
+    case 2:  return m_cosMax;
     case 3:  return m_powerMax;
-    default: {
-        int half = m_fftN / 2;
-        double maxAmp = 0;
-        for (int y = 0; y < m_fftN; y++) {
-            for (int x = 0; x < m_fftN; x++) {
-                if (std::abs(x - half) <= 1 && std::abs(y - half) <= 1)
-                    continue;
-                double a = std::abs(m_fftData[y * m_fftN + x]);
-                if (a > maxAmp) maxAmp = a;
-            }
-        }
-        return maxAmp;
-    }
+    default: return 0.0;
     }
 }
 
@@ -1238,7 +1244,9 @@ void FtWindow::brushApply(QPoint pos)
 
             // Determine paint mode from which display data the panel shows
             bool paintSin   = (di.rawVals == &m_sinVals);
+            bool paintPhase = (di.rawVals == &m_phaseVals);
             bool paintPower = (di.rawVals == &m_powerVals);
+            bool paintAmp   = (di.rawVals == &m_ampVals);
 
             for (int dy = -rad; dy <= rad; dy++) {
                 for (int dx = -rad; dx <= rad; dx++) {
@@ -1255,14 +1263,36 @@ void FtWindow::brushApply(QPoint pos)
                     int fidx = fpy * m_fftN + fpx;
 
                     if (paintPower) {
-                        // val is in log(1 + amp^2) display units
-                        double targetAmp = std::sqrt(std::max(0.0, std::exp(val) - 1.0));
+                        // Powerspectrum mode: val is desired change in
+                        // log(1+amp^2) display units; solve for new real part
+                        Complex cur = m_fftData[idx];
+                        double a = cur.real(), b = cur.imag();
+                        double curPow = std::log(1.0 + a * a + b * b);
+                        double newPow = curPow + val * weight;
+                        double newA2 = std::exp(newPow) - 1.0 - b * b;
+                        double newA = (newA2 > 0) ? std::copysign(std::sqrt(newA2), a) : 0.0;
+                        double delta = newA - a;
+                        m_fftData[idx]  += Complex(delta, 0);
+                        m_fftData[fidx] += Complex(delta, 0);  // symmetric
+                    } else if (paintAmp) {
+                        // Amplitude panel: val is in log(1+amp) display units,
+                        // convert to target amplitude and set real part (cosine)
+                        double targetAmp = std::max(0.0, std::exp(val) - 1.0);
                         Complex cur = m_fftData[idx];
                         double curAmp = std::abs(cur);
                         double phase  = (curAmp > 0) ? std::arg(cur) : 0.0;
-                        // blend current amplitude toward target
                         double newAmp = curAmp + weight * (targetAmp - curAmp);
                         Complex newVal = std::polar(newAmp, phase);
+                        m_fftData[idx]  = newVal;
+                        m_fftData[fidx] = std::conj(newVal);   // Friedel mate
+                    } else if (paintPhase) {
+                        // Phase panel: val is in degrees, set phase keeping amplitude
+                        double targetPhase = val * M_PI / 180.0;
+                        Complex cur = m_fftData[idx];
+                        double curAmp = std::abs(cur);
+                        double curPhase = std::arg(cur);
+                        double newPhase = curPhase + weight * (targetPhase - curPhase);
+                        Complex newVal = std::polar(curAmp, newPhase);
                         m_fftData[idx]  = newVal;
                         m_fftData[fidx] = std::conj(newVal);   // Friedel mate
                     } else if (paintSin) {
@@ -1279,7 +1309,7 @@ void FtWindow::brushApply(QPoint pos)
                 }
             }
             recomputeDisplayImages();
-            update();
+            repaint();
         }
         return;
     }

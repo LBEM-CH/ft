@@ -1528,6 +1528,51 @@ void FtWindow::paintEvent(QPaintEvent *)
             drawHistogram(p, frame, m_powerVals, m_powerMin, m_powerMax, hy - frame.bottom(),
                           HIST_POWER, m_powerDispMin, m_powerDispMax);
 
+            // Color wheel for complex FT mode
+            if (m_displayMode == 2) {
+                int availBelow = hy - frame.bottom();
+                int histH = std::max(16, availBelow / 3);
+                int histW = frame.width() / 2;
+                int histX = frame.x() + (frame.width() - histW) / 2;
+                int histY = frame.bottom() + histH;
+
+                int wheelD = std::min(histH, histX - frame.x() - 4);
+                if (wheelD > 8) {
+                    int wcx = histX - wheelD / 2 - 4;
+                    int wcy = histY + histH / 2;
+                    int r = wheelD / 2;
+
+                    QImage wheelImg(wheelD, wheelD, QImage::Format_ARGB32);
+                    wheelImg.fill(Qt::transparent);
+                    for (int wy = 0; wy < wheelD; wy++) {
+                        QRgb *row = reinterpret_cast<QRgb *>(wheelImg.scanLine(wy));
+                        for (int wx = 0; wx < wheelD; wx++) {
+                            double dx = wx - r + 0.5;
+                            double dy = wy - r + 0.5;
+                            double dist = std::sqrt(dx * dx + dy * dy);
+                            if (dist <= r) {
+                                double angle = std::atan2(dy, dx) * 180.0 / M_PI;
+                                double hue = angle + 180.0;
+                                QColor c = QColor::fromHsvF(hue / 360.0, 1.0, 1.0);
+                                row[wx] = c.rgba();
+                            }
+                        }
+                    }
+                    p.drawImage(wcx - r, wcy - r, wheelImg);
+
+                    // Phase labels at cardinal directions
+                    QFont wf; wf.setPixelSize(9); p.setFont(wf); p.setPen(Qt::white);
+                    QFontMetrics wfm(wf);
+                    int lr = r + 2;
+                    p.drawText(wcx + lr, wcy + wfm.ascent() / 2, QString::fromUtf8("0\u00B0"));
+                    QString s180 = QString::fromUtf8("\u00B1180\u00B0");
+                    p.drawText(wcx - lr - wfm.horizontalAdvance(s180), wcy + wfm.ascent() / 2, s180);
+                    p.drawText(wcx - wfm.horizontalAdvance("90") / 2, wcy + lr + wfm.ascent(), QString::fromUtf8("90\u00B0"));
+                    QString sn90 = QString::fromUtf8("-90\u00B0");
+                    p.drawText(wcx - wfm.horizontalAdvance(sn90) / 2, wcy - lr, sn90);
+                }
+            }
+
             if (m_lineFilterActive)
                 drawLineFilter(p, inner, m_zoom[1], m_fftN, m_fftN);
             if (m_bandpassActive)
