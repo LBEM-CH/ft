@@ -1826,11 +1826,16 @@ void FtWindow::paintEvent(QPaintEvent *)
             int nRows = 0;
             int textW = 0;
             if (m_bandpassActive || m_directionalActive) {
-                nRows = 3;
+                nRows = 4;
                 int r1 = fm.horizontalAdvance("Smooth edge by pixels: ") + m_smoothEdit->width();
                 int r2 = fm.horizontalAdvance("Erase pixels outside of band");
-                int r3 = m_applyBandBtn->width();
-                textW = std::max({r1, r2, r3});
+                double halfN = m_fftN / 2.0;
+                QString diamStr = QString("Inner d=%1  Outer d=%2")
+                    .arg(m_bandInnerR * 2.0 * halfN, 0, 'f', 1)
+                    .arg(m_bandOuterR * 2.0 * halfN, 0, 'f', 1);
+                int r3 = fm.horizontalAdvance(diamStr);
+                int r4 = m_applyBandBtn->width();
+                textW = std::max({r1, r2, r3, r4});
             } else if (m_brushActive) {
                 nRows = 2;
                 int r1 = fm.horizontalAdvance("Pixel value to enter: ") + m_brushValueEdit->width();
