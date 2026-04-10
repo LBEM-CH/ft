@@ -2090,7 +2090,8 @@ void FtWindow::onAmyloidCancel()
     m_amyloidFilaments.clear();
     m_amyloidRiseEdit->hide();
     m_amyloidTwistEdit->hide();
-    m_amyloidDiamEdit->hide();
+    m_amyloidLongAxisEdit->hide();
+    m_amyloidShortAxisEdit->hide();
     m_amyloidSmoothEdit->hide();
     m_amyloidNoiseBtn->hide();
     m_amyloidNoiseEdit->hide();
@@ -2104,19 +2105,21 @@ void FtWindow::onAmyloidCompute()
 {
     if (m_image.isNull() || m_amyloidFilaments.empty()) return;
 
-    bool okR = false, okT = false, okD = false, okSm = false, okNs = false;
-    double rise     = m_amyloidRiseEdit->text().toDouble(&okR);
-    double twistDeg = m_amyloidTwistEdit->text().toDouble(&okT);
-    double diameter = m_amyloidDiamEdit->text().toDouble(&okD);
-    double smooth   = m_amyloidSmoothEdit->text().toDouble(&okSm);
+    bool okR = false, okT = false, okLA = false, okSA = false, okSm = false, okNs = false;
+    double rise      = m_amyloidRiseEdit->text().toDouble(&okR);
+    double twistDeg  = m_amyloidTwistEdit->text().toDouble(&okT);
+    double longAxis  = m_amyloidLongAxisEdit->text().toDouble(&okLA);
+    double shortAxis = m_amyloidShortAxisEdit->text().toDouble(&okSA);
+    double smooth    = m_amyloidSmoothEdit->text().toDouble(&okSm);
     double noiseFrac = m_amyloidNoiseEdit->text().toDouble(&okNs);
     bool addNoise      = m_amyloidNoiseBtn->isChecked();
     bool blackSignal   = m_amyloidBlackSignal;
-    if (!okR || rise <= 0.0)      rise = 4.75;
-    if (!okT)                     twistDeg = -1.0;
-    if (!okD || diameter <= 0.0)  diameter = 150.0;
-    if (!okSm || smooth < 0.0)    smooth = 1.5;
-    if (!okNs || noiseFrac <= 0.0) noiseFrac = 0.3;
+    if (!okR  || rise <= 0.0)      rise = 4.75;
+    if (!okT)                      twistDeg = -1.0;
+    if (!okLA || longAxis <= 0.0)  longAxis = 150.0;
+    if (!okSA || shortAxis <= 0.0) shortAxis = 80.0;
+    if (!okSm || smooth < 0.0)     smooth = 1.5;
+    if (!okNs || noiseFrac <= 0.0)  noiseFrac = 0.3;
 
     storeUndoSnapshot();
 
@@ -2124,7 +2127,8 @@ void FtWindow::onAmyloidCompute()
     int h = m_image.height();
     if ((int)m_imageRawPixels.size() != w * h) return;
 
-    const double radius   = diameter / 2.0;
+    const double semiA    = longAxis / 2.0;   // long semi-axis
+    const double semiB    = shortAxis / 2.0;  // short semi-axis
     const double twistRad = twistDeg * M_PI / 180.0;
 
     m_toolProgress = 0.1;
@@ -2133,33 +2137,29 @@ void FtWindow::onAmyloidCompute()
     auto filaments = m_amyloidFilaments;
 
     chainSteps({
-        [this, w, h, filaments, rise, twistRad, radius, smooth,
+        [this, w, h, filaments, rise, twistRad, semiA, semiB, smooth,
          addNoise, noiseFrac, blackSignal]() {
 
             // Start from a blank canvas — all filaments are re-rendered fresh
             // so noise and invert are only applied once, not accumulated.
             std::fill(m_imageRawPixels.begin(), m_imageRawPixels.end(), 0.0);
 
-            // Model: each layer is a flat pancake (β-sheet) of diameter D,
-            // stacked along the filament axis with spacing = rise.
-            // Each layer is rotated by twist around the axis relative to the
-            // previous one.  In projection (viewing along z, perpendicular to
-            // the image), each tilted pancake at axial position s_n appears as
-            // an elliptical cross-section centred on the backbone.
+            // Model: each layer is an elliptical pancake (β-sheet) with
+            // semi-axes a (long) and b (short), stacked along the filament
+            // axis with spacing = rise.  Each layer is rotated by twist around
+            // the axis relative to the previous one.
             //
-            // The backbone is a Catmull-Rom spline through the control points,
-            // giving smooth curves when the user bends the filament.
+            // In projection (viewing along z, perpendicular to the image),
+            // each pancake at twist angle φ projects with half-width:
+            //   hw(φ) = sqrt( (a·cos(φ))² + (b·sin(φ))² )
+            // This gives an oval cross-section that varies smoothly between
+            // the long and short axes as the pancake twists.
             //
-            // Projected half-width perpendicular to axis:
-            //   hw(φ) = R × |cos(φ)|  (face-on → full width, edge-on → zero)
-            //   clamped to a minimum layer thickness so edge-on layers stay
-            //   visible as thin lines.
-            //
+            // The backbone is a Catmull-Rom spline through the control points.
             // sigAxial controls axial smoothing between pancake layers.
 
-            // Layer thickness = smooth parameter (user-editable) plus a minimum
             const double sigAxial = std::max(rise * 0.15, smooth);
-            const double minHW    = rise * 0.5;     // minimum half-width (edge-on)
+            const double minHW    = rise * 0.5;
             const double cutAxial = 3.0 * sigAxial;
 
             for (const auto &fil : filaments) {
@@ -2239,9 +2239,13 @@ void FtWindow::onAmyloidCompute()
                     // Helical twist angle for this layer
                     double phi = n * twistRad;
                     double cosPhi = std::cos(phi);
+                    double sinPhi = std::sin(phi);
 
-                    // Projected half-width of the pancake layer
-                    double hw = std::max(minHW, radius * std::fabs(cosPhi));
+                    // Projected half-width of the elliptical pancake layer
+                    // hw = sqrt( (a·cos(φ))² + (b·sin(φ))² )
+                    double hw = std::max(minHW,
+                        std::sqrt(semiA * semiA * cosPhi * cosPhi
+                                + semiB * semiB * sinPhi * sinPhi));
 
                     // Bounding box for this layer's contribution
                     double cutPerp = hw + 2.0;  // +2 for edge softness

@@ -2111,18 +2111,19 @@ void FtWindow::paintEvent(QPaintEvent *)
                 int r2 = m_hessianCancelBtn->width() + 8 + m_hessianComputeBtn->width();
                 textW = std::max({r0, r1, r2});
             } else if (m_amyloidActive) {
-                nRows = 8;
+                nRows = 9;
                 int r0 = fm.horizontalAdvance("Helical rise (\u00C5): ")    + m_amyloidRiseEdit->width();
                 int r1 = fm.horizontalAdvance("Helical twist (\u00B0): ")   + m_amyloidTwistEdit->width();
-                int r2 = fm.horizontalAdvance("Diameter (\u00C5): ")        + m_amyloidDiamEdit->width();
-                int r2b = fm.horizontalAdvance("Smooth (\u00C5): ")         + m_amyloidSmoothEdit->width();
+                int r2a = fm.horizontalAdvance("Long axis (\u00C5): ")      + m_amyloidLongAxisEdit->width();
+                int r2b = fm.horizontalAdvance("Short axis (\u00C5): ")     + m_amyloidShortAxisEdit->width();
+                int r2c = fm.horizontalAdvance("Smooth (\u00C5): ")         + m_amyloidSmoothEdit->width();
                 int r3n = m_amyloidNoiseBtn->sizeHint().width() + 8 + fm.horizontalAdvance("Sigma: ") + m_amyloidNoiseEdit->width();
                 int r3i = m_amyloidSignalBtn->width();
                 QString infoStr = QString("Filaments: %1  Click image to place start & end")
                                       .arg(m_amyloidFilaments.size());
                 int r4 = fm.horizontalAdvance(infoStr);
                 int r5 = m_amyloidCancelBtn->width() + 8 + m_amyloidComputeBtn->width();
-                textW = std::max({r0, r1, r2, r2b, r3n, r3i, r4, r5});
+                textW = std::max({r0, r1, r2a, r2b, r2c, r3n, r3i, r4, r5});
             }
 
             int rw = textW * 6 / 5 + 2 * margin;
@@ -2224,26 +2225,28 @@ void FtWindow::paintEvent(QPaintEvent *)
                 m_amyloidRiseEdit->move(tx + fm.horizontalAdvance("Helical rise (\u00C5): "), ty);
                 p.drawText(tx, ty + lh + fm.ascent(), "Helical twist (\u00B0):");
                 m_amyloidTwistEdit->move(tx + fm.horizontalAdvance("Helical twist (\u00B0): "), ty + lh);
-                p.drawText(tx, ty + lh * 2 + fm.ascent(), "Diameter (\u00C5):");
-                m_amyloidDiamEdit->move(tx + fm.horizontalAdvance("Diameter (\u00C5): "), ty + lh * 2);
-                p.drawText(tx, ty + lh * 3 + fm.ascent(), "Smooth (\u00C5):");
-                m_amyloidSmoothEdit->move(tx + fm.horizontalAdvance("Smooth (\u00C5): "), ty + lh * 3);
+                p.drawText(tx, ty + lh * 2 + fm.ascent(), "Long axis (\u00C5):");
+                m_amyloidLongAxisEdit->move(tx + fm.horizontalAdvance("Long axis (\u00C5): "), ty + lh * 2);
+                p.drawText(tx, ty + lh * 3 + fm.ascent(), "Short axis (\u00C5):");
+                m_amyloidShortAxisEdit->move(tx + fm.horizontalAdvance("Short axis (\u00C5): "), ty + lh * 3);
+                p.drawText(tx, ty + lh * 4 + fm.ascent(), "Smooth (\u00C5):");
+                m_amyloidSmoothEdit->move(tx + fm.horizontalAdvance("Smooth (\u00C5): "), ty + lh * 4);
                 // Noise checkbox + sigma edit on the same row
-                m_amyloidNoiseBtn->move(tx, ty + lh * 4);
+                m_amyloidNoiseBtn->move(tx, ty + lh * 5);
                 int noiseLblX = tx + m_amyloidNoiseBtn->sizeHint().width() + 8;
-                p.drawText(noiseLblX, ty + lh * 4 + fm.ascent(), "Sigma:");
-                m_amyloidNoiseEdit->move(noiseLblX + fm.horizontalAdvance("Sigma: "), ty + lh * 4);
+                p.drawText(noiseLblX, ty + lh * 5 + fm.ascent(), "Sigma:");
+                m_amyloidNoiseEdit->move(noiseLblX + fm.horizontalAdvance("Sigma: "), ty + lh * 5);
                 // Signal polarity button
-                m_amyloidSignalBtn->move(tx, ty + lh * 5);
+                m_amyloidSignalBtn->move(tx, ty + lh * 6);
                 // Info + buttons
                 QString infoStr;
                 if (m_amyloidPlacing == 1)
                     infoStr = QString("Filaments: %1  Click to place end point").arg(m_amyloidFilaments.size());
                 else
                     infoStr = QString("Filaments: %1  Click image to place start & end").arg(m_amyloidFilaments.size());
-                p.drawText(tx, ty + lh * 6 + fm.ascent(), infoStr);
-                m_amyloidCancelBtn->move(tx, ty + lh * 7);
-                m_amyloidComputeBtn->move(rx + rw - margin - m_amyloidComputeBtn->width(), ty + lh * 7);
+                p.drawText(tx, ty + lh * 7 + fm.ascent(), infoStr);
+                m_amyloidCancelBtn->move(tx, ty + lh * 8);
+                m_amyloidComputeBtn->move(rx + rw - margin - m_amyloidComputeBtn->width(), ty + lh * 8);
             }
         }
     }

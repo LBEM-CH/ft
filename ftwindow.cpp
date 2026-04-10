@@ -516,14 +516,24 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
         "The twist determines the crossover distance visible\n"
         "in projection (crossover = 360 / |twist| \u00D7 rise).");
     m_amyloidTwistEdit->hide();
-    m_amyloidDiamEdit = new QLineEdit("150", this);
-    m_amyloidDiamEdit->setFixedSize(60, 22);
-    m_amyloidDiamEdit->setStyleSheet("background:#222; color:white; border:1px solid #888;");
-    m_amyloidDiamEdit->setToolTip(
-        "Filament diameter in \u00C5ngstr\u00F6m. This is the outer diameter\n"
-        "of the helical tube. At 1 \u00C5/pixel this equals the diameter\n"
-        "in pixels. Typical amyloid filaments are 60\u2013150 \u00C5 wide.");
-    m_amyloidDiamEdit->hide();
+    m_amyloidLongAxisEdit = new QLineEdit("150", this);
+    m_amyloidLongAxisEdit->setFixedSize(60, 22);
+    m_amyloidLongAxisEdit->setStyleSheet("background:#222; color:white; border:1px solid #888;");
+    m_amyloidLongAxisEdit->setToolTip(
+        "Long axis of the elliptical pancake layer in \u00C5ngstr\u00F6m.\n"
+        "This is the larger dimension of the oval \u03B2-sheet cross-section.\n"
+        "At 1 \u00C5/pixel this equals the long axis in pixels.\n"
+        "Typical amyloid filaments: 100\u2013150 \u00C5.");
+    m_amyloidLongAxisEdit->hide();
+    m_amyloidShortAxisEdit = new QLineEdit("80", this);
+    m_amyloidShortAxisEdit->setFixedSize(60, 22);
+    m_amyloidShortAxisEdit->setStyleSheet("background:#222; color:white; border:1px solid #888;");
+    m_amyloidShortAxisEdit->setToolTip(
+        "Short axis of the elliptical pancake layer in \u00C5ngstr\u00F6m.\n"
+        "This is the smaller dimension of the oval \u03B2-sheet cross-section.\n"
+        "Setting this equal to the long axis gives a circular pancake.\n"
+        "Typical values: 50\u201380% of the long axis.");
+    m_amyloidShortAxisEdit->hide();
     m_amyloidSmoothEdit = new QLineEdit("1.5", this);
     m_amyloidSmoothEdit->setFixedSize(60, 22);
     m_amyloidSmoothEdit->setStyleSheet("background:#222; color:white; border:1px solid #888;");
@@ -536,7 +546,7 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
         "Typical: 1\u20133 \u00C5. Set to 0 for perfectly sharp layers.");
     m_amyloidSmoothEdit->hide();
     m_amyloidNoiseBtn = new QCheckBox("Add gray noise", this);
-    m_amyloidNoiseBtn->setStyleSheet("color: white;");
+    m_amyloidNoiseBtn->setStyleSheet("color: #333;");
     m_amyloidNoiseBtn->setChecked(true);
     m_amyloidNoiseBtn->setToolTip(
         "Add Gaussian noise to the entire image after rendering the\n"

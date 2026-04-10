@@ -321,7 +321,8 @@ private:
     bool        m_amyloidRendered = false; // true after Compute, suppresses overlay lines
     QLineEdit  *m_amyloidRiseEdit     = nullptr;
     QLineEdit  *m_amyloidTwistEdit    = nullptr;
-    QLineEdit  *m_amyloidDiamEdit     = nullptr;
+    QLineEdit  *m_amyloidLongAxisEdit  = nullptr;
+    QLineEdit  *m_amyloidShortAxisEdit = nullptr;
     QLineEdit  *m_amyloidSmoothEdit   = nullptr;
     QCheckBox  *m_amyloidNoiseBtn     = nullptr;
     QLineEdit  *m_amyloidNoiseEdit    = nullptr;
