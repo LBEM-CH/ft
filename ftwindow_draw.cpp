@@ -199,20 +199,17 @@ void FtWindow::drawMinMax(QPainter &p, const QRect &frame,
     p.setFont(f);
     p.setPen(Qt::white);
 
-    QString text;
-    if (hasCur)
-        text = QString("Current: %1     Min: %2     Max: %3")
-                   .arg(curVal, 0, 'g', 5)
-                   .arg(minVal, 0, 'g', 5)
-                   .arg(maxVal, 0, 'g', 5);
-    else
-        text = QString("Min: %1     Max: %2")
-                   .arg(minVal, 0, 'g', 5)
-                   .arg(maxVal, 0, 'g', 5);
-
     QFontMetrics fm(f);
-    int tw = fm.horizontalAdvance(text);
-    p.drawText(frame.right() - tw, frame.top() - 5, text);
+    QString minMaxText = QString("Min: %1     Max: %2")
+                   .arg(minVal, 0, 'g', 5)
+                   .arg(maxVal, 0, 'g', 5);
+    int mmw = fm.horizontalAdvance(minMaxText);
+    p.drawText(frame.right() - mmw, frame.top() - 5, minMaxText);
+    if (hasCur) {
+        QString curText = QString("Current: %1").arg(curVal, 0, 'g', 5);
+        int cw = fm.horizontalAdvance(curText);
+        p.drawText(frame.right() - cw, frame.top() - 5 - fm.height(), curText);
+    }
 }
 
 void FtWindow::drawHistogram(QPainter &p, const QRect &frame,
@@ -476,14 +473,12 @@ void FtWindow::drawLineFilter(QPainter &p, const QRect &screenRect,
     double normX = -std::sin(angle);
     double normY =  std::cos(angle);
 
-    double baseX = scrCx + m_lineOffset * normX * scaleX;
-    double baseY = scrCy + m_lineOffset * normY * scaleY;
     double widthPx = lineWidth * std::min(scaleX, scaleY);
     if (widthPx < 1.0) widthPx = 1.0;
 
-    auto clipLine = [&](double shift) {
-        double x0 = baseX + shift * normX;
-        double y0 = baseY + shift * normY;
+    auto clipLine = [&](double bx, double by, double shift) {
+        double x0 = bx + shift * normX;
+        double y0 = by + shift * normY;
         double tMin = -1e9, tMax = 1e9;
 
         auto clipAxis = [&](double p0, double dp, double lo, double hi) {
@@ -505,20 +500,25 @@ void FtWindow::drawLineFilter(QPainter &p, const QRect &screenRect,
                       x0 + tMax * dirX, y0 + tMax * dirY);
     };
 
-    QLineF mid = clipLine(0.0);
-    QLineF upper = clipLine(widthPx / 2.0);
-    QLineF lower = clipLine(-widthPx / 2.0);
-
+    // Draw both the line and its Friedel symmetric mate (at -offset)
+    double offsets[2] = { m_lineOffset, -m_lineOffset };
     p.save();
     p.setRenderHint(QPainter::Antialiasing, true);
     p.setClipRect(screenRect);
-    p.setPen(QPen(QColor(100, 160, 255, 80), std::max(1.0, widthPx)));
-    p.drawLine(mid);
-    p.setPen(QPen(QColor(80, 130, 255), 2));
-    p.drawLine(mid);
-    p.setPen(QPen(QColor(80, 130, 255, 180), 1));
-    p.drawLine(upper);
-    p.drawLine(lower);
+    for (double off : offsets) {
+        double baseX = scrCx + off * normX * scaleX;
+        double baseY = scrCy + off * normY * scaleY;
+        QLineF mid   = clipLine(baseX, baseY, 0.0);
+        QLineF upper = clipLine(baseX, baseY, widthPx / 2.0);
+        QLineF lower = clipLine(baseX, baseY, -widthPx / 2.0);
+        p.setPen(QPen(QColor(100, 160, 255, 80), std::max(1.0, widthPx)));
+        p.drawLine(mid);
+        p.setPen(QPen(QColor(80, 130, 255), 2));
+        p.drawLine(mid);
+        p.setPen(QPen(QColor(80, 130, 255, 180), 1));
+        p.drawLine(upper);
+        p.drawLine(lower);
+    }
     p.restore();
 }
 

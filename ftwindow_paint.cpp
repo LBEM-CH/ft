@@ -1517,16 +1517,17 @@ void FtWindow::paintEvent(QPaintEvent *)
 
                 QFont f; f.setPixelSize(11); p.setFont(f); p.setPen(Qt::white);
                 QFontMetrics fm2(f);
-                QString text;
-                if (hasAmp && hasPh)
-                    text = QString("Current amplitude: %1     Current phase: %2     Min: %3     Max: %4")
-                               .arg(curAmp, 0, 'g', 5).arg(curPhase, 0, 'g', 5)
+                QString minMaxText = QString("Min: %1     Max: %2")
                                .arg(m_powerMin, 0, 'g', 5).arg(m_powerMax, 0, 'g', 5);
-                else
-                    text = QString("Min: %1     Max: %2")
-                               .arg(m_powerMin, 0, 'g', 5).arg(m_powerMax, 0, 'g', 5);
-                int tw = fm2.horizontalAdvance(text);
-                p.drawText(frame.right() - tw, frame.top() - 5, text);
+                int mmw = fm2.horizontalAdvance(minMaxText);
+                int lineH = fm2.height();
+                p.drawText(frame.right() - mmw, frame.top() - 5, minMaxText);
+                if (hasAmp && hasPh) {
+                    QString curText = QString("Current amplitude: %1     Current phase: %2")
+                                   .arg(curAmp, 0, 'g', 5).arg(curPhase, 0, 'g', 5);
+                    int cw = fm2.horizontalAdvance(curText);
+                    p.drawText(frame.right() - cw, frame.top() - 5 - lineH, curText);
+                }
             } else {
                 drawMinMax(p, frame, m_powerMin, m_powerMax, curVal, hasCur);
             }
@@ -1544,7 +1545,7 @@ void FtWindow::paintEvent(QPaintEvent *)
 
                 int wheelD = std::min(histH, histX - frame.x() - 4);
                 if (wheelD > 8) {
-                    int wcx = histX - wheelD / 2 - 4;
+                    int wcx = histX - wheelD / 2 - 12;
                     int wcy = histY + histH / 2;
                     int r = wheelD / 2;
 
@@ -2423,6 +2424,23 @@ void FtWindow::paintEvent(QPaintEvent *)
                 QFont cf; cf.setPixelSize(9); p.setFont(cf);
                 p.setPen(QColor(200, 60, 60));
                 p.drawText((int)centerXp + 3, plotY + 10, "center");
+            }
+
+            // Dotted vertical lines at ±0.5 reciprocal pixels
+            {
+                double halfN = m_fftN / 2.0;
+                double maxProj = halfN * std::sqrt(2.0);
+                double projMin = -maxProj;
+                double freqs[2] = { -0.5, 0.5 };
+                p.setPen(QPen(QColor(120, 120, 120), 1, Qt::DotLine));
+                for (double freq : freqs) {
+                    double projDist = freq * m_fftN;
+                    int idx = (int)std::round(projDist - projMin);
+                    if (idx >= 0 && idx < nPts) {
+                        double xp = plotX + (double)idx / (nPts - 1) * plotW;
+                        p.drawLine((int)xp, plotY, (int)xp, plotY + plotH);
+                    }
+                }
             }
 
             // Draw axes

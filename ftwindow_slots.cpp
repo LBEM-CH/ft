@@ -2333,8 +2333,10 @@ void FtWindow::onApplyLineFilter()
                 for (int x = 0; x < N; x++) {
                     double relX = x - imgCenter;
                     double relY = y - imgCenter;
-                    double dist = std::abs(relX * normX + relY * normY - lineOff);
-                    bool inside = dist <= halfWidth;
+                    double proj = relX * normX + relY * normY;
+                    double dist1 = std::abs(proj - lineOff);
+                    double dist2 = std::abs(proj + lineOff);  // Friedel mate
+                    bool inside = dist1 <= halfWidth || dist2 <= halfWidth;
                     if ((eraseOutside && !inside) || (!eraseOutside && inside))
                         m_fftData[y * N + x] = Complex(0.0, 0.0);
                 }
