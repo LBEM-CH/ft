@@ -4,11 +4,12 @@ How to build and run the WASM server
 Prerequisites:
   - Emscripten SDK at ~/Projects/emsdk (version 3.1.56, required by Qt 6.8)
   - Qt 6.8.3 WASM kit at ~/Qt/6.8.3/wasm_singlethread/
-  - cmake (install via: brew install cmake)
+  - Qt 6.8.3 host kit (Linux: ~/Qt/6.8.3/gcc_64/, macOS: ~/Qt/6.8.3/macos/)
+  - cmake (Linux: apt install cmake, macOS: brew install cmake)
   - python3 (for aqtinstall and the dev server)
   - git
 
-0. Install prerequisites (one-time setup on macOS):
+0. Install prerequisites (one-time setup):
 
    a) Install Emscripten SDK 3.1.56:
 
@@ -20,20 +21,30 @@ Prerequisites:
       source ./emsdk_env.sh
       em++ --version              # verify it works
 
-   b) Install Qt 6.8.3 WASM kit using aqtinstall:
+   b) Install Qt 6.8.3 WASM kit + host kit using aqtinstall:
 
       pip3 install aqtinstall
+
+      # WASM kit (same on all platforms)
       aqt install-qt all_os wasm 6.8.3 wasm_singlethread --outputdir ~/Qt
-      aqt install-qt mac desktop 6.8.3 --outputdir ~/Qt
 
-      This installs the WASM kit to ~/Qt/6.8.3/wasm_singlethread/
-      and the macOS host Qt to ~/Qt/6.8.3/macos/ (required for
-      cross-compilation).
+      # Host kit (must match your OS — required for cross-compilation)
+      # Linux:
+      aqt install-qt linux desktop 6.8.3 gcc_64 --outputdir ~/Qt
+      # macOS:
+      # aqt install-qt mac desktop 6.8.3 --outputdir ~/Qt
 
-      Fix execute permissions (aqtinstall does not set them):
-      chmod +x ~/Qt/6.8.3/wasm_singlethread/bin/qt-cmake \
-               ~/Qt/6.8.3/wasm_singlethread/bin/qt-cmake-create \
-               ~/Qt/6.8.3/wasm_singlethread/bin/qt-configure-module
+      # This installs the WASM kit to ~/Qt/6.8.3/wasm_singlethread/
+      # and the host Qt to ~/Qt/6.8.3/gcc_64/ (Linux)
+      # or ~/Qt/6.8.3/macos/ (macOS).
+
+      # Fix execute permissions (aqtinstall does not set them — required,
+      # otherwise qt-cmake fails with "Permission denied"):
+      chmod +x ~/Qt/6.8.3/wasm_singlethread/bin/*
+      # Linux host kit:
+      chmod +x ~/Qt/6.8.3/gcc_64/bin/*
+      # macOS host kit:
+      # chmod +x ~/Qt/6.8.3/macos/bin/*
 
 1. Rebuild (only needed after code changes):
 
@@ -41,9 +52,14 @@ Prerequisites:
    cd ~/Projects/ft
    rm -rf build_wasm
    mkdir build_wasm && cd build_wasm
+   # Linux:
    ~/Qt/6.8.3/wasm_singlethread/bin/qt-cmake \
-       -DQT_HOST_PATH=$HOME/Qt/6.8.3/macos \
-       -DQT_HOST_PATH_CMAKE_DIR=$HOME/Qt/6.8.3/macos/lib/cmake ..
+       -DQT_HOST_PATH=$HOME/Qt/6.8.3/gcc_64 \
+       -DQT_HOST_PATH_CMAKE_DIR=$HOME/Qt/6.8.3/gcc_64/lib/cmake ..
+   # macOS (replace gcc_64 with macos):
+   # ~/Qt/6.8.3/wasm_singlethread/bin/qt-cmake \
+   #     -DQT_HOST_PATH=$HOME/Qt/6.8.3/macos \
+   #     -DQT_HOST_PATH_CMAKE_DIR=$HOME/Qt/6.8.3/macos/lib/cmake ..
    cmake --build .
    cp ~/Qt/6.8.3/wasm_singlethread/plugins/platforms/qtloader.js .
    cp ~/Qt/6.8.3/wasm_singlethread/plugins/platforms/qtlogo.svg .
@@ -56,16 +72,23 @@ Prerequisites:
 2. Start the server:
 
    cd ~/Projects/ft/build_wasm
-   ipconfig getifaddr en0
+   # Linux:
+   hostname -I | awk '{print $1}'
+   # macOS: ipconfig getifaddr en0
+
+   # Optional, Linux only, if ufw is installed/enabled and you need
+   # access from other machines on your network:
+   # sudo ufw allow 8080/tcp
+
    python3 -m http.server 8080
 
 3. Open in browser:
 
    Local:   http://localhost:8080/ft.html
-   Network: http://192.168.1.148:8080/ft.html
-            (use "ipconfig getifaddr en0" to find current IP)
+   Network: http://<your-ip>:8080/ft.html
 
 4. Stop the server:
 
    Press Ctrl+C in the terminal, or:
-   lsof -ti:8080 | xargs kill -9
+   # Linux: fuser -k 8080/tcp
+   # macOS: lsof -ti:8080 | xargs kill -9

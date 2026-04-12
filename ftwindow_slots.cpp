@@ -23,8 +23,8 @@ void FtWindow::onLoadImage()
           << "Exercise3-2D-Crystal/Polyhead_virus_512.png"
           << "Exercise4-Eyes/eyes.png"
           << "Exercise5-Text/Dot_black_center_1024.png"
-          << "Exercise5-Text/Fourier_text_white_1024.png"
           << "Exercise5-Text/Fourier_text_black_1024.png"
+          << "Exercise5-Text/Fourier_text_white_1024.png"
           << "Exercise5-Text/Fourier_word_black_1024.png"
           << "Exercise5-Text/Letter_f_black_1024.png"
           << "Exercise5-Text/Letter_o_white_center_1024.png"
@@ -35,22 +35,80 @@ void FtWindow::onLoadImage()
           << "Exercise6-Photo-Multiplication/andreas.png"
           << "Exercise7-Single_particle_EM/apoferritin_1024.png"
           << "Exercise7-Single_particle_EM/apoferritin_1024_anisotropic.png"
+          << "Exercise7-Single_particle_EM/apoferritin_2048.png"
+          << "Exercise7-Single_particle_EM/apoferritin_2048_anisotropic.png"
           << "Exercise8-Apple/apple_clean.png"
           << "Exercise8-Apple/apple_corners_labeled.png"
           << "Exercise8-Apple/apple_noisy.png"
-          << "Exercise8-Apple/apple_very_noisy.png";
+          << "Exercise8-Apple/apple_very_noisy.png"
+          << "Exercise9-Artemin-Protein/size_1024_rescaled_cropped/apoartcns_006.png"
+          << "Exercise9-Artemin-Protein/size_1024_rescaled_cropped/apoartcns_010.png"
+          << "Exercise9-Artemin-Protein/size_1024_rescaled_cropped/apoartcns_011.png"
+          << "Exercise9-Artemin-Protein/size_1024_rescaled_cropped/apoartcns_012.png"
+          << "Exercise9-Artemin-Protein/size_1024_rescaled_cropped/apoartcns_013.png"
+          << "Exercise9-Artemin-Protein/size_1024_rescaled_cropped/apoartcns_014.png"
+          << "Exercise9-Artemin-Protein/size_1024_rescaled_cropped/apoartcns_015.png"
+          << "Exercise9-Artemin-Protein/size_1024_rescaled_cropped/apoartcns_016.png"
+          << "Exercise9-Artemin-Protein/size_1024_rescaled_cropped/reference1_1024_rescaled_cropped.png"
+          << "Exercise9-Artemin-Protein/size_1024_rescaled_cropped/reference2_1024_rescaled_cropped.png"
+          << "Exercise9-Artemin-Protein/size_2048_cropped/apoartcns_006.png"
+          << "Exercise9-Artemin-Protein/size_2048_cropped/apoartcns_010.png"
+          << "Exercise9-Artemin-Protein/size_2048_cropped/apoartcns_011.png"
+          << "Exercise9-Artemin-Protein/size_2048_cropped/apoartcns_012.png"
+          << "Exercise9-Artemin-Protein/size_2048_cropped/apoartcns_013.png"
+          << "Exercise9-Artemin-Protein/size_2048_cropped/apoartcns_014.png"
+          << "Exercise9-Artemin-Protein/size_2048_cropped/apoartcns_015.png"
+          << "Exercise9-Artemin-Protein/size_2048_cropped/apoartcns_016.png"
+          << "Exercise9-Artemin-Protein/size_2048_cropped/reference1_2048_cropped.png"
+          << "Exercise9-Artemin-Protein/size_2048_cropped/reference2_2048_cropped.png"
+          << "Exercise9-Artemin-Protein/size_2048_rescaled/apoartcns_006.png"
+          << "Exercise9-Artemin-Protein/size_2048_rescaled/apoartcns_010.png"
+          << "Exercise9-Artemin-Protein/size_2048_rescaled/apoartcns_011.png"
+          << "Exercise9-Artemin-Protein/size_2048_rescaled/apoartcns_012.png"
+          << "Exercise9-Artemin-Protein/size_2048_rescaled/apoartcns_013.png"
+          << "Exercise9-Artemin-Protein/size_2048_rescaled/apoartcns_014.png"
+          << "Exercise9-Artemin-Protein/size_2048_rescaled/apoartcns_015.png"
+          << "Exercise9-Artemin-Protein/size_2048_rescaled/apoartcns_016.png"
+          << "Exercise9-Artemin-Protein/size_2048_rescaled/reference1_2048_rescaled.png"
+          << "Exercise9-Artemin-Protein/size_2048_rescaled/reference2_2048_rescaled.png"
+          << "Own_Images/blank_1024.png";
 
-    // Use non-blocking open() instead of exec() for WASM compatibility
-    auto *dlg = new QInputDialog(this);
+    // Use a QListWidget inside a QDialog so the list scrolls within the
+    // dialog instead of spilling off the page like a combo-box popup.
+    auto *dlg = new QDialog(this);
     dlg->setAttribute(Qt::WA_DeleteOnClose);
     dlg->setWindowTitle("Load Example Image");
-    dlg->setLabelText("Select an image:");
-    dlg->setComboBoxItems(items);
-    dlg->setComboBoxEditable(false);
-    connect(dlg, &QDialog::accepted, this, [this, dlg]() {
-        QString chosen = dlg->textValue();
-        if (!chosen.isEmpty())
-            fetchAndLoadImage(chosen);
+    dlg->setModal(true);
+
+    auto *layout = new QVBoxLayout(dlg);
+    auto *list = new QListWidget(dlg);
+    list->addItems(items);
+    if (!items.isEmpty())
+        list->setCurrentRow(0);
+    layout->addWidget(list);
+
+    auto *buttons = new QDialogButtonBox(
+        QDialogButtonBox::Ok | QDialogButtonBox::Cancel, dlg);
+    layout->addWidget(buttons);
+    connect(buttons, &QDialogButtonBox::accepted, dlg, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, dlg, &QDialog::reject);
+    connect(list, &QListWidget::itemDoubleClicked, dlg, &QDialog::accept);
+
+    // Constrain dialog so it fits inside the browser viewport.
+    if (auto *scr = QGuiApplication::primaryScreen()) {
+        QSize avail = scr->availableSize();
+        dlg->resize(qMin(500, avail.width() - 40),
+                    qMin(500, avail.height() - 80));
+    } else {
+        dlg->resize(500, 500);
+    }
+
+    connect(dlg, &QDialog::accepted, this, [this, list]() {
+        if (auto *it = list->currentItem()) {
+            QString chosen = it->text();
+            if (!chosen.isEmpty())
+                fetchAndLoadImage(chosen);
+        }
     });
     dlg->open();
 #else
@@ -2333,8 +2391,10 @@ void FtWindow::onApplyLineFilter()
                 for (int x = 0; x < N; x++) {
                     double relX = x - imgCenter;
                     double relY = y - imgCenter;
-                    double dist = std::abs(relX * normX + relY * normY - lineOff);
-                    bool inside = dist <= halfWidth;
+                    double proj = relX * normX + relY * normY;
+                    double dist1 = std::abs(proj - lineOff);
+                    double dist2 = std::abs(proj + lineOff);  // Friedel mate
+                    bool inside = dist1 <= halfWidth || dist2 <= halfWidth;
                     if ((eraseOutside && !inside) || (!eraseOutside && inside))
                         m_fftData[y * N + x] = Complex(0.0, 0.0);
                 }
@@ -3028,7 +3088,6 @@ void FtWindow::runPeakSearch()
 void FtWindow::onPeakCancel()
 {
     m_peakPickActive = false;
-    m_peaks.clear();
     m_peakSourceCombo->hide();
     m_peakThresholdSlider->hide();
     m_peakThresholdLabel->hide();

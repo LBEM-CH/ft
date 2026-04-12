@@ -12,6 +12,10 @@
 #include <QPainterPath>
 #include <QFileDialog>
 #include <QInputDialog>
+#include <QDialog>
+#include <QListWidget>
+#include <QVBoxLayout>
+#include <QDialogButtonBox>
 #include <QBuffer>
 #include <QSettings>
 #include <QMouseEvent>

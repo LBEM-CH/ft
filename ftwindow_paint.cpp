@@ -1311,121 +1311,6 @@ void FtWindow::paintEvent(QPaintEvent *)
             }
         }
 
-        // Math calculations overlay frame
-        if (m_mathActive) {
-            int fw = static_cast<int>(inner.width()  * 0.80);
-            int fh = static_cast<int>(inner.height() * 0.30);
-            int fx = inner.x() + (inner.width()  - fw) / 2;
-            int fy = inner.y() + (inner.height() - fh) / 2;
-            QRect mathRect(fx, fy, fw, fh);
-
-            drawShadowRect(p, mathRect);
-
-            // Progress bar: light blue fill from left to right
-            if (m_mathProgress >= 0.0 && m_mathProgress <= 1.0) {
-                int progW = static_cast<int>(fw * m_mathProgress);
-                p.setPen(Qt::NoPen);
-                p.setBrush(QColor(180, 210, 255));
-                p.drawRect(fx + 1, fy + 1, progW, fh - 2);
-            }
-
-            // Scale widget sizes relative to frame width
-            int fontSize = std::clamp(fw / 30, 12, 32);
-            int comboH = fontSize * 2;
-            int bufW = fw / 8;
-            int eqW  = fw / 16;
-            int opW  = fw * 3 / 10;
-            int btnW = fw * 3 / 16;
-            int btnH = comboH;
-            int gap  = fw / 80;
-
-            // Apply scaled stylesheet to all math combos
-            QString comboSS = QString(
-                "QComboBox { background:white; color:black; border:1px solid #888;"
-                "  padding: 2px 4px; font-size: %1px; font-weight: bold; }"
-                "QComboBox::drop-down { width: %2px; }"
-                "QComboBox QAbstractItemView { background:white; color:black;"
-                "  selection-background-color:#ccc; min-width: 60px; padding: 4px;"
-                "  font-size: %1px; }")
-                .arg(fontSize).arg(fontSize);
-            m_mathOutCombo->setStyleSheet(comboSS);
-            m_mathIn1Combo->setStyleSheet(comboSS);
-            m_mathOpCombo->setStyleSheet(comboSS);
-            m_mathIn2Combo->setStyleSheet(comboSS);
-
-            m_mathOutCombo->setFixedSize(bufW, comboH);
-            m_mathIn1Combo->setFixedSize(bufW, comboH);
-            m_mathOpCombo->setFixedSize(opW, comboH);
-            m_mathIn2Combo->setFixedSize(bufW, comboH);
-            m_mathEqualsLabel->setFixedSize(eqW, comboH);
-            m_mathEqualsLabel->setStyleSheet(
-                QString("color: black; font-size: %1px; font-weight: bold;").arg(fontSize * 4 / 3));
-
-            m_mathCancelBtn->setFixedSize(btnW, btnH);
-            m_mathComputeBtn->setFixedSize(btnW, btnH);
-            QString btnSS = QString(
-                "QPushButton { background-color: #888; border: 2px outset #aaa;"
-                "  color: #eee; padding: 2px; font-size: %1px; font-weight: bold; }").arg(fontSize);
-            m_mathCancelBtn->setStyleSheet(btnSS);
-            m_mathComputeBtn->setStyleSheet(btnSS);
-
-            // Position the equation widgets centered in the frame
-            int totalEqW = bufW + gap + eqW + gap + bufW + gap + opW + gap + bufW;
-            int eqX = fx + (fw - totalEqW) / 2;
-            int eqY = fy + fh / 2 - comboH / 2;
-
-            // Title in top-left corner
-            int titleBottom;
-            {
-                int titleFontSize = std::max(14, fontSize * 4 / 3);
-                int titleMarginX = std::max(8, fw / 40);
-                int titleMarginY = std::max(6, fh / 15);
-                QFont tf;
-                tf.setPixelSize(titleFontSize);
-                tf.setBold(true);
-                p.setFont(tf);
-                p.setPen(QColor(60, 60, 60));
-                QFontMetrics tfm(tf);
-                int titleBaseY = fy + titleMarginY + tfm.ascent();
-                p.drawText(fx + titleMarginX, titleBaseY, "Image calculation");
-                titleBottom = titleBaseY + tfm.descent();
-            }
-
-            // Draw clean equation text centered between title and combo row
-            {
-                QString opSym = m_mathOpCombo->currentText();
-                int opIdx2 = m_mathOpCombo->currentIndex();
-                if (opIdx2 == 4) opSym = QString::fromUtf8("\u2731");       // convolute: ✱
-                else if (opIdx2 == 5) opSym = QString::fromUtf8("\u229B");  // correlate: ⊛
-                QString eqText = QString("%1 = %2 %3 %4")
-                    .arg(QChar('a' + m_mathOutCombo->currentIndex()))
-                    .arg(QChar('a' + m_mathIn1Combo->currentIndex()))
-                    .arg(opSym)
-                    .arg(QChar('a' + m_mathIn2Combo->currentIndex()));
-                int eqFontSize = std::max(16, fontSize * 3 / 2);
-                QFont ef("Palatino");
-                ef.setPixelSize(eqFontSize);
-                p.setFont(ef);
-                p.setPen(QColor(40, 40, 40));
-                QFontMetrics efm(ef);
-                int eqTextW = efm.horizontalAdvance(eqText);
-                int gapCenter = titleBottom + (eqY - titleBottom) / 2;
-                int eqTextY = gapCenter - efm.height() / 2;
-                p.drawText(fx + (fw - eqTextW) / 2, eqTextY + efm.ascent(), eqText);
-            }
-
-            m_mathOutCombo->move(eqX, eqY);        eqX += bufW + gap;
-            m_mathEqualsLabel->move(eqX, eqY);      eqX += eqW + gap;
-            m_mathIn1Combo->move(eqX, eqY);          eqX += bufW + gap;
-            m_mathOpCombo->move(eqX, eqY);           eqX += opW + gap;
-            m_mathIn2Combo->move(eqX, eqY);
-
-            // Cancel in bottom-left, Compute in bottom-right
-            int btnMargin = 8;
-            m_mathCancelBtn->move(fx + btnMargin, fy + fh - btnH - btnMargin);
-            m_mathComputeBtn->move(fx + fw - btnW - btnMargin, fy + fh - btnH - btnMargin);
-        }
-
         DisplayItem &di = m_dispItems[m_numDispItems++];
         di = { inner, imgW, imgH, 0, &m_imageRawPixels, true };
     } else if (m_activeSlot >= 0) {
@@ -1445,6 +1330,138 @@ void FtWindow::paintEvent(QPaintEvent *)
         p.setPen(QPen(QColor(255, 255, 0), 2));
         p.setBrush(Qt::NoBrush);
         p.drawRect(frame);
+    }
+
+    // Math calculations overlay (draws over panel 1 regardless of image state)
+    if (m_mathActive) {
+        int side1 = static_cast<int>(0.7 * std::min(panel1W, panel1H));
+        int imgX = (panel1W - side1) / 2;
+        int imgY = (panel1H - side1) / 2;
+        QRect inner = QRect(imgX, imgY, side1, side1).adjusted(2, 2, -2, -2);
+
+        int fw = static_cast<int>(inner.width()  * 0.80);
+        int fh = static_cast<int>(inner.height() * 0.30);
+        int fx = inner.x() + (inner.width()  - fw) / 2;
+        int fy = inner.y() + (inner.height() - fh) / 2;
+        QRect mathRect(fx, fy, fw, fh);
+
+        drawShadowRect(p, mathRect);
+
+        // Progress bar: light blue fill from left to right
+        if (m_mathProgress >= 0.0 && m_mathProgress <= 1.0) {
+            int progW = static_cast<int>(fw * m_mathProgress);
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(180, 210, 255));
+            p.drawRect(fx + 1, fy + 1, progW, fh - 2);
+        }
+
+        // Scale widget sizes relative to frame width
+        int fontSize = std::clamp(fw / 30, 12, 32);
+        int comboH = fontSize * 2;
+        int bufW = fw / 8;
+        int eqW  = fw / 16;
+        int opW  = fw * 3 / 10;
+        int btnW = fw * 3 / 16;
+        int btnH = comboH;
+        int gap  = fw / 80;
+
+        // Apply scaled stylesheet to all math combos
+        auto setStyleSheetIfChanged = [](QWidget *widget, const QString &styleSheet)
+        {
+            if (widget->styleSheet() != styleSheet)
+                widget->setStyleSheet(styleSheet);
+        };
+        auto setFixedSizeIfChanged = [](QWidget *widget, int w, int h)
+        {
+            if (widget->size() != QSize(w, h))
+                widget->setFixedSize(w, h);
+        };
+
+        QString comboSS = QString(
+            "QComboBox { background:white; color:black; border:1px solid #888;"
+            "  padding: 2px 4px; font-size: %1px; font-weight: bold; }"
+            "QComboBox::drop-down { width: %2px; }"
+            "QComboBox QAbstractItemView { background:white; color:black;"
+            "  selection-background-color:#ccc; min-width: 60px; padding: 4px;"
+            "  font-size: %1px; }")
+            .arg(fontSize).arg(fontSize);
+        setStyleSheetIfChanged(m_mathOutCombo, comboSS);
+        setStyleSheetIfChanged(m_mathIn1Combo, comboSS);
+        setStyleSheetIfChanged(m_mathOpCombo, comboSS);
+        setStyleSheetIfChanged(m_mathIn2Combo, comboSS);
+
+        setFixedSizeIfChanged(m_mathOutCombo, bufW, comboH);
+        setFixedSizeIfChanged(m_mathIn1Combo, bufW, comboH);
+        setFixedSizeIfChanged(m_mathOpCombo, opW, comboH);
+        setFixedSizeIfChanged(m_mathIn2Combo, bufW, comboH);
+        setFixedSizeIfChanged(m_mathEqualsLabel, eqW, comboH);
+        setStyleSheetIfChanged(
+            m_mathEqualsLabel,
+            QString("color: black; font-size: %1px; font-weight: bold;").arg(fontSize * 4 / 3));
+
+        setFixedSizeIfChanged(m_mathCancelBtn, btnW, btnH);
+        setFixedSizeIfChanged(m_mathComputeBtn, btnW, btnH);
+        QString btnSS = QString(
+            "QPushButton { background-color: #888; border: 2px outset #aaa;"
+            "  color: #eee; padding: 2px; font-size: %1px; font-weight: bold; }").arg(fontSize);
+        setStyleSheetIfChanged(m_mathCancelBtn, btnSS);
+        setStyleSheetIfChanged(m_mathComputeBtn, btnSS);
+
+        // Position the equation widgets centered in the frame
+        int totalEqW = bufW + gap + eqW + gap + bufW + gap + opW + gap + bufW;
+        int eqX = fx + (fw - totalEqW) / 2;
+        int eqY = fy + fh / 2 - comboH / 2;
+
+        // Title in top-left corner
+        int titleBottom;
+        {
+            int titleFontSize = std::max(14, fontSize * 4 / 3);
+            int titleMarginX = std::max(8, fw / 40);
+            int titleMarginY = std::max(6, fh / 15);
+            QFont tf;
+            tf.setPixelSize(titleFontSize);
+            tf.setBold(true);
+            p.setFont(tf);
+            p.setPen(QColor(60, 60, 60));
+            QFontMetrics tfm(tf);
+            int titleBaseY = fy + titleMarginY + tfm.ascent();
+            p.drawText(fx + titleMarginX, titleBaseY, "Image calculation");
+            titleBottom = titleBaseY + tfm.descent();
+        }
+
+        // Draw clean equation text centered between title and combo row
+        {
+            QString opSym = m_mathOpCombo->currentText();
+            int opIdx2 = m_mathOpCombo->currentIndex();
+            if (opIdx2 == 4) opSym = QString::fromUtf8("\u2731");       // convolute: ✱
+            else if (opIdx2 == 5) opSym = QString::fromUtf8("\u229B");  // correlate: ⊛
+            QString eqText = QString("%1 = %2 %3 %4")
+                .arg(QChar('a' + m_mathOutCombo->currentIndex()))
+                .arg(QChar('a' + m_mathIn1Combo->currentIndex()))
+                .arg(opSym)
+                .arg(QChar('a' + m_mathIn2Combo->currentIndex()));
+            int eqFontSize = std::max(16, fontSize * 3 / 2);
+            QFont ef("Palatino");
+            ef.setPixelSize(eqFontSize);
+            p.setFont(ef);
+            p.setPen(QColor(40, 40, 40));
+            QFontMetrics efm(ef);
+            int eqTextW = efm.horizontalAdvance(eqText);
+            int gapCenter = titleBottom + (eqY - titleBottom) / 2;
+            int eqTextY = gapCenter - efm.height() / 2;
+            p.drawText(fx + (fw - eqTextW) / 2, eqTextY + efm.ascent(), eqText);
+        }
+
+        m_mathOutCombo->move(eqX, eqY);        eqX += bufW + gap;
+        m_mathEqualsLabel->move(eqX, eqY);      eqX += eqW + gap;
+        m_mathIn1Combo->move(eqX, eqY);          eqX += bufW + gap;
+        m_mathOpCombo->move(eqX, eqY);           eqX += opW + gap;
+        m_mathIn2Combo->move(eqX, eqY);
+
+        // Cancel in bottom-left, Compute in bottom-right
+        int btnMargin = 8;
+        m_mathCancelBtn->move(fx + btnMargin, fy + fh - btnH - btnMargin);
+        m_mathComputeBtn->move(fx + fw - btnW - btnMargin, fy + fh - btnH - btnMargin);
     }
 
     // ---- Panel 2: FFT results -------------------------------------------------
@@ -1517,16 +1534,17 @@ void FtWindow::paintEvent(QPaintEvent *)
 
                 QFont f; f.setPixelSize(11); p.setFont(f); p.setPen(Qt::white);
                 QFontMetrics fm2(f);
-                QString text;
-                if (hasAmp && hasPh)
-                    text = QString("Current amplitude: %1     Current phase: %2     Min: %3     Max: %4")
-                               .arg(curAmp, 0, 'g', 5).arg(curPhase, 0, 'g', 5)
+                QString minMaxText = QString("Min: %1     Max: %2")
                                .arg(m_powerMin, 0, 'g', 5).arg(m_powerMax, 0, 'g', 5);
-                else
-                    text = QString("Min: %1     Max: %2")
-                               .arg(m_powerMin, 0, 'g', 5).arg(m_powerMax, 0, 'g', 5);
-                int tw = fm2.horizontalAdvance(text);
-                p.drawText(frame.right() - tw, frame.top() - 5, text);
+                int mmw = fm2.horizontalAdvance(minMaxText);
+                int lineH = fm2.height();
+                p.drawText(frame.right() - mmw, frame.top() - 5, minMaxText);
+                if (hasAmp && hasPh) {
+                    QString curText = QString("Current amplitude: %1     Current phase: %2")
+                                   .arg(curAmp, 0, 'g', 5).arg(curPhase, 0, 'g', 5);
+                    int cw = fm2.horizontalAdvance(curText);
+                    p.drawText(frame.right() - cw, frame.top() - 5 - lineH, curText);
+                }
             } else {
                 drawMinMax(p, frame, m_powerMin, m_powerMax, curVal, hasCur);
             }
@@ -1544,7 +1562,7 @@ void FtWindow::paintEvent(QPaintEvent *)
 
                 int wheelD = std::min(histH, histX - frame.x() - 4);
                 if (wheelD > 8) {
-                    int wcx = histX - wheelD / 2 - 4;
+                    int wcx = histX - wheelD / 2 - 12;
                     int wcy = histY + histH / 2;
                     int r = wheelD / 2;
 
@@ -1700,6 +1718,27 @@ void FtWindow::paintEvent(QPaintEvent *)
             DisplayItem &d2 = m_dispItems[m_numDispItems++];
             d2 = { inner2, m_fftN, m_fftN, 2, vals2, true };
         }
+    } else if (m_activeSlot >= 0) {
+        // Empty FFT buffer selected – draw yellow frame with uppercase buffer letter
+        int panel2X = cx + 2;
+        int panel2W = width() - panel2X;
+        int panel2H = hy - 1;
+
+        int side = static_cast<int>(0.7 * std::min(panel2W, panel2H));
+        int fx = panel2X + (panel2W - side) / 2;
+        int fy = (panel2H - side) / 2;
+        QRect frame(fx, fy, side, side);
+
+        QFont lf; lf.setBold(true); lf.setPixelSize(labelFontMain); p.setFont(lf);
+        p.setPen(QColor(255, 255, 0));
+        QFontMetrics lfm(lf);
+        QString lab = QString(QChar('A' + m_activeSlot));
+        p.drawText(frame.x() + (frame.width() - lfm.horizontalAdvance(lab)) / 2,
+                   frame.y() - 22, lab);
+
+        p.setPen(QPen(QColor(255, 255, 0), 2));
+        p.setBrush(Qt::NoBrush);
+        p.drawRect(frame);
     }
 
     // ---- Fourier math overlay (panel 2) -----------------------------------------
@@ -2423,6 +2462,23 @@ void FtWindow::paintEvent(QPaintEvent *)
                 QFont cf; cf.setPixelSize(9); p.setFont(cf);
                 p.setPen(QColor(200, 60, 60));
                 p.drawText((int)centerXp + 3, plotY + 10, "center");
+            }
+
+            // Dotted vertical lines at ±0.5 reciprocal pixels
+            {
+                double halfN = m_fftN / 2.0;
+                double maxProj = halfN * std::sqrt(2.0);
+                double projMin = -maxProj;
+                double freqs[2] = { -0.5, 0.5 };
+                p.setPen(QPen(QColor(120, 120, 120), 1, Qt::DotLine));
+                for (double freq : freqs) {
+                    double projDist = freq * m_fftN;
+                    int idx = (int)std::round(projDist - projMin);
+                    if (idx >= 0 && idx < nPts) {
+                        double xp = plotX + (double)idx / (nPts - 1) * plotW;
+                        p.drawLine((int)xp, plotY, (int)xp, plotY + plotH);
+                    }
+                }
             }
 
             // Draw axes
