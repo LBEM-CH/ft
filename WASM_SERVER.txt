@@ -30,7 +30,7 @@ Prerequisites:
 
       # Host kit (must match your OS — required for cross-compilation)
       # Linux:
-      aqt install-qt linux desktop 6.8.3 linux_gcc_64 --outputdir ~/Qt
+      aqt install-qt linux desktop 6.8.3 gcc_64 --outputdir ~/Qt
       # macOS:
       # aqt install-qt mac desktop 6.8.3 --outputdir ~/Qt
 
