@@ -1366,6 +1366,17 @@ void FtWindow::paintEvent(QPaintEvent *)
         int gap  = fw / 80;
 
         // Apply scaled stylesheet to all math combos
+        auto setStyleSheetIfChanged = [](QWidget *widget, const QString &styleSheet)
+        {
+            if (widget->styleSheet() != styleSheet)
+                widget->setStyleSheet(styleSheet);
+        };
+        auto setFixedSizeIfChanged = [](QWidget *widget, int w, int h)
+        {
+            if (widget->size() != QSize(w, h))
+                widget->setFixedSize(w, h);
+        };
+
         QString comboSS = QString(
             "QComboBox { background:white; color:black; border:1px solid #888;"
             "  padding: 2px 4px; font-size: %1px; font-weight: bold; }"
@@ -1374,26 +1385,27 @@ void FtWindow::paintEvent(QPaintEvent *)
             "  selection-background-color:#ccc; min-width: 60px; padding: 4px;"
             "  font-size: %1px; }")
             .arg(fontSize).arg(fontSize);
-        m_mathOutCombo->setStyleSheet(comboSS);
-        m_mathIn1Combo->setStyleSheet(comboSS);
-        m_mathOpCombo->setStyleSheet(comboSS);
-        m_mathIn2Combo->setStyleSheet(comboSS);
+        setStyleSheetIfChanged(m_mathOutCombo, comboSS);
+        setStyleSheetIfChanged(m_mathIn1Combo, comboSS);
+        setStyleSheetIfChanged(m_mathOpCombo, comboSS);
+        setStyleSheetIfChanged(m_mathIn2Combo, comboSS);
 
-        m_mathOutCombo->setFixedSize(bufW, comboH);
-        m_mathIn1Combo->setFixedSize(bufW, comboH);
-        m_mathOpCombo->setFixedSize(opW, comboH);
-        m_mathIn2Combo->setFixedSize(bufW, comboH);
-        m_mathEqualsLabel->setFixedSize(eqW, comboH);
-        m_mathEqualsLabel->setStyleSheet(
+        setFixedSizeIfChanged(m_mathOutCombo, bufW, comboH);
+        setFixedSizeIfChanged(m_mathIn1Combo, bufW, comboH);
+        setFixedSizeIfChanged(m_mathOpCombo, opW, comboH);
+        setFixedSizeIfChanged(m_mathIn2Combo, bufW, comboH);
+        setFixedSizeIfChanged(m_mathEqualsLabel, eqW, comboH);
+        setStyleSheetIfChanged(
+            m_mathEqualsLabel,
             QString("color: black; font-size: %1px; font-weight: bold;").arg(fontSize * 4 / 3));
 
-        m_mathCancelBtn->setFixedSize(btnW, btnH);
-        m_mathComputeBtn->setFixedSize(btnW, btnH);
+        setFixedSizeIfChanged(m_mathCancelBtn, btnW, btnH);
+        setFixedSizeIfChanged(m_mathComputeBtn, btnW, btnH);
         QString btnSS = QString(
             "QPushButton { background-color: #888; border: 2px outset #aaa;"
             "  color: #eee; padding: 2px; font-size: %1px; font-weight: bold; }").arg(fontSize);
-        m_mathCancelBtn->setStyleSheet(btnSS);
-        m_mathComputeBtn->setStyleSheet(btnSS);
+        setStyleSheetIfChanged(m_mathCancelBtn, btnSS);
+        setStyleSheetIfChanged(m_mathComputeBtn, btnSS);
 
         // Position the equation widgets centered in the frame
         int totalEqW = bufW + gap + eqW + gap + bufW + gap + opW + gap + bufW;
