@@ -11,7 +11,7 @@
 #      (select "WebAssembly (single-threaded)" under your Qt version)
 #
 #   3. Set these environment variables (or edit paths below):
-#        QT_WASM_PATH  – path to the Qt WASM kit, e.g. ~/Qt/6.8.0/wasm_singlethread
+#        QT_WASM_PATH  – path to the Qt WASM kit, e.g. ~/Qt/6.8.3/wasm_singlethread
 #        EMSDK         – path to your emsdk directory
 #
 # Usage:
