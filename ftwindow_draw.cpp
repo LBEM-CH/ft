@@ -500,12 +500,15 @@ void FtWindow::drawLineFilter(QPainter &p, const QRect &screenRect,
                       x0 + tMax * dirX, y0 + tMax * dirY);
     };
 
-    // Draw both the line and its Friedel symmetric mate (at -offset)
+    // Draw both the line and its Friedel symmetric mate (at -offset).
+    // When the offset is zero, both positions coincide, so draw only once.
     double offsets[2] = { m_lineOffset, -m_lineOffset };
+    int offsetCount = (m_lineOffset == 0.0) ? 1 : 2;
     p.save();
     p.setRenderHint(QPainter::Antialiasing, true);
     p.setClipRect(screenRect);
-    for (double off : offsets) {
+    for (int i = 0; i < offsetCount; ++i) {
+        double off = offsets[i];
         double baseX = scrCx + off * normX * scaleX;
         double baseY = scrCy + off * normY * scaleY;
         QLineF mid   = clipLine(baseX, baseY, 0.0);
