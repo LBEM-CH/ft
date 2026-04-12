@@ -236,8 +236,52 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
                 double imgX = src.x() + (event->pos().x() - target.x()) * src.width() / target.width();
                 double imgY = src.y() + (event->pos().y() - target.y()) * src.height() / target.height();
 
-                // Check if clicking near an existing control point (for dragging)
                 double hitR = src.width() / target.width() * 8; // 8 screen pixels
+
+                // Right mouse button: delete the filament under the cursor.
+                // Clicking near any control point or segment of a filament
+                // removes that whole filament. If currently placing a start
+                // point, the right click cancels the placement instead.
+                if (event->button() == Qt::RightButton) {
+                    if (m_amyloidPlacing == 1) {
+                        m_amyloidPlacing = 0;
+                        m_amyloidRendered = false;
+                        update();
+                        return;
+                    }
+                    for (int fi = (int)m_amyloidFilaments.size() - 1; fi >= 0; fi--) {
+                        const auto &fil = m_amyloidFilaments[fi];
+                        bool hit = false;
+                        for (const auto &pt : fil.pts) {
+                            double dx = pt.x() - imgX, dy = pt.y() - imgY;
+                            if (dx * dx + dy * dy < hitR * hitR) { hit = true; break; }
+                        }
+                        if (!hit) {
+                            for (int pi = 0; pi + 1 < (int)fil.pts.size(); pi++) {
+                                QPointF a = fil.pts[pi], b = fil.pts[pi + 1];
+                                double abx = b.x() - a.x(), aby = b.y() - a.y();
+                                double len2 = abx * abx + aby * aby;
+                                if (len2 < 1e-6) continue;
+                                double t = ((imgX - a.x()) * abx + (imgY - a.y()) * aby) / len2;
+                                t = std::max(0.0, std::min(1.0, t));
+                                double px = a.x() + t * abx, py = a.y() + t * aby;
+                                double d2 = (imgX - px) * (imgX - px) + (imgY - py) * (imgY - py);
+                                if (d2 < hitR * hitR) { hit = true; break; }
+                            }
+                        }
+                        if (hit) {
+                            m_amyloidFilaments.erase(m_amyloidFilaments.begin() + fi);
+                            m_amyloidDragFil = -1;
+                            m_amyloidDragPt = -1;
+                            m_amyloidRendered = false;
+                            update();
+                            return;
+                        }
+                    }
+                    return;
+                }
+
+                // Check if clicking near an existing control point (for dragging)
                 for (int fi = (int)m_amyloidFilaments.size() - 1; fi >= 0; fi--) {
                     auto &fil = m_amyloidFilaments[fi];
                     for (int pi = 0; pi < (int)fil.pts.size(); pi++) {
@@ -948,8 +992,18 @@ void FtWindow::mouseMoveEvent(QMouseEvent *event)
                 break;
             }
         }
+        // Check if mouse is over a painted parameter-label rectangle
+        QString paramTip;
+        for (const auto &e : m_paramLabelTips) {
+            if (e.first.contains(event->pos())) {
+                paramTip = e.second;
+                break;
+            }
+        }
         if (overHist)
             setToolTip("Click to adjust display parameters");
+        else if (!paramTip.isEmpty())
+            setToolTip(paramTip);
         else if (!m_histDragging)
             setToolTip(QString());
     }
