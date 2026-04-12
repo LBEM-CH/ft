@@ -73,7 +73,7 @@ void FtWindow::paintEvent(QPaintEvent *)
                 (i == 7 && m_p1TaperActive) || (i == 8 && m_binActive) ||
                 (i == 9 && m_mathActive) || (i == 10 && m_peakPickActive) ||
                 (i == 11 && m_extractActive) || (i == 12 && m_gaborActive) ||
-                (i == 13 && m_hessianActive))
+                (i == 13 && m_hessianActive) || (i == 14 && m_amyloidActive))
                 p.setBrush(QColor(60, 60, 60));
             else
                 p.setBrush(QColor(0, 0, 0));
@@ -693,6 +693,38 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
+            // Amyloid filament icon (button 14): letter "A"
+            if (i == 14) {
+                if (m_amyloidActive) {
+                    p.setPen(QPen(Qt::white, 1));
+                    p.setBrush(QColor(60, 60, 60));
+                    p.drawRect(r);
+                }
+                p.setRenderHint(QPainter::Antialiasing, true);
+                QFont gf;
+                gf.setBold(true);
+                gf.setPixelSize(std::max(10, (int)(btnSide * 0.75)));
+                p.setFont(gf);
+                p.setPen(QPen(Qt::white, 1));
+                p.setBrush(Qt::NoBrush);
+                p.drawText(r, Qt::AlignCenter, "A");
+                p.setRenderHint(QPainter::Antialiasing, false);
+
+                if (r.contains(m_mousePos)) {
+                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                    QFontMetrics ttfm(ttf);
+                    QString tip = "Amyloid filament";
+                    int ttw = ttfm.horizontalAdvance(tip) + 8;
+                    int tth = ttfm.height() + 4;
+                    int ttx = r.right() + 4;
+                    int tty = r.center().y() - tth / 2;
+                    p.setPen(QPen(Qt::white, 1));
+                    p.setBrush(QColor(40, 40, 40));
+                    p.drawRect(ttx, tty, ttw, tth);
+                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                }
+            }
+
             // Gabor filter icon (button 12): letter "G"
             if (i == 12) {
                 p.setRenderHint(QPainter::Antialiasing, true);
@@ -1270,6 +1302,83 @@ void FtWindow::paintEvent(QPaintEvent *)
                 p.drawLine(screenX - armLen, screenY, screenX + armLen, screenY);
                 p.drawLine(screenX, screenY - armLen, screenX, screenY + armLen);
             }
+            p.restore();
+        }
+
+        // Draw amyloid filament overlays (control polylines + draggable points)
+        if (m_amyloidActive && (!m_amyloidFilaments.empty() || m_amyloidPlacing == 1)) {
+            QRect target = frame.adjusted(2, 2, -2, -2);
+            QRectF src = m_zoom[0].visibleRect(imgW, imgH);
+            p.save();
+            p.setClipRect(target);
+            p.setRenderHint(QPainter::Antialiasing, true);
+
+            auto imgToScreen = [&](const QPointF &img) -> QPointF {
+                double sx = target.x() + (img.x() - src.x()) / src.width() * target.width();
+                double sy = target.y() + (img.y() - src.y()) / src.height() * target.height();
+                return QPointF(sx, sy);
+            };
+
+            // Draw existing filaments using Catmull-Rom spline curves
+            for (const auto &fil : m_amyloidFilaments) {
+                if (fil.pts.size() < 2) continue;
+                int nPts = (int)fil.pts.size();
+
+                // Only draw spline lines when not yet rendered (avoid visual confusion with FFT)
+                if (!m_amyloidRendered) {
+                    QPen linePen(QColor(0, 200, 255), 2);
+                    p.setPen(linePen);
+
+                    // Build a smooth spline through control points
+                    const int stepsPerSeg = 20;
+                    QPointF prev = imgToScreen(fil.pts[0]);
+                    for (int seg = 0; seg < nPts - 1; seg++) {
+                        // Catmull-Rom uses 4 points: p0, p1, p2, p3
+                        QPointF p0 = fil.pts[std::max(0, seg - 1)];
+                        QPointF p1 = fil.pts[seg];
+                        QPointF p2 = fil.pts[seg + 1];
+                        QPointF p3 = fil.pts[std::min(nPts - 1, seg + 2)];
+                        for (int step = 1; step <= stepsPerSeg; step++) {
+                            double t = step / (double)stepsPerSeg;
+                            double t2 = t * t, t3 = t2 * t;
+                            // Catmull-Rom basis (tau = 0.5)
+                            double c0 = -0.5*t3 + t2 - 0.5*t;
+                            double c1 =  1.5*t3 - 2.5*t2 + 1.0;
+                            double c2 = -1.5*t3 + 2.0*t2 + 0.5*t;
+                            double c3 =  0.5*t3 - 0.5*t2;
+                            QPointF img(c0*p0.x() + c1*p1.x() + c2*p2.x() + c3*p3.x(),
+                                        c0*p0.y() + c1*p1.y() + c2*p2.y() + c3*p3.y());
+                            QPointF cur = imgToScreen(img);
+                            p.drawLine(prev, cur);
+                            prev = cur;
+                        }
+                    }
+                }
+                // Control point handles (always visible for editing)
+                int cpRad = std::max(3, target.width() / 120);
+                for (int j = 0; j < nPts; j++) {
+                    QPointF s = imgToScreen(fil.pts[j]);
+                    p.setPen(QPen(Qt::white, 1));
+                    p.setBrush(QColor(0, 200, 255, 180));
+                    p.drawEllipse(s, cpRad, cpRad);
+                }
+            }
+
+            // Draw in-progress start point with rubber-band line to cursor
+            if (m_amyloidPlacing == 1) {
+                QPointF sp = imgToScreen(m_amyloidStartPt);
+                int cpRad = std::max(3, target.width() / 120);
+                p.setPen(QPen(Qt::white, 1));
+                p.setBrush(QColor(255, 100, 100, 180));
+                p.drawEllipse(sp, cpRad, cpRad);
+                // Rubber band to current mouse
+                if (target.contains(m_mousePos)) {
+                    p.setPen(QPen(QColor(255, 100, 100, 150), 1, Qt::DashLine));
+                    p.drawLine(sp, QPointF(m_mousePos));
+                }
+            }
+
+            p.setRenderHint(QPainter::Antialiasing, false);
             p.restore();
         }
 
@@ -2087,7 +2196,7 @@ void FtWindow::paintEvent(QPaintEvent *)
         }
 
         // Panel 1 tool option rectangles (bottom-left of panel 1)
-        bool p1Tool = m_p1EraserActive || m_p1BrushActive || m_p1TaperActive || m_binActive || m_peakPickActive || m_extractActive || m_gaborActive || m_hessianActive;
+        bool p1Tool = m_p1EraserActive || m_p1BrushActive || m_p1TaperActive || m_binActive || m_peakPickActive || m_extractActive || m_gaborActive || m_hessianActive || m_amyloidActive;
         if (p1Tool) {
             int nRows = 0;
             int textW = 0;
@@ -2157,6 +2266,20 @@ void FtWindow::paintEvent(QPaintEvent *)
                 int r1 = fm.horizontalAdvance("Polarity (+1/-1): ")        + m_hessianPolarityEdit->width();
                 int r2 = m_hessianCancelBtn->width() + 8 + m_hessianComputeBtn->width();
                 textW = std::max({r0, r1, r2});
+            } else if (m_amyloidActive) {
+                nRows = 9;
+                int r0 = fm.horizontalAdvance("Helical rise (\u00C5): ")    + m_amyloidRiseEdit->width();
+                int r1 = fm.horizontalAdvance("Helical twist (\u00B0): ")   + m_amyloidTwistEdit->width();
+                int r2a = fm.horizontalAdvance("Long axis (\u00C5): ")      + m_amyloidLongAxisEdit->width();
+                int r2b = fm.horizontalAdvance("Short axis (\u00C5): ")     + m_amyloidShortAxisEdit->width();
+                int r2c = fm.horizontalAdvance("Smooth (\u00C5): ")         + m_amyloidSmoothEdit->width();
+                int r3n = m_amyloidNoiseBtn->sizeHint().width() + 8 + fm.horizontalAdvance("Sigma: ") + m_amyloidNoiseEdit->width();
+                int r3i = m_amyloidSignalBtn->width();
+                QString infoStr = QString("Filaments: %1  Click image to place start & end")
+                                      .arg(m_amyloidFilaments.size());
+                int r4 = fm.horizontalAdvance(infoStr);
+                int r5 = m_amyloidCancelBtn->width() + 8 + m_amyloidComputeBtn->width();
+                textW = std::max({r0, r1, r2a, r2b, r2c, r3n, r3i, r4, r5});
             }
 
             int rw = textW * 6 / 5 + 2 * margin;
@@ -2253,6 +2376,33 @@ void FtWindow::paintEvent(QPaintEvent *)
                 m_hessianPolarityEdit->move(tx + fm.horizontalAdvance("Polarity (+1/-1): "), ty + lh);
                 m_hessianCancelBtn->move(tx, ty + lh * 2);
                 m_hessianComputeBtn->move(rx + rw - margin - m_hessianComputeBtn->width(), ty + lh * 2);
+            } else if (m_amyloidActive) {
+                p.drawText(tx, ty + fm.ascent(), "Helical rise (\u00C5):");
+                m_amyloidRiseEdit->move(tx + fm.horizontalAdvance("Helical rise (\u00C5): "), ty);
+                p.drawText(tx, ty + lh + fm.ascent(), "Helical twist (\u00B0):");
+                m_amyloidTwistEdit->move(tx + fm.horizontalAdvance("Helical twist (\u00B0): "), ty + lh);
+                p.drawText(tx, ty + lh * 2 + fm.ascent(), "Long axis (\u00C5):");
+                m_amyloidLongAxisEdit->move(tx + fm.horizontalAdvance("Long axis (\u00C5): "), ty + lh * 2);
+                p.drawText(tx, ty + lh * 3 + fm.ascent(), "Short axis (\u00C5):");
+                m_amyloidShortAxisEdit->move(tx + fm.horizontalAdvance("Short axis (\u00C5): "), ty + lh * 3);
+                p.drawText(tx, ty + lh * 4 + fm.ascent(), "Smooth (\u00C5):");
+                m_amyloidSmoothEdit->move(tx + fm.horizontalAdvance("Smooth (\u00C5): "), ty + lh * 4);
+                // Noise checkbox + sigma edit on the same row
+                m_amyloidNoiseBtn->move(tx, ty + lh * 5);
+                int noiseLblX = tx + m_amyloidNoiseBtn->sizeHint().width() + 8;
+                p.drawText(noiseLblX, ty + lh * 5 + fm.ascent(), "Sigma:");
+                m_amyloidNoiseEdit->move(noiseLblX + fm.horizontalAdvance("Sigma: "), ty + lh * 5);
+                // Signal polarity button
+                m_amyloidSignalBtn->move(tx, ty + lh * 6);
+                // Info + buttons
+                QString infoStr;
+                if (m_amyloidPlacing == 1)
+                    infoStr = QString("Filaments: %1  Click to place end point").arg(m_amyloidFilaments.size());
+                else
+                    infoStr = QString("Filaments: %1  Click image to place start & end").arg(m_amyloidFilaments.size());
+                p.drawText(tx, ty + lh * 7 + fm.ascent(), infoStr);
+                m_amyloidCancelBtn->move(tx, ty + lh * 8);
+                m_amyloidComputeBtn->move(rx + rw - margin - m_amyloidComputeBtn->width(), ty + lh * 8);
             }
         }
     }

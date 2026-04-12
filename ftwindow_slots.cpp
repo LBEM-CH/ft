@@ -2221,6 +2221,276 @@ void FtWindow::onApplyHessianFilter()
     });
 }
 
+// ---------------------------------------------------------------------------
+// Amyloid filament drawing
+// ---------------------------------------------------------------------------
+
+void FtWindow::onAmyloidCancel()
+{
+    m_amyloidActive = false;
+    m_amyloidPlacing = 0;
+    m_amyloidFilaments.clear();
+    m_amyloidRiseEdit->hide();
+    m_amyloidTwistEdit->hide();
+    m_amyloidLongAxisEdit->hide();
+    m_amyloidShortAxisEdit->hide();
+    m_amyloidSmoothEdit->hide();
+    m_amyloidNoiseBtn->hide();
+    m_amyloidNoiseEdit->hide();
+    m_amyloidSignalBtn->hide();
+    m_amyloidCancelBtn->hide();
+    m_amyloidComputeBtn->hide();
+    update();
+}
+
+void FtWindow::onAmyloidCompute()
+{
+    if (m_image.isNull() || m_amyloidFilaments.empty()) return;
+
+    bool okR = false, okT = false, okLA = false, okSA = false, okSm = false, okNs = false;
+    double rise      = m_amyloidRiseEdit->text().toDouble(&okR);
+    double twistDeg  = m_amyloidTwistEdit->text().toDouble(&okT);
+    double longAxis  = m_amyloidLongAxisEdit->text().toDouble(&okLA);
+    double shortAxis = m_amyloidShortAxisEdit->text().toDouble(&okSA);
+    double smooth    = m_amyloidSmoothEdit->text().toDouble(&okSm);
+    double noiseFrac = m_amyloidNoiseEdit->text().toDouble(&okNs);
+    bool addNoise      = m_amyloidNoiseBtn->isChecked();
+    bool blackSignal   = m_amyloidBlackSignal;
+    if (!okR  || rise <= 0.0)      rise = 4.75;
+    if (!okT)                      twistDeg = -1.0;
+    if (!okLA || longAxis <= 0.0)  longAxis = 150.0;
+    if (!okSA || shortAxis <= 0.0) shortAxis = 80.0;
+    if (!okSm || smooth < 0.0)     smooth = 1.5;
+    if (!okNs || noiseFrac <= 0.0)  noiseFrac = 0.3;
+
+    storeUndoSnapshot();
+
+    int w = m_image.width();
+    int h = m_image.height();
+    if ((int)m_imageRawPixels.size() != w * h) return;
+
+    const double semiA    = longAxis / 2.0;   // long semi-axis
+    const double semiB    = shortAxis / 2.0;  // short semi-axis
+    const double twistRad = twistDeg * M_PI / 180.0;
+
+    m_toolProgress = 0.1;
+    update();
+
+    auto filaments = m_amyloidFilaments;
+
+    chainSteps({
+        [this, w, h, filaments, rise, twistRad, semiA, semiB, smooth,
+         addNoise, noiseFrac, blackSignal]() {
+
+            // Start from a blank canvas — all filaments are re-rendered fresh
+            // so noise and invert are only applied once, not accumulated.
+            std::fill(m_imageRawPixels.begin(), m_imageRawPixels.end(), 0.0);
+
+            // Model: each layer is an elliptical pancake (β-sheet) with
+            // semi-axes a (long) and b (short), stacked along the filament
+            // axis with spacing = rise.  Each layer is rotated by twist around
+            // the axis relative to the previous one.
+            //
+            // In projection (viewing along z, perpendicular to the image),
+            // each pancake at twist angle φ projects with half-width:
+            //   hw(φ) = sqrt( (a·cos(φ))² + (b·sin(φ))² )
+            // This gives an oval cross-section that varies smoothly between
+            // the long and short axes as the pancake twists.
+            //
+            // The backbone is a Catmull-Rom spline through the control points.
+            // sigAxial controls axial smoothing between pancake layers.
+
+            const double sigAxial = std::max(rise * 0.15, smooth);
+            const double minHW    = rise * 0.5;
+            const double cutAxial = 3.0 * sigAxial;
+
+            for (const auto &fil : filaments) {
+                if (fil.pts.size() < 2) continue;
+                int nCP = (int)fil.pts.size();
+
+                // Densely sample the Catmull-Rom spline to build an arc-length
+                // parameterised path.  We store sampled points along the spline.
+                const int samplesPerSeg = 50;
+                struct PathSample { double x, y, s; };
+                std::vector<PathSample> path;
+
+                auto catmullRom = [&](int seg, double t) -> QPointF {
+                    QPointF p0 = fil.pts[std::max(0, seg - 1)];
+                    QPointF p1 = fil.pts[seg];
+                    QPointF p2 = fil.pts[seg + 1];
+                    QPointF p3 = fil.pts[std::min(nCP - 1, seg + 2)];
+                    double t2 = t * t, t3 = t2 * t;
+                    double c0 = -0.5*t3 + t2 - 0.5*t;
+                    double c1 =  1.5*t3 - 2.5*t2 + 1.0;
+                    double c2 = -1.5*t3 + 2.0*t2 + 0.5*t;
+                    double c3 =  0.5*t3 - 0.5*t2;
+                    return QPointF(c0*p0.x() + c1*p1.x() + c2*p2.x() + c3*p3.x(),
+                                   c0*p0.y() + c1*p1.y() + c2*p2.y() + c3*p3.y());
+                };
+
+                // Sample spline and accumulate arc-length
+                double cumLen = 0.0;
+                QPointF prev(fil.pts[0].x(), fil.pts[0].y());
+                path.push_back({prev.x(), prev.y(), 0.0});
+                for (int seg = 0; seg < nCP - 1; seg++) {
+                    for (int step = 1; step <= samplesPerSeg; step++) {
+                        double t = step / (double)samplesPerSeg;
+                        QPointF cur = catmullRom(seg, t);
+                        double dx = cur.x() - prev.x();
+                        double dy = cur.y() - prev.y();
+                        cumLen += std::sqrt(dx * dx + dy * dy);
+                        path.push_back({cur.x(), cur.y(), cumLen});
+                        prev = cur;
+                    }
+                }
+                double totalLen = cumLen;
+                if (totalLen < 1.0) continue;
+
+                // Evaluate spline path at arc-length s → (position, unit tangent)
+                auto evalPath = [&](double s) -> std::pair<QPointF, QPointF> {
+                    s = std::max(0.0, std::min(totalLen, s));
+                    // Binary search for the interval
+                    int lo = 0, hi = (int)path.size() - 1;
+                    while (lo + 1 < hi) {
+                        int mid = (lo + hi) / 2;
+                        if (path[mid].s <= s) lo = mid; else hi = mid;
+                    }
+                    double segLen = path[hi].s - path[lo].s;
+                    double frac = (segLen > 1e-9) ? (s - path[lo].s) / segLen : 0.0;
+                    QPointF pos(path[lo].x + frac * (path[hi].x - path[lo].x),
+                                path[lo].y + frac * (path[hi].y - path[lo].y));
+                    // Tangent from finite differences using nearby samples
+                    int il = std::max(0, lo - 1);
+                    int ih = std::min((int)path.size() - 1, hi + 1);
+                    QPointF tang(path[ih].x - path[il].x, path[ih].y - path[il].y);
+                    double tl = std::sqrt(tang.x() * tang.x() + tang.y() * tang.y());
+                    if (tl > 0) tang /= tl;
+                    return {pos, tang};
+                };
+
+                // For each layer n, splat its projected density
+                int nLayers = (int)(totalLen / rise) + 1;
+                for (int n = 0; n < nLayers; n++) {
+                    double s = n * rise;
+                    if (s > totalLen) break;
+
+                    auto [pos, tang] = evalPath(s);
+                    // In-plane normal perpendicular to tangent
+                    QPointF norm(-tang.y(), tang.x());
+
+                    // Helical twist angle for this layer
+                    double phi = n * twistRad;
+                    double cosPhi = std::cos(phi);
+                    double sinPhi = std::sin(phi);
+
+                    // Projected half-width of the elliptical pancake layer
+                    // hw = sqrt( (a·cos(φ))² + (b·sin(φ))² )
+                    double hw = std::max(minHW,
+                        std::sqrt(semiA * semiA * cosPhi * cosPhi
+                                + semiB * semiB * sinPhi * sinPhi));
+
+                    // Bounding box for this layer's contribution
+                    double cutPerp = hw + 2.0;  // +2 for edge softness
+                    double cutMax  = std::max(cutAxial, cutPerp);
+                    int x0 = std::max(0,     (int)std::floor(pos.x() - cutMax));
+                    int x1 = std::min(w - 1, (int)std::ceil(pos.x() + cutMax));
+                    int y0 = std::max(0,     (int)std::floor(pos.y() - cutMax));
+                    int y1 = std::min(h - 1, (int)std::ceil(pos.y() + cutMax));
+
+                    double invSig2Ax = 1.0 / (2.0 * sigAxial * sigAxial);
+
+                    for (int py = y0; py <= y1; py++) {
+                        for (int px = x0; px <= x1; px++) {
+                            double dx = px - pos.x();
+                            double dy = py - pos.y();
+                            // Project onto local frame
+                            double dAx   = dx * tang.x() + dy * tang.y();  // along axis
+                            double dPerp = dx * norm.x() + dy * norm.y();  // across axis
+
+                            // Axial Gaussian envelope (thin layer)
+                            if (std::fabs(dAx) > cutAxial) continue;
+                            double gAx = std::exp(-dAx * dAx * invSig2Ax);
+
+                            // Cross-section: cylindrical projection profile
+                            // ∝ sqrt(hw² - d²) for |d| < hw, gives the
+                            // characteristic bright-centre / fading-edge look
+                            double absPerp = std::fabs(dPerp);
+                            if (absPerp >= hw) continue;
+                            double cylProj = std::sqrt(1.0 - (absPerp * absPerp)
+                                                             / (hw * hw));
+
+                            m_imageRawPixels[py * w + px] += gAx * cylProj;
+                        }
+                    }
+                }
+            }
+
+            // Find peak filament signal (before noise/invert) for noise scaling
+            double peakSig = 0.0;
+            for (double v : m_imageRawPixels)
+                if (v > peakSig) peakSig = v;
+
+            // Add Gaussian noise (once — image was cleared at the start)
+            if (addNoise && peakSig > 0.0) {
+                double noiseSigma = noiseFrac * peakSig;
+                std::mt19937 rng(42);  // fixed seed for reproducibility
+                std::normal_distribution<double> dist(0.0, noiseSigma);
+                for (int i = 0; i < w * h; i++)
+                    m_imageRawPixels[i] += dist(rng);
+            }
+
+            // Black signal: negate so filament is dark on bright background
+            if (blackSignal) {
+                double curMin = m_imageRawPixels[0];
+                double curMax = m_imageRawPixels[0];
+                for (double v : m_imageRawPixels) {
+                    if (v < curMin) curMin = v;
+                    if (v > curMax) curMax = v;
+                }
+                double sum = curMin + curMax;
+                for (int i = 0; i < w * h; i++)
+                    m_imageRawPixels[i] = sum - m_imageRawPixels[i];
+            }
+
+            // Recompute min/max
+            m_imageMinVal = m_imageRawPixels[0];
+            m_imageMaxVal = m_imageRawPixels[0];
+            for (double v : m_imageRawPixels) {
+                if (v < m_imageMinVal) m_imageMinVal = v;
+                if (v > m_imageMaxVal) m_imageMaxVal = v;
+            }
+            m_imageDispMin = m_imageMinVal;
+            m_imageDispMax = m_imageMaxVal;
+
+            rebuildImageFromRaw();
+            m_toolProgress = 0.5;
+        },
+        [this]() {
+            if (m_ftComputed)
+                computeFFT();
+
+            if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS) {
+                m_history[m_activeSlot].image     = m_image;
+                m_history[m_activeSlot].rawPixels = m_imageRawPixels;
+                m_history[m_activeSlot].minVal    = m_imageMinVal;
+                m_history[m_activeSlot].maxVal    = m_imageMaxVal;
+                m_history[m_activeSlot].pixelSize = m_pixelSize;
+                m_history[m_activeSlot].occupied  = true;
+                if (m_ftComputed)
+                    m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
+            }
+
+            // Keep filaments — user can add/modify and press Compute again.
+            m_amyloidRendered = true;
+            // Filaments are only cleared by Cancel.
+
+            saveHistory();
+            m_toolProgress = -1;
+            update();
+        }
+    });
+}
+
 void FtWindow::onApplyFtCrop()
 {
     if (!m_ftComputed || m_fftN == 0) return;

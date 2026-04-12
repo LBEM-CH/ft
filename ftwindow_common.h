@@ -28,6 +28,7 @@
 #include <QDebug>
 #include <cmath>
 #include <algorithm>
+#include <random>
 #ifndef __EMSCRIPTEN__
 #include <thread>
 #endif

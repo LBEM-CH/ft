@@ -247,7 +247,7 @@ private:
     QPoint      m_mousePos;         // current mouse position
 
     // ---- tool buttons ----
-    static constexpr int P1_TOOL_BUTTONS = 14;
+    static constexpr int P1_TOOL_BUTTONS = 15;
     static constexpr int P2_TOOL_BUTTONS = 10;
     QRect       m_p1BtnRects[P1_TOOL_BUTTONS];       // panel 1 left edge
     QRect       m_toolBtnRects[P2_TOOL_BUTTONS];     // panel 2 right edge
@@ -311,6 +311,31 @@ private:
     QLineEdit  *m_hessianPolarityEdit = nullptr;
     QPushButton *m_hessianCancelBtn   = nullptr;
     QPushButton *m_hessianComputeBtn  = nullptr;
+
+    // Amyloid filament drawing
+    bool        m_amyloidActive = false;
+    int         m_amyloidPlacing = 0;  // 0=idle, 1=placed start waiting for end
+    QPointF     m_amyloidStartPt;      // image coords
+    struct AmyloidFilament {
+        std::vector<QPointF> pts;      // control points in image coords
+    };
+    std::vector<AmyloidFilament> m_amyloidFilaments;
+    int         m_amyloidDragFil = -1; // filament index being dragged
+    int         m_amyloidDragPt  = -1; // control point index being dragged
+    bool        m_amyloidRendered = false; // true after Compute, suppresses overlay lines
+    QLineEdit  *m_amyloidRiseEdit     = nullptr;
+    QLineEdit  *m_amyloidTwistEdit    = nullptr;
+    QLineEdit  *m_amyloidLongAxisEdit  = nullptr;
+    QLineEdit  *m_amyloidShortAxisEdit = nullptr;
+    QLineEdit  *m_amyloidSmoothEdit   = nullptr;
+    QCheckBox  *m_amyloidNoiseBtn     = nullptr;
+    QLineEdit  *m_amyloidNoiseEdit    = nullptr;
+    QPushButton *m_amyloidSignalBtn   = nullptr;
+    bool        m_amyloidBlackSignal = false;  // false=white signal, true=black signal
+    QPushButton *m_amyloidCancelBtn   = nullptr;
+    QPushButton *m_amyloidComputeBtn  = nullptr;
+    void onAmyloidCompute();
+    void onAmyloidCancel();
 
     // Extract particles
     bool        m_extractActive = false;
