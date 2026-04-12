@@ -40,17 +40,42 @@ void FtWindow::onLoadImage()
           << "Exercise8-Apple/apple_noisy.png"
           << "Exercise8-Apple/apple_very_noisy.png";
 
-    // Use non-blocking open() instead of exec() for WASM compatibility
-    auto *dlg = new QInputDialog(this);
+    // Use a QListWidget inside a QDialog so the list scrolls within the
+    // dialog instead of spilling off the page like a combo-box popup.
+    auto *dlg = new QDialog(this);
     dlg->setAttribute(Qt::WA_DeleteOnClose);
     dlg->setWindowTitle("Load Example Image");
-    dlg->setLabelText("Select an image:");
-    dlg->setComboBoxItems(items);
-    dlg->setComboBoxEditable(false);
-    connect(dlg, &QDialog::accepted, this, [this, dlg]() {
-        QString chosen = dlg->textValue();
-        if (!chosen.isEmpty())
-            fetchAndLoadImage(chosen);
+    dlg->setModal(true);
+
+    auto *layout = new QVBoxLayout(dlg);
+    auto *list = new QListWidget(dlg);
+    list->addItems(items);
+    if (!items.isEmpty())
+        list->setCurrentRow(0);
+    layout->addWidget(list);
+
+    auto *buttons = new QDialogButtonBox(
+        QDialogButtonBox::Ok | QDialogButtonBox::Cancel, dlg);
+    layout->addWidget(buttons);
+    connect(buttons, &QDialogButtonBox::accepted, dlg, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, dlg, &QDialog::reject);
+    connect(list, &QListWidget::itemDoubleClicked, dlg, &QDialog::accept);
+
+    // Constrain dialog so it fits inside the browser viewport.
+    if (auto *scr = QGuiApplication::primaryScreen()) {
+        QSize avail = scr->availableSize();
+        dlg->resize(qMin(500, avail.width() - 40),
+                    qMin(500, avail.height() - 80));
+    } else {
+        dlg->resize(500, 500);
+    }
+
+    connect(dlg, &QDialog::accepted, this, [this, list]() {
+        if (auto *it = list->currentItem()) {
+            QString chosen = it->text();
+            if (!chosen.isEmpty())
+                fetchAndLoadImage(chosen);
+        }
     });
     dlg->open();
 #else
