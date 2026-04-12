@@ -84,6 +84,9 @@ sed -e 's/@APPNAME@/ft/g' \
     -e 's/@PRELOAD@//g' \
     "$QT_WASM_PATH/plugins/platforms/wasm_shell.html" > ft.html
 if [ -d "$SCRIPT_DIR/EXAMPLE_IMAGES" ]; then
+    if [ -e images ] || [ -L images ]; then
+        rm -rf images
+    fi
     ln -sfn "$SCRIPT_DIR/EXAMPLE_IMAGES" images
 fi
 
