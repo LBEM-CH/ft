@@ -46,9 +46,6 @@ Prerequisites:
       # macOS host kit:
       # chmod +x ~/Qt/6.8.3/macos/bin/*
 
-      # Linux host kit:
-      sudo ufw allow 8080/tcp
-
 1. Rebuild (only needed after code changes):
 
    source ~/Projects/emsdk/emsdk_env.sh
@@ -75,9 +72,14 @@ Prerequisites:
 2. Start the server:
 
    cd ~/Projects/ft/build_wasm
-   # Linux: 
+   # Linux:
    hostname -I | awk '{print $1}'
    # macOS: ipconfig getifaddr en0
+
+   # Optional, Linux only, if ufw is installed/enabled and you need
+   # access from other machines on your network:
+   # sudo ufw allow 8080/tcp
+
    python3 -m http.server 8080
 
 3. Open in browser:
