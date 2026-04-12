@@ -12,6 +12,10 @@
 #include <QPainterPath>
 #include <QFileDialog>
 #include <QInputDialog>
+#include <QDialog>
+#include <QListWidget>
+#include <QVBoxLayout>
+#include <QDialogButtonBox>
 #include <QBuffer>
 #include <QSettings>
 #include <QMouseEvent>
@@ -24,6 +28,7 @@
 #include <QDebug>
 #include <cmath>
 #include <algorithm>
+#include <random>
 #ifndef __EMSCRIPTEN__
 #include <thread>
 #endif

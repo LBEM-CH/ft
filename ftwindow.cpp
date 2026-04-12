@@ -36,10 +36,10 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
 
     // Undo / Redo buttons
     m_undoBtn = new QPushButton("Undo", this);
-    m_undoBtn->setFixedSize(70, 30);
+    m_undoBtn->setFixedSize(91, 30);
     connect(m_undoBtn, &QPushButton::clicked, this, &FtWindow::onUndo);
     m_redoBtn = new QPushButton("Redo", this);
-    m_redoBtn->setFixedSize(70, 30);
+    m_redoBtn->setFixedSize(91, 30);
     connect(m_redoBtn, &QPushButton::clicked, this, &FtWindow::onRedo);
     updateUndoRedoButtons();
 
@@ -499,6 +499,108 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     connect(m_hessianComputeBtn, &QPushButton::clicked, this, &FtWindow::onApplyHessianFilter);
     m_hessianComputeBtn->hide();
 
+    // Amyloid filament widgets
+    m_amyloidRiseEdit = new QLineEdit("4.75", this);
+    m_amyloidRiseEdit->setFixedSize(60, 22);
+    m_amyloidRiseEdit->setStyleSheet("background:#222; color:white; border:1px solid #888;");
+    m_amyloidRiseEdit->setToolTip(
+        "Helical rise in \u00C5ngstr\u00F6m \u2014 the axial translation between\n"
+        "successive subunits along the helix. For typical amyloid\n"
+        "filaments (cross-\u03B2 structure) the rise is \u2248 4.75 \u00C5,\n"
+        "corresponding to the inter-strand spacing.");
+    m_amyloidRiseEdit->hide();
+    m_amyloidTwistEdit = new QLineEdit("-1", this);
+    m_amyloidTwistEdit->setFixedSize(60, 22);
+    m_amyloidTwistEdit->setStyleSheet("background:#222; color:white; border:1px solid #888;");
+    m_amyloidTwistEdit->setToolTip(
+        "Helical twist in degrees \u2014 the azimuthal rotation between\n"
+        "successive subunits. Negative = left-handed twist.\n"
+        "For amyloid filaments typical values are \u22121\u00B0 to \u22122\u00B0.\n"
+        "The twist determines the crossover distance visible\n"
+        "in projection (crossover = 360 / |twist| \u00D7 rise).");
+    m_amyloidTwistEdit->hide();
+    m_amyloidLongAxisEdit = new QLineEdit("150", this);
+    m_amyloidLongAxisEdit->setFixedSize(60, 22);
+    m_amyloidLongAxisEdit->setStyleSheet("background:#222; color:white; border:1px solid #888;");
+    m_amyloidLongAxisEdit->setToolTip(
+        "Long axis of the elliptical pancake layer in \u00C5ngstr\u00F6m.\n"
+        "This is the larger dimension of the oval \u03B2-sheet cross-section.\n"
+        "At 1 \u00C5/pixel this equals the long axis in pixels.\n"
+        "Typical amyloid filaments: 100\u2013150 \u00C5.");
+    m_amyloidLongAxisEdit->hide();
+    m_amyloidShortAxisEdit = new QLineEdit("80", this);
+    m_amyloidShortAxisEdit->setFixedSize(60, 22);
+    m_amyloidShortAxisEdit->setStyleSheet("background:#222; color:white; border:1px solid #888;");
+    m_amyloidShortAxisEdit->setToolTip(
+        "Short axis of the elliptical pancake layer in \u00C5ngstr\u00F6m.\n"
+        "This is the smaller dimension of the oval \u03B2-sheet cross-section.\n"
+        "Setting this equal to the long axis gives a circular pancake.\n"
+        "Typical values: 50\u201380% of the long axis.");
+    m_amyloidShortAxisEdit->hide();
+    m_amyloidSmoothEdit = new QLineEdit("1.5", this);
+    m_amyloidSmoothEdit->setFixedSize(60, 22);
+    m_amyloidSmoothEdit->setStyleSheet("background:#222; color:white; border:1px solid #888;");
+    m_amyloidSmoothEdit->setToolTip(
+        "Axial smoothing sigma in \u00C5ngstr\u00F6m. Controls how much\n"
+        "neighbouring pancake layers blend into each other.\n"
+        "Smaller values give sharply separated layers (like a\n"
+        "diffraction pattern with strong layer lines). Larger\n"
+        "values merge the layers into a smoother tube.\n"
+        "Typical: 1\u20133 \u00C5. Set to 0 for perfectly sharp layers.");
+    m_amyloidSmoothEdit->hide();
+    m_amyloidNoiseBtn = new QCheckBox("Add gray noise", this);
+    m_amyloidNoiseBtn->setStyleSheet("color: #333;");
+    m_amyloidNoiseBtn->setChecked(true);
+    m_amyloidNoiseBtn->setToolTip(
+        "Add Gaussian noise to the entire image after rendering the\n"
+        "filament. This makes the result look like a real cryo-EM\n"
+        "micrograph where the signal sits in a noisy background.\n"
+        "The noise sigma is set by the field to the right.");
+    m_amyloidNoiseBtn->hide();
+    m_amyloidNoiseEdit = new QLineEdit("0.3", this);
+    m_amyloidNoiseEdit->setFixedSize(40, 22);
+    m_amyloidNoiseEdit->setStyleSheet("background:#222; color:white; border:1px solid #888;");
+    m_amyloidNoiseEdit->setToolTip(
+        "Noise level as a fraction of the peak filament signal.\n"
+        "0.3 = moderate noise (SNR \u2248 3), 1.0 = very noisy (SNR \u2248 1),\n"
+        "0.1 = low noise. The noise is additive Gaussian with zero\n"
+        "mean and this sigma, applied to the whole image.");
+    m_amyloidNoiseEdit->hide();
+    m_amyloidSignalBtn = new QPushButton("White signal", this);
+    m_amyloidSignalBtn->setFixedSize(110, 26);
+    m_amyloidSignalBtn->setStyleSheet(
+        "QPushButton { background-color: #eee; color: #111; border: 2px outset #aaa; padding: 2px; font-weight: bold; }");
+    m_amyloidSignalBtn->setToolTip(
+        "Toggle between white signal (filament bright on dark\n"
+        "background) and black signal (filament dark on bright\n"
+        "background). Black signal matches the conventional\n"
+        "cryo-EM display where protein appears dark.");
+    connect(m_amyloidSignalBtn, &QPushButton::clicked, this, [this]() {
+        m_amyloidBlackSignal = !m_amyloidBlackSignal;
+        if (m_amyloidBlackSignal) {
+            m_amyloidSignalBtn->setText("Black signal");
+            m_amyloidSignalBtn->setStyleSheet(
+                "QPushButton { background-color: #222; color: #eee; border: 2px outset #555; padding: 2px; font-weight: bold; }");
+        } else {
+            m_amyloidSignalBtn->setText("White signal");
+            m_amyloidSignalBtn->setStyleSheet(
+                "QPushButton { background-color: #eee; color: #111; border: 2px outset #aaa; padding: 2px; font-weight: bold; }");
+        }
+    });
+    m_amyloidSignalBtn->hide();
+    m_amyloidCancelBtn = new QPushButton("Cancel", this);
+    m_amyloidCancelBtn->setFixedSize(80, 26);
+    m_amyloidCancelBtn->setStyleSheet(
+        "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }");
+    connect(m_amyloidCancelBtn, &QPushButton::clicked, this, &FtWindow::onAmyloidCancel);
+    m_amyloidCancelBtn->hide();
+    m_amyloidComputeBtn = new QPushButton("Compute", this);
+    m_amyloidComputeBtn->setFixedSize(80, 26);
+    m_amyloidComputeBtn->setStyleSheet(
+        "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }");
+    connect(m_amyloidComputeBtn, &QPushButton::clicked, this, &FtWindow::onAmyloidCompute);
+    m_amyloidComputeBtn->hide();
+
     // Math calculation widgets (hidden until math button is active)
     auto mathComboStyle = [](QComboBox *cb) {
         cb->setStyleSheet(
@@ -837,8 +939,8 @@ void FtWindow::resizeEvent(QResizeEvent *)
     m_createBtn->move(8 + m_loadBtn->width() + 4, 8 + m_saveBtn->height() + 4);
     int hy0 = height() - height() / 5;
     m_reloadBtn->move(8, 8 + m_loadBtn->height() + 4);
-    m_undoBtn->move((width() - 144) / 2, 70);
-    m_redoBtn->move((width() - 144) / 2 + 74, 70);
+    m_undoBtn->move((width() - 186) / 2, 70);
+    m_redoBtn->move((width() - 186) / 2 + 95, 70);
     m_fullscreenBtn->move(width() - m_fullscreenBtn->width() - 8, 8);
     m_modeBtn->move(width() - m_modeBtn->width() - 8, 8 + m_fullscreenBtn->height() + 4);
     m_maskBtn->move(width() - m_maskBtn->width() - 8, 8 + m_fullscreenBtn->height() + 4 + m_modeBtn->height() + 4);

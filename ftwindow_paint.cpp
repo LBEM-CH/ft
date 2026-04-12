@@ -3,10 +3,24 @@
 // ---------------------------------------------------------------------------
 //  Painting
 // ---------------------------------------------------------------------------
+void FtWindow::drawParamLabel(QPainter &p, const QFontMetrics &fm,
+                              int x, int y, const QString &text, const QString &tip)
+{
+    p.drawText(x, y + fm.ascent(), text);
+    if (!tip.isEmpty()) {
+        QRect r(x, y, fm.horizontalAdvance(text), fm.height());
+        m_paramLabelTips.emplace_back(r, tip);
+    }
+}
+
 void FtWindow::paintEvent(QPaintEvent *)
 {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing, false);
+
+    // Reset painted parameter-label hover rectangles; they are repopulated
+    // below as the tool option panels are drawn.
+    m_paramLabelTips.clear();
 
     int cx = width() / 2;
     int hy = height() - height() / 5;
@@ -73,7 +87,7 @@ void FtWindow::paintEvent(QPaintEvent *)
                 (i == 7 && m_p1TaperActive) || (i == 8 && m_binActive) ||
                 (i == 9 && m_mathActive) || (i == 10 && m_peakPickActive) ||
                 (i == 11 && m_extractActive) || (i == 12 && m_gaborActive) ||
-                (i == 13 && m_hessianActive))
+                (i == 13 && m_hessianActive) || (i == 14 && m_amyloidActive))
                 p.setBrush(QColor(60, 60, 60));
             else
                 p.setBrush(QColor(0, 0, 0));
@@ -693,6 +707,38 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
+            // Amyloid filament icon (button 14): letter "A"
+            if (i == 14) {
+                if (m_amyloidActive) {
+                    p.setPen(QPen(Qt::white, 1));
+                    p.setBrush(QColor(60, 60, 60));
+                    p.drawRect(r);
+                }
+                p.setRenderHint(QPainter::Antialiasing, true);
+                QFont gf;
+                gf.setBold(true);
+                gf.setPixelSize(std::max(10, (int)(btnSide * 0.75)));
+                p.setFont(gf);
+                p.setPen(QPen(Qt::white, 1));
+                p.setBrush(Qt::NoBrush);
+                p.drawText(r, Qt::AlignCenter, "A");
+                p.setRenderHint(QPainter::Antialiasing, false);
+
+                if (r.contains(m_mousePos)) {
+                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                    QFontMetrics ttfm(ttf);
+                    QString tip = "Amyloid filament";
+                    int ttw = ttfm.horizontalAdvance(tip) + 8;
+                    int tth = ttfm.height() + 4;
+                    int ttx = r.right() + 4;
+                    int tty = r.center().y() - tth / 2;
+                    p.setPen(QPen(Qt::white, 1));
+                    p.setBrush(QColor(40, 40, 40));
+                    p.drawRect(ttx, tty, ttw, tth);
+                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                }
+            }
+
             // Gabor filter icon (button 12): letter "G"
             if (i == 12) {
                 p.setRenderHint(QPainter::Antialiasing, true);
@@ -1273,6 +1319,83 @@ void FtWindow::paintEvent(QPaintEvent *)
             p.restore();
         }
 
+        // Draw amyloid filament overlays (control polylines + draggable points)
+        if (m_amyloidActive && (!m_amyloidFilaments.empty() || m_amyloidPlacing == 1)) {
+            QRect target = frame.adjusted(2, 2, -2, -2);
+            QRectF src = m_zoom[0].visibleRect(imgW, imgH);
+            p.save();
+            p.setClipRect(target);
+            p.setRenderHint(QPainter::Antialiasing, true);
+
+            auto imgToScreen = [&](const QPointF &img) -> QPointF {
+                double sx = target.x() + (img.x() - src.x()) / src.width() * target.width();
+                double sy = target.y() + (img.y() - src.y()) / src.height() * target.height();
+                return QPointF(sx, sy);
+            };
+
+            // Draw existing filaments using Catmull-Rom spline curves
+            for (const auto &fil : m_amyloidFilaments) {
+                if (fil.pts.size() < 2) continue;
+                int nPts = (int)fil.pts.size();
+
+                // Only draw spline lines when not yet rendered (avoid visual confusion with FFT)
+                if (!m_amyloidRendered) {
+                    QPen linePen(QColor(0, 200, 255), 2);
+                    p.setPen(linePen);
+
+                    // Build a smooth spline through control points
+                    const int stepsPerSeg = 20;
+                    QPointF prev = imgToScreen(fil.pts[0]);
+                    for (int seg = 0; seg < nPts - 1; seg++) {
+                        // Catmull-Rom uses 4 points: p0, p1, p2, p3
+                        QPointF p0 = fil.pts[std::max(0, seg - 1)];
+                        QPointF p1 = fil.pts[seg];
+                        QPointF p2 = fil.pts[seg + 1];
+                        QPointF p3 = fil.pts[std::min(nPts - 1, seg + 2)];
+                        for (int step = 1; step <= stepsPerSeg; step++) {
+                            double t = step / (double)stepsPerSeg;
+                            double t2 = t * t, t3 = t2 * t;
+                            // Catmull-Rom basis (tau = 0.5)
+                            double c0 = -0.5*t3 + t2 - 0.5*t;
+                            double c1 =  1.5*t3 - 2.5*t2 + 1.0;
+                            double c2 = -1.5*t3 + 2.0*t2 + 0.5*t;
+                            double c3 =  0.5*t3 - 0.5*t2;
+                            QPointF img(c0*p0.x() + c1*p1.x() + c2*p2.x() + c3*p3.x(),
+                                        c0*p0.y() + c1*p1.y() + c2*p2.y() + c3*p3.y());
+                            QPointF cur = imgToScreen(img);
+                            p.drawLine(prev, cur);
+                            prev = cur;
+                        }
+                    }
+                }
+                // Control point handles (always visible for editing)
+                int cpRad = std::max(3, target.width() / 120);
+                for (int j = 0; j < nPts; j++) {
+                    QPointF s = imgToScreen(fil.pts[j]);
+                    p.setPen(QPen(Qt::white, 1));
+                    p.setBrush(QColor(0, 200, 255, 180));
+                    p.drawEllipse(s, cpRad, cpRad);
+                }
+            }
+
+            // Draw in-progress start point with rubber-band line to cursor
+            if (m_amyloidPlacing == 1) {
+                QPointF sp = imgToScreen(m_amyloidStartPt);
+                int cpRad = std::max(3, target.width() / 120);
+                p.setPen(QPen(Qt::white, 1));
+                p.setBrush(QColor(255, 100, 100, 180));
+                p.drawEllipse(sp, cpRad, cpRad);
+                // Rubber band to current mouse
+                if (target.contains(m_mousePos)) {
+                    p.setPen(QPen(QColor(255, 100, 100, 150), 1, Qt::DashLine));
+                    p.drawLine(sp, QPointF(m_mousePos));
+                }
+            }
+
+            p.setRenderHint(QPainter::Antialiasing, false);
+            p.restore();
+        }
+
         drawAxes(p, frame, m_zoom[0], imgW, imgH, false, m_pixelSize);
         drawZoomPanOverlay(frame, m_zoom[0]);
 
@@ -1311,121 +1434,6 @@ void FtWindow::paintEvent(QPaintEvent *)
             }
         }
 
-        // Math calculations overlay frame
-        if (m_mathActive) {
-            int fw = static_cast<int>(inner.width()  * 0.80);
-            int fh = static_cast<int>(inner.height() * 0.30);
-            int fx = inner.x() + (inner.width()  - fw) / 2;
-            int fy = inner.y() + (inner.height() - fh) / 2;
-            QRect mathRect(fx, fy, fw, fh);
-
-            drawShadowRect(p, mathRect);
-
-            // Progress bar: light blue fill from left to right
-            if (m_mathProgress >= 0.0 && m_mathProgress <= 1.0) {
-                int progW = static_cast<int>(fw * m_mathProgress);
-                p.setPen(Qt::NoPen);
-                p.setBrush(QColor(180, 210, 255));
-                p.drawRect(fx + 1, fy + 1, progW, fh - 2);
-            }
-
-            // Scale widget sizes relative to frame width
-            int fontSize = std::clamp(fw / 30, 12, 32);
-            int comboH = fontSize * 2;
-            int bufW = fw / 8;
-            int eqW  = fw / 16;
-            int opW  = fw * 3 / 10;
-            int btnW = fw * 3 / 16;
-            int btnH = comboH;
-            int gap  = fw / 80;
-
-            // Apply scaled stylesheet to all math combos
-            QString comboSS = QString(
-                "QComboBox { background:white; color:black; border:1px solid #888;"
-                "  padding: 2px 4px; font-size: %1px; font-weight: bold; }"
-                "QComboBox::drop-down { width: %2px; }"
-                "QComboBox QAbstractItemView { background:white; color:black;"
-                "  selection-background-color:#ccc; min-width: 60px; padding: 4px;"
-                "  font-size: %1px; }")
-                .arg(fontSize).arg(fontSize);
-            m_mathOutCombo->setStyleSheet(comboSS);
-            m_mathIn1Combo->setStyleSheet(comboSS);
-            m_mathOpCombo->setStyleSheet(comboSS);
-            m_mathIn2Combo->setStyleSheet(comboSS);
-
-            m_mathOutCombo->setFixedSize(bufW, comboH);
-            m_mathIn1Combo->setFixedSize(bufW, comboH);
-            m_mathOpCombo->setFixedSize(opW, comboH);
-            m_mathIn2Combo->setFixedSize(bufW, comboH);
-            m_mathEqualsLabel->setFixedSize(eqW, comboH);
-            m_mathEqualsLabel->setStyleSheet(
-                QString("color: black; font-size: %1px; font-weight: bold;").arg(fontSize * 4 / 3));
-
-            m_mathCancelBtn->setFixedSize(btnW, btnH);
-            m_mathComputeBtn->setFixedSize(btnW, btnH);
-            QString btnSS = QString(
-                "QPushButton { background-color: #888; border: 2px outset #aaa;"
-                "  color: #eee; padding: 2px; font-size: %1px; font-weight: bold; }").arg(fontSize);
-            m_mathCancelBtn->setStyleSheet(btnSS);
-            m_mathComputeBtn->setStyleSheet(btnSS);
-
-            // Position the equation widgets centered in the frame
-            int totalEqW = bufW + gap + eqW + gap + bufW + gap + opW + gap + bufW;
-            int eqX = fx + (fw - totalEqW) / 2;
-            int eqY = fy + fh / 2 - comboH / 2;
-
-            // Title in top-left corner
-            int titleBottom;
-            {
-                int titleFontSize = std::max(14, fontSize * 4 / 3);
-                int titleMarginX = std::max(8, fw / 40);
-                int titleMarginY = std::max(6, fh / 15);
-                QFont tf;
-                tf.setPixelSize(titleFontSize);
-                tf.setBold(true);
-                p.setFont(tf);
-                p.setPen(QColor(60, 60, 60));
-                QFontMetrics tfm(tf);
-                int titleBaseY = fy + titleMarginY + tfm.ascent();
-                p.drawText(fx + titleMarginX, titleBaseY, "Image calculation");
-                titleBottom = titleBaseY + tfm.descent();
-            }
-
-            // Draw clean equation text centered between title and combo row
-            {
-                QString opSym = m_mathOpCombo->currentText();
-                int opIdx2 = m_mathOpCombo->currentIndex();
-                if (opIdx2 == 4) opSym = QString::fromUtf8("\u2731");       // convolute: ✱
-                else if (opIdx2 == 5) opSym = QString::fromUtf8("\u229B");  // correlate: ⊛
-                QString eqText = QString("%1 = %2 %3 %4")
-                    .arg(QChar('a' + m_mathOutCombo->currentIndex()))
-                    .arg(QChar('a' + m_mathIn1Combo->currentIndex()))
-                    .arg(opSym)
-                    .arg(QChar('a' + m_mathIn2Combo->currentIndex()));
-                int eqFontSize = std::max(16, fontSize * 3 / 2);
-                QFont ef("Palatino");
-                ef.setPixelSize(eqFontSize);
-                p.setFont(ef);
-                p.setPen(QColor(40, 40, 40));
-                QFontMetrics efm(ef);
-                int eqTextW = efm.horizontalAdvance(eqText);
-                int gapCenter = titleBottom + (eqY - titleBottom) / 2;
-                int eqTextY = gapCenter - efm.height() / 2;
-                p.drawText(fx + (fw - eqTextW) / 2, eqTextY + efm.ascent(), eqText);
-            }
-
-            m_mathOutCombo->move(eqX, eqY);        eqX += bufW + gap;
-            m_mathEqualsLabel->move(eqX, eqY);      eqX += eqW + gap;
-            m_mathIn1Combo->move(eqX, eqY);          eqX += bufW + gap;
-            m_mathOpCombo->move(eqX, eqY);           eqX += opW + gap;
-            m_mathIn2Combo->move(eqX, eqY);
-
-            // Cancel in bottom-left, Compute in bottom-right
-            int btnMargin = 8;
-            m_mathCancelBtn->move(fx + btnMargin, fy + fh - btnH - btnMargin);
-            m_mathComputeBtn->move(fx + fw - btnW - btnMargin, fy + fh - btnH - btnMargin);
-        }
-
         DisplayItem &di = m_dispItems[m_numDispItems++];
         di = { inner, imgW, imgH, 0, &m_imageRawPixels, true };
     } else if (m_activeSlot >= 0) {
@@ -1445,6 +1453,138 @@ void FtWindow::paintEvent(QPaintEvent *)
         p.setPen(QPen(QColor(255, 255, 0), 2));
         p.setBrush(Qt::NoBrush);
         p.drawRect(frame);
+    }
+
+    // Math calculations overlay (draws over panel 1 regardless of image state)
+    if (m_mathActive) {
+        int side1 = static_cast<int>(0.7 * std::min(panel1W, panel1H));
+        int imgX = (panel1W - side1) / 2;
+        int imgY = (panel1H - side1) / 2;
+        QRect inner = QRect(imgX, imgY, side1, side1).adjusted(2, 2, -2, -2);
+
+        int fw = static_cast<int>(inner.width()  * 0.80);
+        int fh = static_cast<int>(inner.height() * 0.30);
+        int fx = inner.x() + (inner.width()  - fw) / 2;
+        int fy = inner.y() + (inner.height() - fh) / 2;
+        QRect mathRect(fx, fy, fw, fh);
+
+        drawShadowRect(p, mathRect);
+
+        // Progress bar: light blue fill from left to right
+        if (m_mathProgress >= 0.0 && m_mathProgress <= 1.0) {
+            int progW = static_cast<int>(fw * m_mathProgress);
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(180, 210, 255));
+            p.drawRect(fx + 1, fy + 1, progW, fh - 2);
+        }
+
+        // Scale widget sizes relative to frame width
+        int fontSize = std::clamp(fw / 30, 12, 32);
+        int comboH = fontSize * 2;
+        int bufW = fw / 8;
+        int eqW  = fw / 16;
+        int opW  = fw * 3 / 10;
+        int btnW = fw * 3 / 16;
+        int btnH = comboH;
+        int gap  = fw / 80;
+
+        // Apply scaled stylesheet to all math combos
+        auto setStyleSheetIfChanged = [](QWidget *widget, const QString &styleSheet)
+        {
+            if (widget->styleSheet() != styleSheet)
+                widget->setStyleSheet(styleSheet);
+        };
+        auto setFixedSizeIfChanged = [](QWidget *widget, int w, int h)
+        {
+            if (widget->size() != QSize(w, h))
+                widget->setFixedSize(w, h);
+        };
+
+        QString comboSS = QString(
+            "QComboBox { background:white; color:black; border:1px solid #888;"
+            "  padding: 2px 4px; font-size: %1px; font-weight: bold; }"
+            "QComboBox::drop-down { width: %2px; }"
+            "QComboBox QAbstractItemView { background:white; color:black;"
+            "  selection-background-color:#ccc; min-width: 60px; padding: 4px;"
+            "  font-size: %1px; }")
+            .arg(fontSize).arg(fontSize);
+        setStyleSheetIfChanged(m_mathOutCombo, comboSS);
+        setStyleSheetIfChanged(m_mathIn1Combo, comboSS);
+        setStyleSheetIfChanged(m_mathOpCombo, comboSS);
+        setStyleSheetIfChanged(m_mathIn2Combo, comboSS);
+
+        setFixedSizeIfChanged(m_mathOutCombo, bufW, comboH);
+        setFixedSizeIfChanged(m_mathIn1Combo, bufW, comboH);
+        setFixedSizeIfChanged(m_mathOpCombo, opW, comboH);
+        setFixedSizeIfChanged(m_mathIn2Combo, bufW, comboH);
+        setFixedSizeIfChanged(m_mathEqualsLabel, eqW, comboH);
+        setStyleSheetIfChanged(
+            m_mathEqualsLabel,
+            QString("color: black; font-size: %1px; font-weight: bold;").arg(fontSize * 4 / 3));
+
+        setFixedSizeIfChanged(m_mathCancelBtn, btnW, btnH);
+        setFixedSizeIfChanged(m_mathComputeBtn, btnW, btnH);
+        QString btnSS = QString(
+            "QPushButton { background-color: #888; border: 2px outset #aaa;"
+            "  color: #eee; padding: 2px; font-size: %1px; font-weight: bold; }").arg(fontSize);
+        setStyleSheetIfChanged(m_mathCancelBtn, btnSS);
+        setStyleSheetIfChanged(m_mathComputeBtn, btnSS);
+
+        // Position the equation widgets centered in the frame
+        int totalEqW = bufW + gap + eqW + gap + bufW + gap + opW + gap + bufW;
+        int eqX = fx + (fw - totalEqW) / 2;
+        int eqY = fy + fh / 2 - comboH / 2;
+
+        // Title in top-left corner
+        int titleBottom;
+        {
+            int titleFontSize = std::max(14, fontSize * 4 / 3);
+            int titleMarginX = std::max(8, fw / 40);
+            int titleMarginY = std::max(6, fh / 15);
+            QFont tf;
+            tf.setPixelSize(titleFontSize);
+            tf.setBold(true);
+            p.setFont(tf);
+            p.setPen(QColor(60, 60, 60));
+            QFontMetrics tfm(tf);
+            int titleBaseY = fy + titleMarginY + tfm.ascent();
+            p.drawText(fx + titleMarginX, titleBaseY, "Image calculation");
+            titleBottom = titleBaseY + tfm.descent();
+        }
+
+        // Draw clean equation text centered between title and combo row
+        {
+            QString opSym = m_mathOpCombo->currentText();
+            int opIdx2 = m_mathOpCombo->currentIndex();
+            if (opIdx2 == 4) opSym = QString::fromUtf8("\u2731");       // convolute: ✱
+            else if (opIdx2 == 5) opSym = QString::fromUtf8("\u229B");  // correlate: ⊛
+            QString eqText = QString("%1 = %2 %3 %4")
+                .arg(QChar('a' + m_mathOutCombo->currentIndex()))
+                .arg(QChar('a' + m_mathIn1Combo->currentIndex()))
+                .arg(opSym)
+                .arg(QChar('a' + m_mathIn2Combo->currentIndex()));
+            int eqFontSize = std::max(16, fontSize * 3 / 2);
+            QFont ef("Palatino");
+            ef.setPixelSize(eqFontSize);
+            p.setFont(ef);
+            p.setPen(QColor(40, 40, 40));
+            QFontMetrics efm(ef);
+            int eqTextW = efm.horizontalAdvance(eqText);
+            int gapCenter = titleBottom + (eqY - titleBottom) / 2;
+            int eqTextY = gapCenter - efm.height() / 2;
+            p.drawText(fx + (fw - eqTextW) / 2, eqTextY + efm.ascent(), eqText);
+        }
+
+        m_mathOutCombo->move(eqX, eqY);        eqX += bufW + gap;
+        m_mathEqualsLabel->move(eqX, eqY);      eqX += eqW + gap;
+        m_mathIn1Combo->move(eqX, eqY);          eqX += bufW + gap;
+        m_mathOpCombo->move(eqX, eqY);           eqX += opW + gap;
+        m_mathIn2Combo->move(eqX, eqY);
+
+        // Cancel in bottom-left, Compute in bottom-right
+        int btnMargin = 8;
+        m_mathCancelBtn->move(fx + btnMargin, fy + fh - btnH - btnMargin);
+        m_mathComputeBtn->move(fx + fw - btnW - btnMargin, fy + fh - btnH - btnMargin);
     }
 
     // ---- Panel 2: FFT results -------------------------------------------------
@@ -1517,16 +1657,17 @@ void FtWindow::paintEvent(QPaintEvent *)
 
                 QFont f; f.setPixelSize(11); p.setFont(f); p.setPen(Qt::white);
                 QFontMetrics fm2(f);
-                QString text;
-                if (hasAmp && hasPh)
-                    text = QString("Current amplitude: %1     Current phase: %2     Min: %3     Max: %4")
-                               .arg(curAmp, 0, 'g', 5).arg(curPhase, 0, 'g', 5)
+                QString minMaxText = QString("Min: %1     Max: %2")
                                .arg(m_powerMin, 0, 'g', 5).arg(m_powerMax, 0, 'g', 5);
-                else
-                    text = QString("Min: %1     Max: %2")
-                               .arg(m_powerMin, 0, 'g', 5).arg(m_powerMax, 0, 'g', 5);
-                int tw = fm2.horizontalAdvance(text);
-                p.drawText(frame.right() - tw, frame.top() - 5, text);
+                int mmw = fm2.horizontalAdvance(minMaxText);
+                int lineH = fm2.height();
+                p.drawText(frame.right() - mmw, frame.top() - 5, minMaxText);
+                if (hasAmp && hasPh) {
+                    QString curText = QString("Current amplitude: %1     Current phase: %2")
+                                   .arg(curAmp, 0, 'g', 5).arg(curPhase, 0, 'g', 5);
+                    int cw = fm2.horizontalAdvance(curText);
+                    p.drawText(frame.right() - cw, frame.top() - 5 - lineH, curText);
+                }
             } else {
                 drawMinMax(p, frame, m_powerMin, m_powerMax, curVal, hasCur);
             }
@@ -1544,7 +1685,7 @@ void FtWindow::paintEvent(QPaintEvent *)
 
                 int wheelD = std::min(histH, histX - frame.x() - 4);
                 if (wheelD > 8) {
-                    int wcx = histX - wheelD / 2 - 4;
+                    int wcx = histX - wheelD / 2 - 12;
                     int wcy = histY + histH / 2;
                     int r = wheelD / 2;
 
@@ -1700,6 +1841,27 @@ void FtWindow::paintEvent(QPaintEvent *)
             DisplayItem &d2 = m_dispItems[m_numDispItems++];
             d2 = { inner2, m_fftN, m_fftN, 2, vals2, true };
         }
+    } else if (m_activeSlot >= 0) {
+        // Empty FFT buffer selected – draw yellow frame with uppercase buffer letter
+        int panel2X = cx + 2;
+        int panel2W = width() - panel2X;
+        int panel2H = hy - 1;
+
+        int side = static_cast<int>(0.7 * std::min(panel2W, panel2H));
+        int fx = panel2X + (panel2W - side) / 2;
+        int fy = (panel2H - side) / 2;
+        QRect frame(fx, fy, side, side);
+
+        QFont lf; lf.setBold(true); lf.setPixelSize(labelFontMain); p.setFont(lf);
+        p.setPen(QColor(255, 255, 0));
+        QFontMetrics lfm(lf);
+        QString lab = QString(QChar('A' + m_activeSlot));
+        p.drawText(frame.x() + (frame.width() - lfm.horizontalAdvance(lab)) / 2,
+                   frame.y() - 22, lab);
+
+        p.setPen(QPen(QColor(255, 255, 0), 2));
+        p.setBrush(Qt::NoBrush);
+        p.drawRect(frame);
     }
 
     // ---- Fourier math overlay (panel 2) -----------------------------------------
@@ -1993,52 +2155,66 @@ void FtWindow::paintEvent(QPaintEvent *)
             int ty = ry + margin;
 
             if (m_bandpassActive) {
-                p.drawText(tx, ty + fm.ascent(), "Smooth edge by pixels:");
+                drawParamLabel(p, fm, tx, ty, "Smooth edge by pixels:", m_smoothEdit->toolTip());
                 m_smoothEdit->move(tx + fm.horizontalAdvance("Smooth edge by pixels: "), ty);
                 m_bandEraseOutside->move(tx, ty + lh);
                 double halfN = m_fftN / 2.0;
                 QString diamStr = QString("Inner d=%1  Outer d=%2")
                     .arg(m_bandInnerR * 2.0 * halfN, 0, 'f', 1)
                     .arg(m_bandOuterR * 2.0 * halfN, 0, 'f', 1);
-                p.drawText(tx, ty + lh * 2 + fm.ascent(), diamStr);
+                drawParamLabel(p, fm, tx, ty + lh * 2, diamStr,
+                    "Current bandpass ring diameters, measured in Fourier pixels.\n"
+                    "Inner d is the diameter of the inner edge (small numbers = low\n"
+                    "frequencies), outer d is the diameter of the outer edge (large\n"
+                    "numbers = high frequencies). Drag the ring handles in panel 2\n"
+                    "to change these values.");
                 m_applyBandBtn->move(tx, ty + lh * 3);
             } else if (m_directionalActive) {
-                p.drawText(tx, ty + fm.ascent(), "Smooth edge by pixels:");
+                drawParamLabel(p, fm, tx, ty, "Smooth edge by pixels:", m_smoothEdit->toolTip());
                 m_smoothEdit->move(tx + fm.horizontalAdvance("Smooth edge by pixels: "), ty);
                 m_bandEraseOutside->move(tx, ty + lh);
                 QString angleStr = QString("Angle 1=%1\u00B0  Angle 2=%2\u00B0")
                     .arg(m_dirAngle1, 0, 'f', 1)
                     .arg(m_dirAngle2, 0, 'f', 1);
-                p.drawText(tx, ty + lh * 2 + fm.ascent(), angleStr);
+                drawParamLabel(p, fm, tx, ty + lh * 2, angleStr,
+                    "Current angular limits of the directional wedge, in degrees.\n"
+                    "Angle 1 and Angle 2 are the two boundary directions that\n"
+                    "define the kept (or erased) Fourier sector. Drag the wedge\n"
+                    "edges in panel 2 to change these values.");
                 m_applyBandBtn->move(tx, ty + lh * 3);
             } else if (m_brushActive) {
-                p.drawText(tx, ty + fm.ascent(), "Pixel value to enter:");
+                drawParamLabel(p, fm, tx, ty, "Pixel value to enter:", m_brushValueEdit->toolTip());
                 m_brushValueEdit->move(tx + fm.horizontalAdvance("Pixel value to enter: "), ty);
-                p.drawText(tx, ty + lh + fm.ascent(), "Paint brush Gaussian diameter:");
+                drawParamLabel(p, fm, tx, ty + lh, "Paint brush Gaussian diameter:", m_brushDiameterEdit->toolTip());
                 m_brushDiameterEdit->move(tx + fm.horizontalAdvance("Paint brush Gaussian diameter: "), ty + lh);
             } else if (m_eraserActive) {
-                p.drawText(tx, ty + fm.ascent(), "Eraser Gaussian diameter:");
+                drawParamLabel(p, fm, tx, ty, "Eraser Gaussian diameter:", m_eraserDiameterEdit->toolTip());
                 m_eraserDiameterEdit->move(tx + fm.horizontalAdvance("Eraser Gaussian diameter: "), ty);
             } else if (m_lineFilterActive) {
-                p.drawText(tx, ty + fm.ascent(), "Width of line:");
+                drawParamLabel(p, fm, tx, ty, "Width of line:", m_lineWidthEdit->toolTip());
                 m_lineWidthEdit->move(tx + fm.horizontalAdvance("Width of line: "), ty);
-                p.drawText(tx, ty + lh + fm.ascent(), "Direction of the line:");
+                drawParamLabel(p, fm, tx, ty + lh, "Direction of the line:", m_lineDirectionEdit->toolTip());
                 m_lineDirectionEdit->move(tx + fm.horizontalAdvance("Direction of the line: "), ty + lh);
                 m_lineEraseOutsideBtn->move(tx, ty + lh * 2);
                 m_applyLineBtn->move(tx, ty + lh * 3);
             } else if (m_latticeActive) {
-                p.drawText(tx, ty + fm.ascent(), "Smooth edge by pixels:");
+                drawParamLabel(p, fm, tx, ty, "Smooth edge by pixels:", m_latticeSmoothEdit->toolTip());
                 m_latticeSmoothEdit->move(tx + fm.horizontalAdvance("Smooth edge by pixels: "), ty);
-                p.drawText(tx, ty + lh + fm.ascent(), "Diameter of dots:");
+                drawParamLabel(p, fm, tx, ty + lh, "Diameter of dots:", m_latticeDotDiamEdit->toolTip());
                 m_latticeDotDiamEdit->move(tx + fm.horizontalAdvance("Diameter of dots: "), ty + lh);
                 m_latticeEraseOutside->move(tx, ty + lh * 2);
                 QString vecStr = QString("u=<%1,%2>  v=<%3,%4>")
                     .arg(m_latticeUx, 0, 'f', 1).arg(m_latticeUy, 0, 'f', 1)
                     .arg(m_latticeVx, 0, 'f', 1).arg(m_latticeVy, 0, 'f', 1);
-                p.drawText(tx, ty + lh * 3 + fm.ascent(), vecStr);
+                drawParamLabel(p, fm, tx, ty + lh * 3, vecStr,
+                    "Reciprocal-lattice basis vectors u and v, in Fourier pixels\n"
+                    "relative to the FFT centre. All lattice spots generated by\n"
+                    "integer combinations of u and v are selected. Drag the two\n"
+                    "basis handles in panel 2 to change these vectors.");
                 m_latticeApplyBtn->move(tx, ty + lh * 4);
             } else if (m_crossSectionActive) {
-                p.drawText(tx, ty + fm.ascent(), "Integration width in % of image size:");
+                drawParamLabel(p, fm, tx, ty, "Integration width in % of image size:",
+                               m_crossSectionWidthEdit->toolTip());
                 m_crossSectionWidthEdit->move(tx + fm.horizontalAdvance("Integration width in % of image size: "), ty);
             } else if (m_ftCropActive) {
                 m_ftCropCombo->move(tx, ty);
@@ -2048,7 +2224,7 @@ void FtWindow::paintEvent(QPaintEvent *)
         }
 
         // Panel 1 tool option rectangles (bottom-left of panel 1)
-        bool p1Tool = m_p1EraserActive || m_p1BrushActive || m_p1TaperActive || m_binActive || m_peakPickActive || m_extractActive || m_gaborActive || m_hessianActive;
+        bool p1Tool = m_p1EraserActive || m_p1BrushActive || m_p1TaperActive || m_binActive || m_peakPickActive || m_extractActive || m_gaborActive || m_hessianActive || m_amyloidActive;
         if (p1Tool) {
             int nRows = 0;
             int textW = 0;
@@ -2118,6 +2294,20 @@ void FtWindow::paintEvent(QPaintEvent *)
                 int r1 = fm.horizontalAdvance("Polarity (+1/-1): ")        + m_hessianPolarityEdit->width();
                 int r2 = m_hessianCancelBtn->width() + 8 + m_hessianComputeBtn->width();
                 textW = std::max({r0, r1, r2});
+            } else if (m_amyloidActive) {
+                nRows = 9;
+                int r0 = fm.horizontalAdvance("Helical rise (\u00C5): ")    + m_amyloidRiseEdit->width();
+                int r1 = fm.horizontalAdvance("Helical twist (\u00B0): ")   + m_amyloidTwistEdit->width();
+                int r2a = fm.horizontalAdvance("Long axis (\u00C5): ")      + m_amyloidLongAxisEdit->width();
+                int r2b = fm.horizontalAdvance("Short axis (\u00C5): ")     + m_amyloidShortAxisEdit->width();
+                int r2c = fm.horizontalAdvance("Smooth (\u00C5): ")         + m_amyloidSmoothEdit->width();
+                int r3n = m_amyloidNoiseBtn->sizeHint().width() + 8 + fm.horizontalAdvance("Sigma: ") + m_amyloidNoiseEdit->width();
+                int r3i = m_amyloidSignalBtn->width();
+                QString infoStr = QString("Filaments: %1  Click image to place start & end")
+                                      .arg(m_amyloidFilaments.size());
+                int r4 = fm.horizontalAdvance(infoStr);
+                int r5 = m_amyloidCancelBtn->width() + 8 + m_amyloidComputeBtn->width();
+                textW = std::max({r0, r1, r2a, r2b, r2c, r3n, r3i, r4, r5});
             }
 
             int rw = textW * 6 / 5 + 2 * margin;
@@ -2141,15 +2331,15 @@ void FtWindow::paintEvent(QPaintEvent *)
             int ty = ry + margin;
 
             if (m_p1EraserActive) {
-                p.drawText(tx, ty + fm.ascent(), "Eraser Gaussian diameter:");
+                drawParamLabel(p, fm, tx, ty, "Eraser Gaussian diameter:", m_p1EraserDiameterEdit->toolTip());
                 m_p1EraserDiameterEdit->move(tx + fm.horizontalAdvance("Eraser Gaussian diameter: "), ty);
             } else if (m_p1BrushActive) {
-                p.drawText(tx, ty + fm.ascent(), "Pixel value to enter:");
+                drawParamLabel(p, fm, tx, ty, "Pixel value to enter:", m_p1BrushValueEdit->toolTip());
                 m_p1BrushValueEdit->move(tx + fm.horizontalAdvance("Pixel value to enter: "), ty);
-                p.drawText(tx, ty + lh + fm.ascent(), "Paint brush Gaussian diameter:");
+                drawParamLabel(p, fm, tx, ty + lh, "Paint brush Gaussian diameter:", m_p1BrushDiameterEdit->toolTip());
                 m_p1BrushDiameterEdit->move(tx + fm.horizontalAdvance("Paint brush Gaussian diameter: "), ty + lh);
             } else if (m_p1TaperActive) {
-                p.drawText(tx, ty + fm.ascent(), "Hanning width:");
+                drawParamLabel(p, fm, tx, ty, "Hanning width:", m_p1TaperWidthEdit->toolTip());
                 m_p1TaperWidthEdit->move(tx + fm.horizontalAdvance("Hanning width: "), ty);
                 m_applyP1TaperBtn->move(tx, ty + lh);
             } else if (m_binActive) {
@@ -2158,7 +2348,7 @@ void FtWindow::paintEvent(QPaintEvent *)
                 m_applyBinBtn->move(tx, ty + lh * 2);
             } else if (m_peakPickActive) {
                 // Row 0: source map combo + show/hide button top-right
-                p.drawText(tx, ty + fm.ascent(), "Picking source map:");
+                drawParamLabel(p, fm, tx, ty, "Picking source map:", m_peakSourceCombo->toolTip());
                 m_peakSourceCombo->move(tx + fm.horizontalAdvance("Picking source map: "), ty);
                 m_peakShowPosBtn->move(rx + rw - margin - m_peakShowPosBtn->width(), ty);
                 // Row 1: threshold slider
@@ -2171,15 +2361,19 @@ void FtWindow::paintEvent(QPaintEvent *)
                 double threshVal = srcMin + (srcMax - srcMin)
                                    * m_peakThresholdSlider->value() / 1000.0;
                 QString threshStr = QString("Threshold: %1 ").arg(threshVal, 0, 'g', 5);
-                p.drawText(tx, ty + lh + fm.ascent(), threshStr);
+                drawParamLabel(p, fm, tx, ty + lh, threshStr, m_peakThresholdSlider->toolTip());
                 m_peakThresholdSlider->move(tx + fm.horizontalAdvance(threshStr), ty + lh);
                 // Row 2: exclusion radius slider
                 QString exclStr2 = QString("Exclusion radius: %1 ").arg(m_peakExclRadiusSlider->value());
-                p.drawText(tx, ty + lh * 2 + fm.ascent(), exclStr2);
+                drawParamLabel(p, fm, tx, ty + lh * 2, exclStr2, m_peakExclRadiusSlider->toolTip());
                 m_peakExclRadiusSlider->move(tx + fm.horizontalAdvance(exclStr2), ty + lh * 2);
                 // Row 3: peaks found
                 QString peakStr = QString("Peaks found: %1").arg(m_peaks.size());
-                p.drawText(tx, ty + lh * 3 + fm.ascent(), peakStr);
+                drawParamLabel(p, fm, tx, ty + lh * 3, peakStr,
+                    "Number of local maxima that currently pass the threshold\n"
+                    "and exclusion-radius filters. Updates live as you adjust\n"
+                    "the sliders. Click \"Compute\" to commit these positions\n"
+                    "as a particle list for subsequent extraction.");
                 // Row 4: Cancel (left) + Compute (right)
                 m_peakCancelBtn->move(tx, ty + lh * 4);
                 m_peakComputeBtn->move(rx + rw - margin - m_peakComputeBtn->width(), ty + lh * 4);
@@ -2187,33 +2381,60 @@ void FtWindow::paintEvent(QPaintEvent *)
                 if (m_peaks.empty()) {
                     p.drawText(tx, ty + fm.ascent(), "First prepare a particle position list");
                 } else {
-                    p.drawText(tx, ty + fm.ascent(), "Source image:");
+                    drawParamLabel(p, fm, tx, ty, "Source image:", m_extractSourceCombo->toolTip());
                     m_extractSourceCombo->move(tx + fm.horizontalAdvance("Source image: "), ty);
-                    p.drawText(tx, ty + lh + fm.ascent(), "Target image:");
+                    drawParamLabel(p, fm, tx, ty + lh, "Target image:", m_extractTargetCombo->toolTip());
                     m_extractTargetCombo->move(tx + fm.horizontalAdvance("Target image: "), ty + lh);
-                    p.drawText(tx, ty + lh * 2 + fm.ascent(), "Particle size:");
+                    drawParamLabel(p, fm, tx, ty + lh * 2, "Particle size:", m_extractSizeCombo->toolTip());
                     m_extractSizeCombo->move(tx + fm.horizontalAdvance("Particle size: "), ty + lh * 2);
                     m_extractCancelBtn->move(tx, ty + lh * 3);
                     m_extractComputeBtn->move(rx + rw - margin - m_extractComputeBtn->width(), ty + lh * 3);
                 }
             } else if (m_gaborActive) {
-                p.drawText(tx, ty + fm.ascent(), "Sigma (envelope):");
+                drawParamLabel(p, fm, tx, ty, "Sigma (envelope):", m_gaborSigmaEdit->toolTip());
                 m_gaborSigmaEdit->move(tx + fm.horizontalAdvance("Sigma (envelope): "), ty);
-                p.drawText(tx, ty + lh + fm.ascent(), "Wavelength lambda:");
+                drawParamLabel(p, fm, tx, ty + lh, "Wavelength lambda:", m_gaborLambdaEdit->toolTip());
                 m_gaborLambdaEdit->move(tx + fm.horizontalAdvance("Wavelength lambda: "), ty + lh);
-                p.drawText(tx, ty + lh * 2 + fm.ascent(), "Orientation (deg):");
+                drawParamLabel(p, fm, tx, ty + lh * 2, "Orientation (deg):", m_gaborThetaEdit->toolTip());
                 m_gaborThetaEdit->move(tx + fm.horizontalAdvance("Orientation (deg): "), ty + lh * 2);
-                p.drawText(tx, ty + lh * 3 + fm.ascent(), "Aspect ratio gamma:");
+                drawParamLabel(p, fm, tx, ty + lh * 3, "Aspect ratio gamma:", m_gaborGammaEdit->toolTip());
                 m_gaborGammaEdit->move(tx + fm.horizontalAdvance("Aspect ratio gamma: "), ty + lh * 3);
                 m_gaborCancelBtn->move(tx, ty + lh * 4);
                 m_gaborComputeBtn->move(rx + rw - margin - m_gaborComputeBtn->width(), ty + lh * 4);
             } else if (m_hessianActive) {
-                p.drawText(tx, ty + fm.ascent(), "Sigma (smoothing):");
+                drawParamLabel(p, fm, tx, ty, "Sigma (smoothing):", m_hessianSigmaEdit->toolTip());
                 m_hessianSigmaEdit->move(tx + fm.horizontalAdvance("Sigma (smoothing): "), ty);
-                p.drawText(tx, ty + lh + fm.ascent(), "Polarity (+1/-1):");
+                drawParamLabel(p, fm, tx, ty + lh, "Polarity (+1/-1):", m_hessianPolarityEdit->toolTip());
                 m_hessianPolarityEdit->move(tx + fm.horizontalAdvance("Polarity (+1/-1): "), ty + lh);
                 m_hessianCancelBtn->move(tx, ty + lh * 2);
                 m_hessianComputeBtn->move(rx + rw - margin - m_hessianComputeBtn->width(), ty + lh * 2);
+            } else if (m_amyloidActive) {
+                drawParamLabel(p, fm, tx, ty, "Helical rise (\u00C5):", m_amyloidRiseEdit->toolTip());
+                m_amyloidRiseEdit->move(tx + fm.horizontalAdvance("Helical rise (\u00C5): "), ty);
+                drawParamLabel(p, fm, tx, ty + lh, "Helical twist (\u00B0):", m_amyloidTwistEdit->toolTip());
+                m_amyloidTwistEdit->move(tx + fm.horizontalAdvance("Helical twist (\u00B0): "), ty + lh);
+                drawParamLabel(p, fm, tx, ty + lh * 2, "Long axis (\u00C5):", m_amyloidLongAxisEdit->toolTip());
+                m_amyloidLongAxisEdit->move(tx + fm.horizontalAdvance("Long axis (\u00C5): "), ty + lh * 2);
+                drawParamLabel(p, fm, tx, ty + lh * 3, "Short axis (\u00C5):", m_amyloidShortAxisEdit->toolTip());
+                m_amyloidShortAxisEdit->move(tx + fm.horizontalAdvance("Short axis (\u00C5): "), ty + lh * 3);
+                drawParamLabel(p, fm, tx, ty + lh * 4, "Smooth (\u00C5):", m_amyloidSmoothEdit->toolTip());
+                m_amyloidSmoothEdit->move(tx + fm.horizontalAdvance("Smooth (\u00C5): "), ty + lh * 4);
+                // Noise checkbox + sigma edit on the same row
+                m_amyloidNoiseBtn->move(tx, ty + lh * 5);
+                int noiseLblX = tx + m_amyloidNoiseBtn->sizeHint().width() + 8;
+                drawParamLabel(p, fm, noiseLblX, ty + lh * 5, "Sigma:", m_amyloidNoiseEdit->toolTip());
+                m_amyloidNoiseEdit->move(noiseLblX + fm.horizontalAdvance("Sigma: "), ty + lh * 5);
+                // Signal polarity button
+                m_amyloidSignalBtn->move(tx, ty + lh * 6);
+                // Info + buttons
+                QString infoStr;
+                if (m_amyloidPlacing == 1)
+                    infoStr = QString("Filaments: %1  Click to place end point").arg(m_amyloidFilaments.size());
+                else
+                    infoStr = QString("Filaments: %1  Click image to place start & end").arg(m_amyloidFilaments.size());
+                p.drawText(tx, ty + lh * 7 + fm.ascent(), infoStr);
+                m_amyloidCancelBtn->move(tx, ty + lh * 8);
+                m_amyloidComputeBtn->move(rx + rw - margin - m_amyloidComputeBtn->width(), ty + lh * 8);
             }
         }
     }
@@ -2423,6 +2644,23 @@ void FtWindow::paintEvent(QPaintEvent *)
                 QFont cf; cf.setPixelSize(9); p.setFont(cf);
                 p.setPen(QColor(200, 60, 60));
                 p.drawText((int)centerXp + 3, plotY + 10, "center");
+            }
+
+            // Dotted vertical lines at ±0.5 reciprocal pixels
+            {
+                double halfN = m_fftN / 2.0;
+                double maxProj = halfN * std::sqrt(2.0);
+                double projMin = -maxProj;
+                double freqs[2] = { -0.5, 0.5 };
+                p.setPen(QPen(QColor(120, 120, 120), 1, Qt::DotLine));
+                for (double freq : freqs) {
+                    double projDist = freq * m_fftN;
+                    int idx = (int)std::round(projDist - projMin);
+                    if (idx >= 0 && idx < nPts) {
+                        double xp = plotX + (double)idx / (nPts - 1) * plotW;
+                        p.drawLine((int)xp, plotY, (int)xp, plotY + plotH);
+                    }
+                }
             }
 
             // Draw axes
