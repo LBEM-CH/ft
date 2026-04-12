@@ -20,4 +20,10 @@ cd "$SCRIPT_DIR"
 ./build_wasm.sh
 echo ""
 
+
+# ---- TarBall build ----
+echo "=== Building TarBall for Server ==="
+./build_webserver.sh      
+echo ""
+
 echo "=== All builds complete ==="

@@ -132,6 +132,17 @@ private:
                        int histIndex = -1,
                        double dispMin = 0, double dispMax = 0);
 
+    // Draw a parameter-label text and register its bounding rect so that the
+    // tooltip shows up when the mouse hovers over the label (not just the
+    // entry widget). `tip` is the tooltip string (typically fetched from the
+    // corresponding entry widget's toolTip()).
+    void drawParamLabel(QPainter &p, const QFontMetrics &fm,
+                        int x, int y, const QString &text, const QString &tip);
+
+    // Painted parameter-label hover rectangles (populated in paintEvent,
+    // consumed in mouseMoveEvent). Cleared at the start of each paintEvent.
+    std::vector<std::pair<QRect, QString>> m_paramLabelTips;
+
     // ---- widgets ----
     QPushButton *m_loadBtn   = nullptr;
     QPushButton *m_saveBtn   = nullptr;

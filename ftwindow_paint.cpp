@@ -3,10 +3,24 @@
 // ---------------------------------------------------------------------------
 //  Painting
 // ---------------------------------------------------------------------------
+void FtWindow::drawParamLabel(QPainter &p, const QFontMetrics &fm,
+                              int x, int y, const QString &text, const QString &tip)
+{
+    p.drawText(x, y + fm.ascent(), text);
+    if (!tip.isEmpty()) {
+        QRect r(x, y, fm.horizontalAdvance(text), fm.height());
+        m_paramLabelTips.emplace_back(r, tip);
+    }
+}
+
 void FtWindow::paintEvent(QPaintEvent *)
 {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing, false);
+
+    // Reset painted parameter-label hover rectangles; they are repopulated
+    // below as the tool option panels are drawn.
+    m_paramLabelTips.clear();
 
     int cx = width() / 2;
     int hy = height() - height() / 5;
@@ -2141,52 +2155,66 @@ void FtWindow::paintEvent(QPaintEvent *)
             int ty = ry + margin;
 
             if (m_bandpassActive) {
-                p.drawText(tx, ty + fm.ascent(), "Smooth edge by pixels:");
+                drawParamLabel(p, fm, tx, ty, "Smooth edge by pixels:", m_smoothEdit->toolTip());
                 m_smoothEdit->move(tx + fm.horizontalAdvance("Smooth edge by pixels: "), ty);
                 m_bandEraseOutside->move(tx, ty + lh);
                 double halfN = m_fftN / 2.0;
                 QString diamStr = QString("Inner d=%1  Outer d=%2")
                     .arg(m_bandInnerR * 2.0 * halfN, 0, 'f', 1)
                     .arg(m_bandOuterR * 2.0 * halfN, 0, 'f', 1);
-                p.drawText(tx, ty + lh * 2 + fm.ascent(), diamStr);
+                drawParamLabel(p, fm, tx, ty + lh * 2, diamStr,
+                    "Current bandpass ring diameters, measured in Fourier pixels.\n"
+                    "Inner d is the diameter of the inner edge (small numbers = low\n"
+                    "frequencies), outer d is the diameter of the outer edge (large\n"
+                    "numbers = high frequencies). Drag the ring handles in panel 2\n"
+                    "to change these values.");
                 m_applyBandBtn->move(tx, ty + lh * 3);
             } else if (m_directionalActive) {
-                p.drawText(tx, ty + fm.ascent(), "Smooth edge by pixels:");
+                drawParamLabel(p, fm, tx, ty, "Smooth edge by pixels:", m_smoothEdit->toolTip());
                 m_smoothEdit->move(tx + fm.horizontalAdvance("Smooth edge by pixels: "), ty);
                 m_bandEraseOutside->move(tx, ty + lh);
                 QString angleStr = QString("Angle 1=%1\u00B0  Angle 2=%2\u00B0")
                     .arg(m_dirAngle1, 0, 'f', 1)
                     .arg(m_dirAngle2, 0, 'f', 1);
-                p.drawText(tx, ty + lh * 2 + fm.ascent(), angleStr);
+                drawParamLabel(p, fm, tx, ty + lh * 2, angleStr,
+                    "Current angular limits of the directional wedge, in degrees.\n"
+                    "Angle 1 and Angle 2 are the two boundary directions that\n"
+                    "define the kept (or erased) Fourier sector. Drag the wedge\n"
+                    "edges in panel 2 to change these values.");
                 m_applyBandBtn->move(tx, ty + lh * 3);
             } else if (m_brushActive) {
-                p.drawText(tx, ty + fm.ascent(), "Pixel value to enter:");
+                drawParamLabel(p, fm, tx, ty, "Pixel value to enter:", m_brushValueEdit->toolTip());
                 m_brushValueEdit->move(tx + fm.horizontalAdvance("Pixel value to enter: "), ty);
-                p.drawText(tx, ty + lh + fm.ascent(), "Paint brush Gaussian diameter:");
+                drawParamLabel(p, fm, tx, ty + lh, "Paint brush Gaussian diameter:", m_brushDiameterEdit->toolTip());
                 m_brushDiameterEdit->move(tx + fm.horizontalAdvance("Paint brush Gaussian diameter: "), ty + lh);
             } else if (m_eraserActive) {
-                p.drawText(tx, ty + fm.ascent(), "Eraser Gaussian diameter:");
+                drawParamLabel(p, fm, tx, ty, "Eraser Gaussian diameter:", m_eraserDiameterEdit->toolTip());
                 m_eraserDiameterEdit->move(tx + fm.horizontalAdvance("Eraser Gaussian diameter: "), ty);
             } else if (m_lineFilterActive) {
-                p.drawText(tx, ty + fm.ascent(), "Width of line:");
+                drawParamLabel(p, fm, tx, ty, "Width of line:", m_lineWidthEdit->toolTip());
                 m_lineWidthEdit->move(tx + fm.horizontalAdvance("Width of line: "), ty);
-                p.drawText(tx, ty + lh + fm.ascent(), "Direction of the line:");
+                drawParamLabel(p, fm, tx, ty + lh, "Direction of the line:", m_lineDirectionEdit->toolTip());
                 m_lineDirectionEdit->move(tx + fm.horizontalAdvance("Direction of the line: "), ty + lh);
                 m_lineEraseOutsideBtn->move(tx, ty + lh * 2);
                 m_applyLineBtn->move(tx, ty + lh * 3);
             } else if (m_latticeActive) {
-                p.drawText(tx, ty + fm.ascent(), "Smooth edge by pixels:");
+                drawParamLabel(p, fm, tx, ty, "Smooth edge by pixels:", m_latticeSmoothEdit->toolTip());
                 m_latticeSmoothEdit->move(tx + fm.horizontalAdvance("Smooth edge by pixels: "), ty);
-                p.drawText(tx, ty + lh + fm.ascent(), "Diameter of dots:");
+                drawParamLabel(p, fm, tx, ty + lh, "Diameter of dots:", m_latticeDotDiamEdit->toolTip());
                 m_latticeDotDiamEdit->move(tx + fm.horizontalAdvance("Diameter of dots: "), ty + lh);
                 m_latticeEraseOutside->move(tx, ty + lh * 2);
                 QString vecStr = QString("u=<%1,%2>  v=<%3,%4>")
                     .arg(m_latticeUx, 0, 'f', 1).arg(m_latticeUy, 0, 'f', 1)
                     .arg(m_latticeVx, 0, 'f', 1).arg(m_latticeVy, 0, 'f', 1);
-                p.drawText(tx, ty + lh * 3 + fm.ascent(), vecStr);
+                drawParamLabel(p, fm, tx, ty + lh * 3, vecStr,
+                    "Reciprocal-lattice basis vectors u and v, in Fourier pixels\n"
+                    "relative to the FFT centre. All lattice spots generated by\n"
+                    "integer combinations of u and v are selected. Drag the two\n"
+                    "basis handles in panel 2 to change these vectors.");
                 m_latticeApplyBtn->move(tx, ty + lh * 4);
             } else if (m_crossSectionActive) {
-                p.drawText(tx, ty + fm.ascent(), "Integration width in % of image size:");
+                drawParamLabel(p, fm, tx, ty, "Integration width in % of image size:",
+                               m_crossSectionWidthEdit->toolTip());
                 m_crossSectionWidthEdit->move(tx + fm.horizontalAdvance("Integration width in % of image size: "), ty);
             } else if (m_ftCropActive) {
                 m_ftCropCombo->move(tx, ty);
@@ -2303,15 +2331,15 @@ void FtWindow::paintEvent(QPaintEvent *)
             int ty = ry + margin;
 
             if (m_p1EraserActive) {
-                p.drawText(tx, ty + fm.ascent(), "Eraser Gaussian diameter:");
+                drawParamLabel(p, fm, tx, ty, "Eraser Gaussian diameter:", m_p1EraserDiameterEdit->toolTip());
                 m_p1EraserDiameterEdit->move(tx + fm.horizontalAdvance("Eraser Gaussian diameter: "), ty);
             } else if (m_p1BrushActive) {
-                p.drawText(tx, ty + fm.ascent(), "Pixel value to enter:");
+                drawParamLabel(p, fm, tx, ty, "Pixel value to enter:", m_p1BrushValueEdit->toolTip());
                 m_p1BrushValueEdit->move(tx + fm.horizontalAdvance("Pixel value to enter: "), ty);
-                p.drawText(tx, ty + lh + fm.ascent(), "Paint brush Gaussian diameter:");
+                drawParamLabel(p, fm, tx, ty + lh, "Paint brush Gaussian diameter:", m_p1BrushDiameterEdit->toolTip());
                 m_p1BrushDiameterEdit->move(tx + fm.horizontalAdvance("Paint brush Gaussian diameter: "), ty + lh);
             } else if (m_p1TaperActive) {
-                p.drawText(tx, ty + fm.ascent(), "Hanning width:");
+                drawParamLabel(p, fm, tx, ty, "Hanning width:", m_p1TaperWidthEdit->toolTip());
                 m_p1TaperWidthEdit->move(tx + fm.horizontalAdvance("Hanning width: "), ty);
                 m_applyP1TaperBtn->move(tx, ty + lh);
             } else if (m_binActive) {
@@ -2320,7 +2348,7 @@ void FtWindow::paintEvent(QPaintEvent *)
                 m_applyBinBtn->move(tx, ty + lh * 2);
             } else if (m_peakPickActive) {
                 // Row 0: source map combo + show/hide button top-right
-                p.drawText(tx, ty + fm.ascent(), "Picking source map:");
+                drawParamLabel(p, fm, tx, ty, "Picking source map:", m_peakSourceCombo->toolTip());
                 m_peakSourceCombo->move(tx + fm.horizontalAdvance("Picking source map: "), ty);
                 m_peakShowPosBtn->move(rx + rw - margin - m_peakShowPosBtn->width(), ty);
                 // Row 1: threshold slider
@@ -2333,15 +2361,19 @@ void FtWindow::paintEvent(QPaintEvent *)
                 double threshVal = srcMin + (srcMax - srcMin)
                                    * m_peakThresholdSlider->value() / 1000.0;
                 QString threshStr = QString("Threshold: %1 ").arg(threshVal, 0, 'g', 5);
-                p.drawText(tx, ty + lh + fm.ascent(), threshStr);
+                drawParamLabel(p, fm, tx, ty + lh, threshStr, m_peakThresholdSlider->toolTip());
                 m_peakThresholdSlider->move(tx + fm.horizontalAdvance(threshStr), ty + lh);
                 // Row 2: exclusion radius slider
                 QString exclStr2 = QString("Exclusion radius: %1 ").arg(m_peakExclRadiusSlider->value());
-                p.drawText(tx, ty + lh * 2 + fm.ascent(), exclStr2);
+                drawParamLabel(p, fm, tx, ty + lh * 2, exclStr2, m_peakExclRadiusSlider->toolTip());
                 m_peakExclRadiusSlider->move(tx + fm.horizontalAdvance(exclStr2), ty + lh * 2);
                 // Row 3: peaks found
                 QString peakStr = QString("Peaks found: %1").arg(m_peaks.size());
-                p.drawText(tx, ty + lh * 3 + fm.ascent(), peakStr);
+                drawParamLabel(p, fm, tx, ty + lh * 3, peakStr,
+                    "Number of local maxima that currently pass the threshold\n"
+                    "and exclusion-radius filters. Updates live as you adjust\n"
+                    "the sliders. Click \"Compute\" to commit these positions\n"
+                    "as a particle list for subsequent extraction.");
                 // Row 4: Cancel (left) + Compute (right)
                 m_peakCancelBtn->move(tx, ty + lh * 4);
                 m_peakComputeBtn->move(rx + rw - margin - m_peakComputeBtn->width(), ty + lh * 4);
@@ -2349,48 +2381,48 @@ void FtWindow::paintEvent(QPaintEvent *)
                 if (m_peaks.empty()) {
                     p.drawText(tx, ty + fm.ascent(), "First prepare a particle position list");
                 } else {
-                    p.drawText(tx, ty + fm.ascent(), "Source image:");
+                    drawParamLabel(p, fm, tx, ty, "Source image:", m_extractSourceCombo->toolTip());
                     m_extractSourceCombo->move(tx + fm.horizontalAdvance("Source image: "), ty);
-                    p.drawText(tx, ty + lh + fm.ascent(), "Target image:");
+                    drawParamLabel(p, fm, tx, ty + lh, "Target image:", m_extractTargetCombo->toolTip());
                     m_extractTargetCombo->move(tx + fm.horizontalAdvance("Target image: "), ty + lh);
-                    p.drawText(tx, ty + lh * 2 + fm.ascent(), "Particle size:");
+                    drawParamLabel(p, fm, tx, ty + lh * 2, "Particle size:", m_extractSizeCombo->toolTip());
                     m_extractSizeCombo->move(tx + fm.horizontalAdvance("Particle size: "), ty + lh * 2);
                     m_extractCancelBtn->move(tx, ty + lh * 3);
                     m_extractComputeBtn->move(rx + rw - margin - m_extractComputeBtn->width(), ty + lh * 3);
                 }
             } else if (m_gaborActive) {
-                p.drawText(tx, ty + fm.ascent(), "Sigma (envelope):");
+                drawParamLabel(p, fm, tx, ty, "Sigma (envelope):", m_gaborSigmaEdit->toolTip());
                 m_gaborSigmaEdit->move(tx + fm.horizontalAdvance("Sigma (envelope): "), ty);
-                p.drawText(tx, ty + lh + fm.ascent(), "Wavelength lambda:");
+                drawParamLabel(p, fm, tx, ty + lh, "Wavelength lambda:", m_gaborLambdaEdit->toolTip());
                 m_gaborLambdaEdit->move(tx + fm.horizontalAdvance("Wavelength lambda: "), ty + lh);
-                p.drawText(tx, ty + lh * 2 + fm.ascent(), "Orientation (deg):");
+                drawParamLabel(p, fm, tx, ty + lh * 2, "Orientation (deg):", m_gaborThetaEdit->toolTip());
                 m_gaborThetaEdit->move(tx + fm.horizontalAdvance("Orientation (deg): "), ty + lh * 2);
-                p.drawText(tx, ty + lh * 3 + fm.ascent(), "Aspect ratio gamma:");
+                drawParamLabel(p, fm, tx, ty + lh * 3, "Aspect ratio gamma:", m_gaborGammaEdit->toolTip());
                 m_gaborGammaEdit->move(tx + fm.horizontalAdvance("Aspect ratio gamma: "), ty + lh * 3);
                 m_gaborCancelBtn->move(tx, ty + lh * 4);
                 m_gaborComputeBtn->move(rx + rw - margin - m_gaborComputeBtn->width(), ty + lh * 4);
             } else if (m_hessianActive) {
-                p.drawText(tx, ty + fm.ascent(), "Sigma (smoothing):");
+                drawParamLabel(p, fm, tx, ty, "Sigma (smoothing):", m_hessianSigmaEdit->toolTip());
                 m_hessianSigmaEdit->move(tx + fm.horizontalAdvance("Sigma (smoothing): "), ty);
-                p.drawText(tx, ty + lh + fm.ascent(), "Polarity (+1/-1):");
+                drawParamLabel(p, fm, tx, ty + lh, "Polarity (+1/-1):", m_hessianPolarityEdit->toolTip());
                 m_hessianPolarityEdit->move(tx + fm.horizontalAdvance("Polarity (+1/-1): "), ty + lh);
                 m_hessianCancelBtn->move(tx, ty + lh * 2);
                 m_hessianComputeBtn->move(rx + rw - margin - m_hessianComputeBtn->width(), ty + lh * 2);
             } else if (m_amyloidActive) {
-                p.drawText(tx, ty + fm.ascent(), "Helical rise (\u00C5):");
+                drawParamLabel(p, fm, tx, ty, "Helical rise (\u00C5):", m_amyloidRiseEdit->toolTip());
                 m_amyloidRiseEdit->move(tx + fm.horizontalAdvance("Helical rise (\u00C5): "), ty);
-                p.drawText(tx, ty + lh + fm.ascent(), "Helical twist (\u00B0):");
+                drawParamLabel(p, fm, tx, ty + lh, "Helical twist (\u00B0):", m_amyloidTwistEdit->toolTip());
                 m_amyloidTwistEdit->move(tx + fm.horizontalAdvance("Helical twist (\u00B0): "), ty + lh);
-                p.drawText(tx, ty + lh * 2 + fm.ascent(), "Long axis (\u00C5):");
+                drawParamLabel(p, fm, tx, ty + lh * 2, "Long axis (\u00C5):", m_amyloidLongAxisEdit->toolTip());
                 m_amyloidLongAxisEdit->move(tx + fm.horizontalAdvance("Long axis (\u00C5): "), ty + lh * 2);
-                p.drawText(tx, ty + lh * 3 + fm.ascent(), "Short axis (\u00C5):");
+                drawParamLabel(p, fm, tx, ty + lh * 3, "Short axis (\u00C5):", m_amyloidShortAxisEdit->toolTip());
                 m_amyloidShortAxisEdit->move(tx + fm.horizontalAdvance("Short axis (\u00C5): "), ty + lh * 3);
-                p.drawText(tx, ty + lh * 4 + fm.ascent(), "Smooth (\u00C5):");
+                drawParamLabel(p, fm, tx, ty + lh * 4, "Smooth (\u00C5):", m_amyloidSmoothEdit->toolTip());
                 m_amyloidSmoothEdit->move(tx + fm.horizontalAdvance("Smooth (\u00C5): "), ty + lh * 4);
                 // Noise checkbox + sigma edit on the same row
                 m_amyloidNoiseBtn->move(tx, ty + lh * 5);
                 int noiseLblX = tx + m_amyloidNoiseBtn->sizeHint().width() + 8;
-                p.drawText(noiseLblX, ty + lh * 5 + fm.ascent(), "Sigma:");
+                drawParamLabel(p, fm, noiseLblX, ty + lh * 5, "Sigma:", m_amyloidNoiseEdit->toolTip());
                 m_amyloidNoiseEdit->move(noiseLblX + fm.horizontalAdvance("Sigma: "), ty + lh * 5);
                 // Signal polarity button
                 m_amyloidSignalBtn->move(tx, ty + lh * 6);
