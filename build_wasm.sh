@@ -11,7 +11,8 @@
 #      (select "WebAssembly (single-threaded)" under your Qt version)
 #
 #   3. Set these environment variables (or edit paths below):
-#        QT_WASM_PATH  – path to the Qt WASM kit, e.g. ~/Qt/6.8.3/wasm_singlethread
+#        QT_VERSION    – Qt version to use for default paths, e.g. 6.8.3
+#        QT_WASM_PATH  – path to the Qt WASM kit, e.g. ~/Qt/$QT_VERSION/wasm_singlethread
 #        EMSDK         – path to your emsdk directory
 #
 # Usage:
@@ -24,15 +25,16 @@
 set -e
 
 # ---- Configure paths (edit if needed) ----
-QT_WASM_PATH="${QT_WASM_PATH:-$HOME/Qt/6.8.3/wasm_singlethread}"
+QT_VERSION="${QT_VERSION:-6.8.3}"
+QT_WASM_PATH="${QT_WASM_PATH:-$HOME/Qt/$QT_VERSION/wasm_singlethread}"
 EMSDK="${EMSDK:-$HOME/Projects/emsdk}"
 
 # Host Qt kit (needed for cross-compilation). Pick per OS.
 if [ -z "$QT_HOST_PATH" ]; then
-    if [ -d "$HOME/Qt/6.8.3/gcc_64" ]; then
-        QT_HOST_PATH="$HOME/Qt/6.8.3/gcc_64"
-    elif [ -d "$HOME/Qt/6.8.3/macos" ]; then
-        QT_HOST_PATH="$HOME/Qt/6.8.3/macos"
+    if [ -d "$HOME/Qt/$QT_VERSION/gcc_64" ]; then
+        QT_HOST_PATH="$HOME/Qt/$QT_VERSION/gcc_64"
+    elif [ -d "$HOME/Qt/$QT_VERSION/macos" ]; then
+        QT_HOST_PATH="$HOME/Qt/$QT_VERSION/macos"
     fi
 fi
 
