@@ -1,15 +1,24 @@
 #!/usr/bin/env bash
 # Package the built WASM server into a tarball and optionally deploy it to a
-# remote Ubuntu host running Caddy (for public HTTPS).
+# remote Ubuntu host running Apache (for public HTTPS).
+#
+# The target host is expected to have Apache configured with:
+#   - An existing :443 SSL vhost (e.g. /etc/apache2/sites-enabled/default-ssl.conf)
+#     whose DocumentRoot points at the site's main app (e.g. /var/www/html).
+#   - The snippet ft-apache.conf from this repo installed at
+#     /etc/apache2/conf-available/ft-wasm.conf and Include'd from that vhost.
+#     The snippet adds `Alias /ft /srv/ft`, so the WASM app is served at
+#     https://<host>/ft/ without disturbing the main site.
+# See ft-apache.conf for the one-time Apache setup.
 #
 # Usage:
 #   ./build_webserver.sh                              # just create ft-wasm.tar.gz
-#   ./build_webserver.sh user@host                    # deploy to /srv/ft and reload caddy
+#   ./build_webserver.sh user@host                    # deploy to /srv/ft and reload apache2
 #   ./build_webserver.sh user@host /custom/path       # deploy to a custom path
 #
-# The remote path defaults to /srv/ft (matches Caddyfile in this repo).
-# The script uses sudo on the remote to write into /srv and to reload caddy —
-# the remote user must have passwordless sudo or be prepared to type a password.
+# The remote path defaults to /srv/ft (matches the Alias in ft-apache.conf).
+# The script uses sudo on the remote to write into /srv and to reload apache2 —
+# the remote user must have sudo rights (password will be prompted).
 
 set -euo pipefail
 
@@ -43,11 +52,11 @@ if [[ -z "$REMOTE" ]]; then
 
 To deploy manually, copy $TARBALL to the target and run:
 
-    sudo mkdir -p /srv/ft && sudo chown \$USER /srv/ft
-    tar xzf $TARBALL -C /srv/ft
-    sudo systemctl reload caddy    # if Caddy is already configured
+    sudo mkdir -p /srv/ft
+    sudo tar xzf $TARBALL -C /srv/ft
+    sudo systemctl reload apache2
 
-Caddy setup (one-time): see Caddyfile in this repo and the public-HTTPS notes.
+One-time Apache setup: see ft-apache.conf for the snippet and instructions.
 EOF
     exit 0
 fi
@@ -69,8 +78,11 @@ if systemctl list-unit-files | grep -q '^apache2\.service'; then
     sudo systemctl reload apache2
     echo "Apache reloaded."
 else
-    echo "note: apache2 is not installed on the remote — install it and copy ft-apache.conf to /etc/apache2/sites-available/ft.conf"
+    echo "note: apache2 is not installed on the remote — install it and Include ft-apache.conf from the site's SSL vhost"
 fi
 EOF
 
+# Extract hostname from user@host for the URL hint.
+REMOTE_HOST="${REMOTE#*@}"
 echo "Deployed to $REMOTE:$REMOTE_DIR"
+echo "Open: https://$REMOTE_HOST/ft/"
