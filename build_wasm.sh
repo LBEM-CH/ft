@@ -63,9 +63,11 @@ chmod +x "$QT_HOST_PATH/bin/"* 2>/dev/null || true
 # Activate Emscripten environment
 source "$EMSDK/emsdk_env.sh"
 
-# Create build directory
+# Create build directory (wipe any previous build to avoid stale EM_ASM /
+# JS-glue mismatches between ft.wasm and ft.js)
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BUILD_DIR="$SCRIPT_DIR/build_wasm"
+rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
 cd "$BUILD_DIR"
 
@@ -81,10 +83,20 @@ cmake --build . --parallel
 echo "=== Generating ft.html and copying loader assets ==="
 cp "$QT_WASM_PATH/plugins/platforms/qtloader.js" .
 cp "$QT_WASM_PATH/plugins/platforms/qtlogo.svg" . 2>/dev/null || true
+BUILD_STAMP="$(date +%s)"
 sed -e 's/@APPNAME@/ft/g' \
     -e 's/@APPEXPORTNAME@/createQtAppInstance/g' \
     -e 's/@PRELOAD@//g' \
-    "$QT_WASM_PATH/plugins/platforms/wasm_shell.html" > ft.html
+    "$QT_WASM_PATH/plugins/platforms/wasm_shell.html" \
+  | sed -e "s|ft\\.js|ft.js?v=${BUILD_STAMP}|g" \
+  | sed -e 's|</title>|</title>\
+    <meta name="apple-mobile-web-app-capable" content="yes">\
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">\
+    <meta name="apple-mobile-web-app-title" content="ft">\
+    <link rel="apple-touch-icon" href="qtlogo.svg">\
+    <script>window.__FT_BUILD_STAMP="'"${BUILD_STAMP}"'";</script>|' \
+  | sed -e 's|await qtLoad({|await qtLoad({ locateFile: (p) => p.endsWith(".wasm") ? p + "?v=" + window.__FT_BUILD_STAMP : p,|' \
+  > ft.html
 if [ -d "$SCRIPT_DIR/EXAMPLE_IMAGES" ]; then
     if [ -e images ] || [ -L images ]; then
         rm -rf images
