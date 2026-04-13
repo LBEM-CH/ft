@@ -128,7 +128,8 @@ private:
                   bool yAxisRight = false);
     void drawShadowRect(QPainter &p, const QRect &rect);
     void drawMinMax(QPainter &p, const QRect &frame, double minVal, double maxVal,
-                    double curVal, bool hasCur);
+                    double curVal, bool hasCur,
+                    const QString &mouseText = QString());
     void drawHistogram(QPainter &p, const QRect &frame,
                        const std::vector<double> &vals,
                        double minVal, double maxVal,
@@ -264,7 +265,7 @@ private:
 
     // ---- tool buttons ----
     static constexpr int P1_TOOL_BUTTONS = 15;
-    static constexpr int P2_TOOL_BUTTONS = 10;
+    static constexpr int P2_TOOL_BUTTONS = 11;
     QRect       m_p1BtnRects[P1_TOOL_BUTTONS];       // panel 1 left edge
     QRect       m_toolBtnRects[P2_TOOL_BUTTONS];     // panel 2 right edge
 
@@ -489,6 +490,27 @@ private:
     QCheckBox  *m_ftCropKeepSizeBtn = nullptr;
     QPushButton *m_applyFtCropBtn = nullptr;
     void onApplyFtCrop();
+
+    // ---- CTF ----
+    bool        m_ctfActive = false;
+    QLineEdit  *m_ctfVoltageEdit      = nullptr;
+    QLineEdit  *m_ctfEnergySpreadEdit = nullptr;
+    QLineEdit  *m_ctfDefocusSpreadEdit = nullptr;
+    QLineEdit  *m_ctfOpenAngleEdit    = nullptr;
+    QLineEdit  *m_ctfCsEdit           = nullptr;
+    QLineEdit  *m_ctfDefocusEdit      = nullptr;
+    QLineEdit  *m_ctfAstigEdit        = nullptr;
+    QLineEdit  *m_ctfAstigAngleEdit   = nullptr;
+    QPushButton *m_ctfCancelBtn       = nullptr;
+    QPushButton *m_ctfComputeBtn      = nullptr;
+    std::vector<double> m_ctfProfile;      // 1D CTF profile from center to corner
+    double      m_ctfAngleDeg = 0.0;       // profile direction (deg, CCW from +x)
+    bool        m_ctfDragging = false;
+    void onCtfCompute();
+    void onCtfCancel();
+    void computeCtfProfile1D();
+    void drawCtfDirectionLine(QPainter &p, const QRect &screenRect,
+                              const ZoomState &zoom, int imgW, int imgH);
 
     // ---- directional filter ----
     bool        m_directionalActive = false;
