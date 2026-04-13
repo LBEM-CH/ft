@@ -2818,24 +2818,29 @@ void FtWindow::onFtMathCompute()
     }
 #endif
 
-    // Helper: get raw pixels from a slot
-    auto getSlotPixels = [&](int idx, int &w, int &h) -> std::vector<double> {
+    // Helper: get raw pixels + pixel size from a slot
+    auto getSlotPixels = [&](int idx, int &w, int &h, double &px) -> std::vector<double> {
         if (idx == m_activeSlot && !m_image.isNull()) {
             w = m_image.width(); h = m_image.height();
+            px = m_pixelSize;
             return m_imageRawPixels;
         }
         if (idx >= 0 && idx < HISTORY_SLOTS && m_history[idx].occupied) {
             w = m_history[idx].image.width();
             h = m_history[idx].image.height();
+            px = m_history[idx].pixelSize;
             return m_history[idx].rawPixels;
         }
-        w = 0; h = 0;
+        w = 0; h = 0; px = 1.0;
         return {};
     };
 
     int w1 = 0, h1 = 0, w2 = 0, h2 = 0;
-    std::vector<double> pix1 = getSlotPixels(in1Idx, w1, h1);
-    std::vector<double> pix2 = getSlotPixels(in2Idx, w2, h2);
+    double px1 = 1.0, px2 = 1.0;
+    std::vector<double> pix1 = getSlotPixels(in1Idx, w1, h1, px1);
+    std::vector<double> pix2 = getSlotPixels(in2Idx, w2, h2, px2);
+    if (px1 <= 0) px1 = 1.0;
+    if (px2 <= 0) px2 = 1.0;
     if (pix1.empty() || pix2.empty()) return;
 
     // Safety: rebuild rawPixels from QImage if sizes don't match
@@ -2858,27 +2863,71 @@ void FtWindow::onFtMathCompute()
     fixRawPixels(pix1, in1Idx, w1, h1);
     fixRawPixels(pix2, in2Idx, w2, h2);
 
-    // Compute FFT for a slot's raw pixels, returning shifted FFT and its N
-    auto computeSlotFFT = [](const std::vector<double> &pixels, int w, int h) {
-        int S = std::max(w, h);
-        int N = nextGoodFFTSize(S);
+    // Determine a common target (pxT, N) so the two FFTs share both the same
+    // reciprocal pixel size (dq = 1/(N·pxT)) and the same Nyquist (1/(2·pxT)).
+    // Any image with a larger pixel size than pxT is bilinearly upsampled in
+    // real space before being zero-padded and transformed, which produces a
+    // smooth FFT without the aliasing artefacts of Fourier-domain interpolation.
+    double pxT = std::min(px1, px2);
+    auto effSize = [&](int w, int h, double px) {
+        double f = px / pxT;
+        int ew = std::max(1, (int)std::round(w * f));
+        int eh = std::max(1, (int)std::round(h * f));
+        return std::pair<int,int>(ew, eh);
+    };
+    auto [ew1, eh1] = effSize(w1, h1, px1);
+    auto [ew2, eh2] = effSize(w2, h2, px2);
+    int Ntarget = nextGoodFFTSize(std::max({ew1, eh1, ew2, eh2}));
+
+    // FFT a slot's raw pixels at the common target frame. The image is first
+    // bilinearly interpolated in real space from (w_src, h_src, px_src) to
+    // (w_eff, h_eff, pxT), then zero-padded (around the mean) to NxN and FFT'd.
+    auto computeSlotFFT = [pxT, Ntarget](const std::vector<double> &pixels,
+                                         int wSrc, int hSrc, double pxSrc) {
+        int N = Ntarget;
+        double f = pxSrc / pxT;
+        int wEff = std::max(1, (int)std::round(wSrc * f));
+        int hEff = std::max(1, (int)std::round(hSrc * f));
+
         double sum = 0;
         for (auto v : pixels) sum += v;
         double avg = pixels.empty() ? 0.0 : sum / pixels.size();
+
         std::vector<Complex> data(N * N, Complex(avg, 0.0));
-        // Center the image in the NxN grid
-        int offX = (N - w) / 2, offY = (N - h) / 2;
-        for (int y = 0; y < h; y++)
-            for (int x = 0; x < w; x++)
-                data[(y + offY) * N + (x + offX)] = Complex(pixels[y * w + x], 0.0);
-        // Row FFTs
+        int offX = (N - wEff) / 2, offY = (N - hEff) / 2;
+
+        // Bilinear real-space resampling: target (wEff, hEff) ← source (wSrc, hSrc).
+        for (int y = 0; y < hEff; y++) {
+            double ys = (hEff > 1)
+                          ? (double)y * (hSrc - 1) / (hEff - 1)
+                          : 0.0;
+            int y0 = (int)std::floor(ys);
+            double fy = ys - y0;
+            int y1 = std::min(y0 + 1, hSrc - 1);
+            for (int x = 0; x < wEff; x++) {
+                double xs = (wEff > 1)
+                              ? (double)x * (wSrc - 1) / (wEff - 1)
+                              : 0.0;
+                int x0 = (int)std::floor(xs);
+                double fx = xs - x0;
+                int x1 = std::min(x0 + 1, wSrc - 1);
+                double v00 = pixels[y0 * wSrc + x0];
+                double v10 = pixels[y0 * wSrc + x1];
+                double v01 = pixels[y1 * wSrc + x0];
+                double v11 = pixels[y1 * wSrc + x1];
+                double vx0 = v00 * (1.0 - fx) + v10 * fx;
+                double vx1 = v01 * (1.0 - fx) + v11 * fx;
+                data[(y + offY) * N + (x + offX)] =
+                    Complex(vx0 * (1.0 - fy) + vx1 * fy, 0.0);
+            }
+        }
+
         std::vector<Complex> row(N);
         for (int y = 0; y < N; y++) {
             for (int x = 0; x < N; x++) row[x] = data[y * N + x];
             fft1d(row, false);
             for (int x = 0; x < N; x++) data[y * N + x] = row[x];
         }
-        // Column FFTs
         std::vector<Complex> col(N);
         for (int x = 0; x < N; x++) {
             for (int y = 0; y < N; y++) col[y] = data[y * N + x];
@@ -2895,51 +2944,40 @@ void FtWindow::onFtMathCompute()
     struct FtMathWork {
         std::vector<double> pix1, pix2;
         int w1, h1, w2, h2;
+        double px1 = 1.0, px2 = 1.0;
         int outIdx, in1Idx, in2Idx, opIdx;
         bool conjugate;
         std::vector<Complex> fft1data, fft2data, result;
         int N1 = 0, N2 = 0, N = 0;
+        double pxTarget = 1.0;
     };
     auto st = std::make_shared<FtMathWork>();
     st->pix1 = std::move(pix1); st->pix2 = std::move(pix2);
     st->w1 = w1; st->h1 = h1; st->w2 = w2; st->h2 = h2;
+    st->px1 = px1; st->px2 = px2;
     st->outIdx = outIdx; st->in1Idx = in1Idx; st->in2Idx = in2Idx;
     st->opIdx = opIdx; st->conjugate = conjugate;
 
+    st->pxTarget = pxT;
     chainSteps({
-        // Stage 1: FFT of input 1
+        // Stage 1: FFT of input 1 (in common target frame)
         [this, st, computeSlotFFT]() {
-            auto [d, n] = computeSlotFFT(st->pix1, st->w1, st->h1);
+            auto [d, n] = computeSlotFFT(st->pix1, st->w1, st->h1, st->px1);
             st->fft1data = std::move(d); st->N1 = n;
             m_ftMathProgress = 0.3;
         },
-        // Stage 2: FFT of input 2
+        // Stage 2: FFT of input 2 (in common target frame)
         [this, st, computeSlotFFT]() {
-            auto [d, n] = computeSlotFFT(st->pix2, st->w2, st->h2);
+            auto [d, n] = computeSlotFFT(st->pix2, st->w2, st->h2, st->px2);
             st->fft2data = std::move(d); st->N2 = n;
             m_ftMathProgress = 0.6;
         },
-        // Stage 3: zero-pad, conjugate, operation
+        // Stage 3: conjugate, operation (both FFTs already share the frame)
         [this, st]() {
-            st->N = std::max(st->N1, st->N2);
-            int N = st->N;
-            // Zero-pad smaller FFT
-            auto zeroPadFFT = [](const std::vector<Complex> &src, int srcN, int dstN) {
-                if (srcN == dstN) return src;
-                std::vector<Complex> dst(dstN * dstN, Complex(0.0, 0.0));
-                int off = (dstN - srcN) / 2;
-                for (int y = 0; y < srcN; y++)
-                    for (int x = 0; x < srcN; x++)
-                        dst[(y + off) * dstN + (x + off)] = src[y * srcN + x];
-                double scale = (double)(dstN * dstN) / (double)(srcN * srcN);
-                for (auto &c : dst) c *= scale;
-                return dst;
-            };
-            if (st->N1 < N) st->fft1data = zeroPadFFT(st->fft1data, st->N1, N);
-            if (st->N2 < N) st->fft2data = zeroPadFFT(st->fft2data, st->N2, N);
+            st->N = st->N1;  // N1 == N2 == Ntarget by construction
             if (st->conjugate)
                 for (auto &c : st->fft2data) c = std::conj(c);
-            // Perform operation
+            int N = st->N;
             st->result.resize(N * N);
             if (st->opIdx == 3) {
                 double maxAmp = 0;
@@ -3038,7 +3076,7 @@ void FtWindow::onFtMathCompute()
             m_history[outIdx].rawPixels = std::move(realResult);
             m_history[outIdx].minVal    = minVal;
             m_history[outIdx].maxVal    = maxVal;
-            m_history[outIdx].pixelSize = 1.0;
+            m_history[outIdx].pixelSize = st->pxTarget;
             m_history[outIdx].powerSpecImg = computePowerSpecMasked(outImg);
             m_history[outIdx].occupied  = true;
 
@@ -3634,6 +3672,7 @@ void FtWindow::onCtfCancel()
     m_ctfVoltageEdit->hide();
     m_ctfEnergySpreadEdit->hide();
     m_ctfDefocusSpreadEdit->hide();
+    m_ctfOpenAngleEdit->hide();
     m_ctfCsEdit->hide();
     m_ctfDefocusEdit->hide();
     m_ctfAstigEdit->hide();
@@ -3706,10 +3745,11 @@ void FtWindow::onCtfCompute()
 {
     // Parse parameters
     bool okV = false, okE = false, okC = false, okD = false;
-    bool okA = false, okAA = false, okDS = false;
+    bool okA = false, okAA = false, okDS = false, okOA = false;
     double voltageKV    = m_ctfVoltageEdit->text().toDouble(&okV);
     double energyEV     = m_ctfEnergySpreadEdit->text().toDouble(&okE);
     double defocusSpreadNM = m_ctfDefocusSpreadEdit->text().toDouble(&okDS);
+    double openAngleMrad = m_ctfOpenAngleEdit->text().toDouble(&okOA);
     double csMM         = m_ctfCsEdit->text().toDouble(&okC);
     double defocusNM    = m_ctfDefocusEdit->text().toDouble(&okD);
     double astigNM       = m_ctfAstigEdit->text().toDouble(&okA);
@@ -3717,6 +3757,7 @@ void FtWindow::onCtfCompute()
     if (!okV || voltageKV <= 0) voltageKV = 300.0;
     if (!okE)                   energyEV  = 0.7;
     if (!okDS)                  defocusSpreadNM = 5.0;
+    if (!okOA)                  openAngleMrad = 0.1;
     if (!okC)                   csMM      = 2.7;
     if (!okD)                   defocusNM = 1000.0;
     if (!okA)                   astigNM   = 0.0;
@@ -3751,6 +3792,7 @@ void FtWindow::onCtfCompute()
     m_ctfProfile.assign(nProf, 0.0);
     const double A = 0.97;
     const double B = 1.0 - A * A;  // amplitude contrast term per user's formula
+    double alphaRad = openAngleMrad * 1.0e-3;
     auto ctfAt = [&](double dfLocalA, double rPix) -> double {
         // Spatial frequency q (1/Å) for this radial pixel distance.
         double q = rPix / (N * dxA);
@@ -3758,11 +3800,14 @@ void FtWindow::onCtfCompute()
         double q4 = q2 * q2;
         double chi = M_PI * lambdaA * dfLocalA * q2
                    + 0.5 * M_PI * CsA * lambdaA * lambdaA * lambdaA * q4;
-        // Temporal-coherence envelope from energy spread:
-        //   E_t(q) = exp( -0.5 * (π λ Δz q²)² )
+        // Temporal-coherence envelope from defocus spread.
         double tArg = M_PI * lambdaA * defocusSpreadA * q2;
         double envT = std::exp(-0.5 * tArg * tArg);
-        return envT * (A * std::sin(-chi) + B * std::cos(-chi));
+        // Spatial-coherence envelope from the finite gun opening angle:
+        //   E_s(q) = exp(-π² α² q² (Δf + Cs·λ²·q²)²)
+        double sArg = dfLocalA + CsA * lambdaA * lambdaA * q2;
+        double envS = std::exp(-(M_PI * M_PI) * alphaRad * alphaRad * q2 * sArg * sArg);
+        return envT * envS * (A * std::sin(-chi) + B * std::cos(-chi));
     };
     // 1D profile: direction-dependent defocus along m_ctfAngleDeg.
     double profAngleRad = m_ctfAngleDeg * M_PI / 180.0;

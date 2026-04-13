@@ -2226,20 +2226,21 @@ void FtWindow::paintEvent(QPaintEvent *)
                 int r3 = m_applyFtCropBtn->width();
                 textW = std::max({r1, r2, r3});
             } else if (m_ctfActive) {
-                nRows = 6;
+                nRows = 5;
                 int r0 = fm.horizontalAdvance("Acceleration Voltage (kV): ") + m_ctfVoltageEdit->width()
                          + 12 + fm.horizontalAdvance("Energy spread (eV): ")
                          + m_ctfEnergySpreadEdit->width();
-                int r1 = fm.horizontalAdvance("Defocus spread (nm): ") + m_ctfDefocusSpreadEdit->width()
+                int r1 = fm.horizontalAdvance("Spherical aberration Cs (mm): ") + m_ctfCsEdit->width()
                          + 12 + fm.horizontalAdvance("Open angle gun (mrad): ")
                          + m_ctfOpenAngleEdit->width();
-                int r2 = fm.horizontalAdvance("Spherical aberration constant Cs (mm): ") + m_ctfCsEdit->width();
-                int r3 = fm.horizontalAdvance("Defocus (nm): ") + m_ctfDefocusEdit->width();
-                int r4 = fm.horizontalAdvance("Astigmatism (nm): ") + m_ctfAstigEdit->width()
+                int r2 = fm.horizontalAdvance("Defocus (nm): ") + m_ctfDefocusEdit->width()
+                         + 12 + fm.horizontalAdvance("Defocus spread (nm): ")
+                         + m_ctfDefocusSpreadEdit->width();
+                int r3 = fm.horizontalAdvance("Astigmatism (nm): ") + m_ctfAstigEdit->width()
                          + 12 + fm.horizontalAdvance("Astigmatism direction (\u00B0): ")
                          + m_ctfAstigAngleEdit->width();
-                int r5 = m_ctfCancelBtn->width() + 8 + m_ctfComputeBtn->width();
-                textW = std::max({r0, r1, r2, r3, r4, r5});
+                int r4 = m_ctfCancelBtn->width() + 8 + m_ctfComputeBtn->width();
+                textW = std::max({r0, r1, r2, r3, r4});
             }
 
             int rw = textW * 6 / 5 + 2 * margin;
@@ -2330,30 +2331,37 @@ void FtWindow::paintEvent(QPaintEvent *)
                 m_ftCropKeepSizeBtn->move(tx, ty + lh);
                 m_applyFtCropBtn->move(tx, ty + lh * 2);
             } else if (m_ctfActive) {
+                // Row 0: Voltage, Energy spread
                 drawParamLabel(p, fm, tx, ty, "Acceleration Voltage (kV):", m_ctfVoltageEdit->toolTip());
                 int avX = tx + fm.horizontalAdvance("Acceleration Voltage (kV): ");
                 m_ctfVoltageEdit->move(avX, ty);
                 int esLblX = avX + m_ctfVoltageEdit->width() + 12;
                 drawParamLabel(p, fm, esLblX, ty, "Energy spread (eV):", m_ctfEnergySpreadEdit->toolTip());
                 m_ctfEnergySpreadEdit->move(esLblX + fm.horizontalAdvance("Energy spread (eV): "), ty);
-                drawParamLabel(p, fm, tx, ty + lh, "Defocus spread (nm):", m_ctfDefocusSpreadEdit->toolTip());
-                int dsX = tx + fm.horizontalAdvance("Defocus spread (nm): ");
-                m_ctfDefocusSpreadEdit->move(dsX, ty + lh);
-                int oaLblX = dsX + m_ctfDefocusSpreadEdit->width() + 12;
+                // Row 1: Cs, Open angle gun
+                drawParamLabel(p, fm, tx, ty + lh, "Spherical aberration Cs (mm):", m_ctfCsEdit->toolTip());
+                int csX = tx + fm.horizontalAdvance("Spherical aberration Cs (mm): ");
+                m_ctfCsEdit->move(csX, ty + lh);
+                int oaLblX = csX + m_ctfCsEdit->width() + 12;
                 drawParamLabel(p, fm, oaLblX, ty + lh, "Open angle gun (mrad):", m_ctfOpenAngleEdit->toolTip());
                 m_ctfOpenAngleEdit->move(oaLblX + fm.horizontalAdvance("Open angle gun (mrad): "), ty + lh);
-                drawParamLabel(p, fm, tx, ty + lh * 2, "Spherical aberration constant Cs (mm):", m_ctfCsEdit->toolTip());
-                m_ctfCsEdit->move(tx + fm.horizontalAdvance("Spherical aberration constant Cs (mm): "), ty + lh * 2);
-                drawParamLabel(p, fm, tx, ty + lh * 3, "Defocus (nm):", m_ctfDefocusEdit->toolTip());
-                m_ctfDefocusEdit->move(tx + fm.horizontalAdvance("Defocus (nm): "), ty + lh * 3);
-                drawParamLabel(p, fm, tx, ty + lh * 4, "Astigmatism (nm):", m_ctfAstigEdit->toolTip());
+                // Row 2: Defocus, Defocus spread
+                drawParamLabel(p, fm, tx, ty + lh * 2, "Defocus (nm):", m_ctfDefocusEdit->toolTip());
+                int dfX = tx + fm.horizontalAdvance("Defocus (nm): ");
+                m_ctfDefocusEdit->move(dfX, ty + lh * 2);
+                int dsLblX = dfX + m_ctfDefocusEdit->width() + 12;
+                drawParamLabel(p, fm, dsLblX, ty + lh * 2, "Defocus spread (nm):", m_ctfDefocusSpreadEdit->toolTip());
+                m_ctfDefocusSpreadEdit->move(dsLblX + fm.horizontalAdvance("Defocus spread (nm): "), ty + lh * 2);
+                // Row 3: Astigmatism, Astigmatism direction
+                drawParamLabel(p, fm, tx, ty + lh * 3, "Astigmatism (nm):", m_ctfAstigEdit->toolTip());
                 int ax1 = tx + fm.horizontalAdvance("Astigmatism (nm): ");
-                m_ctfAstigEdit->move(ax1, ty + lh * 4);
+                m_ctfAstigEdit->move(ax1, ty + lh * 3);
                 int ax2 = ax1 + m_ctfAstigEdit->width() + 12;
-                drawParamLabel(p, fm, ax2, ty + lh * 4, "Astigmatism direction (\u00B0):", m_ctfAstigAngleEdit->toolTip());
-                m_ctfAstigAngleEdit->move(ax2 + fm.horizontalAdvance("Astigmatism direction (\u00B0): "), ty + lh * 4);
-                m_ctfCancelBtn->move(tx, ty + lh * 5);
-                m_ctfComputeBtn->move(rx + rw - margin - m_ctfComputeBtn->width(), ty + lh * 5);
+                drawParamLabel(p, fm, ax2, ty + lh * 3, "Astigmatism direction (\u00B0):", m_ctfAstigAngleEdit->toolTip());
+                m_ctfAstigAngleEdit->move(ax2 + fm.horizontalAdvance("Astigmatism direction (\u00B0): "), ty + lh * 3);
+                // Row 4: Cancel / Compute
+                m_ctfCancelBtn->move(tx, ty + lh * 4);
+                m_ctfComputeBtn->move(rx + rw - margin - m_ctfComputeBtn->width(), ty + lh * 4);
             }
         }
 
@@ -2965,12 +2973,27 @@ void FtWindow::paintEvent(QPaintEvent *)
                 p.drawText(rx + 8, ry + 16, "CTF profile");
             }
 
-            // Direction annotation in the top-right corner
+            // Direction + defocus annotation in the top-right corner
             {
                 QFont df; df.setBold(true); df.setPixelSize(12); p.setFont(df);
                 QFontMetrics dfm(df);
-                QString dirStr = QString("Direction: %1\u00B0")
-                                     .arg(m_ctfAngleDeg, 0, 'f', 1);
+
+                // Defocus valid in the selected direction:
+                //   Δf(θ) = Δf_avg + Δf_A · cos(2(θ − α))
+                bool okD = false, okA = false, okAA = false;
+                double defocusNM     = m_ctfDefocusEdit->text().toDouble(&okD);
+                double astigNM       = m_ctfAstigEdit->text().toDouble(&okA);
+                double astigAngleDeg = m_ctfAstigAngleEdit->text().toDouble(&okAA);
+                if (!okD)  defocusNM = 1000.0;
+                if (!okA)  astigNM   = 0.0;
+                if (!okAA) astigAngleDeg = 0.0;
+                double profRad = m_ctfAngleDeg * M_PI / 180.0;
+                double astigRad = astigAngleDeg * M_PI / 180.0;
+                double dfLocalNM = defocusNM + astigNM * std::cos(2.0 * (profRad - astigRad));
+
+                QString dirStr = QString("Direction: %1\u00B0   Defocus: %2 nm")
+                                     .arg(m_ctfAngleDeg, 0, 'f', 1)
+                                     .arg(dfLocalNM, 0, 'f', 1);
                 p.setPen(QColor(220, 50, 50));
                 p.drawText(rx + rw - dfm.horizontalAdvance(dirStr) - 8,
                            ry + 16, dirStr);
