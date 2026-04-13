@@ -587,35 +587,22 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
         "The twist determines the crossover distance visible\n"
         "in projection (crossover = 360 / |twist| \u00D7 rise).");
     m_amyloidTwistEdit->hide();
-    m_amyloidLongAxisEdit = new QLineEdit("150", this);
-    m_amyloidLongAxisEdit->setFixedSize(60, 22);
-    m_amyloidLongAxisEdit->setStyleSheet("background:#222; color:white; border:1px solid #888;");
-    m_amyloidLongAxisEdit->setToolTip(
-        "Long axis of the elliptical pancake layer in \u00C5ngstr\u00F6m.\n"
-        "This is the larger dimension of the oval \u03B2-sheet cross-section.\n"
-        "At 1 \u00C5/pixel this equals the long axis in pixels.\n"
-        "Typical amyloid filaments: 100\u2013150 \u00C5.");
-    m_amyloidLongAxisEdit->hide();
-    m_amyloidShortAxisEdit = new QLineEdit("80", this);
-    m_amyloidShortAxisEdit->setFixedSize(60, 22);
-    m_amyloidShortAxisEdit->setStyleSheet("background:#222; color:white; border:1px solid #888;");
-    m_amyloidShortAxisEdit->setToolTip(
-        "Short axis of the elliptical pancake layer in \u00C5ngstr\u00F6m.\n"
-        "This is the smaller dimension of the oval \u03B2-sheet cross-section.\n"
-        "Setting this equal to the long axis gives a circular pancake.\n"
-        "Typical values: 50\u201380% of the long axis.");
-    m_amyloidShortAxisEdit->hide();
-    m_amyloidSmoothEdit = new QLineEdit("1.5", this);
-    m_amyloidSmoothEdit->setFixedSize(60, 22);
-    m_amyloidSmoothEdit->setStyleSheet("background:#222; color:white; border:1px solid #888;");
-    m_amyloidSmoothEdit->setToolTip(
-        "Axial smoothing sigma in \u00C5ngstr\u00F6m. Controls how much\n"
-        "neighbouring pancake layers blend into each other.\n"
-        "Smaller values give sharply separated layers (like a\n"
-        "diffraction pattern with strong layer lines). Larger\n"
-        "values merge the layers into a smoother tube.\n"
-        "Typical: 1\u20133 \u00C5. Set to 0 for perfectly sharp layers.");
-    m_amyloidSmoothEdit->hide();
+    m_amyloidMapCombo = new QComboBox(this);
+    for (int i = 0; i < HISTORY_SLOTS; i++)
+        m_amyloidMapCombo->addItem(QString(QChar('a' + i)));
+    m_amyloidMapCombo->setFixedSize(70, 28);
+    m_amyloidMapCombo->setStyleSheet(
+        "QComboBox { background:#222; color:white; border:1px solid #888;"
+        "  padding: 2px 8px; }"
+        "QComboBox::drop-down { width: 20px; }"
+        "QComboBox QAbstractItemView { background:#222; color:white;"
+        "  selection-background-color:#555; min-width: 60px; padding: 4px; }");
+    m_amyloidMapCombo->setToolTip(
+        "Select the 2D map (buffer a\u2026p) that provides the\n"
+        "cross-section of the fibril. This map is extruded into\n"
+        "a thin 3D slab and placed repeatedly along the fibril\n"
+        "trajectory with the specified helical rise and twist.");
+    m_amyloidMapCombo->hide();
     m_amyloidNoiseBtn = new QCheckBox("Add gray noise", this);
     m_amyloidNoiseBtn->setStyleSheet("color: #333;");
     m_amyloidNoiseBtn->setChecked(true);
@@ -940,6 +927,31 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
         "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }");
     connect(m_extractComputeBtn, &QPushButton::clicked, this, &FtWindow::onExtractCompute);
     m_extractComputeBtn->hide();
+
+    // Histogram contrast lock checkboxes
+    m_imageHistLockBtn = new QCheckBox("Fix", this);
+    m_imageHistLockBtn->setStyleSheet("QCheckBox { color: #aaa; font-size: 10px; }"
+        "QCheckBox::indicator { width: 12px; height: 12px; }");
+    m_imageHistLockBtn->setToolTip(
+        "Lock the display contrast range for the real-space image.\n"
+        "When checked, the contrast is preserved across Compute\n"
+        "operations. Uncheck for auto-contrast (full dynamic range).");
+    connect(m_imageHistLockBtn, &QCheckBox::toggled, this, [this](bool checked) {
+        m_imageContrastLocked = checked;
+    });
+    m_imageHistLockBtn->hide();
+
+    m_ftHistLockBtn = new QCheckBox("Fix", this);
+    m_ftHistLockBtn->setStyleSheet("QCheckBox { color: #aaa; font-size: 10px; }"
+        "QCheckBox::indicator { width: 12px; height: 12px; }");
+    m_ftHistLockBtn->setToolTip(
+        "Lock the display contrast range for all Fourier-space images.\n"
+        "When checked, the contrast is preserved across Compute\n"
+        "operations. Uncheck for auto-contrast (full dynamic range).");
+    connect(m_ftHistLockBtn, &QCheckBox::toggled, this, [this](bool checked) {
+        m_ftContrastLocked = checked;
+    });
+    m_ftHistLockBtn->hide();
 
     // Restore history and active slot
 #ifndef __EMSCRIPTEN__

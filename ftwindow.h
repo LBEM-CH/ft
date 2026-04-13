@@ -204,6 +204,10 @@ private:
     bool  m_histDragging = false;
     int   m_histDragTarget = -1;         // which histogram
     int   m_histDragStartX = 0;         // screen X at mouse press
+    bool  m_imageContrastLocked = false; // lock real-space contrast range
+    bool  m_ftContrastLocked = false;    // lock Fourier-space contrast range
+    QCheckBox *m_imageHistLockBtn = nullptr;
+    QCheckBox *m_ftHistLockBtn    = nullptr;
 
     // ---- image history (panel 3) ----
     static constexpr int HISTORY_SLOTS = 16;
@@ -342,9 +346,7 @@ private:
     bool        m_amyloidRendered = false; // true after Compute, suppresses overlay lines
     QLineEdit  *m_amyloidRiseEdit     = nullptr;
     QLineEdit  *m_amyloidTwistEdit    = nullptr;
-    QLineEdit  *m_amyloidLongAxisEdit  = nullptr;
-    QLineEdit  *m_amyloidShortAxisEdit = nullptr;
-    QLineEdit  *m_amyloidSmoothEdit   = nullptr;
+    QComboBox  *m_amyloidMapCombo      = nullptr;
     QCheckBox  *m_amyloidNoiseBtn     = nullptr;
     QLineEdit  *m_amyloidNoiseEdit    = nullptr;
     QPushButton *m_amyloidSignalBtn   = nullptr;
