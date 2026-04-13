@@ -8,6 +8,7 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     setWindowTitle("ft");
 
     setMouseTracking(true);
+    grabGesture(Qt::PinchGesture);
 
     QScreen *screen = QApplication::primaryScreen();
     QRect available = screen->availableGeometry();

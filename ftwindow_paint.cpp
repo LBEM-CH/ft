@@ -2735,6 +2735,7 @@ void FtWindow::paintEvent(QPaintEvent *)
         int tx = (width() - tw) / 2 - pad;
         int ty = 4;
         QRect titleRect(tx, ty, tw + 2 * pad, th + 2 * pad);
+        m_titleRect = titleRect;
 
         p.setPen(Qt::NoPen);
         p.setBrush(QColor(75, 75, 75));

@@ -75,6 +75,7 @@ protected:
     void mouseDoubleClickEvent(QMouseEvent *event) override;
     void wheelEvent(QWheelEvent *event)         override;
     bool event(QEvent *event)                  override;
+    bool applyPinchZoom(const QPoint &pos, double step);
     void paintEvent(QPaintEvent *)              override;
 
 private slots:
@@ -84,6 +85,9 @@ private slots:
     void onReloadImage();
     void onCycleMode();
     void onToggleFullscreen();
+public:
+    void updateFullscreenButton(bool isFullscreen);
+private slots:
     void onToggleMask(bool checked);
     void onApplyBandpass();
     void onApplyEdgeTaper();
@@ -256,6 +260,7 @@ private:
     int         m_numDispItems = 0;
 
     QPoint      m_mousePos;         // current mouse position
+    QRect       m_titleRect;        // title bar click region ("Fourier Analyzer")
 
     // ---- tool buttons ----
     static constexpr int P1_TOOL_BUTTONS = 15;

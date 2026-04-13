@@ -1,5 +1,14 @@
 #include "ftwindow_common.h"
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+static FtWindow *g_fsWindow = nullptr;
+extern "C" EMSCRIPTEN_KEEPALIVE void ft_on_fullscreen_change(int isFs)
+{
+    if (g_fsWindow) g_fsWindow->updateFullscreenButton(isFs != 0);
+}
+#endif
+
 // ---------------------------------------------------------------------------
 //  Slots
 // ---------------------------------------------------------------------------
@@ -8,70 +17,75 @@ void FtWindow::onLoadImage()
 #ifdef __EMSCRIPTEN__
     // Build a list of example images served alongside the WASM app.
     QStringList items;
-    items << "Exercise1-Photos/band_1995.png"
-          << "Exercise1-Photos/brain.png"
-          << "Exercise1-Photos/church.png"
-          << "Exercise1-Photos/jacques_andreas_2017.png"
-          << "Exercise1-Photos/jacques_titan.png"
-          << "Exercise1-Photos/lorenz_1999.png"
-          << "Exercise1-Photos/party_1995.png"
-          << "Exercise1-Photos/plants.png"
-          << "Exercise1-Photos/simon_1999.png"
-          << "Exercise1-Photos/thomas_1999.png"
-          << "Exercise2-Restauration/restauration.png"
-          << "Exercise3-2D-Crystal/2d_protein_crystal_1024.png"
-          << "Exercise3-2D-Crystal/Polyhead_virus_512.png"
-          << "Exercise4-Eyes/eyes.png"
-          << "Exercise5-Text/Dot_black_center_1024.png"
-          << "Exercise5-Text/Fourier_text_black_1024.png"
-          << "Exercise5-Text/Fourier_text_white_1024.png"
-          << "Exercise5-Text/Fourier_word_black_1024.png"
-          << "Exercise5-Text/Letter_f_black_1024.png"
-          << "Exercise5-Text/Letter_o_white_center_1024.png"
-          << "Exercise5-Text/Letter_o_white_corner_1024.png"
-          << "Exercise5-Text/Ring_black_1024.png"
-          << "Exercise5-Text/Smiley_black_1024.png"
-          << "Exercise5-Text/Smiley_small_black_1024.png"
-          << "Exercise6-Photo-Multiplication/andreas.png"
-          << "Exercise7-Single_particle_EM/apoferritin_1024.png"
-          << "Exercise7-Single_particle_EM/apoferritin_1024_anisotropic.png"
-          << "Exercise7-Single_particle_EM/apoferritin_2048.png"
-          << "Exercise7-Single_particle_EM/apoferritin_2048_anisotropic.png"
-          << "Exercise8-Apple/apple_clean.png"
-          << "Exercise8-Apple/apple_corners_labeled.png"
-          << "Exercise8-Apple/apple_noisy.png"
-          << "Exercise8-Apple/apple_very_noisy.png"
-          << "Exercise9-Artemin-Protein/size_1024_rescaled_cropped/apoartcns_006.png"
-          << "Exercise9-Artemin-Protein/size_1024_rescaled_cropped/apoartcns_010.png"
-          << "Exercise9-Artemin-Protein/size_1024_rescaled_cropped/apoartcns_011.png"
-          << "Exercise9-Artemin-Protein/size_1024_rescaled_cropped/apoartcns_012.png"
-          << "Exercise9-Artemin-Protein/size_1024_rescaled_cropped/apoartcns_013.png"
-          << "Exercise9-Artemin-Protein/size_1024_rescaled_cropped/apoartcns_014.png"
-          << "Exercise9-Artemin-Protein/size_1024_rescaled_cropped/apoartcns_015.png"
-          << "Exercise9-Artemin-Protein/size_1024_rescaled_cropped/apoartcns_016.png"
-          << "Exercise9-Artemin-Protein/size_1024_rescaled_cropped/reference1_1024_rescaled_cropped.png"
-          << "Exercise9-Artemin-Protein/size_1024_rescaled_cropped/reference2_1024_rescaled_cropped.png"
-          << "Exercise9-Artemin-Protein/size_2048_cropped/apoartcns_006.png"
-          << "Exercise9-Artemin-Protein/size_2048_cropped/apoartcns_010.png"
-          << "Exercise9-Artemin-Protein/size_2048_cropped/apoartcns_011.png"
-          << "Exercise9-Artemin-Protein/size_2048_cropped/apoartcns_012.png"
-          << "Exercise9-Artemin-Protein/size_2048_cropped/apoartcns_013.png"
-          << "Exercise9-Artemin-Protein/size_2048_cropped/apoartcns_014.png"
-          << "Exercise9-Artemin-Protein/size_2048_cropped/apoartcns_015.png"
-          << "Exercise9-Artemin-Protein/size_2048_cropped/apoartcns_016.png"
-          << "Exercise9-Artemin-Protein/size_2048_cropped/reference1_2048_cropped.png"
-          << "Exercise9-Artemin-Protein/size_2048_cropped/reference2_2048_cropped.png"
-          << "Exercise9-Artemin-Protein/size_2048_rescaled/apoartcns_006.png"
-          << "Exercise9-Artemin-Protein/size_2048_rescaled/apoartcns_010.png"
-          << "Exercise9-Artemin-Protein/size_2048_rescaled/apoartcns_011.png"
-          << "Exercise9-Artemin-Protein/size_2048_rescaled/apoartcns_012.png"
-          << "Exercise9-Artemin-Protein/size_2048_rescaled/apoartcns_013.png"
-          << "Exercise9-Artemin-Protein/size_2048_rescaled/apoartcns_014.png"
-          << "Exercise9-Artemin-Protein/size_2048_rescaled/apoartcns_015.png"
-          << "Exercise9-Artemin-Protein/size_2048_rescaled/apoartcns_016.png"
-          << "Exercise9-Artemin-Protein/size_2048_rescaled/reference1_2048_rescaled.png"
-          << "Exercise9-Artemin-Protein/size_2048_rescaled/reference2_2048_rescaled.png"
-          << "Own_Images/blank_1024.png";
+    items << "Exercise_01-Photos/band_1995.png"
+          << "Exercise_01-Photos/brain.png"
+          << "Exercise_01-Photos/church.png"
+          << "Exercise_01-Photos/jacques_andreas_2017.png"
+          << "Exercise_01-Photos/jacques_titan.png"
+          << "Exercise_01-Photos/lorenz_1999.png"
+          << "Exercise_01-Photos/party_1995.png"
+          << "Exercise_01-Photos/plants.png"
+          << "Exercise_02-Restauration/restauration_512.png"
+          << "Exercise_03-Single_particle_EM/apoferritin_1024.png"
+          << "Exercise_03-Single_particle_EM/apoferritin_1024_anisotropic.png"
+          << "Exercise_03-Single_particle_EM/apoferritin_2048.png"
+          << "Exercise_03-Single_particle_EM/apoferritin_2048_anisotropic.png"
+          << "Exercise_04-2D-Crystal/2d_protein_crystal_1024.png"
+          << "Exercise_04-2D-Crystal/Biozentrum-Basel-Eyes_1024.png"
+          << "Exercise_04-2D-Crystal/Polyhead_virus_512.png"
+          << "Exercise_05-Apple-Reconstruction/APPL0000000100.mrc"
+          << "Exercise_05-Apple-Reconstruction/APPL0012345604.mrc"
+          << "Exercise_05-Apple-Reconstruction/apple_clean.png"
+          << "Exercise_05-Apple-Reconstruction/apple_corners_labeled.png"
+          << "Exercise_05-Apple-Reconstruction/apple_noisy.png"
+          << "Exercise_05-Apple-Reconstruction/apple_very_noisy.png"
+          << "Exercise_06-Photo-Multiplication/andreas_1024.png"
+          << "Exercise_07-Text_Recognition/Dot_black_center_1024.png"
+          << "Exercise_07-Text_Recognition/Fourier_text_black_1024.png"
+          << "Exercise_07-Text_Recognition/Fourier_text_white_1024.png"
+          << "Exercise_07-Text_Recognition/Fourier_word_black_1024.png"
+          << "Exercise_07-Text_Recognition/Letter_f_black_1024.png"
+          << "Exercise_07-Text_Recognition/Letter_o_white_center_1024.png"
+          << "Exercise_07-Text_Recognition/Letter_o_white_corner_1024.png"
+          << "Exercise_07-Text_Recognition/Ring_black_1024.png"
+          << "Exercise_07-Text_Recognition/Smiley_black_1024.png"
+          << "Exercise_07-Text_Recognition/Smiley_small_black_1024.png"
+          << "Exercise_08-Artemin-Protein/size_1024_rescaled_cropped/apoartcns_006.png"
+          << "Exercise_08-Artemin-Protein/size_1024_rescaled_cropped/apoartcns_010.png"
+          << "Exercise_08-Artemin-Protein/size_1024_rescaled_cropped/apoartcns_011.png"
+          << "Exercise_08-Artemin-Protein/size_1024_rescaled_cropped/apoartcns_012.png"
+          << "Exercise_08-Artemin-Protein/size_1024_rescaled_cropped/apoartcns_013.png"
+          << "Exercise_08-Artemin-Protein/size_1024_rescaled_cropped/apoartcns_014.png"
+          << "Exercise_08-Artemin-Protein/size_1024_rescaled_cropped/apoartcns_015.png"
+          << "Exercise_08-Artemin-Protein/size_1024_rescaled_cropped/apoartcns_016.png"
+          << "Exercise_08-Artemin-Protein/size_1024_rescaled_cropped/reference1_1024_rescaled_cropped.png"
+          << "Exercise_08-Artemin-Protein/size_1024_rescaled_cropped/reference2_1024_rescaled_cropped.png"
+          << "Exercise_08-Artemin-Protein/size_2048_cropped/apoartcns_006.png"
+          << "Exercise_08-Artemin-Protein/size_2048_cropped/apoartcns_010.png"
+          << "Exercise_08-Artemin-Protein/size_2048_cropped/apoartcns_011.png"
+          << "Exercise_08-Artemin-Protein/size_2048_cropped/apoartcns_012.png"
+          << "Exercise_08-Artemin-Protein/size_2048_cropped/apoartcns_013.png"
+          << "Exercise_08-Artemin-Protein/size_2048_cropped/apoartcns_014.png"
+          << "Exercise_08-Artemin-Protein/size_2048_cropped/apoartcns_015.png"
+          << "Exercise_08-Artemin-Protein/size_2048_cropped/apoartcns_016.png"
+          << "Exercise_08-Artemin-Protein/size_2048_cropped/reference1_2048_cropped.png"
+          << "Exercise_08-Artemin-Protein/size_2048_cropped/reference2_2048_cropped.png"
+          << "Exercise_08-Artemin-Protein/size_2048_rescaled/apoartcns_006.png"
+          << "Exercise_08-Artemin-Protein/size_2048_rescaled/apoartcns_010.png"
+          << "Exercise_08-Artemin-Protein/size_2048_rescaled/apoartcns_011.png"
+          << "Exercise_08-Artemin-Protein/size_2048_rescaled/apoartcns_012.png"
+          << "Exercise_08-Artemin-Protein/size_2048_rescaled/apoartcns_013.png"
+          << "Exercise_08-Artemin-Protein/size_2048_rescaled/apoartcns_014.png"
+          << "Exercise_08-Artemin-Protein/size_2048_rescaled/apoartcns_015.png"
+          << "Exercise_08-Artemin-Protein/size_2048_rescaled/apoartcns_016.png"
+          << "Exercise_08-Artemin-Protein/size_2048_rescaled/reference1_2048_rescaled.png"
+          << "Exercise_08-Artemin-Protein/size_2048_rescaled/reference2_2048_rescaled.png"
+          << "Exercise_09-Fibrils/aSyn_PFF1_c2_1024.mrc"
+          << "Exercise_09-Fibrils/aSyn_PFF1_c2_BGzero_1024.mrc"
+          << "Exercise_09-Fibrils/aSyn_PFF2_c2_1024.mrc"
+          << "Exercise_09-Fibrils/aSyn_PFF2_c2_BGzero_1024.mrc"
+          << "Exercise_09-Fibrils/aSyn_dragon_c1_BGzero_1024.mrc"
+          << "Exercise_09-Fibrils/aSyn_dragon_c2_BGzero_1024.mrc";
 
     // Use a QListWidget inside a QDialog so the list scrolls within the
     // dialog instead of spilling off the page like a combo-box popup.
@@ -279,17 +293,97 @@ void FtWindow::onCycleMode()
 void FtWindow::onToggleFullscreen()
 {
 #ifdef __EMSCRIPTEN__
-    // Use the browser Fullscreen API via JavaScript
-    bool isFS = EM_ASM_INT({
-        return document.fullscreenElement ? 1 : 0;
+    // iPad/iPhone Safari accepts requestFullscreen on non-video elements
+    // but cancels it within a frame, with no fullscreenerror to detect.
+    // Detect iOS and show "Add to Home Screen" instructions instead.
+    // (Standalone/home-screen launches already run without Safari chrome.)
+    int iosState = EM_ASM_INT({
+        var ua = navigator.userAgent || "";
+        var isIPad = /iPad|iPhone|iPod/.test(ua) ||
+                     (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+        if (!isIPad) return 0;
+        var standalone = window.navigator.standalone === true ||
+                         (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches);
+        return standalone ? 2 : 1;
     });
-    if (isFS) {
-        EM_ASM({ document.exitFullscreen(); });
-        m_fullscreenBtn->setText("Go fullscreen");
-    } else {
-        EM_ASM({ document.documentElement.requestFullscreen(); });
-        m_fullscreenBtn->setText("Leave fullscreen");
+    if (iosState == 1) {
+        auto *msg = new QMessageBox(this);
+        msg->setAttribute(Qt::WA_DeleteOnClose);
+        msg->setWindowTitle("Fullscreen on iPad / iPhone");
+        msg->setTextFormat(Qt::RichText);
+        msg->setText(
+            "<p>Safari on iPad and iPhone does not support a stable in-browser "
+            "fullscreen mode for web apps.</p>"
+            "<p><b>To use Fourier Analyzer fullscreen:</b></p>"
+            "<ol>"
+            "<li>Tap the <b>Share</b> button in Safari (the square with an upward arrow).</li>"
+            "<li>Scroll down and tap <b>Add to Home Screen</b>.</li>"
+            "<li>Tap <b>Add</b>.</li>"
+            "<li>Launch Fourier Analyzer from its home-screen icon &mdash; it opens "
+            "fullscreen automatically.</li>"
+            "</ol>");
+        msg->setStandardButtons(QMessageBox::Ok);
+        msg->open();
+        return;
     }
+    if (iosState == 2) {
+        // Already running standalone — fullscreen toggle is a no-op.
+        return;
+    }
+    // Drive the browser Fullscreen API from JS. Target Qt's #screen
+    // container (falls back to its canvas) instead of documentElement,
+    // which iPad Safari exits immediately. The actual button label is
+    // synced from JS via fullscreenchange listeners installed once.
+    g_fsWindow = this;
+    EM_ASM({
+        if (!window.__ftFsInit) {
+            window.__ftFsInit = true;
+            var sync = function() {
+                var fs = document.fullscreenElement ||
+                         document.webkitFullscreenElement ||
+                         document.webkitCurrentFullScreenElement;
+                if (window.Module && window.Module.ccall) {
+                    try {
+                        window.Module.ccall('ft_on_fullscreen_change',
+                            null, ['number'], [fs ? 1 : 0]);
+                    } catch (e) { console.warn('fs sync failed:', e); }
+                }
+            };
+            document.addEventListener('fullscreenchange', sync);
+            document.addEventListener('webkitfullscreenchange', sync);
+        }
+        // Target the #screen container, NOT its inner <canvas>. Qt resizes
+        // the canvas (DPR + pixel dims) the moment fullscreen begins, and
+        // iPad Safari exits fullscreen when the fullscreen element itself
+        // changes size. The container stays stable while the canvas inside
+        // resizes freely.
+        var target = document.getElementById('screen') || document.documentElement;
+        var isFS = document.fullscreenElement ||
+                   document.webkitFullscreenElement ||
+                   document.webkitCurrentFullScreenElement;
+        if (isFS) {
+            var exit = document.exitFullscreen ||
+                       document.webkitExitFullscreen ||
+                       document.webkitCancelFullScreen;
+            if (exit) exit.call(document);
+        } else {
+            var req = target.requestFullscreen ||
+                      target.webkitRequestFullscreen ||
+                      target.webkitRequestFullScreen;
+            if (req) {
+                try {
+                    var p = req.call(target);
+                    if (p && p.then) p.then(null, function(e) {
+                        console.warn('fullscreen rejected:', e);
+                    });
+                } catch (e) {
+                    console.warn('fullscreen threw:', e);
+                }
+            } else {
+                console.warn('Fullscreen API not available');
+            }
+        }
+    });
 #else
     if (isFullScreen()) {
         showNormal();
@@ -299,6 +393,12 @@ void FtWindow::onToggleFullscreen()
         m_fullscreenBtn->setText("Leave fullscreen");
     }
 #endif
+}
+
+void FtWindow::updateFullscreenButton(bool isFullscreen)
+{
+    if (m_fullscreenBtn)
+        m_fullscreenBtn->setText(isFullscreen ? "Leave fullscreen" : "Go fullscreen");
 }
 
 void FtWindow::onToggleMask(bool checked)

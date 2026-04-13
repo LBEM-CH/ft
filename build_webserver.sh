@@ -52,6 +52,7 @@ if [[ -z "$REMOTE" ]]; then
 
 To deploy manually, copy $TARBALL to the target and run:
 
+    sudo \rm -rf /srv/ft 
     sudo mkdir -p /srv/ft
     sudo tar xzf $TARBALL -C /srv/ft
     sudo systemctl reload apache2

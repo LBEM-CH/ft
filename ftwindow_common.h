@@ -16,11 +16,14 @@
 #include <QListWidget>
 #include <QVBoxLayout>
 #include <QDialogButtonBox>
+#include <QMessageBox>
 #include <QBuffer>
 #include <QSettings>
 #include <QMouseEvent>
 #include <QWheelEvent>
 #include <QNativeGestureEvent>
+#include <QGestureEvent>
+#include <QPinchGesture>
 #include <QFont>
 #include <QFontMetrics>
 #include <QShortcut>
