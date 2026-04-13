@@ -298,12 +298,12 @@ void FtWindow::onToggleFullscreen()
     // Detect iOS and show "Add to Home Screen" instructions instead.
     // (Standalone/home-screen launches already run without Safari chrome.)
     int iosState = EM_ASM_INT({
-        var ua = navigator.userAgent || '';
+        var ua = navigator.userAgent || "";
         var isIPad = /iPad|iPhone|iPod/.test(ua) ||
-                     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+                     (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
         if (!isIPad) return 0;
         var standalone = window.navigator.standalone === true ||
-                         (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+                         (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches);
         return standalone ? 2 : 1;
     });
     if (iosState == 1) {

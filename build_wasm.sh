@@ -93,7 +93,9 @@ sed -e 's/@APPNAME@/ft/g' \
     <meta name="apple-mobile-web-app-capable" content="yes">\
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">\
     <meta name="apple-mobile-web-app-title" content="ft">\
-    <link rel="apple-touch-icon" href="qtlogo.svg">|' \
+    <link rel="apple-touch-icon" href="qtlogo.svg">\
+    <script>window.__FT_BUILD_STAMP="'"${BUILD_STAMP}"'";</script>|' \
+  | sed -e 's|await qtLoad({|await qtLoad({ locateFile: (p) => p.endsWith(".wasm") ? p + "?v=" + window.__FT_BUILD_STAMP : p,|' \
   > ft.html
 if [ -d "$SCRIPT_DIR/EXAMPLE_IMAGES" ]; then
     if [ -e images ] || [ -L images ]; then
