@@ -38,7 +38,8 @@ void FtWindow::paintEvent(QPaintEvent *)
     auto sampleValue = [&](const QRect &inner, const ZoomState &zoom,
                            int imgW, int imgH,
                            const std::vector<double> &vals,
-                           double &outVal) -> bool {
+                           double &outVal,
+                           int *outX = nullptr, int *outY = nullptr) -> bool {
         if (!inner.contains(m_mousePos) || vals.empty()) return false;
         QRectF src = zoom.visibleRect(imgW, imgH);
         double relX = (m_mousePos.x() - inner.x()) / (double)inner.width();
@@ -47,6 +48,8 @@ void FtWindow::paintEvent(QPaintEvent *)
         int iy = (int)(src.y() + relY * src.height());
         if (ix < 0 || ix >= imgW || iy < 0 || iy >= imgH) return false;
         outVal = vals[iy * imgW + ix];
+        if (outX) *outX = ix;
+        if (outY) *outY = iy;
         return true;
     };
 
@@ -513,8 +516,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Math calculations icon (button 9): Sigma/Sum sign
-            if (i == 9) {
+            // Math calculations icon (button 12): Sigma/Sum sign
+            if (i == 12) {
                 if (m_mathActive) {
                     p.setPen(QPen(Qt::white, 1));
                     p.setBrush(QColor(60, 60, 60));
@@ -562,8 +565,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Particle picking icon (button 10): four green plus signs in 2x2 grid
-            if (i == 10) {
+            // Particle picking icon (button 13): four green plus signs in 2x2 grid
+            if (i == 13) {
                 if (m_peakPickActive) {
                     p.setPen(QPen(Qt::white, 1));
                     p.setBrush(QColor(60, 60, 60));
@@ -628,8 +631,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Extract particles icon (button 11): white smiley face
-            if (i == 11) {
+            // Extract particles icon (button 14): white smiley face
+            if (i == 14) {
                 if (m_extractActive) {
                     p.setPen(QPen(Qt::white, 1));
                     p.setBrush(QColor(60, 60, 60));
@@ -680,8 +683,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Hessian filter icon (button 13): letter "H"
-            if (i == 13) {
+            // Hessian filter icon (button 10): letter "H"
+            if (i == 10) {
                 p.setRenderHint(QPainter::Antialiasing, true);
                 QFont gf;
                 gf.setBold(true);
@@ -707,8 +710,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Amyloid filament icon (button 14): letter "A"
-            if (i == 14) {
+            // Amyloid filament icon (button 11): letter "A"
+            if (i == 11) {
                 if (m_amyloidActive) {
                     p.setPen(QPen(Qt::white, 1));
                     p.setBrush(QColor(60, 60, 60));
@@ -739,8 +742,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Gabor filter icon (button 12): letter "G"
-            if (i == 12) {
+            // Gabor filter icon (button 9): letter "G"
+            if (i == 9) {
                 p.setRenderHint(QPainter::Antialiasing, true);
                 QFont gf;
                 gf.setBold(true);
@@ -778,7 +781,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 (i == 2 && m_bandpassActive) || (i == 3 && m_directionalActive) ||
                 (i == 4 && m_lineFilterActive) || (i == 5 && m_latticeActive) ||
                 (i == 6 && m_ftRotateActive) || (i == 7 && m_crossSectionActive) ||
-                (i == 8 && m_ftCropActive) || (i == 9 && m_ftMathActive))
+                (i == 8 && m_ftCropActive) || (i == 9 && m_ctfActive) ||
+                (i == 10 && m_ftMathActive))
                 p.setBrush(QColor(60, 60, 60));
             else
                 p.setBrush(QColor(0, 0, 0));
@@ -1167,8 +1171,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Fourier math icon (button 9): Sigma/Sum sign
-            if (i == 9) {
+            // Fourier math icon (button 10): Sigma/Sum sign
+            if (i == 10) {
                 p.setRenderHint(QPainter::Antialiasing, true);
                 int inset = std::max(3, btnSide / 4);
                 QRect ir = r.adjusted(inset, inset, -inset, -inset);
@@ -1195,6 +1199,33 @@ void FtWindow::paintEvent(QPaintEvent *)
                     QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
                     QFontMetrics ttfm(ttf);
                     QString tip = "Math calculation";
+                    int ttw = ttfm.horizontalAdvance(tip) + 8;
+                    int tth = ttfm.height() + 4;
+                    int ttx = r.left() - ttw - 4;
+                    int tty = r.center().y() - tth / 2;
+                    p.setPen(QPen(Qt::white, 1));
+                    p.setBrush(QColor(40, 40, 40));
+                    p.drawRect(ttx, tty, ttw, tth);
+                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                }
+            }
+
+            // CTF icon (button 9): black background with white "CTF" text
+            if (i == 9) {
+                p.setRenderHint(QPainter::Antialiasing, true);
+                QFont cf;
+                cf.setBold(true);
+                cf.setPixelSize(std::max(8, (int)(btnSide * 0.38)));
+                p.setFont(cf);
+                p.setPen(QPen(Qt::white, 1));
+                p.setBrush(Qt::NoBrush);
+                p.drawText(r, Qt::AlignCenter, "CTF");
+                p.setRenderHint(QPainter::Antialiasing, false);
+
+                if (r.contains(m_mousePos)) {
+                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                    QFontMetrics ttfm(ttf);
+                    QString tip = "CTF (contrast transfer function)";
                     int ttw = ttfm.horizontalAdvance(tip) + 8;
                     int tth = ttfm.height() + 4;
                     int ttx = r.left() - ttw - 4;
@@ -1401,8 +1432,10 @@ void FtWindow::paintEvent(QPaintEvent *)
 
         QRect inner = frame.adjusted(2, 2, -2, -2);
         double curVal = 0;
-        bool hasCur = sampleValue(inner, m_zoom[0], imgW, imgH, m_imageRawPixels, curVal);
-        drawMinMax(p, frame, m_imageMinVal, m_imageMaxVal, curVal, hasCur);
+        int mX = 0, mY = 0;
+        bool hasCur = sampleValue(inner, m_zoom[0], imgW, imgH, m_imageRawPixels, curVal, &mX, &mY);
+        drawMinMax(p, frame, m_imageMinVal, m_imageMaxVal, curVal, hasCur,
+                   hasCur ? QString("Mouse X,Y = %1, %2").arg(mX).arg(mY) : QString());
         drawHistogram(p, frame, m_imageRawPixels, m_imageMinVal, m_imageMaxVal, hy - frame.bottom(),
                       HIST_P1, m_imageDispMin, m_imageDispMax);
 
@@ -1648,7 +1681,8 @@ void FtWindow::paintEvent(QPaintEvent *)
 
             QRect inner = frame.adjusted(2, 2, -2, -2);
             double curVal = 0;
-            bool hasCur = sampleValue(inner, m_zoom[1], m_fftN, m_fftN, m_powerVals, curVal);
+            int mX = 0, mY = 0;
+            bool hasCur = sampleValue(inner, m_zoom[1], m_fftN, m_fftN, m_powerVals, curVal, &mX, &mY);
 
             if (m_displayMode == 2) {
                 double curAmp = 0, curPhase = 0;
@@ -1668,8 +1702,28 @@ void FtWindow::paintEvent(QPaintEvent *)
                     int cw = fm2.horizontalAdvance(curText);
                     p.drawText(frame.right() - cw, frame.top() - 5 - lineH, curText);
                 }
+                if (hasCur) {
+                    QString mText = QString("Mouse X,Y = %1, %2").arg(mX - m_fftN / 2).arg(mY - m_fftN / 2);
+                    int mw = fm2.horizontalAdvance(mText);
+                    p.drawText(frame.right() - mw, frame.top() - 5 - 2 * lineH, mText);
+                }
             } else {
-                drawMinMax(p, frame, m_powerMin, m_powerMax, curVal, hasCur);
+                QString mouseText;
+                if (hasCur) {
+                    double dx = mX - m_fftN / 2.0;
+                    double dy = mY - m_fftN / 2.0;
+                    double rad = std::sqrt(dx * dx + dy * dy);
+                    if (rad < 1e-12 || m_pixelSize <= 0) {
+                        mouseText = QString("Mouse = (\u221E %1)\u207B\u00B9")
+                                        .arg(QString::fromUtf8("\u00C5"));
+                    } else {
+                        double res = (m_fftN * m_pixelSize) / rad;
+                        mouseText = QString("Mouse = (%1 %2)\u207B\u00B9")
+                                        .arg(res, 0, 'g', 3)
+                                        .arg(QString::fromUtf8("\u00C5"));
+                    }
+                }
+                drawMinMax(p, frame, m_powerMin, m_powerMax, curVal, hasCur, mouseText);
             }
 
             drawHistogram(p, frame, m_powerVals, m_powerMin, m_powerMax, hy - frame.bottom(),
@@ -1730,6 +1784,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 drawLattice(p, inner, m_zoom[1], m_fftN, m_fftN);
             if (m_crossSectionActive)
                 drawCrossSectionLines(p, inner, m_zoom[1], m_fftN, m_fftN);
+            if (m_ctfActive)
+                drawCtfDirectionLine(p, inner, m_zoom[1], m_fftN, m_fftN);
 
             DisplayItem &di = m_dispItems[m_numDispItems++];
             di = { inner, m_fftN, m_fftN, 1, &m_powerVals, true };
@@ -1799,8 +1855,24 @@ void FtWindow::paintEvent(QPaintEvent *)
             drawZoomPanOverlay(frame1, m_zoom[1]);
             QRect inner1 = frame1.adjusted(2, 2, -2, -2);
             double curVal1 = 0;
-            bool hasCur1 = sampleValue(inner1, m_zoom[1], m_fftN, m_fftN, *vals1, curVal1);
-            drawMinMax(p, frame1, min1, max1, curVal1, hasCur1);
+            int mX1 = 0, mY1 = 0;
+            bool hasCur1 = sampleValue(inner1, m_zoom[1], m_fftN, m_fftN, *vals1, curVal1, &mX1, &mY1);
+            QString mouseText1;
+            if (hasCur1) {
+                double dx = mX1 - m_fftN / 2.0;
+                double dy = mY1 - m_fftN / 2.0;
+                double rad = std::sqrt(dx * dx + dy * dy);
+                if (rad < 1e-12 || m_pixelSize <= 0) {
+                    mouseText1 = QString("Mouse = (\u221E %1)\u207B\u00B9")
+                                     .arg(QString::fromUtf8("\u00C5"));
+                } else {
+                    double res = (m_fftN * m_pixelSize) / rad;
+                    mouseText1 = QString("Mouse = (%1 %2)\u207B\u00B9")
+                                     .arg(res, 0, 'g', 3)
+                                     .arg(QString::fromUtf8("\u00C5"));
+                }
+            }
+            drawMinMax(p, frame1, min1, max1, curVal1, hasCur1, mouseText1);
             drawHistogram(p, frame1, *vals1, min1, max1, hy - frame1.bottom(),
                           HIST_FT_LEFT, dmin1, dmax1);
 
@@ -1810,8 +1882,25 @@ void FtWindow::paintEvent(QPaintEvent *)
             drawZoomPanOverlay(frame2, m_zoom[2]);
             QRect inner2 = frame2.adjusted(2, 2, -2, -2);
             double curVal2 = 0;
-            bool hasCur2 = sampleValue(inner2, m_zoom[2], m_fftN, m_fftN, *vals2, curVal2);
-            drawMinMax(p, frame2, min2, max2, curVal2, hasCur2);
+            int mX2 = 0, mY2 = 0;
+            bool hasCur2 = sampleValue(inner2, m_zoom[2], m_fftN, m_fftN, *vals2, curVal2, &mX2, &mY2);
+            QString mouseText2;
+            if (hasCur2) {
+                double dx = mX2 - m_fftN / 2.0;
+                double dy = mY2 - m_fftN / 2.0;
+                double rad = std::sqrt(dx * dx + dy * dy);
+                if (rad < 1e-12 || m_pixelSize <= 0) {
+                    mouseText2 = QString("Mouse = (\u221E %1)\u207B\u00B9")
+                                     .arg(QString::fromUtf8("\u00C5"));
+                } else {
+                    double freq = rad / (m_fftN * m_pixelSize);
+                    double res = 1.0 / freq;
+                    mouseText2 = QString("Mouse = (%1 %2)\u207B\u00B9")
+                                     .arg(res, 0, 'g', 3)
+                                     .arg(QString::fromUtf8("\u00C5"));
+                }
+            }
+            drawMinMax(p, frame2, min2, max2, curVal2, hasCur2, mouseText2);
             drawHistogram(p, frame2, *vals2, min2, max2, hy - frame2.bottom(),
                           HIST_FT_RIGHT, dmin2, dmax2);
 
@@ -1834,6 +1923,10 @@ void FtWindow::paintEvent(QPaintEvent *)
             if (m_crossSectionActive) {
                 drawCrossSectionLines(p, inner1, m_zoom[1], m_fftN, m_fftN);
                 drawCrossSectionLines(p, inner2, m_zoom[2], m_fftN, m_fftN);
+            }
+            if (m_ctfActive) {
+                drawCtfDirectionLine(p, inner1, m_zoom[1], m_fftN, m_fftN);
+                drawCtfDirectionLine(p, inner2, m_zoom[2], m_fftN, m_fftN);
             }
 
             DisplayItem &d1 = m_dispItems[m_numDispItems++];
@@ -2071,7 +2164,8 @@ void FtWindow::paintEvent(QPaintEvent *)
 
         // Panel 2 tool option rectangles (bottom-right of panel 2)
         bool p2Tool = m_bandpassActive || m_directionalActive || m_lineFilterActive || m_brushActive
-                      || m_eraserActive || m_latticeActive || m_ftCropActive || m_crossSectionActive;
+                      || m_eraserActive || m_latticeActive || m_ftCropActive || m_crossSectionActive
+                      || m_ctfActive;
         if (p2Tool) {
             int nRows = 0;
             int textW = 0;
@@ -2131,6 +2225,21 @@ void FtWindow::paintEvent(QPaintEvent *)
                 int r2 = fm.horizontalAdvance("Keep original Fourier transform size");
                 int r3 = m_applyFtCropBtn->width();
                 textW = std::max({r1, r2, r3});
+            } else if (m_ctfActive) {
+                nRows = 6;
+                int r0 = fm.horizontalAdvance("Acceleration Voltage (kV): ") + m_ctfVoltageEdit->width()
+                         + 12 + fm.horizontalAdvance("Energy spread (eV): ")
+                         + m_ctfEnergySpreadEdit->width();
+                int r1 = fm.horizontalAdvance("Defocus spread (nm): ") + m_ctfDefocusSpreadEdit->width()
+                         + 12 + fm.horizontalAdvance("Open angle gun (mrad): ")
+                         + m_ctfOpenAngleEdit->width();
+                int r2 = fm.horizontalAdvance("Spherical aberration constant Cs (mm): ") + m_ctfCsEdit->width();
+                int r3 = fm.horizontalAdvance("Defocus (nm): ") + m_ctfDefocusEdit->width();
+                int r4 = fm.horizontalAdvance("Astigmatism (nm): ") + m_ctfAstigEdit->width()
+                         + 12 + fm.horizontalAdvance("Astigmatism direction (\u00B0): ")
+                         + m_ctfAstigAngleEdit->width();
+                int r5 = m_ctfCancelBtn->width() + 8 + m_ctfComputeBtn->width();
+                textW = std::max({r0, r1, r2, r3, r4, r5});
             }
 
             int rw = textW * 6 / 5 + 2 * margin;
@@ -2220,6 +2329,31 @@ void FtWindow::paintEvent(QPaintEvent *)
                 m_ftCropCombo->move(tx, ty);
                 m_ftCropKeepSizeBtn->move(tx, ty + lh);
                 m_applyFtCropBtn->move(tx, ty + lh * 2);
+            } else if (m_ctfActive) {
+                drawParamLabel(p, fm, tx, ty, "Acceleration Voltage (kV):", m_ctfVoltageEdit->toolTip());
+                int avX = tx + fm.horizontalAdvance("Acceleration Voltage (kV): ");
+                m_ctfVoltageEdit->move(avX, ty);
+                int esLblX = avX + m_ctfVoltageEdit->width() + 12;
+                drawParamLabel(p, fm, esLblX, ty, "Energy spread (eV):", m_ctfEnergySpreadEdit->toolTip());
+                m_ctfEnergySpreadEdit->move(esLblX + fm.horizontalAdvance("Energy spread (eV): "), ty);
+                drawParamLabel(p, fm, tx, ty + lh, "Defocus spread (nm):", m_ctfDefocusSpreadEdit->toolTip());
+                int dsX = tx + fm.horizontalAdvance("Defocus spread (nm): ");
+                m_ctfDefocusSpreadEdit->move(dsX, ty + lh);
+                int oaLblX = dsX + m_ctfDefocusSpreadEdit->width() + 12;
+                drawParamLabel(p, fm, oaLblX, ty + lh, "Open angle gun (mrad):", m_ctfOpenAngleEdit->toolTip());
+                m_ctfOpenAngleEdit->move(oaLblX + fm.horizontalAdvance("Open angle gun (mrad): "), ty + lh);
+                drawParamLabel(p, fm, tx, ty + lh * 2, "Spherical aberration constant Cs (mm):", m_ctfCsEdit->toolTip());
+                m_ctfCsEdit->move(tx + fm.horizontalAdvance("Spherical aberration constant Cs (mm): "), ty + lh * 2);
+                drawParamLabel(p, fm, tx, ty + lh * 3, "Defocus (nm):", m_ctfDefocusEdit->toolTip());
+                m_ctfDefocusEdit->move(tx + fm.horizontalAdvance("Defocus (nm): "), ty + lh * 3);
+                drawParamLabel(p, fm, tx, ty + lh * 4, "Astigmatism (nm):", m_ctfAstigEdit->toolTip());
+                int ax1 = tx + fm.horizontalAdvance("Astigmatism (nm): ");
+                m_ctfAstigEdit->move(ax1, ty + lh * 4);
+                int ax2 = ax1 + m_ctfAstigEdit->width() + 12;
+                drawParamLabel(p, fm, ax2, ty + lh * 4, "Astigmatism direction (\u00B0):", m_ctfAstigAngleEdit->toolTip());
+                m_ctfAstigAngleEdit->move(ax2 + fm.horizontalAdvance("Astigmatism direction (\u00B0): "), ty + lh * 4);
+                m_ctfCancelBtn->move(tx, ty + lh * 5);
+                m_ctfComputeBtn->move(rx + rw - margin - m_ctfComputeBtn->width(), ty + lh * 5);
             }
         }
 
@@ -2714,6 +2848,136 @@ void FtWindow::paintEvent(QPaintEvent *)
         }
     }
 
+    // ---- CTF 1D profile overlay in panel 4 --------------------------------------
+    if (m_ctfActive && !m_ctfProfile.empty()) {
+        int p4x = cx + 2;
+        int p4y = hy + 2;
+        int p4w = width() - p4x;
+        int p4h = height() - p4y;
+
+        int rw = static_cast<int>(p4w * 0.80);
+        int rh = static_cast<int>(p4h * 0.80);
+        int rx = p4x + (p4w - rw) / 2;
+        int ry = p4y + (p4h - rh) / 2;
+        QRect profileRect(rx, ry, rw, rh);
+        drawShadowRect(p, profileRect);
+
+        int plotMarginL = 50, plotMarginR = 15, plotMarginT = 25, plotMarginB = 35;
+        int plotX = rx + plotMarginL;
+        int plotY = ry + plotMarginT;
+        int plotW = rw - plotMarginL - plotMarginR;
+        int plotH = rh - plotMarginT - plotMarginB;
+
+        if (plotW > 10 && plotH > 10 && m_ctfProfile.size() > 1) {
+            int nPts = (int)m_ctfProfile.size();
+
+            // Plot background
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(245, 245, 245));
+            p.drawRect(plotX, plotY, plotW, plotH);
+
+            // Grid lines at -1, -0.5, 0, 0.5, 1 (profile range is [-1,1])
+            p.setPen(QPen(QColor(210, 210, 210), 1));
+            for (int g = 1; g < 4; g++) {
+                int gy = plotY + g * plotH / 4;
+                p.drawLine(plotX, gy, plotX + plotW, gy);
+            }
+
+            // Zero line
+            int zeroY = plotY + plotH / 2;
+            p.setPen(QPen(QColor(160, 160, 160), 1));
+            p.drawLine(plotX, zeroY, plotX + plotW, zeroY);
+
+            // Profile curve
+            p.setRenderHint(QPainter::Antialiasing, true);
+            p.setPen(QPen(QColor(40, 100, 220), 2));
+            p.setBrush(Qt::NoBrush);
+            QPainterPath curve;
+            for (int j = 0; j < nPts; j++) {
+                double xp = plotX + (double)j / (nPts - 1) * plotW;
+                double v = std::clamp(m_ctfProfile[j], -1.0, 1.0);
+                double yp = plotY + plotH / 2.0 - v * (plotH / 2.0);
+                if (j == 0) curve.moveTo(xp, yp);
+                else curve.lineTo(xp, yp);
+            }
+            p.drawPath(curve);
+            p.setRenderHint(QPainter::Antialiasing, false);
+
+            // Axes
+            p.setPen(QPen(QColor(60, 60, 60), 1));
+            p.drawLine(plotX, plotY + plotH, plotX + plotW, plotY + plotH);
+            p.drawLine(plotX, plotY, plotX, plotY + plotH);
+
+            // Y axis labels
+            {
+                QFont af; af.setPixelSize(10); p.setFont(af);
+                QFontMetrics afm(af);
+                p.setPen(QColor(60, 60, 60));
+                QString yMax = "1";
+                QString yMid = "0";
+                QString yMin = "-1";
+                p.drawText(plotX - afm.horizontalAdvance(yMax) - 4, plotY + afm.ascent(), yMax);
+                p.drawText(plotX - afm.horizontalAdvance(yMid) - 4, zeroY + afm.ascent() / 2, yMid);
+                p.drawText(plotX - afm.horizontalAdvance(yMin) - 4, plotY + plotH, yMin);
+            }
+
+            // X axis label: spatial frequency range in 1/Å
+            {
+                QFont af; af.setPixelSize(10); p.setFont(af);
+                QFontMetrics afm(af);
+                double maxQ = (m_fftN > 0 && m_pixelSize > 0)
+                                ? std::sqrt(2.0) / (2.0 * m_pixelSize) : 0.0;
+
+                // Dotted vertical line at q = 0.5 (1/Å)
+                if (maxQ > 0.5) {
+                    double xp = plotX + (0.5 / maxQ) * plotW;
+                    p.setPen(QPen(QColor(120, 120, 120), 1, Qt::DotLine));
+                    p.drawLine((int)xp, plotY, (int)xp, plotY + plotH);
+                }
+
+                p.setPen(QColor(60, 60, 60));
+                QString lbl0 = "0";
+                QString lbl1 = QString::number(maxQ, 'f', 3);
+                p.drawText(plotX, plotY + plotH + afm.ascent() + 3, lbl0);
+                p.drawText(plotX + plotW - afm.horizontalAdvance(lbl1),
+                           plotY + plotH + afm.ascent() + 3, lbl1);
+
+                // Tick labels at 0.25 and 0.5 (1/Å)
+                double ticks[2] = { 0.25, 0.5 };
+                for (double t : ticks) {
+                    if (maxQ <= t) continue;
+                    double xp = plotX + (t / maxQ) * plotW;
+                    QString lbl = QString::number(t, 'f', 2);
+                    p.drawLine((int)xp, plotY + plotH, (int)xp, plotY + plotH + 3);
+                    p.drawText((int)xp - afm.horizontalAdvance(lbl) / 2,
+                               plotY + plotH + afm.ascent() + 3, lbl);
+                }
+
+                QString xTitle = "spatial frequency (1/\u00C5)";
+                p.drawText(plotX + (plotW - afm.horizontalAdvance(xTitle)) / 2,
+                           plotY + plotH + afm.ascent() + 15, xTitle);
+            }
+
+            // Title
+            {
+                QFont tf; tf.setBold(true); tf.setPixelSize(12); p.setFont(tf);
+                p.setPen(QColor(40, 40, 40));
+                p.drawText(rx + 8, ry + 16, "CTF profile");
+            }
+
+            // Direction annotation in the top-right corner
+            {
+                QFont df; df.setBold(true); df.setPixelSize(12); p.setFont(df);
+                QFontMetrics dfm(df);
+                QString dirStr = QString("Direction: %1\u00B0")
+                                     .arg(m_ctfAngleDeg, 0, 'f', 1);
+                p.setPen(QColor(220, 50, 50));
+                p.drawText(rx + rw - dfm.horizontalAdvance(dirStr) - 8,
+                           ry + 16, dirStr);
+            }
+        }
+    }
+
     // ---- dividers -------------------------------------------------------------
     p.setPen(Qt::NoPen);
     p.setBrush(QColor(0, 0, 0));
@@ -3086,4 +3350,49 @@ void FtWindow::computeCrossSectionProfile()
     m_crossSectionCenter = centerIdx;
     m_crossSectionProjMin = projMin;
     m_crossSectionProjMax = projMax;
+}
+
+// ---------------------------------------------------------------------------
+//  Draw the red CTF direction line on the Fourier-transform display
+// ---------------------------------------------------------------------------
+void FtWindow::drawCtfDirectionLine(QPainter &p, const QRect &screenRect,
+                                    const ZoomState &zoom, int imgW, int imgH)
+{
+    int N = m_fftN;
+    if (N == 0) return;
+
+    QRectF src = zoom.visibleRect(imgW, imgH);
+    double imgCenter = N / 2.0 + 0.5;
+    double scaleX = screenRect.width() / src.width();
+    double scaleY = screenRect.height() / src.height();
+    double scrCx = screenRect.x() + (imgCenter - src.x()) * scaleX;
+    double scrCy = screenRect.y() + (imgCenter - src.y()) * scaleY;
+
+    // Direction angle is measured CCW from +x in math convention; screen y
+    // points downward, so flip the y component for drawing.
+    double a = m_ctfAngleDeg * M_PI / 180.0;
+    double dirX =  std::cos(a);
+    double dirY = -std::sin(a);
+
+    // Extend the ray out to the edge of the FFT square (image coords ±N/2).
+    double halfN = N / 2.0;
+    double tX = (dirX > 0) ?  halfN / dirX : (dirX < 0 ? -halfN / dirX : 1e18);
+    double tY = (dirY > 0) ?  halfN / dirY : (dirY < 0 ? -halfN / dirY : 1e18);
+    double tEdge = std::min(tX, tY);
+    double endXimg = dirX * tEdge;
+    double endYimg = dirY * tEdge;
+
+    double endScrX = scrCx + endXimg * scaleX;
+    double endScrY = scrCy + endYimg * scaleY;
+
+    p.save();
+    p.setClipRect(screenRect);
+    p.setRenderHint(QPainter::Antialiasing, true);
+    p.setPen(QPen(QColor(220, 50, 50), 2));
+    p.drawLine(QPointF(scrCx, scrCy), QPointF(endScrX, endScrY));
+    // Small handle at the endpoint to make it clearly draggable.
+    p.setBrush(QColor(220, 50, 50));
+    p.drawEllipse(QPointF(endScrX, endScrY), 4.0, 4.0);
+    p.setRenderHint(QPainter::Antialiasing, false);
+    p.restore();
 }

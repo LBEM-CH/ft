@@ -23,9 +23,18 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         return;
     }
 
-    // Check history slot clicks (panel 3) – activate clicked slot
+    // Check history / power-spectrum slot clicks (panels 3 & 4) – activate clicked slot
+    int clickedSlot = -1;
     for (int i = 0; i < HISTORY_SLOTS; i++) {
-        if (m_historyRects[i].contains(event->pos())) {
+        if (m_historyRects[i].contains(event->pos())
+            || m_powerSpecRects[i].contains(event->pos())) {
+            clickedSlot = i;
+            break;
+        }
+    }
+    if (clickedSlot >= 0) {
+        int i = clickedSlot;
+        {
             if (i == m_activeSlot) return;   // already active
 
             // Save current active image back to its slot
@@ -207,10 +216,24 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         m_binActive = !was; showP1ToolWidgets(); update(); return;
     }
     if (m_p1BtnRects[9].contains(event->pos())) {
+        bool was = m_gaborActive; deactivateAllP1Tools();
+        m_gaborActive = !was; showP1ToolWidgets(); update(); return;
+    }
+    if (m_p1BtnRects[10].contains(event->pos())) {
+        bool was = m_hessianActive; deactivateAllP1Tools();
+        m_hessianActive = !was; showP1ToolWidgets(); update(); return;
+    }
+    if (m_p1BtnRects[11].contains(event->pos())) {
+        bool was = m_amyloidActive; deactivateAllP1Tools();
+        m_amyloidActive = !was;
+        if (!m_amyloidActive) { m_amyloidPlacing = 0; }
+        showP1ToolWidgets(); update(); return;
+    }
+    if (m_p1BtnRects[12].contains(event->pos())) {
         bool was = m_mathActive; deactivateAllP1Tools();
         m_mathActive = !was; showP1ToolWidgets(); update(); return;
     }
-    if (m_p1BtnRects[10].contains(event->pos())) {
+    if (m_p1BtnRects[13].contains(event->pos())) {
         bool was = m_peakPickActive; deactivateAllP1Tools();
         m_peakPickActive = !was;
         if (m_peakPickActive) {
@@ -220,25 +243,11 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         }
         showP1ToolWidgets(); update(); return;
     }
-    if (m_p1BtnRects[11].contains(event->pos())) {
+    if (m_p1BtnRects[14].contains(event->pos())) {
         bool was = m_extractActive; deactivateAllP1Tools();
         m_extractActive = !was;
         if (m_extractActive && m_activeSlot >= 0)
             m_extractSourceCombo->setCurrentIndex(m_activeSlot);
-        showP1ToolWidgets(); update(); return;
-    }
-    if (m_p1BtnRects[12].contains(event->pos())) {
-        bool was = m_gaborActive; deactivateAllP1Tools();
-        m_gaborActive = !was; showP1ToolWidgets(); update(); return;
-    }
-    if (m_p1BtnRects[13].contains(event->pos())) {
-        bool was = m_hessianActive; deactivateAllP1Tools();
-        m_hessianActive = !was; showP1ToolWidgets(); update(); return;
-    }
-    if (m_p1BtnRects[14].contains(event->pos())) {
-        bool was = m_amyloidActive; deactivateAllP1Tools();
-        m_amyloidActive = !was;
-        if (!m_amyloidActive) { m_amyloidPlacing = 0; }
         showP1ToolWidgets(); update(); return;
     }
 
@@ -408,6 +417,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         m_latticeActive = false; m_ftRotateActive = false;
         m_crossSectionActive = false;
         m_ftCropActive = false; m_ftMathActive = false;
+        m_ctfActive = false;
     };
     auto showToolWidgets = [&]() {
         bool showFilter = m_bandpassActive || m_directionalActive;
@@ -444,6 +454,17 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         m_ftMathConjCombo->setVisible(m_ftMathActive);
         m_ftMathCancelBtn->setVisible(m_ftMathActive);
         m_ftMathComputeBtn->setVisible(m_ftMathActive);
+
+        m_ctfVoltageEdit->setVisible(m_ctfActive);
+        m_ctfEnergySpreadEdit->setVisible(m_ctfActive);
+        m_ctfDefocusSpreadEdit->setVisible(m_ctfActive);
+        m_ctfOpenAngleEdit->setVisible(m_ctfActive);
+        m_ctfCsEdit->setVisible(m_ctfActive);
+        m_ctfDefocusEdit->setVisible(m_ctfActive);
+        m_ctfAstigEdit->setVisible(m_ctfActive);
+        m_ctfAstigAngleEdit->setVisible(m_ctfActive);
+        m_ctfCancelBtn->setVisible(m_ctfActive);
+        m_ctfComputeBtn->setVisible(m_ctfActive);
     };
     if (m_toolBtnRects[0].contains(event->pos())) {
         bool was = m_eraserActive; deactivateAllTools();
@@ -493,6 +514,12 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         m_ftCropActive = !was; showToolWidgets(); update(); return;
     }
     if (m_toolBtnRects[9].contains(event->pos())) {
+        bool was = m_ctfActive; deactivateAllTools();
+        m_ctfActive = !was;
+        if (!m_ctfActive) m_ctfProfile.clear();
+        showToolWidgets(); update(); return;
+    }
+    if (m_toolBtnRects[10].contains(event->pos())) {
         bool was = m_ftMathActive; deactivateAllTools();
         m_ftMathActive = !was; showToolWidgets(); update(); return;
     }
@@ -568,6 +595,24 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
                 storeUndoSnapshot();
                 m_p2Dragging = true;
                 m_p2DragStart = event->pos();
+                return;
+            }
+        }
+    }
+
+    // CTF direction line: start drag on panel 2 FFT to rotate line
+    if (m_ctfActive && m_ftComputed) {
+        for (int i = 0; i < m_numDispItems; i++) {
+            const DisplayItem &di = m_dispItems[i];
+            if (di.valid && di.zoomIdx >= 1 && di.screenRect.contains(event->pos())) {
+                m_ctfDragging = true;
+                m_toolDragging = true;
+                double ccx = di.screenRect.center().x();
+                double ccy = di.screenRect.center().y();
+                m_ctfAngleDeg = std::atan2(-(event->pos().y() - ccy),
+                                             event->pos().x() - ccx) * 180.0 / M_PI;
+                computeCtfProfile1D();
+                update();
                 return;
             }
         }
@@ -827,6 +872,7 @@ void FtWindow::mouseReleaseEvent(QMouseEvent *event)
         m_latticeDragging = 0;
         m_lineDragging = false;
         m_crossSectionDragging = false;
+        m_ctfDragging = false;
         if (wasCrossSection && m_ftComputed) {
             computeCrossSectionProfile();
             update();
@@ -1211,6 +1257,20 @@ void FtWindow::mouseMoveEvent(QMouseEvent *event)
                 double ccy = di.screenRect.center().y();
                 m_crossSectionAngle = std::atan2(event->pos().y() - ccy,
                                                   event->pos().x() - ccx) * 180.0 / M_PI;
+                update();
+                break;
+            }
+            return;
+        }
+        if (m_ctfDragging) {
+            for (int i = 0; i < m_numDispItems; i++) {
+                const DisplayItem &di = m_dispItems[i];
+                if (!di.valid || di.zoomIdx < 1) continue;
+                double ccx = di.screenRect.center().x();
+                double ccy = di.screenRect.center().y();
+                m_ctfAngleDeg = std::atan2(-(event->pos().y() - ccy),
+                                             event->pos().x() - ccx) * 180.0 / M_PI;
+                computeCtfProfile1D();
                 update();
                 break;
             }

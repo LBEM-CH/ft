@@ -3626,3 +3626,219 @@ void FtWindow::onExtractCompute()
 #endif
     update();
 }
+
+void FtWindow::onCtfCancel()
+{
+    m_ctfActive = false;
+    m_ctfProfile.clear();
+    m_ctfVoltageEdit->hide();
+    m_ctfEnergySpreadEdit->hide();
+    m_ctfDefocusSpreadEdit->hide();
+    m_ctfCsEdit->hide();
+    m_ctfDefocusEdit->hide();
+    m_ctfAstigEdit->hide();
+    m_ctfAstigAngleEdit->hide();
+    m_ctfCancelBtn->hide();
+    m_ctfComputeBtn->hide();
+    update();
+}
+
+void FtWindow::computeCtfProfile1D()
+{
+    bool okV = false, okE = false, okC = false, okD = false;
+    bool okA = false, okAA = false, okDS = false, okOA = false;
+    double voltageKV     = m_ctfVoltageEdit->text().toDouble(&okV);
+    double energyEV      = m_ctfEnergySpreadEdit->text().toDouble(&okE);
+    double defocusSpreadNM = m_ctfDefocusSpreadEdit->text().toDouble(&okDS);
+    double openAngleMrad = m_ctfOpenAngleEdit->text().toDouble(&okOA);
+    double csMM          = m_ctfCsEdit->text().toDouble(&okC);
+    double defocusNM     = m_ctfDefocusEdit->text().toDouble(&okD);
+    double astigNM       = m_ctfAstigEdit->text().toDouble(&okA);
+    double astigAngleDeg = m_ctfAstigAngleEdit->text().toDouble(&okAA);
+    if (!okV || voltageKV <= 0) voltageKV = 300.0;
+    if (!okE)                   energyEV  = 0.7;
+    if (!okDS)                  defocusSpreadNM = 5.0;
+    if (!okOA)                  openAngleMrad = 0.1;
+    if (!okC)                   csMM      = 2.7;
+    if (!okD)                   defocusNM = 1000.0;
+    if (!okA)                   astigNM   = 0.0;
+    if (!okAA)                  astigAngleDeg = 0.0;
+
+    double V = voltageKV * 1000.0;
+    double lambdaA = 12.2639 / std::sqrt(V * (1.0 + V * 0.978466e-6));
+    double CsA     = csMM * 1.0e7;
+    double dfA     = - defocusNM * 10.0;
+    double astigA  = - astigNM * 10.0;
+    double astigAngleRad = astigAngleDeg * M_PI / 180.0;
+    double dzChromA = CsA * (energyEV / V);
+    double dzUserA  = defocusSpreadNM * 10.0;
+    double defocusSpreadA = std::sqrt(dzChromA * dzChromA + dzUserA * dzUserA);
+
+    int N = (m_fftN > 0) ? m_fftN : 1024;
+    double dxA = (m_pixelSize > 0) ? m_pixelSize : 1.0;
+    double maxR = (N / 2.0) * std::sqrt(2.0);
+    int nProf = std::max(64, (int)std::ceil(maxR) + 1);
+    m_ctfProfile.assign(nProf, 0.0);
+    const double A = 0.97;
+    const double B = 1.0 - A * A;
+
+    double profAngleRad = m_ctfAngleDeg * M_PI / 180.0;
+    double dfProf = dfA + astigA * std::cos(2.0 * (profAngleRad - astigAngleRad));
+    double alphaRad = openAngleMrad * 1.0e-3;
+    for (int j = 0; j < nProf; j++) {
+        double rPix = (double)j / (nProf - 1) * maxR;
+        double q = rPix / (N * dxA);
+        double q2 = q * q;
+        double q4 = q2 * q2;
+        double chi = M_PI * lambdaA * dfProf * q2
+                   + 0.5 * M_PI * CsA * lambdaA * lambdaA * lambdaA * q4;
+        double tArg = M_PI * lambdaA * defocusSpreadA * q2;
+        double envT = std::exp(-0.5 * tArg * tArg);
+        // Spatial-coherence envelope from the finite gun opening angle:
+        //   E_s(q) = exp(-π² α² q² (Δf + Cs·λ²·q²)²)
+        double sArg = dfProf + CsA * lambdaA * lambdaA * q2;
+        double envS = std::exp(-(M_PI * M_PI) * alphaRad * alphaRad * q2 * sArg * sArg);
+        m_ctfProfile[j] = envT * envS * (A * std::sin(-chi) + B * std::cos(-chi));
+    }
+}
+
+void FtWindow::onCtfCompute()
+{
+    // Parse parameters
+    bool okV = false, okE = false, okC = false, okD = false;
+    bool okA = false, okAA = false, okDS = false;
+    double voltageKV    = m_ctfVoltageEdit->text().toDouble(&okV);
+    double energyEV     = m_ctfEnergySpreadEdit->text().toDouble(&okE);
+    double defocusSpreadNM = m_ctfDefocusSpreadEdit->text().toDouble(&okDS);
+    double csMM         = m_ctfCsEdit->text().toDouble(&okC);
+    double defocusNM    = m_ctfDefocusEdit->text().toDouble(&okD);
+    double astigNM       = m_ctfAstigEdit->text().toDouble(&okA);
+    double astigAngleDeg = m_ctfAstigAngleEdit->text().toDouble(&okAA);
+    if (!okV || voltageKV <= 0) voltageKV = 300.0;
+    if (!okE)                   energyEV  = 0.7;
+    if (!okDS)                  defocusSpreadNM = 5.0;
+    if (!okC)                   csMM      = 2.7;
+    if (!okD)                   defocusNM = 1000.0;
+    if (!okA)                   astigNM   = 0.0;
+    if (!okAA)                  astigAngleDeg = 0.0;
+
+    // Relativistic electron wavelength in Angstrom
+    double V = voltageKV * 1000.0;  // volts
+    double lambdaA = 12.2639 / std::sqrt(V * (1.0 + V * 0.978466e-6));
+
+    // Convert to Angstrom consistent units
+    double CsA = csMM * 1.0e7;       // mm -> Angstrom
+    double dfA = - defocusNM * 10.0;   // nm -> Angstrom
+    double astigA = - astigNM * 10.0;  // nm -> Angstrom (same sign convention as dfA)
+    double astigAngleRad = astigAngleDeg * M_PI / 180.0;
+
+    // Temporal-coherence defocus spread (Å). Chromatic contribution from the
+    // energy spread (assuming Cc ≈ Cs) is combined in quadrature with the
+    // user-supplied defocus spread.
+    double dzChromA = CsA * (energyEV / V);
+    double dzUserA  = defocusSpreadNM * 10.0;
+    double defocusSpreadA = std::sqrt(dzChromA * dzChromA + dzUserA * dzUserA);
+
+    // Force a 1024x1024 Fourier space (indices -512..+512 about the centre).
+    int N = 1024;
+    double dxA = (m_pixelSize > 0) ? m_pixelSize : 1.0;
+
+    storeUndoSnapshot();
+
+    // Build 1D profile: from r = 0 (center) to r = (N/2)*sqrt(2) (corners)
+    double maxR = (N / 2.0) * std::sqrt(2.0);
+    int nProf = std::max(64, (int)std::ceil(maxR) + 1);
+    m_ctfProfile.assign(nProf, 0.0);
+    const double A = 0.97;
+    const double B = 1.0 - A * A;  // amplitude contrast term per user's formula
+    auto ctfAt = [&](double dfLocalA, double rPix) -> double {
+        // Spatial frequency q (1/Å) for this radial pixel distance.
+        double q = rPix / (N * dxA);
+        double q2 = q * q;
+        double q4 = q2 * q2;
+        double chi = M_PI * lambdaA * dfLocalA * q2
+                   + 0.5 * M_PI * CsA * lambdaA * lambdaA * lambdaA * q4;
+        // Temporal-coherence envelope from energy spread:
+        //   E_t(q) = exp( -0.5 * (π λ Δz q²)² )
+        double tArg = M_PI * lambdaA * defocusSpreadA * q2;
+        double envT = std::exp(-0.5 * tArg * tArg);
+        return envT * (A * std::sin(-chi) + B * std::cos(-chi));
+    };
+    // 1D profile: direction-dependent defocus along m_ctfAngleDeg.
+    double profAngleRad = m_ctfAngleDeg * M_PI / 180.0;
+    double dfProf = dfA + astigA * std::cos(2.0 * (profAngleRad - astigAngleRad));
+    for (int j = 0; j < nProf; j++) {
+        double rPix = (double)j / (nProf - 1) * maxR;
+        m_ctfProfile[j] = ctfAt(dfProf, rPix);
+    }
+
+    // Fill Fourier transform with a direction-dependent CTF.
+    // Defocus varies azimuthally as
+    //     Δf(θ) = Δf_avg + Δf_A · cos(2·(θ − α))
+    // where θ is the Fourier-space azimuth, measured counter-clockwise from
+    // the horizontal axis (standard EM convention), and α is the astigmatism
+    // direction. The average defocus is recovered at θ = α ± 45°.
+    m_fftN = N;
+    int total = N * N;
+    m_fftData.assign(total, Complex(0.0, 0.0));
+    double half = N / 2.0;
+    for (int y = 0; y < N; y++) {
+        double dy = y - half;
+        for (int x = 0; x < N; x++) {
+            double dx = x - half;
+            double rPix = std::sqrt(dx * dx + dy * dy);
+            // Image y axis points downward, so flip it for the math CCW angle.
+            double theta = std::atan2(-dy, dx);
+            double dfLocal = dfA + astigA * std::cos(2.0 * (theta - astigAngleRad));
+            double v = ctfAt(dfLocal, rPix);
+            m_fftData[y * N + x] = Complex(v, 0.0);
+        }
+    }
+
+    m_ftComputed = true;
+    if (m_origW <= 0 || m_origH <= 0) {
+        m_origW = N;
+        m_origH = N;
+    }
+    m_modeBtn->show();
+    m_maskBtn->show();
+    m_zoom[1].reset(N, N);
+    m_zoom[2].reset(N, N);
+    recomputeDisplayImages();
+
+    // Inverse-transform to real space for panel 1, with a centre-shifted origin.
+    m_origW = N;
+    m_origH = N;
+    computeInverseFFT();
+
+    // Swap quadrants so that the real-space origin is at the image centre
+    // (equivalent to a phase ramp exp(iπ(x+y)) in Fourier space).
+    if ((int)m_imageRawPixels.size() == N * N) {
+        int h2 = N / 2;
+        std::vector<double> shifted(N * N);
+        for (int y = 0; y < N; y++) {
+            int sy = (y + h2) % N;
+            for (int x = 0; x < N; x++) {
+                int sx = (x + h2) % N;
+                shifted[sy * N + sx] = m_imageRawPixels[y * N + x];
+            }
+        }
+        m_imageRawPixels = std::move(shifted);
+        double scale = (m_imageMaxVal > m_imageMinVal)
+                         ? 255.0 / (m_imageMaxVal - m_imageMinVal) : 1.0;
+        for (int y = 0; y < N; y++) {
+            uchar *row = m_image.scanLine(y);
+            for (int x = 0; x < N; x++)
+                row[x] = static_cast<uchar>(std::clamp(
+                    (m_imageRawPixels[y * N + x] - m_imageMinVal) * scale, 0.0, 255.0));
+        }
+        if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS) {
+            m_history[m_activeSlot].image     = m_image;
+            m_history[m_activeSlot].rawPixels = m_imageRawPixels;
+            m_history[m_activeSlot].occupied  = true;
+        }
+    }
+
+    saveHistory();
+    update();
+}
