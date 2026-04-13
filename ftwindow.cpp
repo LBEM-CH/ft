@@ -355,6 +355,73 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     });
     m_crossSectionWidthEdit->hide();
 
+    // CTF parameter widgets
+    auto makeCtfEdit = [this](const QString &def) {
+        auto *e = new QLineEdit(def, this);
+        e->setFixedSize(60, 22);
+        e->setStyleSheet("background:#222; color:white; border:1px solid #888;");
+        e->hide();
+        return e;
+    };
+    m_ctfVoltageEdit = makeCtfEdit("300");
+    m_ctfVoltageEdit->setToolTip(
+        "Acceleration voltage of the microscope in kV. Determines the\n"
+        "relativistic electron wavelength used in the Scherzer contrast\n"
+        "transfer function.");
+    m_ctfEnergySpreadEdit = makeCtfEdit("0.7");
+    m_ctfEnergySpreadEdit->setToolTip(
+        "Energy spread of the electron beam in eV. Used to model the\n"
+        "temporal coherence envelope of the CTF.");
+    m_ctfOpenAngleEdit = makeCtfEdit("0.1");
+    m_ctfOpenAngleEdit->setToolTip(
+        "Beam half-convergence angle (gun opening semi-angle) in mrad.\n"
+        "Controls the spatial-coherence envelope\n"
+        "   E_s(q) = exp(-\u03C0\u00B2\u00B7\u03B1\u00B2\u00B7q\u00B2\u00B7(\u0394f + Cs\u00B7\u03BB\u00B2\u00B7q\u00B2)\u00B2)\n"
+        "that damps the CTF at high spatial frequencies due to a\n"
+        "non-zero illumination aperture.");
+    m_ctfDefocusSpreadEdit = makeCtfEdit("5");
+    m_ctfDefocusSpreadEdit->setToolTip(
+        "Defocus spread (\u0394z) in nm. Models the defocus-dependent\n"
+        "temporal-coherence envelope\n"
+        "   E_t(q) = exp(-\u00BD(\u03C0\u00B7\u03BB\u00B7\u0394z\u00B7q\u00B2)\u00B2).\n"
+        "Combined in quadrature with the chromatic contribution from\n"
+        "the energy spread.");
+    m_ctfCsEdit = makeCtfEdit("2.7");
+    m_ctfCsEdit->setToolTip(
+        "Spherical aberration constant Cs of the objective lens in mm.");
+    m_ctfDefocusEdit = makeCtfEdit("1000");
+    m_ctfDefocusEdit->setToolTip(
+        "Defocus value in nm (positive = underfocus).");
+    m_ctfAstigEdit = makeCtfEdit("0");
+    m_ctfAstigEdit->setToolTip(
+        "Astigmatism amplitude in nm. This is the defocus deviation\n"
+        "along the astigmatism axis relative to the average defocus.\n"
+        "The defocus varies azimuthally as\n"
+        "   \u0394f(\u03B8) = \u0394f_avg + \u0394f_A \u00B7 cos(2(\u03B8 - \u03B1))\n"
+        "so the average defocus is found 45\u00B0 away from the astigmatism\n"
+        "direction.");
+    m_ctfAstigAngleEdit = makeCtfEdit("0");
+    m_ctfAstigAngleEdit->setToolTip(
+        "Astigmatism direction in degrees, measured counter-clockwise\n"
+        "from the horizontal axis, following the usual EM convention.");
+    m_ctfCancelBtn = new QPushButton("Cancel", this);
+    m_ctfCancelBtn->setFixedSize(80, 26);
+    m_ctfCancelBtn->setStyleSheet(
+        "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }");
+    connect(m_ctfCancelBtn, &QPushButton::clicked, this, &FtWindow::onCtfCancel);
+    m_ctfCancelBtn->hide();
+    m_ctfComputeBtn = new QPushButton("Compute", this);
+    m_ctfComputeBtn->setFixedSize(80, 26);
+    m_ctfComputeBtn->setStyleSheet(
+        "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }");
+    connect(m_ctfComputeBtn, &QPushButton::clicked, this, &FtWindow::onCtfCompute);
+    m_ctfComputeBtn->hide();
+    for (QLineEdit *e : { m_ctfVoltageEdit, m_ctfEnergySpreadEdit,
+                          m_ctfDefocusSpreadEdit, m_ctfOpenAngleEdit,
+                          m_ctfCsEdit, m_ctfDefocusEdit,
+                          m_ctfAstigEdit, m_ctfAstigAngleEdit })
+        connect(e, &QLineEdit::returnPressed, this, &FtWindow::onCtfCompute);
+
     // Panel 1 eraser parameter widgets
     m_p1EraserDiamLabel = new QLabel("Eraser Gaussian diameter:", this);
     m_p1EraserDiamLabel->setStyleSheet("color: white;");
@@ -993,6 +1060,28 @@ void FtWindow::resizeEvent(QResizeEvent *)
     // Cross-section profile width widget (sizes only)
     m_crossSectionWidthEdit->setFixedSize(static_cast<int>(40 * sc), editH);
     m_crossSectionWidthEdit->setStyleSheet(editSS);
+
+    // CTF widgets (sizes only)
+    m_ctfVoltageEdit->setFixedSize(static_cast<int>(60 * sc), editH);
+    m_ctfVoltageEdit->setStyleSheet(editSS);
+    m_ctfEnergySpreadEdit->setFixedSize(static_cast<int>(60 * sc), editH);
+    m_ctfEnergySpreadEdit->setStyleSheet(editSS);
+    m_ctfDefocusSpreadEdit->setFixedSize(static_cast<int>(60 * sc), editH);
+    m_ctfDefocusSpreadEdit->setStyleSheet(editSS);
+    m_ctfOpenAngleEdit->setFixedSize(static_cast<int>(60 * sc), editH);
+    m_ctfOpenAngleEdit->setStyleSheet(editSS);
+    m_ctfCsEdit->setFixedSize(static_cast<int>(60 * sc), editH);
+    m_ctfCsEdit->setStyleSheet(editSS);
+    m_ctfDefocusEdit->setFixedSize(static_cast<int>(60 * sc), editH);
+    m_ctfDefocusEdit->setStyleSheet(editSS);
+    m_ctfAstigEdit->setFixedSize(static_cast<int>(60 * sc), editH);
+    m_ctfAstigEdit->setStyleSheet(editSS);
+    m_ctfAstigAngleEdit->setFixedSize(static_cast<int>(60 * sc), editH);
+    m_ctfAstigAngleEdit->setStyleSheet(editSS);
+    m_ctfCancelBtn->setFixedSize(static_cast<int>(80 * sc), btnH);
+    m_ctfCancelBtn->setStyleSheet(btnSS);
+    m_ctfComputeBtn->setFixedSize(static_cast<int>(80 * sc), btnH);
+    m_ctfComputeBtn->setStyleSheet(btnSS);
 
     // Fourier crop widgets (sizes only)
     m_ftCropCombo->setFixedSize(static_cast<int>(70 * sc), btnH);

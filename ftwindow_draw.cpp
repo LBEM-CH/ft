@@ -192,7 +192,8 @@ void FtWindow::drawAxes(QPainter &p, const QRect &frame,
 
 void FtWindow::drawMinMax(QPainter &p, const QRect &frame,
                            double minVal, double maxVal,
-                           double curVal, bool hasCur)
+                           double curVal, bool hasCur,
+                           const QString &mouseText)
 {
     QFont f;
     f.setPixelSize(11);
@@ -209,6 +210,10 @@ void FtWindow::drawMinMax(QPainter &p, const QRect &frame,
         QString curText = QString("Current: %1").arg(curVal, 0, 'g', 5);
         int cw = fm.horizontalAdvance(curText);
         p.drawText(frame.right() - cw, frame.top() - 5 - fm.height(), curText);
+    }
+    if (!mouseText.isEmpty()) {
+        int mw = fm.horizontalAdvance(mouseText);
+        p.drawText(frame.right() - mw, frame.top() - 5 - 2 * fm.height(), mouseText);
     }
 }
 
