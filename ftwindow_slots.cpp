@@ -284,15 +284,40 @@ void FtWindow::onCycleMode()
 void FtWindow::onToggleFullscreen()
 {
 #ifdef __EMSCRIPTEN__
-    // Use the browser Fullscreen API via JavaScript
+    // Use the browser Fullscreen API via JavaScript. iPadOS / Safari only
+    // implements the webkit-prefixed variants, so try both.
     bool isFS = EM_ASM_INT({
-        return document.fullscreenElement ? 1 : 0;
+        return (document.fullscreenElement ||
+                document.webkitFullscreenElement ||
+                document.webkitCurrentFullScreenElement) ? 1 : 0;
     });
     if (isFS) {
-        EM_ASM({ document.exitFullscreen(); });
+        EM_ASM({
+            var exit = document.exitFullscreen ||
+                       document.webkitExitFullscreen ||
+                       document.webkitCancelFullScreen;
+            if (exit) { try { exit.call(document); } catch (e) {} }
+        });
         m_fullscreenBtn->setText("Go fullscreen");
     } else {
-        EM_ASM({ document.documentElement.requestFullscreen(); });
+        EM_ASM({
+            var el = document.documentElement;
+            var req = el.requestFullscreen ||
+                      el.webkitRequestFullscreen ||
+                      el.webkitRequestFullScreen;
+            if (req) {
+                try {
+                    var p = req.call(el);
+                    if (p && p.catch) p.catch(function(e) {
+                        console.warn('fullscreen request rejected:', e);
+                    });
+                } catch (e) {
+                    console.warn('fullscreen request threw:', e);
+                }
+            } else {
+                console.warn('Fullscreen API not available on this browser');
+            }
+        });
         m_fullscreenBtn->setText("Leave fullscreen");
     }
 #else

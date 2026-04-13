@@ -1325,55 +1325,75 @@ void FtWindow::wheelEvent(QWheelEvent *event)
     }
 }
 
-// Pinch-to-zoom via native gesture events (macOS trackpad)
+// Apply a multiplicative zoom step at a given screen position.
+// Shared by macOS native gesture events and cross-platform pinch gestures
+// (the latter drives pinch-to-zoom on iPad / WASM).
+bool FtWindow::applyPinchZoom(const QPoint &pos, double step)
+{
+    for (int i = 0; i < m_numDispItems; i++) {
+        const DisplayItem &di = m_dispItems[i];
+        if (!di.valid || di.zoomIdx < 0) continue;
+        if (!di.screenRect.contains(pos)) continue;
+
+        ZoomState &z = m_zoom[di.zoomIdx];
+
+        double newFactor = z.factor * step;
+        if (newFactor < 1.0) newFactor = 1.0;
+        if (newFactor > 64.0) newFactor = 64.0;
+
+        if (newFactor <= 1.0) {
+            z.reset(di.imgW, di.imgH);
+        } else {
+            QRectF src = z.visibleRect(di.imgW, di.imgH);
+            double relX = (pos.x() - di.screenRect.x()) / (double)di.screenRect.width();
+            double relY = (pos.y() - di.screenRect.y()) / (double)di.screenRect.height();
+            double imgX = src.x() + relX * src.width();
+            double imgY = src.y() + relY * src.height();
+
+            z.factor = newFactor;
+            double newVW = di.imgW / newFactor;
+            double newVH = di.imgH / newFactor;
+            z.centerX = imgX + (0.5 - relX) * newVW;
+            z.centerY = imgY + (0.5 - relY) * newVH;
+
+            double hw = newVW / 2.0, hh = newVH / 2.0;
+            z.centerX = std::clamp(z.centerX, hw, di.imgW - hw);
+            z.centerY = std::clamp(z.centerY, hh, di.imgH - hh);
+        }
+
+        if ((m_displayMode == 0 || m_displayMode == 1) &&
+            (di.zoomIdx == 1 || di.zoomIdx == 2)) {
+            int other = (di.zoomIdx == 1) ? 2 : 1;
+            m_zoom[other] = m_zoom[di.zoomIdx];
+        }
+
+        update();
+        return true;
+    }
+    return false;
+}
+
+// Pinch-to-zoom: macOS native gesture events + cross-platform QPinchGesture
+// (the latter covers iPad / touch devices under WASM).
 bool FtWindow::event(QEvent *event)
 {
     if (event->type() == QEvent::NativeGesture) {
         auto *ge = static_cast<QNativeGestureEvent *>(event);
         if (ge->gestureType() == Qt::ZoomNativeGesture) {
-            QPoint pos = ge->position().toPoint();
-            for (int i = 0; i < m_numDispItems; i++) {
-                const DisplayItem &di = m_dispItems[i];
-                if (!di.valid || di.zoomIdx < 0) continue;
-                if (!di.screenRect.contains(pos)) continue;
-
-                ZoomState &z = m_zoom[di.zoomIdx];
-
-                // ge->value() is the scale delta (e.g. 0.02 for a small zoom-in)
-                double step = 1.0 + ge->value();
-                double newFactor = z.factor * step;
-                if (newFactor < 1.0) newFactor = 1.0;
-                if (newFactor > 64.0) newFactor = 64.0;
-
-                if (newFactor <= 1.0) {
-                    z.reset(di.imgW, di.imgH);
-                } else {
-                    QRectF src = z.visibleRect(di.imgW, di.imgH);
-                    double relX = (pos.x() - di.screenRect.x()) / (double)di.screenRect.width();
-                    double relY = (pos.y() - di.screenRect.y()) / (double)di.screenRect.height();
-                    double imgX = src.x() + relX * src.width();
-                    double imgY = src.y() + relY * src.height();
-
-                    z.factor = newFactor;
-                    double newVW = di.imgW / newFactor;
-                    double newVH = di.imgH / newFactor;
-                    z.centerX = imgX + (0.5 - relX) * newVW;
-                    z.centerY = imgY + (0.5 - relY) * newVH;
-
-                    double hw = newVW / 2.0, hh = newVH / 2.0;
-                    z.centerX = std::clamp(z.centerX, hw, di.imgW - hw);
-                    z.centerY = std::clamp(z.centerY, hh, di.imgH - hh);
-                }
-
-                if ((m_displayMode == 0 || m_displayMode == 1) &&
-                    (di.zoomIdx == 1 || di.zoomIdx == 2)) {
-                    int other = (di.zoomIdx == 1) ? 2 : 1;
-                    m_zoom[other] = m_zoom[di.zoomIdx];
-                }
-
-                update();
+            if (applyPinchZoom(ge->position().toPoint(), 1.0 + ge->value())) {
                 event->accept();
                 return true;
+            }
+        }
+    } else if (event->type() == QEvent::Gesture) {
+        auto *ge = static_cast<QGestureEvent *>(event);
+        if (auto *pinch = static_cast<QPinchGesture *>(ge->gesture(Qt::PinchGesture))) {
+            if (pinch->changeFlags() & QPinchGesture::ScaleFactorChanged) {
+                QPoint pos = mapFromGlobal(pinch->centerPoint().toPoint());
+                if (applyPinchZoom(pos, pinch->scaleFactor())) {
+                    event->accept();
+                    return true;
+                }
             }
         }
     }

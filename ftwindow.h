@@ -75,6 +75,7 @@ protected:
     void mouseDoubleClickEvent(QMouseEvent *event) override;
     void wheelEvent(QWheelEvent *event)         override;
     bool event(QEvent *event)                  override;
+    bool applyPinchZoom(const QPoint &pos, double step);
     void paintEvent(QPaintEvent *)              override;
 
 private slots:
