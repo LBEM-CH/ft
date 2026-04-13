@@ -83,10 +83,18 @@ cmake --build . --parallel
 echo "=== Generating ft.html and copying loader assets ==="
 cp "$QT_WASM_PATH/plugins/platforms/qtloader.js" .
 cp "$QT_WASM_PATH/plugins/platforms/qtlogo.svg" . 2>/dev/null || true
+BUILD_STAMP="$(date +%s)"
 sed -e 's/@APPNAME@/ft/g' \
     -e 's/@APPEXPORTNAME@/createQtAppInstance/g' \
     -e 's/@PRELOAD@//g' \
-    "$QT_WASM_PATH/plugins/platforms/wasm_shell.html" > ft.html
+    "$QT_WASM_PATH/plugins/platforms/wasm_shell.html" \
+  | sed -e "s|ft\\.js|ft.js?v=${BUILD_STAMP}|g" \
+  | sed -e 's|</title>|</title>\
+    <meta name="apple-mobile-web-app-capable" content="yes">\
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">\
+    <meta name="apple-mobile-web-app-title" content="ft">\
+    <link rel="apple-touch-icon" href="qtlogo.svg">|' \
+  > ft.html
 if [ -d "$SCRIPT_DIR/EXAMPLE_IMAGES" ]; then
     if [ -e images ] || [ -L images ]; then
         rm -rf images

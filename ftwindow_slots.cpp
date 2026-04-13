@@ -1,5 +1,14 @@
 #include "ftwindow_common.h"
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+static FtWindow *g_fsWindow = nullptr;
+extern "C" EMSCRIPTEN_KEEPALIVE void ft_on_fullscreen_change(int isFs)
+{
+    if (g_fsWindow) g_fsWindow->updateFullscreenButton(isFs != 0);
+}
+#endif
+
 // ---------------------------------------------------------------------------
 //  Slots
 // ---------------------------------------------------------------------------
@@ -284,40 +293,97 @@ void FtWindow::onCycleMode()
 void FtWindow::onToggleFullscreen()
 {
 #ifdef __EMSCRIPTEN__
-    // Use the browser Fullscreen API via JavaScript. iPadOS / Safari only
-    // implements the webkit-prefixed variants, so try both.
-    bool isFS = EM_ASM_INT({
-        return (document.fullscreenElement ||
-                document.webkitFullscreenElement ||
-                document.webkitCurrentFullScreenElement) ? 1 : 0;
+    // iPad/iPhone Safari accepts requestFullscreen on non-video elements
+    // but cancels it within a frame, with no fullscreenerror to detect.
+    // Detect iOS and show "Add to Home Screen" instructions instead.
+    // (Standalone/home-screen launches already run without Safari chrome.)
+    int iosState = EM_ASM_INT({
+        var ua = navigator.userAgent || '';
+        var isIPad = /iPad|iPhone|iPod/.test(ua) ||
+                     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        if (!isIPad) return 0;
+        var standalone = window.navigator.standalone === true ||
+                         (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+        return standalone ? 2 : 1;
     });
-    if (isFS) {
-        EM_ASM({
+    if (iosState == 1) {
+        auto *msg = new QMessageBox(this);
+        msg->setAttribute(Qt::WA_DeleteOnClose);
+        msg->setWindowTitle("Fullscreen on iPad / iPhone");
+        msg->setTextFormat(Qt::RichText);
+        msg->setText(
+            "<p>Safari on iPad and iPhone does not support a stable in-browser "
+            "fullscreen mode for web apps.</p>"
+            "<p><b>To use Fourier Analyzer fullscreen:</b></p>"
+            "<ol>"
+            "<li>Tap the <b>Share</b> button in Safari (the square with an upward arrow).</li>"
+            "<li>Scroll down and tap <b>Add to Home Screen</b>.</li>"
+            "<li>Tap <b>Add</b>.</li>"
+            "<li>Launch Fourier Analyzer from its home-screen icon &mdash; it opens "
+            "fullscreen automatically.</li>"
+            "</ol>");
+        msg->setStandardButtons(QMessageBox::Ok);
+        msg->open();
+        return;
+    }
+    if (iosState == 2) {
+        // Already running standalone — fullscreen toggle is a no-op.
+        return;
+    }
+    // Drive the browser Fullscreen API from JS. Target Qt's #screen
+    // container (falls back to its canvas) instead of documentElement,
+    // which iPad Safari exits immediately. The actual button label is
+    // synced from JS via fullscreenchange listeners installed once.
+    g_fsWindow = this;
+    EM_ASM({
+        if (!window.__ftFsInit) {
+            window.__ftFsInit = true;
+            var sync = function() {
+                var fs = document.fullscreenElement ||
+                         document.webkitFullscreenElement ||
+                         document.webkitCurrentFullScreenElement;
+                if (window.Module && window.Module.ccall) {
+                    try {
+                        window.Module.ccall('ft_on_fullscreen_change',
+                            null, ['number'], [fs ? 1 : 0]);
+                    } catch (e) { console.warn('fs sync failed:', e); }
+                }
+            };
+            document.addEventListener('fullscreenchange', sync);
+            document.addEventListener('webkitfullscreenchange', sync);
+        }
+        // Target the #screen container, NOT its inner <canvas>. Qt resizes
+        // the canvas (DPR + pixel dims) the moment fullscreen begins, and
+        // iPad Safari exits fullscreen when the fullscreen element itself
+        // changes size. The container stays stable while the canvas inside
+        // resizes freely.
+        var target = document.getElementById('screen') || document.documentElement;
+        var isFS = document.fullscreenElement ||
+                   document.webkitFullscreenElement ||
+                   document.webkitCurrentFullScreenElement;
+        if (isFS) {
             var exit = document.exitFullscreen ||
                        document.webkitExitFullscreen ||
                        document.webkitCancelFullScreen;
-            if (exit) { exit.call(document); }
-        });
-        m_fullscreenBtn->setText("Go fullscreen");
-    } else {
-        EM_ASM({
-            var el = document.documentElement;
-            var req = el.requestFullscreen ||
-                      el.webkitRequestFullscreen ||
-                      el.webkitRequestFullScreen;
+            if (exit) exit.call(document);
+        } else {
+            var req = target.requestFullscreen ||
+                      target.webkitRequestFullscreen ||
+                      target.webkitRequestFullScreen;
             if (req) {
-                var p = req.call(el);
-                if (p && p.then) {
-                    p.then(null, function(e) {
+                try {
+                    var p = req.call(target);
+                    if (p && p.then) p.then(null, function(e) {
                         console.warn('fullscreen rejected:', e);
                     });
+                } catch (e) {
+                    console.warn('fullscreen threw:', e);
                 }
             } else {
                 console.warn('Fullscreen API not available');
             }
-        });
-        m_fullscreenBtn->setText("Leave fullscreen");
-    }
+        }
+    });
 #else
     if (isFullScreen()) {
         showNormal();
@@ -327,6 +393,12 @@ void FtWindow::onToggleFullscreen()
         m_fullscreenBtn->setText("Leave fullscreen");
     }
 #endif
+}
+
+void FtWindow::updateFullscreenButton(bool isFullscreen)
+{
+    if (m_fullscreenBtn)
+        m_fullscreenBtn->setText(isFullscreen ? "Leave fullscreen" : "Go fullscreen");
 }
 
 void FtWindow::onToggleMask(bool checked)

@@ -30,7 +30,7 @@ if(EMSCRIPTEN)
         -sMAXIMUM_MEMORY=2GB
         -sMODULARIZE=1
         -sEXPORT_NAME=createQtAppInstance
-        "-sEXPORTED_RUNTIME_METHODS=UTF16ToString,stringToUTF16,JSEvents,specialHTMLTargets,FS,callMain"
+        "-sEXPORTED_RUNTIME_METHODS=UTF16ToString,stringToUTF16,JSEvents,specialHTMLTargets,FS,callMain,ccall,cwrap"
         -lembind
     )
     # Optionally enable pthreads (requires COOP/COEP headers on the server):

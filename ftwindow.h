@@ -85,6 +85,9 @@ private slots:
     void onReloadImage();
     void onCycleMode();
     void onToggleFullscreen();
+public:
+    void updateFullscreenButton(bool isFullscreen);
+private slots:
     void onToggleMask(bool checked);
     void onApplyBandpass();
     void onApplyEdgeTaper();
