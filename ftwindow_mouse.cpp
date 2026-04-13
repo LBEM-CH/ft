@@ -5,6 +5,24 @@
 // ---------------------------------------------------------------------------
 void FtWindow::mousePressEvent(QMouseEvent *event)
 {
+    // Title bar click – show About dialog
+    if (!m_titleRect.isNull() && m_titleRect.contains(event->pos())) {
+        auto *about = new QMessageBox(this);
+        about->setAttribute(Qt::WA_DeleteOnClose);
+        about->setWindowTitle("Fourier Analyzer");
+        about->setTextFormat(Qt::RichText);
+        about->setTextInteractionFlags(Qt::TextBrowserInteraction);
+        about->setIconPixmap(QApplication::windowIcon().pixmap(64, 64));
+        about->setText(
+            "<h3>Fourier Analyzer</h3>"
+            "<p>Created by the Stahlberg Lab, EPFL, Lausanne, Switzerland in Spring 2026</p>"
+            "<p>This software is provided free of charge for non-commercial use. For commercial use, please contact the authors.</p>"
+            "<p>Wen-Lu Chung: <a href=\"mailto:wen-lu.chung@epfl.ch\">wen-lu.chung@epfl.ch</a></p>"
+            "<p>Henning Stahlberg: <a href=\"mailto:henning.stahlberg@epfl.ch\">henning.stahlberg@epfl.ch</a></p>");
+        about->open();
+        return;
+    }
+
     // Check history slot clicks (panel 3) – activate clicked slot
     for (int i = 0; i < HISTORY_SLOTS; i++) {
         if (m_historyRects[i].contains(event->pos())) {

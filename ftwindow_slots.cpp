@@ -296,7 +296,7 @@ void FtWindow::onToggleFullscreen()
             var exit = document.exitFullscreen ||
                        document.webkitExitFullscreen ||
                        document.webkitCancelFullScreen;
-            if (exit) { try { exit.call(document); } catch (e) {} }
+            if (exit) { exit.call(document); }
         });
         m_fullscreenBtn->setText("Go fullscreen");
     } else {
@@ -306,16 +306,14 @@ void FtWindow::onToggleFullscreen()
                       el.webkitRequestFullscreen ||
                       el.webkitRequestFullScreen;
             if (req) {
-                try {
-                    var p = req.call(el);
-                    if (p && p.catch) p.catch(function(e) {
-                        console.warn('fullscreen request rejected:', e);
+                var p = req.call(el);
+                if (p && p.then) {
+                    p.then(null, function(e) {
+                        console.warn('fullscreen rejected:', e);
                     });
-                } catch (e) {
-                    console.warn('fullscreen request threw:', e);
                 }
             } else {
-                console.warn('Fullscreen API not available on this browser');
+                console.warn('Fullscreen API not available');
             }
         });
         m_fullscreenBtn->setText("Leave fullscreen");

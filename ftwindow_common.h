@@ -16,6 +16,7 @@
 #include <QListWidget>
 #include <QVBoxLayout>
 #include <QDialogButtonBox>
+#include <QMessageBox>
 #include <QBuffer>
 #include <QSettings>
 #include <QMouseEvent>

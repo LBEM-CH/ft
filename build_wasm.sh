@@ -63,9 +63,11 @@ chmod +x "$QT_HOST_PATH/bin/"* 2>/dev/null || true
 # Activate Emscripten environment
 source "$EMSDK/emsdk_env.sh"
 
-# Create build directory
+# Create build directory (wipe any previous build to avoid stale EM_ASM /
+# JS-glue mismatches between ft.wasm and ft.js)
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BUILD_DIR="$SCRIPT_DIR/build_wasm"
+rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
 cd "$BUILD_DIR"
 
