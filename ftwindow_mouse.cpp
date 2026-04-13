@@ -516,7 +516,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
     if (m_toolBtnRects[9].contains(event->pos())) {
         bool was = m_ctfActive; deactivateAllTools();
         m_ctfActive = !was;
-        if (!m_ctfActive) m_ctfProfile.clear();
+        m_ctfProfile.clear();
         showToolWidgets(); update(); return;
     }
     if (m_toolBtnRects[10].contains(event->pos())) {

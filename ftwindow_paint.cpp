@@ -88,9 +88,9 @@ void FtWindow::paintEvent(QPaintEvent *)
             if ((i == 0 && m_p1EraserActive) || (i == 1 && m_p1BrushActive) ||
                 (i == 4 && m_shiftActive) || (i == 5 && m_rotateActive) ||
                 (i == 7 && m_p1TaperActive) || (i == 8 && m_binActive) ||
-                (i == 9 && m_mathActive) || (i == 10 && m_peakPickActive) ||
-                (i == 11 && m_extractActive) || (i == 12 && m_gaborActive) ||
-                (i == 13 && m_hessianActive) || (i == 14 && m_amyloidActive))
+                (i == 9 && m_gaborActive) || (i == 10 && m_hessianActive) ||
+                (i == 11 && m_amyloidActive) || (i == 12 && m_mathActive) ||
+                (i == 13 && m_peakPickActive) || (i == 14 && m_extractActive))
                 p.setBrush(QColor(60, 60, 60));
             else
                 p.setBrush(QColor(0, 0, 0));

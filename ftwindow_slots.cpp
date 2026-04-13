@@ -3878,9 +3878,16 @@ void FtWindow::onCtfCompute()
                     (m_imageRawPixels[y * N + x] - m_imageMinVal) * scale, 0.0, 255.0));
         }
         if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS) {
-            m_history[m_activeSlot].image     = m_image;
-            m_history[m_activeSlot].rawPixels = m_imageRawPixels;
-            m_history[m_activeSlot].occupied  = true;
+            m_imagePath = QString("ctf: %1kV df=%2nm Cs=%3mm")
+                              .arg(voltageKV).arg(defocusNM).arg(csMM);
+            m_history[m_activeSlot].image        = m_image;
+            m_history[m_activeSlot].path         = m_imagePath;
+            m_history[m_activeSlot].rawPixels    = m_imageRawPixels;
+            m_history[m_activeSlot].minVal       = m_imageMinVal;
+            m_history[m_activeSlot].maxVal       = m_imageMaxVal;
+            m_history[m_activeSlot].pixelSize    = m_pixelSize;
+            m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
+            m_history[m_activeSlot].occupied     = true;
         }
     }
 
