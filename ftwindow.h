@@ -100,6 +100,7 @@ private slots:
     void onLoadImage();
     void onSaveImage();
     void onCreateImage();
+    void onCreateImageSized(int sz);
     void onReloadImage();
     void onCycleMode();
     void onToggleFullscreen();
@@ -286,7 +287,7 @@ private:
     QRect       m_titleRect;        // title bar click region ("Fourier Analyzer")
 
     // ---- tool buttons ----
-    static constexpr int P1_TOOL_BUTTONS = 15;
+    static constexpr int P1_TOOL_BUTTONS = 16;
     static constexpr int P2_TOOL_BUTTONS = 11;
     QRect       m_p1BtnRects[P1_TOOL_BUTTONS];       // panel 1 left edge
     QRect       m_toolBtnRects[P2_TOOL_BUTTONS];     // panel 2 right edge
@@ -351,6 +352,15 @@ private:
     QPushButton *m_hessianCancelBtn   = nullptr;
     QPushButton *m_hessianComputeBtn  = nullptr;
 
+    // Measure tool (panel 1)
+    bool        m_measureActive = false;
+    int         m_measurePlacing = 0;    // 0=idle, 1=first point placed
+    QPointF     m_measureP0;             // image coords
+    QPointF     m_measureP1;             // image coords
+    bool        m_measureHasLine = false;
+    QPushButton *m_measureCancelBtn = nullptr;
+    void onMeasureCancel();
+
     // Amyloid filament drawing
     bool        m_amyloidActive = false;
     int         m_amyloidPlacing = 0;  // 0=idle, 1=placed start waiting for end
@@ -365,6 +375,7 @@ private:
     QLineEdit  *m_amyloidRiseEdit     = nullptr;
     QLineEdit  *m_amyloidTwistEdit    = nullptr;
     QComboBox  *m_amyloidMapCombo      = nullptr;
+    QComboBox  *m_amyloidSizeCombo     = nullptr;
     QCheckBox  *m_amyloidNoiseBtn     = nullptr;
     QLineEdit  *m_amyloidNoiseEdit    = nullptr;
     QPushButton *m_amyloidSignalBtn   = nullptr;

@@ -172,6 +172,11 @@ void FtWindow::onSaveImage()
 
 void FtWindow::onCreateImage()
 {
+    onCreateImageSized(1024);
+}
+
+void FtWindow::onCreateImageSized(int sz)
+{
     // If no slot is active, pick the first empty one (or last slot as fallback)
     if (m_activeSlot < 0) {
         m_activeSlot = HISTORY_SLOTS - 1;
@@ -180,7 +185,7 @@ void FtWindow::onCreateImage()
         }
     }
 
-    int sz = 1024;
+    if (sz <= 0) sz = 1024;
     m_image = QImage(sz, sz, QImage::Format_Grayscale8);
     m_image.fill(0);
     m_imageRawPixels.assign((size_t)sz * sz, 0.0);
@@ -2357,6 +2362,15 @@ void FtWindow::onApplyHessianFilter()
 // Amyloid filament drawing
 // ---------------------------------------------------------------------------
 
+void FtWindow::onMeasureCancel()
+{
+    m_measureActive = false;
+    m_measurePlacing = 0;
+    m_measureHasLine = false;
+    m_measureCancelBtn->hide();
+    update();
+}
+
 void FtWindow::onAmyloidCancel()
 {
     m_amyloidActive = false;
@@ -2365,6 +2379,7 @@ void FtWindow::onAmyloidCancel()
     m_amyloidRiseEdit->hide();
     m_amyloidTwistEdit->hide();
     m_amyloidMapCombo->hide();
+    m_amyloidSizeCombo->hide();
     m_amyloidNoiseBtn->hide();
     m_amyloidNoiseEdit->hide();
     m_amyloidSignalBtn->hide();
@@ -2375,7 +2390,17 @@ void FtWindow::onAmyloidCancel()
 
 void FtWindow::onAmyloidCompute()
 {
-    if (m_amyloidFilaments.empty()) return;
+    if (m_amyloidFilaments.empty()) {
+        auto *msg = new QMessageBox(this);
+        msg->setAttribute(Qt::WA_DeleteOnClose);
+        msg->setIcon(QMessageBox::Information);
+        msg->setWindowTitle("No fibril trajectories");
+        msg->setText("Please first create fibril trajectories with the mouse, "
+                     "then press Compute again.");
+        msg->setStandardButtons(QMessageBox::Ok);
+        msg->open();
+        return;
+    }
 
     // ---- Read parameters ----
     bool okR = false, okT = false, okNs = false;
@@ -2402,12 +2427,30 @@ void FtWindow::onAmyloidCompute()
 
     storeUndoSnapshot();
 
-    // ---- Create fresh 1024×1024 output image ----
-    const int outSz = 1024;
+    // ---- Create fresh output image at the size selected in the pulldown ----
+    int outSz = m_amyloidSizeCombo->currentText().toInt();
+    if (outSz <= 0) outSz = 1024;
+
+    // Rescale existing filament control points from the current image size
+    // (where the user drew them) to the newly-selected output size.
+    int srcW = m_image.isNull() ? outSz : m_image.width();
+    int srcH = m_image.isNull() ? outSz : m_image.height();
+    double sx = (srcW > 0) ? (double)outSz / (double)srcW : 1.0;
+    double sy = (srcH > 0) ? (double)outSz / (double)srcH : 1.0;
+    if (sx != 1.0 || sy != 1.0) {
+        for (auto &fil : m_amyloidFilaments) {
+            for (auto &pt : fil.pts) pt = QPointF(pt.x() * sx, pt.y() * sy);
+        }
+    }
+
     m_image = QImage(outSz, outSz, QImage::Format_Grayscale8);
     m_image.fill(0);
-    m_imageRawPixels.assign(outSz * outSz, 0.0);
+    m_imageRawPixels.assign((size_t)outSz * outSz, 0.0);
     m_pixelSize = 1.0;  // 1 Å/pixel for the synthetic image
+
+    if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS) {
+        m_zoom[0].reset(outSz, outSz);
+    }
 
     const double twistRad = twistDeg * M_PI / 180.0;
 
@@ -2457,9 +2500,20 @@ void FtWindow::onAmyloidCompute()
             const double mapCX = mapW / 2.0;  // centre of source map (pixels)
             const double mapCY = mapH / 2.0;
 
-            // Slab thickness along the trajectory axis (2 Å)
-            const double slabThick = 2.0;
-            const int nSlabSteps = std::max(1, (int)std::round(slabThick / mapPixSize));
+            // Slab thickness along the trajectory axis: Gaussian distributed
+            // over 5 pixel planes (offsets -2..+2) with FWHM = 2.5 pixels.
+            // sigma = FWHM / (2*sqrt(2*ln 2)) = FWHM / 2.3548
+            const int    nSlabSteps  = 5;
+            const double slabFWHM    = 2.5; // pixels
+            const double slabSigma   = slabFWHM / 2.3548200450309493;
+            double slabWeights[nSlabSteps];
+            double slabWSum = 0.0;
+            for (int sl = 0; sl < nSlabSteps; sl++) {
+                double k = sl - (nSlabSteps - 1) / 2.0;  // -2,-1,0,1,2
+                slabWeights[sl] = std::exp(-(k * k) / (2.0 * slabSigma * slabSigma));
+                slabWSum += slabWeights[sl];
+            }
+            for (int sl = 0; sl < nSlabSteps; sl++) slabWeights[sl] /= slabWSum;
 
             for (const auto &fil : filaments) {
                 if (fil.pts.size() < 2) continue;
@@ -2549,18 +2603,31 @@ void FtWindow::onAmyloidCompute()
                             double uRot = u * cosPhi - v * sinPhi;
                             double vRot = u * sinPhi + v * cosPhi;
 
-                            // Splat the slab sub-steps along the tangent
-                            double valPerStep = val / nSlabSteps;
+                            // Splat Gaussian-weighted slab planes along the tangent
+                            // using bilinear interpolation for sub-pixel placement.
                             for (int sl = 0; sl < nSlabSteps; sl++) {
-                                double ds = (sl + 0.5 - nSlabSteps / 2.0) * mapPixSize;
+                                double k = sl - (nSlabSteps - 1) / 2.0;  // -2..+2 pixels
+                                double ds = k * mapPixSize;
                                 double imgX = pos.x() + uRot * norm.x() + ds * tang.x();
                                 double imgY = pos.y() + uRot * norm.y() + ds * tang.y();
 
-                                int px = (int)std::round(imgX);
-                                int py = (int)std::round(imgY);
-                                if (px < 0 || px >= outSz || py < 0 || py >= outSz) continue;
-
-                                m_imageRawPixels[py * outSz + px] += valPerStep;
+                                int x0 = (int)std::floor(imgX);
+                                int y0 = (int)std::floor(imgY);
+                                double fx = imgX - x0;
+                                double fy = imgY - y0;
+                                double w00 = (1.0 - fx) * (1.0 - fy);
+                                double w10 = fx         * (1.0 - fy);
+                                double w01 = (1.0 - fx) * fy;
+                                double w11 = fx         * fy;
+                                double contrib = val * slabWeights[sl];
+                                if (x0 >= 0 && x0 < outSz && y0 >= 0 && y0 < outSz)
+                                    m_imageRawPixels[y0 * outSz + x0] += contrib * w00;
+                                if (x0 + 1 >= 0 && x0 + 1 < outSz && y0 >= 0 && y0 < outSz)
+                                    m_imageRawPixels[y0 * outSz + (x0 + 1)] += contrib * w10;
+                                if (x0 >= 0 && x0 < outSz && y0 + 1 >= 0 && y0 + 1 < outSz)
+                                    m_imageRawPixels[(y0 + 1) * outSz + x0] += contrib * w01;
+                                if (x0 + 1 >= 0 && x0 + 1 < outSz && y0 + 1 >= 0 && y0 + 1 < outSz)
+                                    m_imageRawPixels[(y0 + 1) * outSz + (x0 + 1)] += contrib * w11;
                             }
                         }
                     }
@@ -2627,6 +2694,18 @@ void FtWindow::onAmyloidCompute()
             m_amyloidRendered = true;
 
             saveHistory();
+#ifndef __EMSCRIPTEN__
+            {
+                QSettings settings("ft", "ft");
+                settings.setValue("amyloidRise",       m_amyloidRiseEdit->text());
+                settings.setValue("amyloidTwist",      m_amyloidTwistEdit->text());
+                settings.setValue("amyloidMapIdx",     m_amyloidMapCombo->currentIndex());
+                settings.setValue("amyloidSizeIdx",    m_amyloidSizeCombo->currentIndex());
+                settings.setValue("amyloidNoise",      m_amyloidNoiseBtn->isChecked());
+                settings.setValue("amyloidNoiseSigma", m_amyloidNoiseEdit->text());
+                settings.setValue("amyloidBlackSignal", m_amyloidBlackSignal);
+            }
+#endif
             m_toolProgress = -1;
             update();
         }
