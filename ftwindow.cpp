@@ -1,6 +1,21 @@
 #include "ftwindow_common.h"
 
 // ---------------------------------------------------------------------------
+//  Static configuration (used by embedding applications)
+// ---------------------------------------------------------------------------
+static QString g_exampleImagesDir;
+
+void FtWindow::setExampleImagesDir(const QString &dir)
+{
+    g_exampleImagesDir = dir;
+}
+
+QString FtWindow::exampleImagesDir()
+{
+    return g_exampleImagesDir;
+}
+
+// ---------------------------------------------------------------------------
 //  Constructor
 // ---------------------------------------------------------------------------
 FtWindow::FtWindow(QWidget *parent) : QWidget(parent)

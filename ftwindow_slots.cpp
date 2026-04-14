@@ -126,7 +126,11 @@ void FtWindow::onLoadImage()
     });
     dlg->open();
 #else
-    QString startDir = QCoreApplication::applicationDirPath() + "/../EXAMPLE_IMAGES";
+    // Prefer an embedder-supplied override (see FtWindow::setExampleImagesDir),
+    // fall back to the standalone layout, then to the app directory.
+    QString startDir = FtWindow::exampleImagesDir();
+    if (startDir.isEmpty() || !QDir(startDir).exists())
+        startDir = QCoreApplication::applicationDirPath() + "/../EXAMPLE_IMAGES";
     if (!QDir(startDir).exists())
         startDir = QCoreApplication::applicationDirPath();
 
@@ -385,6 +389,14 @@ void FtWindow::onToggleFullscreen()
         }
     });
 #else
+    // Embedded in another application: defer to the host. A child widget
+    // cannot be made fullscreen directly; the host has to toggle its own
+    // top-level window. The button text is then refreshed via
+    // updateFullscreenButton() once the host reports the new state.
+    if (!isWindow()) {
+        emit fullscreenToggleRequested();
+        return;
+    }
     if (isFullScreen()) {
         showNormal();
         m_fullscreenBtn->setText("Go fullscreen");
