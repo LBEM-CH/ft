@@ -67,6 +67,24 @@ class FtWindow : public QWidget {
 public:
     explicit FtWindow(QWidget *parent = nullptr);
 
+    // Override the directory used as the initial location in the
+    // "Load image" file dialog. Intended for embedding applications
+    // (e.g. the 4d STEM app) that ship EXAMPLE_IMAGES at a different
+    // install path than the standalone ft build. When the override is
+    // empty (default), the historical <applicationDirPath>/../EXAMPLE_IMAGES
+    // fallback is used.
+    static void setExampleImagesDir(const QString &dir);
+    static QString exampleImagesDir();
+
+signals:
+    // Emitted by onToggleFullscreen when FtWindow is embedded (i.e. not a
+    // top-level window). Standalone builds handle fullscreen themselves via
+    // showFullScreen()/showNormal(); embedding apps should connect to this
+    // signal and toggle the fullscreen state of their own top-level window.
+    // After toggling, the host should call updateFullscreenButton(bool) so
+    // the button text stays in sync.
+    void fullscreenToggleRequested();
+
 protected:
     void resizeEvent(QResizeEvent *)            override;
     void mousePressEvent(QMouseEvent *event)      override;
