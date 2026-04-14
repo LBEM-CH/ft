@@ -22,6 +22,10 @@ void FtWindow::paintEvent(QPaintEvent *)
     // below as the tool option panels are drawn.
     m_paramLabelTips.clear();
 
+    // Track whether histograms are drawn this frame; position checkboxes accordingly
+    bool showImageHistLock = false;
+    bool showFtHistLock = false;
+
     int cx = width() / 2;
     int hy = height() - height() / 5;
 
@@ -1439,6 +1443,13 @@ void FtWindow::paintEvent(QPaintEvent *)
         drawHistogram(p, frame, m_imageRawPixels, m_imageMinVal, m_imageMaxVal, hy - frame.bottom(),
                       HIST_P1, m_imageDispMin, m_imageDispMax);
 
+        // Position the contrast lock checkbox next to the histogram
+        if (!m_histRects[HIST_P1].isNull()) {
+            QRect hr = m_histRects[HIST_P1];
+            m_imageHistLockBtn->move(hr.right() + 6, hr.top() + hr.height() / 2 - m_imageHistLockBtn->sizeHint().height() / 2);
+            showImageHistLock = true;
+        }
+
         // Pixel size label above top-left corner of image (outside frame)
         {
             QFont pf;
@@ -1728,6 +1739,13 @@ void FtWindow::paintEvent(QPaintEvent *)
 
             drawHistogram(p, frame, m_powerVals, m_powerMin, m_powerMax, hy - frame.bottom(),
                           HIST_POWER, m_powerDispMin, m_powerDispMax);
+
+            // Position the FT contrast lock checkbox next to the histogram
+            if (!m_histRects[HIST_POWER].isNull()) {
+                QRect hr = m_histRects[HIST_POWER];
+                m_ftHistLockBtn->move(hr.right() + 6, hr.top() + hr.height() / 2 - m_ftHistLockBtn->sizeHint().height() / 2);
+                showFtHistLock = true;
+            }
 
             // Color wheel for complex FT mode
             if (m_displayMode == 2) {
@@ -2437,19 +2455,17 @@ void FtWindow::paintEvent(QPaintEvent *)
                 int r2 = m_hessianCancelBtn->width() + 8 + m_hessianComputeBtn->width();
                 textW = std::max({r0, r1, r2});
             } else if (m_amyloidActive) {
-                nRows = 9;
-                int r0 = fm.horizontalAdvance("Helical rise (\u00C5): ")    + m_amyloidRiseEdit->width();
-                int r1 = fm.horizontalAdvance("Helical twist (\u00B0): ")   + m_amyloidTwistEdit->width();
-                int r2a = fm.horizontalAdvance("Long axis (\u00C5): ")      + m_amyloidLongAxisEdit->width();
-                int r2b = fm.horizontalAdvance("Short axis (\u00C5): ")     + m_amyloidShortAxisEdit->width();
-                int r2c = fm.horizontalAdvance("Smooth (\u00C5): ")         + m_amyloidSmoothEdit->width();
+                nRows = 7;
+                int r0 = fm.horizontalAdvance("Cross-section map: ")  + m_amyloidMapCombo->width();
+                int r1 = fm.horizontalAdvance("Helical rise (\u00C5): ")    + m_amyloidRiseEdit->width();
+                int r2 = fm.horizontalAdvance("Helical twist (\u00B0): ")   + m_amyloidTwistEdit->width();
                 int r3n = m_amyloidNoiseBtn->sizeHint().width() + 8 + fm.horizontalAdvance("Sigma: ") + m_amyloidNoiseEdit->width();
                 int r3i = m_amyloidSignalBtn->width();
                 QString infoStr = QString("Filaments: %1  Click image to place start & end")
                                       .arg(m_amyloidFilaments.size());
                 int r4 = fm.horizontalAdvance(infoStr);
                 int r5 = m_amyloidCancelBtn->width() + 8 + m_amyloidComputeBtn->width();
-                textW = std::max({r0, r1, r2a, r2b, r2c, r3n, r3i, r4, r5});
+                textW = std::max({r0, r1, r2, r3n, r3i, r4, r5});
             }
 
             int rw = textW * 6 / 5 + 2 * margin;
@@ -2551,32 +2567,28 @@ void FtWindow::paintEvent(QPaintEvent *)
                 m_hessianCancelBtn->move(tx, ty + lh * 2);
                 m_hessianComputeBtn->move(rx + rw - margin - m_hessianComputeBtn->width(), ty + lh * 2);
             } else if (m_amyloidActive) {
-                drawParamLabel(p, fm, tx, ty, "Helical rise (\u00C5):", m_amyloidRiseEdit->toolTip());
-                m_amyloidRiseEdit->move(tx + fm.horizontalAdvance("Helical rise (\u00C5): "), ty);
-                drawParamLabel(p, fm, tx, ty + lh, "Helical twist (\u00B0):", m_amyloidTwistEdit->toolTip());
-                m_amyloidTwistEdit->move(tx + fm.horizontalAdvance("Helical twist (\u00B0): "), ty + lh);
-                drawParamLabel(p, fm, tx, ty + lh * 2, "Long axis (\u00C5):", m_amyloidLongAxisEdit->toolTip());
-                m_amyloidLongAxisEdit->move(tx + fm.horizontalAdvance("Long axis (\u00C5): "), ty + lh * 2);
-                drawParamLabel(p, fm, tx, ty + lh * 3, "Short axis (\u00C5):", m_amyloidShortAxisEdit->toolTip());
-                m_amyloidShortAxisEdit->move(tx + fm.horizontalAdvance("Short axis (\u00C5): "), ty + lh * 3);
-                drawParamLabel(p, fm, tx, ty + lh * 4, "Smooth (\u00C5):", m_amyloidSmoothEdit->toolTip());
-                m_amyloidSmoothEdit->move(tx + fm.horizontalAdvance("Smooth (\u00C5): "), ty + lh * 4);
+                drawParamLabel(p, fm, tx, ty, "Cross-section map:", m_amyloidMapCombo->toolTip());
+                m_amyloidMapCombo->move(tx + fm.horizontalAdvance("Cross-section map: "), ty);
+                drawParamLabel(p, fm, tx, ty + lh, "Helical rise (\u00C5):", m_amyloidRiseEdit->toolTip());
+                m_amyloidRiseEdit->move(tx + fm.horizontalAdvance("Helical rise (\u00C5): "), ty + lh);
+                drawParamLabel(p, fm, tx, ty + lh * 2, "Helical twist (\u00B0):", m_amyloidTwistEdit->toolTip());
+                m_amyloidTwistEdit->move(tx + fm.horizontalAdvance("Helical twist (\u00B0): "), ty + lh * 2);
                 // Noise checkbox + sigma edit on the same row
-                m_amyloidNoiseBtn->move(tx, ty + lh * 5);
+                m_amyloidNoiseBtn->move(tx, ty + lh * 3);
                 int noiseLblX = tx + m_amyloidNoiseBtn->sizeHint().width() + 8;
-                drawParamLabel(p, fm, noiseLblX, ty + lh * 5, "Sigma:", m_amyloidNoiseEdit->toolTip());
-                m_amyloidNoiseEdit->move(noiseLblX + fm.horizontalAdvance("Sigma: "), ty + lh * 5);
+                drawParamLabel(p, fm, noiseLblX, ty + lh * 3, "Sigma:", m_amyloidNoiseEdit->toolTip());
+                m_amyloidNoiseEdit->move(noiseLblX + fm.horizontalAdvance("Sigma: "), ty + lh * 3);
                 // Signal polarity button
-                m_amyloidSignalBtn->move(tx, ty + lh * 6);
+                m_amyloidSignalBtn->move(tx, ty + lh * 4);
                 // Info + buttons
                 QString infoStr;
                 if (m_amyloidPlacing == 1)
                     infoStr = QString("Filaments: %1  Click to place end point").arg(m_amyloidFilaments.size());
                 else
                     infoStr = QString("Filaments: %1  Click image to place start & end").arg(m_amyloidFilaments.size());
-                p.drawText(tx, ty + lh * 7 + fm.ascent(), infoStr);
-                m_amyloidCancelBtn->move(tx, ty + lh * 8);
-                m_amyloidComputeBtn->move(rx + rw - margin - m_amyloidComputeBtn->width(), ty + lh * 8);
+                p.drawText(tx, ty + lh * 5 + fm.ascent(), infoStr);
+                m_amyloidCancelBtn->move(tx, ty + lh * 6);
+                m_amyloidComputeBtn->move(rx + rw - margin - m_amyloidComputeBtn->width(), ty + lh * 6);
             }
         }
     }
@@ -3227,6 +3239,11 @@ void FtWindow::paintEvent(QPaintEvent *)
     }
 
     p.setRenderHint(QPainter::Antialiasing, false);
+
+    // Update histogram lock checkbox visibility (done outside painting to avoid
+    // hide/show flickering that would block mouse events)
+    m_imageHistLockBtn->setVisible(showImageHistLock);
+    m_ftHistLockBtn->setVisible(showFtHistLock);
 }
 
 // ---------------------------------------------------------------------------

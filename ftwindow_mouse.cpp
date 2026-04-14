@@ -154,9 +154,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         m_hessianComputeBtn->setVisible(m_hessianActive);
         m_amyloidRiseEdit->setVisible(m_amyloidActive);
         m_amyloidTwistEdit->setVisible(m_amyloidActive);
-        m_amyloidLongAxisEdit->setVisible(m_amyloidActive);
-        m_amyloidShortAxisEdit->setVisible(m_amyloidActive);
-        m_amyloidSmoothEdit->setVisible(m_amyloidActive);
+        m_amyloidMapCombo->setVisible(m_amyloidActive);
         m_amyloidNoiseBtn->setVisible(m_amyloidActive);
         m_amyloidNoiseEdit->setVisible(m_amyloidActive);
         m_amyloidSignalBtn->setVisible(m_amyloidActive);

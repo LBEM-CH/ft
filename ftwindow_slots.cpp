@@ -80,6 +80,8 @@ void FtWindow::onLoadImage()
           << "Exercise_08-Artemin-Protein/size_2048_rescaled/apoartcns_016.png"
           << "Exercise_08-Artemin-Protein/size_2048_rescaled/reference1_2048_rescaled.png"
           << "Exercise_08-Artemin-Protein/size_2048_rescaled/reference2_2048_rescaled.png"
+          << "Exercise_09-Fibrils/aSyn_cryo_EM_image_1024.mrc"
+          << "Exercise_09-Fibrils/aSyn_cryo_EM_image_2048.mrc"
           << "Exercise_09-Fibrils/aSyn_PFF1_c2_1024.mrc"
           << "Exercise_09-Fibrils/aSyn_PFF1_c2_BGzero_1024.mrc"
           << "Exercise_09-Fibrils/aSyn_PFF2_c2_1024.mrc"
@@ -695,8 +697,10 @@ void FtWindow::extractImageData()
     }
     m_imageMinVal = *std::min_element(m_imageRawPixels.begin(), m_imageRawPixels.end());
     m_imageMaxVal = *std::max_element(m_imageRawPixels.begin(), m_imageRawPixels.end());
-    m_imageDispMin = m_imageMinVal;
-    m_imageDispMax = m_imageMaxVal;
+    if (!m_imageContrastLocked) {
+        m_imageDispMin = m_imageMinVal;
+        m_imageDispMax = m_imageMaxVal;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -942,7 +946,12 @@ void FtWindow::computeInverseFFT()
 
     m_imageMinVal = *std::min_element(m_imageRawPixels.begin(), m_imageRawPixels.end());
     m_imageMaxVal = *std::max_element(m_imageRawPixels.begin(), m_imageRawPixels.end());
-    double range = m_imageMaxVal - m_imageMinVal;
+    if (!m_imageContrastLocked) {
+        m_imageDispMin = m_imageMinVal;
+        m_imageDispMax = m_imageMaxVal;
+    }
+    double dmin = m_imageDispMin, dmax = m_imageDispMax;
+    double range = dmax - dmin;
     double scale = (range > 0) ? 255.0 / range : 1.0;
 
     m_image = QImage(outW, outH, QImage::Format_Grayscale8);
@@ -950,11 +959,8 @@ void FtWindow::computeInverseFFT()
         uchar *row = m_image.scanLine(y);
         for (int x = 0; x < outW; x++)
             row[x] = static_cast<uchar>(std::clamp(
-                (m_imageRawPixels[y * outW + x] - m_imageMinVal) * scale, 0.0, 255.0));
+                (m_imageRawPixels[y * outW + x] - dmin) * scale, 0.0, 255.0));
     }
-
-    m_imageDispMin = m_imageMinVal;
-    m_imageDispMax = m_imageMaxVal;
 
     // Sync the active history slot so tools (e.g. particle picking) see the updated map
     if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS) {
@@ -1037,12 +1043,19 @@ void FtWindow::recomputeDisplayImages()
     std::tie(m_phaseMin, m_phaseMax) = mm(m_phaseVals);
     std::tie(m_powerMin, m_powerMax) = mm(m_powerVals);
 
-    // Initialize display ranges to global ranges
-    m_cosDispMin = m_cosMin;     m_cosDispMax = m_cosMax;
-    m_sinDispMin = m_sinMin;     m_sinDispMax = m_sinMax;
-    m_ampDispMin = m_ampMin;     m_ampDispMax = m_ampMax;
-    m_phaseDispMin = m_phaseMin; m_phaseDispMax = m_phaseMax;
-    m_powerDispMin = m_powerMin; m_powerDispMax = m_powerMax;
+    // Initialize display ranges to global ranges (unless locked)
+    if (!m_ftContrastLocked) {
+        m_cosDispMin = m_cosMin;     m_cosDispMax = m_cosMax;
+        m_sinDispMin = m_sinMin;     m_sinDispMax = m_sinMax;
+        m_ampDispMin = m_ampMin;     m_ampDispMax = m_ampMax;
+        m_phaseDispMin = m_phaseMin; m_phaseDispMax = m_phaseMax;
+        m_powerDispMin = m_powerMin; m_powerDispMax = m_powerMax;
+    } else {
+        // Rebuild FT images using the locked display ranges
+        rebuildFTImageWithLUT(HIST_POWER);
+        rebuildFTImageWithLUT(HIST_FT_LEFT);
+        rebuildFTImageWithLUT(HIST_FT_RIGHT);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1492,9 +1505,12 @@ void FtWindow::rebuildImageFromRaw()
 
     m_imageMinVal = *std::min_element(m_imageRawPixels.begin(), m_imageRawPixels.end());
     m_imageMaxVal = *std::max_element(m_imageRawPixels.begin(), m_imageRawPixels.end());
-    m_imageDispMin = m_imageMinVal;
-    m_imageDispMax = m_imageMaxVal;
-    double range = m_imageMaxVal - m_imageMinVal;
+    if (!m_imageContrastLocked) {
+        m_imageDispMin = m_imageMinVal;
+        m_imageDispMax = m_imageMaxVal;
+    }
+    double dmin = m_imageDispMin, dmax = m_imageDispMax;
+    double range = dmax - dmin;
     double scale = (range > 0) ? 255.0 / range : 1.0;
 
     m_image = QImage(w, h, QImage::Format_Grayscale8);
@@ -1502,7 +1518,7 @@ void FtWindow::rebuildImageFromRaw()
         uchar *row = m_image.scanLine(y);
         for (int x = 0; x < w; x++)
             row[x] = static_cast<uchar>(std::clamp(
-                (m_imageRawPixels[y * w + x] - m_imageMinVal) * scale, 0.0, 255.0));
+                (m_imageRawPixels[y * w + x] - dmin) * scale, 0.0, 255.0));
     }
 }
 
@@ -2156,8 +2172,10 @@ void FtWindow::onApplyGaborFilter()
                 if (v < m_imageMinVal) m_imageMinVal = v;
                 if (v > m_imageMaxVal) m_imageMaxVal = v;
             }
-            m_imageDispMin = m_imageMinVal;
-            m_imageDispMax = m_imageMaxVal;
+            if (!m_imageContrastLocked) {
+                m_imageDispMin = m_imageMinVal;
+                m_imageDispMax = m_imageMaxVal;
+            }
 
             rebuildImageFromRaw();
             m_toolProgress = 0.5;
@@ -2305,8 +2323,10 @@ void FtWindow::onApplyHessianFilter()
                 if (v < m_imageMinVal) m_imageMinVal = v;
                 if (v > m_imageMaxVal) m_imageMaxVal = v;
             }
-            m_imageDispMin = m_imageMinVal;
-            m_imageDispMax = m_imageMaxVal;
+            if (!m_imageContrastLocked) {
+                m_imageDispMin = m_imageMinVal;
+                m_imageDispMax = m_imageMaxVal;
+            }
 
             rebuildImageFromRaw();
             m_toolProgress = 0.5;
@@ -2344,9 +2364,7 @@ void FtWindow::onAmyloidCancel()
     m_amyloidFilaments.clear();
     m_amyloidRiseEdit->hide();
     m_amyloidTwistEdit->hide();
-    m_amyloidLongAxisEdit->hide();
-    m_amyloidShortAxisEdit->hide();
-    m_amyloidSmoothEdit->hide();
+    m_amyloidMapCombo->hide();
     m_amyloidNoiseBtn->hide();
     m_amyloidNoiseEdit->hide();
     m_amyloidSignalBtn->hide();
@@ -2357,32 +2375,40 @@ void FtWindow::onAmyloidCancel()
 
 void FtWindow::onAmyloidCompute()
 {
-    if (m_image.isNull() || m_amyloidFilaments.empty()) return;
+    if (m_amyloidFilaments.empty()) return;
 
-    bool okR = false, okT = false, okLA = false, okSA = false, okSm = false, okNs = false;
+    // ---- Read parameters ----
+    bool okR = false, okT = false, okNs = false;
     double rise      = m_amyloidRiseEdit->text().toDouble(&okR);
     double twistDeg  = m_amyloidTwistEdit->text().toDouble(&okT);
-    double longAxis  = m_amyloidLongAxisEdit->text().toDouble(&okLA);
-    double shortAxis = m_amyloidShortAxisEdit->text().toDouble(&okSA);
-    double smooth    = m_amyloidSmoothEdit->text().toDouble(&okSm);
     double noiseFrac = m_amyloidNoiseEdit->text().toDouble(&okNs);
-    bool addNoise      = m_amyloidNoiseBtn->isChecked();
-    bool blackSignal   = m_amyloidBlackSignal;
-    if (!okR  || rise <= 0.0)      rise = 4.75;
-    if (!okT)                      twistDeg = -1.0;
-    if (!okLA || longAxis <= 0.0)  longAxis = 150.0;
-    if (!okSA || shortAxis <= 0.0) shortAxis = 80.0;
-    if (!okSm || smooth < 0.0)     smooth = 1.5;
-    if (!okNs || noiseFrac <= 0.0)  noiseFrac = 0.3;
+    bool addNoise    = m_amyloidNoiseBtn->isChecked();
+    bool blackSignal = m_amyloidBlackSignal;
+    if (!okR  || rise <= 0.0)     rise = 4.75;
+    if (!okT)                     twistDeg = -1.0;
+    if (!okNs || noiseFrac <= 0.0) noiseFrac = 0.3;
+
+    // ---- Get the selected 2D cross-section map ----
+    int mapIdx = m_amyloidMapCombo->currentIndex();
+    if (mapIdx < 0 || mapIdx >= HISTORY_SLOTS) return;
+    if (!m_history[mapIdx].occupied || m_history[mapIdx].rawPixels.empty()) return;
+    int mapW = m_history[mapIdx].image.width();
+    int mapH = m_history[mapIdx].image.height();
+    if (mapW <= 0 || mapH <= 0) return;
+    // Copy map data and pixel size for the lambda
+    std::vector<double> mapPixels = m_history[mapIdx].rawPixels;
+    double mapPixSize = m_history[mapIdx].pixelSize;
+    if (mapPixSize <= 0.0) mapPixSize = 1.0;
 
     storeUndoSnapshot();
 
-    int w = m_image.width();
-    int h = m_image.height();
-    if ((int)m_imageRawPixels.size() != w * h) return;
+    // ---- Create fresh 1024×1024 output image ----
+    const int outSz = 1024;
+    m_image = QImage(outSz, outSz, QImage::Format_Grayscale8);
+    m_image.fill(0);
+    m_imageRawPixels.assign(outSz * outSz, 0.0);
+    m_pixelSize = 1.0;  // 1 Å/pixel for the synthetic image
 
-    const double semiA    = longAxis / 2.0;   // long semi-axis
-    const double semiB    = shortAxis / 2.0;  // short semi-axis
     const double twistRad = twistDeg * M_PI / 180.0;
 
     m_toolProgress = 0.1;
@@ -2391,37 +2417,55 @@ void FtWindow::onAmyloidCompute()
     auto filaments = m_amyloidFilaments;
 
     chainSteps({
-        [this, w, h, filaments, rise, twistRad, semiA, semiB, smooth,
-         addNoise, noiseFrac, blackSignal]() {
+        [this, outSz, filaments, rise, twistRad,
+         addNoise, noiseFrac, blackSignal,
+         mapPixels, mapW, mapH, mapPixSize]() {
 
-            // Start from a blank canvas — all filaments are re-rendered fresh
-            // so noise and invert are only applied once, not accumulated.
-            std::fill(m_imageRawPixels.begin(), m_imageRawPixels.end(), 0.0);
-
-            // Model: each layer is an elliptical pancake (β-sheet) with
-            // semi-axes a (long) and b (short), stacked along the filament
-            // axis with spacing = rise.  Each layer is rotated by twist around
-            // the axis relative to the previous one.
+            // True helical fibril simulation:
             //
-            // In projection (viewing along z, perpendicular to the image),
-            // each pancake at twist angle φ projects with half-width:
-            //   hw(φ) = sqrt( (a·cos(φ))² + (b·sin(φ))² )
-            // This gives an oval cross-section that varies smoothly between
-            // the long and short axes as the pancake twists.
+            // The selected 2D map provides the cross-section shape.
+            // We place this cross-section (as a thin 3D slab) along each
+            // fibril trajectory at helical-rise spacing, rotating each
+            // successive copy by the helical twist around the trajectory
+            // axis. The 3D result is then projected along the viewing
+            // direction (Z) to produce the output 2D image.
             //
-            // The backbone is a Catmull-Rom spline through the control points.
-            // sigAxial controls axial smoothing between pancake layers.
+            // Coordinate system:
+            //   Image plane = X,Y  (1024×1024 at 1 Å/pixel)
+            //   Z = perpendicular to image, i.e. the viewing/projection axis
+            //
+            // At each subunit position along the trajectory:
+            //   T = unit tangent along the trajectory (in the XY plane)
+            //   N = in-plane normal (-Ty, Tx)
+            //   Z-hat = out-of-plane axis (0,0,1)
+            //
+            // The cross-section slab sits in the plane spanned by N and Z-hat,
+            // perpendicular to the trajectory axis T.
+            //
+            // Helical twist rotates the cross-section around T.
+            // After rotation, the cross-section voxel at local (u,v) maps to:
+            //   u' = u·cos(φ) - v·sin(φ)   (along N direction in 3D)
+            //   v' = u·sin(φ) + v·cos(φ)   (along Z direction)
+            //
+            // Projection sums along Z, so image position = pos + u'·N
+            // Use the source map at its native resolution.
+            // Each source pixel (mi, mj) has physical offset from map centre:
+            //   u = (mi - mapW/2) * mapPixSize   (Å, along in-plane normal)
+            //   v = (mj - mapH/2) * mapPixSize   (Å, along Z / viewing axis)
+            // After helical rotation and projection, u' maps to image coords
+            // and v' is depth-clipped by fibrilWidth.
+            const double mapCX = mapW / 2.0;  // centre of source map (pixels)
+            const double mapCY = mapH / 2.0;
 
-            const double sigAxial = std::max(rise * 0.15, smooth);
-            const double minHW    = rise * 0.5;
-            const double cutAxial = 3.0 * sigAxial;
+            // Slab thickness along the trajectory axis (2 Å)
+            const double slabThick = 2.0;
+            const int nSlabSteps = std::max(1, (int)std::round(slabThick / mapPixSize));
 
             for (const auto &fil : filaments) {
                 if (fil.pts.size() < 2) continue;
                 int nCP = (int)fil.pts.size();
 
-                // Densely sample the Catmull-Rom spline to build an arc-length
-                // parameterised path.  We store sampled points along the spline.
+                // ---- Build arc-length parameterised Catmull-Rom spline ----
                 const int samplesPerSeg = 50;
                 struct PathSample { double x, y, s; };
                 std::vector<PathSample> path;
@@ -2440,7 +2484,6 @@ void FtWindow::onAmyloidCompute()
                                    c0*p0.y() + c1*p1.y() + c2*p2.y() + c3*p3.y());
                 };
 
-                // Sample spline and accumulate arc-length
                 double cumLen = 0.0;
                 QPointF prev(fil.pts[0].x(), fil.pts[0].y());
                 path.push_back({prev.x(), prev.y(), 0.0});
@@ -2458,10 +2501,9 @@ void FtWindow::onAmyloidCompute()
                 double totalLen = cumLen;
                 if (totalLen < 1.0) continue;
 
-                // Evaluate spline path at arc-length s → (position, unit tangent)
+                // Evaluate spline path at arc-length s → (position, tangent)
                 auto evalPath = [&](double s) -> std::pair<QPointF, QPointF> {
                     s = std::max(0.0, std::min(totalLen, s));
-                    // Binary search for the interval
                     int lo = 0, hi = (int)path.size() - 1;
                     while (lo + 1 < hi) {
                         int mid = (lo + hi) / 2;
@@ -2471,7 +2513,6 @@ void FtWindow::onAmyloidCompute()
                     double frac = (segLen > 1e-9) ? (s - path[lo].s) / segLen : 0.0;
                     QPointF pos(path[lo].x + frac * (path[hi].x - path[lo].x),
                                 path[lo].y + frac * (path[hi].y - path[lo].y));
-                    // Tangent from finite differences using nearby samples
                     int il = std::max(0, lo - 1);
                     int ih = std::min((int)path.size() - 1, hi + 1);
                     QPointF tang(path[ih].x - path[il].x, path[ih].y - path[il].y);
@@ -2480,78 +2521,67 @@ void FtWindow::onAmyloidCompute()
                     return {pos, tang};
                 };
 
-                // For each layer n, splat its projected density
+                // ---- Place cross-section slabs along the trajectory ----
                 int nLayers = (int)(totalLen / rise) + 1;
                 for (int n = 0; n < nLayers; n++) {
                     double s = n * rise;
                     if (s > totalLen) break;
 
                     auto [pos, tang] = evalPath(s);
-                    // In-plane normal perpendicular to tangent
                     QPointF norm(-tang.y(), tang.x());
 
-                    // Helical twist angle for this layer
                     double phi = n * twistRad;
                     double cosPhi = std::cos(phi);
                     double sinPhi = std::sin(phi);
 
-                    // Projected half-width of the elliptical pancake layer
-                    // hw = sqrt( (a·cos(φ))² + (b·sin(φ))² )
-                    double hw = std::max(minHW,
-                        std::sqrt(semiA * semiA * cosPhi * cosPhi
-                                + semiB * semiB * sinPhi * sinPhi));
+                    // For each pixel in the source map, compute its physical
+                    // offset from centre, apply helical twist, and project.
+                    for (int mj = 0; mj < mapH; mj++) {
+                        for (int mi = 0; mi < mapW; mi++) {
+                            double val = mapPixels[mj * mapW + mi];
+                            if (std::fabs(val) < 1e-15) continue;
 
-                    // Bounding box for this layer's contribution
-                    double cutPerp = hw + 2.0;  // +2 for edge softness
-                    double cutMax  = std::max(cutAxial, cutPerp);
-                    int x0 = std::max(0,     (int)std::floor(pos.x() - cutMax));
-                    int x1 = std::min(w - 1, (int)std::ceil(pos.x() + cutMax));
-                    int y0 = std::max(0,     (int)std::floor(pos.y() - cutMax));
-                    int y1 = std::min(h - 1, (int)std::ceil(pos.y() + cutMax));
+                            // Physical offset from map centre (Å)
+                            double u = (mi - mapCX) * mapPixSize;
+                            double v = (mj - mapCY) * mapPixSize;
 
-                    double invSig2Ax = 1.0 / (2.0 * sigAxial * sigAxial);
+                            // Apply helical twist rotation around tangent axis
+                            double uRot = u * cosPhi - v * sinPhi;
+                            double vRot = u * sinPhi + v * cosPhi;
 
-                    for (int py = y0; py <= y1; py++) {
-                        for (int px = x0; px <= x1; px++) {
-                            double dx = px - pos.x();
-                            double dy = py - pos.y();
-                            // Project onto local frame
-                            double dAx   = dx * tang.x() + dy * tang.y();  // along axis
-                            double dPerp = dx * norm.x() + dy * norm.y();  // across axis
+                            // Splat the slab sub-steps along the tangent
+                            double valPerStep = val / nSlabSteps;
+                            for (int sl = 0; sl < nSlabSteps; sl++) {
+                                double ds = (sl + 0.5 - nSlabSteps / 2.0) * mapPixSize;
+                                double imgX = pos.x() + uRot * norm.x() + ds * tang.x();
+                                double imgY = pos.y() + uRot * norm.y() + ds * tang.y();
 
-                            // Axial Gaussian envelope (thin layer)
-                            if (std::fabs(dAx) > cutAxial) continue;
-                            double gAx = std::exp(-dAx * dAx * invSig2Ax);
+                                int px = (int)std::round(imgX);
+                                int py = (int)std::round(imgY);
+                                if (px < 0 || px >= outSz || py < 0 || py >= outSz) continue;
 
-                            // Cross-section: cylindrical projection profile
-                            // ∝ sqrt(hw² - d²) for |d| < hw, gives the
-                            // characteristic bright-centre / fading-edge look
-                            double absPerp = std::fabs(dPerp);
-                            if (absPerp >= hw) continue;
-                            double cylProj = std::sqrt(1.0 - (absPerp * absPerp)
-                                                             / (hw * hw));
-
-                            m_imageRawPixels[py * w + px] += gAx * cylProj;
+                                m_imageRawPixels[py * outSz + px] += valPerStep;
+                            }
                         }
                     }
                 }
             }
 
-            // Find peak filament signal (before noise/invert) for noise scaling
+            // Find peak signal for noise scaling
             double peakSig = 0.0;
             for (double v : m_imageRawPixels)
-                if (v > peakSig) peakSig = v;
+                if (std::fabs(v) > peakSig) peakSig = std::fabs(v);
 
-            // Add Gaussian noise (once — image was cleared at the start)
+            // Add Gaussian noise
             if (addNoise && peakSig > 0.0) {
                 double noiseSigma = noiseFrac * peakSig;
-                std::mt19937 rng(42);  // fixed seed for reproducibility
+                std::mt19937 rng(42);
                 std::normal_distribution<double> dist(0.0, noiseSigma);
-                for (int i = 0; i < w * h; i++)
+                for (int i = 0; i < outSz * outSz; i++)
                     m_imageRawPixels[i] += dist(rng);
             }
 
-            // Black signal: negate so filament is dark on bright background
+            // Black signal: negate
             if (blackSignal) {
                 double curMin = m_imageRawPixels[0];
                 double curMax = m_imageRawPixels[0];
@@ -2560,7 +2590,7 @@ void FtWindow::onAmyloidCompute()
                     if (v > curMax) curMax = v;
                 }
                 double sum = curMin + curMax;
-                for (int i = 0; i < w * h; i++)
+                for (int i = 0; i < outSz * outSz; i++)
                     m_imageRawPixels[i] = sum - m_imageRawPixels[i];
             }
 
@@ -2571,8 +2601,10 @@ void FtWindow::onAmyloidCompute()
                 if (v < m_imageMinVal) m_imageMinVal = v;
                 if (v > m_imageMaxVal) m_imageMaxVal = v;
             }
-            m_imageDispMin = m_imageMinVal;
-            m_imageDispMax = m_imageMaxVal;
+            if (!m_imageContrastLocked) {
+                m_imageDispMin = m_imageMinVal;
+                m_imageDispMax = m_imageMaxVal;
+            }
 
             rebuildImageFromRaw();
             m_toolProgress = 0.5;
@@ -2592,9 +2624,7 @@ void FtWindow::onAmyloidCompute()
                     m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
             }
 
-            // Keep filaments — user can add/modify and press Compute again.
             m_amyloidRendered = true;
-            // Filaments are only cleared by Cancel.
 
             saveHistory();
             m_toolProgress = -1;
@@ -3659,8 +3689,10 @@ void FtWindow::onExtractCompute()
     m_imageRawPixels = m_history[tgtIdx].rawPixels;
     m_imageMinVal    = mn;
     m_imageMaxVal    = mx;
-    m_imageDispMin   = mn;
-    m_imageDispMax   = mx;
+    if (!m_imageContrastLocked) {
+        m_imageDispMin   = mn;
+        m_imageDispMax   = mx;
+    }
     m_pixelSize      = m_history[tgtIdx].pixelSize;
     m_zoom[0].reset(outSize, outSize);
     m_ftComputed = false;
