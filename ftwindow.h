@@ -76,6 +76,15 @@ public:
     static void setExampleImagesDir(const QString &dir);
     static QString exampleImagesDir();
 
+signals:
+    // Emitted by onToggleFullscreen when FtWindow is embedded (i.e. not a
+    // top-level window). Standalone builds handle fullscreen themselves via
+    // showFullScreen()/showNormal(); embedding apps should connect to this
+    // signal and toggle the fullscreen state of their own top-level window.
+    // After toggling, the host should call updateFullscreenButton(bool) so
+    // the button text stays in sync.
+    void fullscreenToggleRequested();
+
 protected:
     void resizeEvent(QResizeEvent *)            override;
     void mousePressEvent(QMouseEvent *event)      override;
