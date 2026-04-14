@@ -5,10 +5,14 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
+# When FT_EMBEDDED is ON, only the ft_core library target is built so that
+# another Qt application (e.g. the 4d STEM app) can link FtWindow in directly.
+# Standalone builds (default) are unchanged and produce the ft executable.
+option(FT_EMBEDDED "Build ft as a library for embedding into another Qt application" OFF)
+
 find_package(Qt6 REQUIRED COMPONENTS Widgets)
 
-add_executable(ft
-    main.cpp
+set(FT_CORE_SOURCES
     ftwindow.cpp
     ftwindow_mouse.cpp
     ftwindow_paint.cpp
@@ -17,27 +21,35 @@ add_executable(ft
     fft.cpp
     mrcloader.cpp
 )
-set_target_properties(ft PROPERTIES
-    WIN32_EXECUTABLE ON
-)
 
-if(EMSCRIPTEN)
-    # ---- WebAssembly build ----
-    target_link_libraries(ft PRIVATE Qt6::Widgets)
-    target_link_options(ft PRIVATE
-        -sALLOW_MEMORY_GROWTH=1
-        -sINITIAL_MEMORY=256MB
-        -sMAXIMUM_MEMORY=2GB
-        -sMODULARIZE=1
-        -sEXPORT_NAME=createQtAppInstance
-        "-sEXPORTED_RUNTIME_METHODS=UTF16ToString,stringToUTF16,JSEvents,specialHTMLTargets,FS,callMain,ccall,cwrap"
-        -lembind
-    )
-    # Optionally enable pthreads (requires COOP/COEP headers on the server):
-    # target_compile_options(ft PRIVATE -pthread)
-    # target_link_options(ft PRIVATE -pthread -sPTHREAD_POOL_SIZE=4)
-else()
-    # ---- Native desktop build (macOS / Ubuntu) ----
+add_library(ft_core STATIC ${FT_CORE_SOURCES})
+target_include_directories(ft_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(ft_core PUBLIC Qt6::Widgets)
+if(NOT EMSCRIPTEN)
     find_package(Threads REQUIRED)
-    target_link_libraries(ft PRIVATE Qt6::Widgets Threads::Threads)
+    target_link_libraries(ft_core PUBLIC Threads::Threads)
+endif()
+
+if(NOT FT_EMBEDDED)
+    add_executable(ft main.cpp)
+    target_link_libraries(ft PRIVATE ft_core)
+    set_target_properties(ft PROPERTIES
+        WIN32_EXECUTABLE ON
+    )
+
+    if(EMSCRIPTEN)
+        # ---- WebAssembly build ----
+        target_link_options(ft PRIVATE
+            -sALLOW_MEMORY_GROWTH=1
+            -sINITIAL_MEMORY=256MB
+            -sMAXIMUM_MEMORY=2GB
+            -sMODULARIZE=1
+            -sEXPORT_NAME=createQtAppInstance
+            "-sEXPORTED_RUNTIME_METHODS=UTF16ToString,stringToUTF16,JSEvents,specialHTMLTargets,FS,callMain,ccall,cwrap"
+            -lembind
+        )
+        # Optionally enable pthreads (requires COOP/COEP headers on the server):
+        # target_compile_options(ft PRIVATE -pthread)
+        # target_link_options(ft PRIVATE -pthread -sPTHREAD_POOL_SIZE=4)
+    endif()
 endif()
