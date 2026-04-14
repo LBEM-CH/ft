@@ -618,6 +618,24 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
         "a thin 3D slab and placed repeatedly along the fibril\n"
         "trajectory with the specified helical rise and twist.");
     m_amyloidMapCombo->hide();
+    m_amyloidSizeCombo = new QComboBox(this);
+    m_amyloidSizeCombo->addItem("512");
+    m_amyloidSizeCombo->addItem("1024");
+    m_amyloidSizeCombo->addItem("2048");
+    m_amyloidSizeCombo->addItem("4096");
+    m_amyloidSizeCombo->setCurrentIndex(1);
+    m_amyloidSizeCombo->setFixedSize(80, 28);
+    m_amyloidSizeCombo->setStyleSheet(
+        "QComboBox { background:#222; color:white; border:1px solid #888;"
+        "  padding: 2px 8px; }"
+        "QComboBox::drop-down { width: 20px; }"
+        "QComboBox QAbstractItemView { background:#222; color:white;"
+        "  selection-background-color:#555; min-width: 70px; padding: 4px; }");
+    m_amyloidSizeCombo->setToolTip(
+        "Side length (in pixels) of the black image created for\n"
+        "drawing amyloid fibril trajectories. Used when the current\n"
+        "buffer is empty or the Amyloid tool needs a fresh canvas.");
+    m_amyloidSizeCombo->hide();
     m_amyloidNoiseBtn = new QCheckBox("Add gray noise", this);
     m_amyloidNoiseBtn->setStyleSheet("color: #333;");
     m_amyloidNoiseBtn->setChecked(true);
@@ -670,6 +688,14 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
         "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }");
     connect(m_amyloidComputeBtn, &QPushButton::clicked, this, &FtWindow::onAmyloidCompute);
     m_amyloidComputeBtn->hide();
+
+    // Measure tool Cancel button
+    m_measureCancelBtn = new QPushButton("Cancel", this);
+    m_measureCancelBtn->setFixedSize(80, 26);
+    m_measureCancelBtn->setStyleSheet(
+        "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }");
+    connect(m_measureCancelBtn, &QPushButton::clicked, this, &FtWindow::onMeasureCancel);
+    m_measureCancelBtn->hide();
 
     // Math calculation widgets (hidden until math button is active)
     auto mathComboStyle = [](QComboBox *cb) {
@@ -994,6 +1020,20 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_peakThresholdSlider->setValue(settings.value("peakThreshold", 750).toInt());
     m_peakExclRadiusSlider->setValue(settings.value("peakExclRadius", 32).toInt());
 
+    // Restore amyloid filament settings
+    m_amyloidRiseEdit->setText(settings.value("amyloidRise", "4.75").toString());
+    m_amyloidTwistEdit->setText(settings.value("amyloidTwist", "-1").toString());
+    m_amyloidMapCombo->setCurrentIndex(settings.value("amyloidMapIdx", 0).toInt());
+    m_amyloidSizeCombo->setCurrentIndex(settings.value("amyloidSizeIdx", 1).toInt());
+    m_amyloidNoiseBtn->setChecked(settings.value("amyloidNoise", true).toBool());
+    m_amyloidNoiseEdit->setText(settings.value("amyloidNoiseSigma", "0.3").toString());
+    m_amyloidBlackSignal = settings.value("amyloidBlackSignal", false).toBool();
+    if (m_amyloidBlackSignal) {
+        m_amyloidSignalBtn->setText("Black signal");
+        m_amyloidSignalBtn->setStyleSheet(
+            "QPushButton { background:#222; color:white; border:1px solid #888; }");
+    }
+
     // Restore extract particles settings
     m_extractSourceCombo->setCurrentIndex(settings.value("extractSourceIdx", 0).toInt());
     m_extractTargetCombo->setCurrentIndex(settings.value("extractTargetIdx", 1).toInt());
@@ -1022,6 +1062,28 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_modeBtn->setText(modeLabel());
     m_activeSlot = -1;
 #endif
+
+    // If no active buffer was restored, select the first occupied slot (if any)
+    if (m_activeSlot < 0) {
+        for (int i = 0; i < HISTORY_SLOTS; i++) {
+            if (m_history[i].occupied) {
+                m_activeSlot    = i;
+                m_image         = m_history[i].image;
+                m_imagePath     = m_history[i].path;
+                m_imageRawPixels = m_history[i].rawPixels;
+                m_imageMinVal   = m_history[i].minVal;
+                m_imageMaxVal   = m_history[i].maxVal;
+                m_imageDispMin  = m_history[i].minVal;
+                m_imageDispMax  = m_history[i].maxVal;
+                m_pixelSize     = m_history[i].pixelSize;
+                if (!m_image.isNull()) {
+                    m_zoom[0].reset(m_image.width(), m_image.height());
+                    computeFFT();
+                }
+                break;
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
