@@ -3021,7 +3021,11 @@ void FtWindow::paintEvent(QPaintEvent *)
     p.drawRect(0, hy - 1, width(), 2);
 
     // ---- title bar ------------------------------------------------------------
-    {
+    // When embedded in another Qt application (i.e. FtWindow is not a
+    // top-level window), the host provides its own window chrome, so skip
+    // drawing the internal "Fourier Analyzer" title. m_titleRect stays null
+    // and the corresponding mouse handler therefore does nothing.
+    if (isWindow()) {
         QFont titleFont;
         titleFont.setBold(true);
         titleFont.setPixelSize(18);
