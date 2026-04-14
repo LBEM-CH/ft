@@ -126,7 +126,11 @@ void FtWindow::onLoadImage()
     });
     dlg->open();
 #else
-    QString startDir = QCoreApplication::applicationDirPath() + "/../EXAMPLE_IMAGES";
+    // Prefer an embedder-supplied override (see FtWindow::setExampleImagesDir),
+    // fall back to the standalone layout, then to the app directory.
+    QString startDir = FtWindow::exampleImagesDir();
+    if (startDir.isEmpty() || !QDir(startDir).exists())
+        startDir = QCoreApplication::applicationDirPath() + "/../EXAMPLE_IMAGES";
     if (!QDir(startDir).exists())
         startDir = QCoreApplication::applicationDirPath();
 
