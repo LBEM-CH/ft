@@ -90,11 +90,12 @@ void FtWindow::paintEvent(QPaintEvent *)
 
             p.setPen(QPen(Qt::white, 1));
             if ((i == 0 && m_p1EraserActive) || (i == 1 && m_p1BrushActive) ||
-                (i == 4 && m_shiftActive) || (i == 5 && m_rotateActive) ||
-                (i == 7 && m_p1TaperActive) || (i == 8 && m_binActive) ||
-                (i == 9 && m_gaborActive) || (i == 10 && m_hessianActive) ||
-                (i == 11 && m_amyloidActive) || (i == 12 && m_mathActive) ||
-                (i == 13 && m_peakPickActive) || (i == 14 && m_extractActive))
+                (i == 2 && m_measureActive) ||
+                (i == 5 && m_shiftActive) || (i == 6 && m_rotateActive) ||
+                (i == 8 && m_p1TaperActive) || (i == 9 && m_binActive) ||
+                (i == 10 && m_gaborActive) || (i == 11 && m_hessianActive) ||
+                (i == 12 && m_amyloidActive) || (i == 13 && m_mathActive) ||
+                (i == 14 && m_peakPickActive) || (i == 15 && m_extractActive))
                 p.setBrush(QColor(60, 60, 60));
             else
                 p.setBrush(QColor(0, 0, 0));
@@ -217,8 +218,49 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Flip horizontal icon (button 2): double arrow left-right
+            // Measure tool icon (button 2): simple mm ruler
             if (i == 2) {
+                p.setRenderHint(QPainter::Antialiasing, true);
+                QRect ir = r.adjusted(3, 3, -3, -3);
+                double ix = ir.x(), iy = ir.y(), iw = ir.width(), ih = ir.height();
+
+                // Ruler body (light tan rectangle)
+                QRectF body(ix + iw * 0.05, iy + ih * 0.30,
+                            iw * 0.90, ih * 0.35);
+                p.setPen(QPen(QColor(120, 90, 0), std::max(1, (int)(iw * 0.04))));
+                p.setBrush(QColor(245, 220, 140));
+                p.drawRect(body);
+
+                // Tick marks along the top edge
+                p.setPen(QPen(QColor(40, 40, 40), std::max(1, (int)(iw * 0.03))));
+                int nTicks = 11;
+                for (int k = 0; k < nTicks; k++) {
+                    double tx = body.left() + k * body.width() / (nTicks - 1);
+                    double tickLen = (k % 5 == 0) ? body.height() * 0.55
+                                                  : body.height() * 0.30;
+                    p.drawLine(QPointF(tx, body.top()),
+                               QPointF(tx, body.top() + tickLen));
+                }
+
+                p.setRenderHint(QPainter::Antialiasing, false);
+
+                if (r.contains(m_mousePos)) {
+                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                    QFontMetrics ttfm(ttf);
+                    QString tip = "Measure";
+                    int ttw = ttfm.horizontalAdvance(tip) + 8;
+                    int tth = ttfm.height() + 4;
+                    int ttx = r.right() + 4;
+                    int tty = r.center().y() - tth / 2;
+                    p.setPen(QPen(Qt::white, 1));
+                    p.setBrush(QColor(40, 40, 40));
+                    p.drawRect(ttx, tty, ttw, tth);
+                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                }
+            }
+
+            // Flip horizontal icon (button 3): double arrow left-right
+            if (i == 3) {
                 p.setRenderHint(QPainter::Antialiasing, true);
                 double cx2 = r.x() + r.width() / 2.0;
                 double cy2 = r.y() + r.height() / 2.0;
@@ -260,7 +302,7 @@ void FtWindow::paintEvent(QPaintEvent *)
             }
 
             // Flip vertical icon (button 3): double arrow up-down
-            if (i == 3) {
+            if (i == 4) {
                 p.setRenderHint(QPainter::Antialiasing, true);
                 double cx2 = r.x() + r.width() / 2.0;
                 double cy2 = r.y() + r.height() / 2.0;
@@ -302,7 +344,7 @@ void FtWindow::paintEvent(QPaintEvent *)
             }
 
             // Shift image icon (button 4): arrow pointing right
-            if (i == 4) {
+            if (i == 5) {
                 p.setRenderHint(QPainter::Antialiasing, true);
                 double cx2 = r.x() + r.width() / 2.0;
                 double cy2 = r.y() + r.height() / 2.0;
@@ -359,7 +401,7 @@ void FtWindow::paintEvent(QPaintEvent *)
             }
 
             // Rotate image icon (button 5): curved arrow
-            if (i == 5) {
+            if (i == 6) {
                 p.setRenderHint(QPainter::Antialiasing, true);
                 double cx2 = r.x() + r.width() / 2.0;
                 double cy2 = r.y() + r.height() / 2.0;
@@ -410,7 +452,7 @@ void FtWindow::paintEvent(QPaintEvent *)
             }
 
             // Invert contrast icon (button 6): +/- sign
-            if (i == 6) {
+            if (i == 7) {
                 p.setRenderHint(QPainter::Antialiasing, true);
                 QRect ir = r.adjusted(3, 3, -3, -3);
                 int ix = ir.x(), iy2 = ir.y(), iw = ir.width(), ih = ir.height();
@@ -447,7 +489,7 @@ void FtWindow::paintEvent(QPaintEvent *)
             }
 
             // Taper edges icon (button 7): white square ring with black center
-            if (i == 7) {
+            if (i == 8) {
                 p.setRenderHint(QPainter::Antialiasing, true);
                 QColor col = m_p1TaperActive ? QColor(180, 180, 255) : Qt::white;
                 int side = static_cast<int>(btnSide * 0.85);
@@ -480,7 +522,7 @@ void FtWindow::paintEvent(QPaintEvent *)
             }
 
             // Bin image icon (button 8): 2x2 grid representing pixel binning
-            if (i == 8) {
+            if (i == 9) {
                 if (m_binActive) {
                     p.setPen(QPen(Qt::white, 1));
                     p.setBrush(QColor(60, 60, 60));
@@ -521,7 +563,7 @@ void FtWindow::paintEvent(QPaintEvent *)
             }
 
             // Math calculations icon (button 12): Sigma/Sum sign
-            if (i == 12) {
+            if (i == 13) {
                 if (m_mathActive) {
                     p.setPen(QPen(Qt::white, 1));
                     p.setBrush(QColor(60, 60, 60));
@@ -570,7 +612,7 @@ void FtWindow::paintEvent(QPaintEvent *)
             }
 
             // Particle picking icon (button 13): four green plus signs in 2x2 grid
-            if (i == 13) {
+            if (i == 14) {
                 if (m_peakPickActive) {
                     p.setPen(QPen(Qt::white, 1));
                     p.setBrush(QColor(60, 60, 60));
@@ -623,7 +665,7 @@ void FtWindow::paintEvent(QPaintEvent *)
                 if (r.contains(m_mousePos)) {
                     QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
                     QFontMetrics ttfm(ttf);
-                    QString tip = "Particle picking";
+                    QString tip = "Peak search";
                     int ttw = ttfm.horizontalAdvance(tip) + 8;
                     int tth = ttfm.height() + 4;
                     int ttx = r.right() + 4;
@@ -636,7 +678,7 @@ void FtWindow::paintEvent(QPaintEvent *)
             }
 
             // Extract particles icon (button 14): white smiley face
-            if (i == 14) {
+            if (i == 15) {
                 if (m_extractActive) {
                     p.setPen(QPen(Qt::white, 1));
                     p.setBrush(QColor(60, 60, 60));
@@ -688,7 +730,7 @@ void FtWindow::paintEvent(QPaintEvent *)
             }
 
             // Hessian filter icon (button 10): letter "H"
-            if (i == 10) {
+            if (i == 11) {
                 p.setRenderHint(QPainter::Antialiasing, true);
                 QFont gf;
                 gf.setBold(true);
@@ -715,7 +757,7 @@ void FtWindow::paintEvent(QPaintEvent *)
             }
 
             // Amyloid filament icon (button 11): letter "A"
-            if (i == 11) {
+            if (i == 12) {
                 if (m_amyloidActive) {
                     p.setPen(QPen(Qt::white, 1));
                     p.setBrush(QColor(60, 60, 60));
@@ -747,7 +789,7 @@ void FtWindow::paintEvent(QPaintEvent *)
             }
 
             // Gabor filter icon (button 9): letter "G"
-            if (i == 9) {
+            if (i == 10) {
                 p.setRenderHint(QPainter::Antialiasing, true);
                 QFont gf;
                 gf.setBold(true);
@@ -1350,6 +1392,39 @@ void FtWindow::paintEvent(QPaintEvent *)
                 int screenY = static_cast<int>(sy);
                 p.drawLine(screenX - armLen, screenY, screenX + armLen, screenY);
                 p.drawLine(screenX, screenY - armLen, screenX, screenY + armLen);
+            }
+            p.restore();
+        }
+
+        // Draw measurement line overlay
+        if (m_measureActive && (m_measureHasLine || m_measurePlacing == 1)) {
+            QRect target = frame.adjusted(2, 2, -2, -2);
+            QRectF src = m_zoom[0].visibleRect(imgW, imgH);
+            p.save();
+            p.setClipRect(target);
+            p.setRenderHint(QPainter::Antialiasing, true);
+            auto imgToScreen = [&](const QPointF &img) -> QPointF {
+                double sx = target.x() + (img.x() - src.x()) / src.width()  * target.width();
+                double sy = target.y() + (img.y() - src.y()) / src.height() * target.height();
+                return QPointF(sx, sy);
+            };
+            QPointF sp0 = imgToScreen(m_measureP0);
+            if (m_measureHasLine) {
+                QPointF sp1 = imgToScreen(m_measureP1);
+                p.setPen(QPen(QColor(255, 220, 0), 1));
+                p.drawLine(sp0, sp1);
+                p.setPen(QPen(Qt::white, 1));
+                p.setBrush(QColor(255, 220, 0, 200));
+                p.drawEllipse(sp0, 3, 3);
+                p.drawEllipse(sp1, 3, 3);
+            } else if (m_measurePlacing == 1) {
+                p.setPen(QPen(Qt::white, 1));
+                p.setBrush(QColor(255, 220, 0, 200));
+                p.drawEllipse(sp0, 3, 3);
+                if (target.contains(m_mousePos)) {
+                    p.setPen(QPen(QColor(255, 220, 0, 150), 1, Qt::DashLine));
+                    p.drawLine(sp0, QPointF(m_mousePos));
+                }
             }
             p.restore();
         }
@@ -2384,7 +2459,7 @@ void FtWindow::paintEvent(QPaintEvent *)
         }
 
         // Panel 1 tool option rectangles (bottom-left of panel 1)
-        bool p1Tool = m_p1EraserActive || m_p1BrushActive || m_p1TaperActive || m_binActive || m_peakPickActive || m_extractActive || m_gaborActive || m_hessianActive || m_amyloidActive;
+        bool p1Tool = m_p1EraserActive || m_p1BrushActive || m_p1TaperActive || m_binActive || m_peakPickActive || m_extractActive || m_gaborActive || m_hessianActive || m_amyloidActive || m_measureActive;
         if (p1Tool) {
             int nRows = 0;
             int textW = 0;
@@ -2454,8 +2529,22 @@ void FtWindow::paintEvent(QPaintEvent *)
                 int r1 = fm.horizontalAdvance("Polarity (+1/-1): ")        + m_hessianPolarityEdit->width();
                 int r2 = m_hessianCancelBtn->width() + 8 + m_hessianComputeBtn->width();
                 textW = std::max({r0, r1, r2});
+            } else if (m_measureActive) {
+                nRows = 3;
+                double dx = m_measureP1.x() - m_measureP0.x();
+                double dy = m_measureP1.y() - m_measureP0.y();
+                double pix = m_measureHasLine ? std::sqrt(dx * dx + dy * dy) : 0.0;
+                double ps  = (m_pixelSize > 0.0) ? m_pixelSize : 1.0;
+                QString pixStr    = QString("Pixels: %1").arg(pix, 0, 'f', 2);
+                QString lenStr    = QString("Length: %1 \u00C5").arg(pix * ps, 0, 'f', 2);
+                int r0 = fm.horizontalAdvance(pixStr);
+                int r1 = fm.horizontalAdvance(lenStr);
+                int r2 = m_measureCancelBtn->width();
+                textW = std::max({r0, r1, r2,
+                                  fm.horizontalAdvance("Click two points on the image")});
             } else if (m_amyloidActive) {
-                nRows = 7;
+                nRows = 8;
+                int rSz = fm.horizontalAdvance("Image size (px): ")   + m_amyloidSizeCombo->width();
                 int r0 = fm.horizontalAdvance("Cross-section map: ")  + m_amyloidMapCombo->width();
                 int r1 = fm.horizontalAdvance("Helical rise (\u00C5): ")    + m_amyloidRiseEdit->width();
                 int r2 = fm.horizontalAdvance("Helical twist (\u00B0): ")   + m_amyloidTwistEdit->width();
@@ -2465,7 +2554,7 @@ void FtWindow::paintEvent(QPaintEvent *)
                                       .arg(m_amyloidFilaments.size());
                 int r4 = fm.horizontalAdvance(infoStr);
                 int r5 = m_amyloidCancelBtn->width() + 8 + m_amyloidComputeBtn->width();
-                textW = std::max({r0, r1, r2, r3n, r3i, r4, r5});
+                textW = std::max({rSz, r0, r1, r2, r3n, r3i, r4, r5});
             }
 
             int rw = textW * 6 / 5 + 2 * margin;
@@ -2566,29 +2655,41 @@ void FtWindow::paintEvent(QPaintEvent *)
                 m_hessianPolarityEdit->move(tx + fm.horizontalAdvance("Polarity (+1/-1): "), ty + lh);
                 m_hessianCancelBtn->move(tx, ty + lh * 2);
                 m_hessianComputeBtn->move(rx + rw - margin - m_hessianComputeBtn->width(), ty + lh * 2);
+            } else if (m_measureActive) {
+                double dx = m_measureP1.x() - m_measureP0.x();
+                double dy = m_measureP1.y() - m_measureP0.y();
+                double pix = m_measureHasLine ? std::sqrt(dx * dx + dy * dy) : 0.0;
+                double ps  = (m_pixelSize > 0.0) ? m_pixelSize : 1.0;
+                QString pixStr = QString("Pixels: %1").arg(pix, 0, 'f', 2);
+                QString lenStr = QString("Length: %1 \u00C5").arg(pix * ps, 0, 'f', 2);
+                p.drawText(tx, ty + fm.ascent(), pixStr);
+                p.drawText(tx, ty + lh + fm.ascent(), lenStr);
+                m_measureCancelBtn->move(tx, ty + lh * 2);
             } else if (m_amyloidActive) {
-                drawParamLabel(p, fm, tx, ty, "Cross-section map:", m_amyloidMapCombo->toolTip());
-                m_amyloidMapCombo->move(tx + fm.horizontalAdvance("Cross-section map: "), ty);
-                drawParamLabel(p, fm, tx, ty + lh, "Helical rise (\u00C5):", m_amyloidRiseEdit->toolTip());
-                m_amyloidRiseEdit->move(tx + fm.horizontalAdvance("Helical rise (\u00C5): "), ty + lh);
-                drawParamLabel(p, fm, tx, ty + lh * 2, "Helical twist (\u00B0):", m_amyloidTwistEdit->toolTip());
-                m_amyloidTwistEdit->move(tx + fm.horizontalAdvance("Helical twist (\u00B0): "), ty + lh * 2);
+                drawParamLabel(p, fm, tx, ty, "Image size (px):", m_amyloidSizeCombo->toolTip());
+                m_amyloidSizeCombo->move(tx + fm.horizontalAdvance("Image size (px): "), ty);
+                drawParamLabel(p, fm, tx, ty + lh, "Cross-section map:", m_amyloidMapCombo->toolTip());
+                m_amyloidMapCombo->move(tx + fm.horizontalAdvance("Cross-section map: "), ty + lh);
+                drawParamLabel(p, fm, tx, ty + lh * 2, "Helical rise (\u00C5):", m_amyloidRiseEdit->toolTip());
+                m_amyloidRiseEdit->move(tx + fm.horizontalAdvance("Helical rise (\u00C5): "), ty + lh * 2);
+                drawParamLabel(p, fm, tx, ty + lh * 3, "Helical twist (\u00B0):", m_amyloidTwistEdit->toolTip());
+                m_amyloidTwistEdit->move(tx + fm.horizontalAdvance("Helical twist (\u00B0): "), ty + lh * 3);
                 // Noise checkbox + sigma edit on the same row
-                m_amyloidNoiseBtn->move(tx, ty + lh * 3);
+                m_amyloidNoiseBtn->move(tx, ty + lh * 4);
                 int noiseLblX = tx + m_amyloidNoiseBtn->sizeHint().width() + 8;
-                drawParamLabel(p, fm, noiseLblX, ty + lh * 3, "Sigma:", m_amyloidNoiseEdit->toolTip());
-                m_amyloidNoiseEdit->move(noiseLblX + fm.horizontalAdvance("Sigma: "), ty + lh * 3);
+                drawParamLabel(p, fm, noiseLblX, ty + lh * 4, "Sigma:", m_amyloidNoiseEdit->toolTip());
+                m_amyloidNoiseEdit->move(noiseLblX + fm.horizontalAdvance("Sigma: "), ty + lh * 4);
                 // Signal polarity button
-                m_amyloidSignalBtn->move(tx, ty + lh * 4);
+                m_amyloidSignalBtn->move(tx, ty + lh * 5);
                 // Info + buttons
                 QString infoStr;
                 if (m_amyloidPlacing == 1)
                     infoStr = QString("Filaments: %1  Click to place end point").arg(m_amyloidFilaments.size());
                 else
                     infoStr = QString("Filaments: %1  Click image to place start & end").arg(m_amyloidFilaments.size());
-                p.drawText(tx, ty + lh * 5 + fm.ascent(), infoStr);
-                m_amyloidCancelBtn->move(tx, ty + lh * 6);
-                m_amyloidComputeBtn->move(rx + rw - margin - m_amyloidComputeBtn->width(), ty + lh * 6);
+                p.drawText(tx, ty + lh * 6 + fm.ascent(), infoStr);
+                m_amyloidCancelBtn->move(tx, ty + lh * 7);
+                m_amyloidComputeBtn->move(rx + rw - margin - m_amyloidComputeBtn->width(), ty + lh * 7);
             }
         }
     }

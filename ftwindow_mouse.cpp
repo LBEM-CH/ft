@@ -111,6 +111,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         m_peakPickActive = false; m_extractActive = false;
         m_gaborActive = false; m_hessianActive = false;
         m_amyloidActive = false; m_amyloidPlacing = 0;
+        m_measureActive = false; m_measurePlacing = 0; m_measureHasLine = false;
     };
     auto showP1ToolWidgets = [&]() {
         m_p1EraserDiameterEdit->setVisible(m_p1EraserActive);
@@ -155,11 +156,13 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         m_amyloidRiseEdit->setVisible(m_amyloidActive);
         m_amyloidTwistEdit->setVisible(m_amyloidActive);
         m_amyloidMapCombo->setVisible(m_amyloidActive);
+        m_amyloidSizeCombo->setVisible(m_amyloidActive);
         m_amyloidNoiseBtn->setVisible(m_amyloidActive);
         m_amyloidNoiseEdit->setVisible(m_amyloidActive);
         m_amyloidSignalBtn->setVisible(m_amyloidActive);
         m_amyloidCancelBtn->setVisible(m_amyloidActive);
         m_amyloidComputeBtn->setVisible(m_amyloidActive);
+        m_measureCancelBtn->setVisible(m_measureActive);
     };
     if (m_p1BtnRects[0].contains(event->pos())) {
         bool was = m_p1EraserActive; deactivateAllP1Tools();
@@ -174,7 +177,13 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         }
         showP1ToolWidgets(); update(); return;
     }
-    if (m_p1BtnRects[2].contains(event->pos()) && !m_image.isNull()) {
+    if (m_p1BtnRects[2].contains(event->pos())) {
+        bool was = m_measureActive; deactivateAllP1Tools();
+        m_measureActive = !was;
+        if (!m_measureActive) { m_measurePlacing = 0; m_measureHasLine = false; }
+        showP1ToolWidgets(); update(); return;
+    }
+    if (m_p1BtnRects[3].contains(event->pos()) && !m_image.isNull()) {
         deactivateAllP1Tools(); showP1ToolWidgets();
         storeUndoSnapshot();
         m_image = m_image.mirrored(true, false);
@@ -183,7 +192,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         update();
         return;
     }
-    if (m_p1BtnRects[3].contains(event->pos()) && !m_image.isNull()) {
+    if (m_p1BtnRects[4].contains(event->pos()) && !m_image.isNull()) {
         deactivateAllP1Tools(); showP1ToolWidgets();
         storeUndoSnapshot();
         m_image = m_image.mirrored(false, true);
@@ -192,46 +201,51 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         update();
         return;
     }
-    if (m_p1BtnRects[4].contains(event->pos())) {
+    if (m_p1BtnRects[5].contains(event->pos())) {
         bool was = m_shiftActive; deactivateAllP1Tools();
         m_shiftActive = !was; showP1ToolWidgets(); update(); return;
     }
-    if (m_p1BtnRects[5].contains(event->pos())) {
+    if (m_p1BtnRects[6].contains(event->pos())) {
         bool was = m_rotateActive; deactivateAllP1Tools();
         m_rotateActive = !was; showP1ToolWidgets(); update(); return;
     }
-    if (m_p1BtnRects[6].contains(event->pos()) && !m_image.isNull()) {
+    if (m_p1BtnRects[7].contains(event->pos()) && !m_image.isNull()) {
         deactivateAllP1Tools(); showP1ToolWidgets();
         onInvertContrast();
         return;
     }
-    if (m_p1BtnRects[7].contains(event->pos())) {
+    if (m_p1BtnRects[8].contains(event->pos())) {
         bool was = m_p1TaperActive; deactivateAllP1Tools();
         m_p1TaperActive = !was; showP1ToolWidgets(); update(); return;
     }
-    if (m_p1BtnRects[8].contains(event->pos())) {
+    if (m_p1BtnRects[9].contains(event->pos())) {
         bool was = m_binActive; deactivateAllP1Tools();
         m_binActive = !was; showP1ToolWidgets(); update(); return;
     }
-    if (m_p1BtnRects[9].contains(event->pos())) {
+    if (m_p1BtnRects[10].contains(event->pos())) {
         bool was = m_gaborActive; deactivateAllP1Tools();
         m_gaborActive = !was; showP1ToolWidgets(); update(); return;
     }
-    if (m_p1BtnRects[10].contains(event->pos())) {
+    if (m_p1BtnRects[11].contains(event->pos())) {
         bool was = m_hessianActive; deactivateAllP1Tools();
         m_hessianActive = !was; showP1ToolWidgets(); update(); return;
     }
-    if (m_p1BtnRects[11].contains(event->pos())) {
+    if (m_p1BtnRects[12].contains(event->pos())) {
         bool was = m_amyloidActive; deactivateAllP1Tools();
         m_amyloidActive = !was;
         if (!m_amyloidActive) { m_amyloidPlacing = 0; }
+        else if (m_activeSlot < 0 || m_image.isNull()) {
+            int sz = m_amyloidSizeCombo->currentText().toInt();
+            if (sz <= 0) sz = 1024;
+            onCreateImageSized(sz);
+        }
         showP1ToolWidgets(); update(); return;
     }
-    if (m_p1BtnRects[12].contains(event->pos())) {
+    if (m_p1BtnRects[13].contains(event->pos())) {
         bool was = m_mathActive; deactivateAllP1Tools();
         m_mathActive = !was; showP1ToolWidgets(); update(); return;
     }
-    if (m_p1BtnRects[13].contains(event->pos())) {
+    if (m_p1BtnRects[14].contains(event->pos())) {
         bool was = m_peakPickActive; deactivateAllP1Tools();
         m_peakPickActive = !was;
         if (m_peakPickActive) {
@@ -241,12 +255,42 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         }
         showP1ToolWidgets(); update(); return;
     }
-    if (m_p1BtnRects[14].contains(event->pos())) {
+    if (m_p1BtnRects[15].contains(event->pos())) {
         bool was = m_extractActive; deactivateAllP1Tools();
         m_extractActive = !was;
         if (m_extractActive && m_activeSlot >= 0)
             m_extractSourceCombo->setCurrentIndex(m_activeSlot);
         showP1ToolWidgets(); update(); return;
+    }
+
+    // Measure: click two points on panel 1 image
+    if (m_measureActive && !m_image.isNull()) {
+        for (int i = 0; i < m_numDispItems; i++) {
+            const DisplayItem &di = m_dispItems[i];
+            if (di.valid && di.zoomIdx == 0 && di.screenRect.contains(event->pos())) {
+                QRect target = di.screenRect.adjusted(2, 2, -2, -2);
+                QRectF src = m_zoom[0].visibleRect(m_image.width(), m_image.height());
+                double imgX = src.x() + (event->pos().x() - target.x()) * src.width()  / target.width();
+                double imgY = src.y() + (event->pos().y() - target.y()) * src.height() / target.height();
+                if (event->button() == Qt::RightButton) {
+                    m_measurePlacing = 0;
+                    m_measureHasLine = false;
+                    update();
+                    return;
+                }
+                if (m_measurePlacing == 0) {
+                    m_measureP0 = QPointF(imgX, imgY);
+                    m_measurePlacing = 1;
+                    m_measureHasLine = false;
+                } else {
+                    m_measureP1 = QPointF(imgX, imgY);
+                    m_measurePlacing = 0;
+                    m_measureHasLine = true;
+                }
+                update();
+                return;
+            }
+        }
     }
 
     // Amyloid filament: click on panel 1 image to place/drag control points
