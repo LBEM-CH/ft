@@ -2745,13 +2745,13 @@ void FtWindow::onAmyloidCompute()
             // thickness) with FWHM = 5 pixels.
             // sigma = FWHM / (2*sqrt(2*ln 2)) = FWHM / 2.3548
             const int    nSlabSteps  = 11;
-            const double slabFWHM    = 5.0; // pixels
+            const double slabFWHM    = 2.5; // pixels
             const double slabSigma   = slabFWHM / 2.3548200450309493;
             // Sinusoidal curvature of the slab along the in-plane normal
             // direction: displaces the cross-section along the tangent
             // axis by A*sin(2*pi*u/L). u is in Å; output image is 1 Å/px,
             // so amplitude in Å equals amplitude in pixels for that image.
-            const double curveAmpl   = 2.0;  // pixels / Å
+            const double curveAmpl   = 1.0;  // pixels / Å
             const double curveWave   = 50.0; // pixels / Å
             double slabWeights[nSlabSteps];
             double slabWSum = 0.0;
