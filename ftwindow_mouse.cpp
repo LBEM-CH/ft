@@ -116,6 +116,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
     auto showP1ToolWidgets = [&]() {
         m_p1EraserDiameterEdit->setVisible(m_p1EraserActive);
         m_p1BrushValueEdit->setVisible(m_p1BrushActive);
+        m_p1BrushSolidDiameterEdit->setVisible(m_p1BrushActive);
         m_p1BrushDiameterEdit->setVisible(m_p1BrushActive);
         m_p1TaperWidthEdit->setVisible(m_p1TaperActive);
         m_applyP1TaperBtn->setVisible(m_p1TaperActive);
@@ -474,6 +475,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
 
         m_lineWidthEdit->setVisible(m_lineFilterActive);
         m_lineDirectionEdit->setVisible(m_lineFilterActive);
+        m_lineOffsetEdit->setVisible(m_lineFilterActive);
         m_lineEraseOutsideBtn->setVisible(m_lineFilterActive);
         m_applyLineBtn->setVisible(m_lineFilterActive);
 
@@ -569,12 +571,6 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
     if (m_lineFilterActive && m_ftComputed && m_fftN > 0) {
         double halfN = m_fftN / 2.0;
         double imgCenter = halfN + 0.5;
-        bool ok = false;
-        double angleDeg = m_lineDirectionEdit->text().toDouble(&ok);
-        if (!ok) angleDeg = 0.0;
-        double angle = angleDeg * M_PI / 180.0;
-        double nx = -std::sin(angle);
-        double ny =  std::cos(angle);
 
         for (int i = 0; i < m_numDispItems; i++) {
             const DisplayItem &di = m_dispItems[i];
@@ -587,8 +583,24 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
                           / (double)di.screenRect.width() * src.width();
             double imgY = src.y() + (event->pos().y() - di.screenRect.y())
                           / (double)di.screenRect.height() * src.height();
-            m_lineOffset = (imgX - imgCenter) * nx + (imgY - imgCenter) * ny;
-            m_lineDragging = true;
+            if (imgX >= imgCenter) {
+                bool ok = false;
+                double angleDeg = m_lineDirectionEdit->text().toDouble(&ok);
+                if (!ok) angleDeg = 0.0;
+                double angle = angleDeg * M_PI / 180.0;
+                double nx = -std::sin(angle);
+                double ny =  std::cos(angle);
+                m_lineOffset = (imgX - imgCenter) * nx + (imgY - imgCenter) * ny;
+                m_lineOffsetEdit->setText(QString::number(m_lineOffset, 'f', 2));
+                m_lineDragging = 1;
+            } else {
+                double angleDeg = std::atan2(imgY - imgCenter, imgX - imgCenter)
+                                  * 180.0 / M_PI;
+                while (angleDeg > 90.0)  angleDeg -= 180.0;
+                while (angleDeg <= -90.0) angleDeg += 180.0;
+                m_lineDirectionEdit->setText(QString::number(angleDeg, 'f', 2));
+                m_lineDragging = 2;
+            }
             m_toolDragging = true;
             update();
             return;
@@ -912,7 +924,7 @@ void FtWindow::mouseReleaseEvent(QMouseEvent *event)
         m_bandDragging = 0;
         m_dirDragging = 0;
         m_latticeDragging = 0;
-        m_lineDragging = false;
+        m_lineDragging = 0;
         m_crossSectionDragging = false;
         m_ctfDragging = false;
         if (wasCrossSection && m_ftComputed) {
@@ -1243,12 +1255,6 @@ void FtWindow::mouseMoveEvent(QMouseEvent *event)
         if (m_lineDragging && m_fftN > 0) {
             double halfN = m_fftN / 2.0;
             double imgCenter = halfN + 0.5;
-            bool ok = false;
-            double angleDeg = m_lineDirectionEdit->text().toDouble(&ok);
-            if (!ok) angleDeg = 0.0;
-            double angle = angleDeg * M_PI / 180.0;
-            double nx = -std::sin(angle);
-            double ny =  std::cos(angle);
             for (int i = 0; i < m_numDispItems; i++) {
                 const DisplayItem &di = m_dispItems[i];
                 if (!di.valid || di.zoomIdx < 1) continue;
@@ -1258,7 +1264,22 @@ void FtWindow::mouseMoveEvent(QMouseEvent *event)
                               / (double)di.screenRect.width() * src.width();
                 double imgY = src.y() + (event->pos().y() - di.screenRect.y())
                               / (double)di.screenRect.height() * src.height();
-                m_lineOffset = (imgX - imgCenter) * nx + (imgY - imgCenter) * ny;
+                if (m_lineDragging == 1) {
+                    bool ok = false;
+                    double angleDeg = m_lineDirectionEdit->text().toDouble(&ok);
+                    if (!ok) angleDeg = 0.0;
+                    double angle = angleDeg * M_PI / 180.0;
+                    double nx = -std::sin(angle);
+                    double ny =  std::cos(angle);
+                    m_lineOffset = (imgX - imgCenter) * nx + (imgY - imgCenter) * ny;
+                    m_lineOffsetEdit->setText(QString::number(m_lineOffset, 'f', 2));
+                } else {
+                    double angleDeg = std::atan2(imgY - imgCenter, imgX - imgCenter)
+                                      * 180.0 / M_PI;
+                    while (angleDeg > 90.0)   angleDeg -= 180.0;
+                    while (angleDeg <= -90.0) angleDeg += 180.0;
+                    m_lineDirectionEdit->setText(QString::number(angleDeg, 'f', 2));
+                }
                 update();
                 break;
             }

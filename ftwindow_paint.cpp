@@ -2292,12 +2292,13 @@ void FtWindow::paintEvent(QPaintEvent *)
                 nRows = 1;
                 textW = fm.horizontalAdvance("Eraser Gaussian diameter: ") + m_eraserDiameterEdit->width();
             } else if (m_lineFilterActive) {
-                nRows = 4;
+                nRows = 5;
                 int r1 = fm.horizontalAdvance("Width of line: ") + m_lineWidthEdit->width();
                 int r2 = fm.horizontalAdvance("Direction of the line: ") + m_lineDirectionEdit->width();
+                int rO = fm.horizontalAdvance("Offset of the line: ") + m_lineOffsetEdit->width();
                 int r3 = m_lineEraseOutsideBtn->width();
                 int r4 = m_applyLineBtn->width();
-                textW = std::max({r1, r2, r3, r4});
+                textW = std::max({r1, r2, rO, r3, r4});
             } else if (m_latticeActive) {
                 nRows = 5;
                 int r1 = fm.horizontalAdvance("Smooth edge by pixels: ") + m_latticeSmoothEdit->width();
@@ -2398,8 +2399,10 @@ void FtWindow::paintEvent(QPaintEvent *)
                 m_lineWidthEdit->move(tx + fm.horizontalAdvance("Width of line: "), ty);
                 drawParamLabel(p, fm, tx, ty + lh, "Direction of the line:", m_lineDirectionEdit->toolTip());
                 m_lineDirectionEdit->move(tx + fm.horizontalAdvance("Direction of the line: "), ty + lh);
-                m_lineEraseOutsideBtn->move(tx, ty + lh * 2);
-                m_applyLineBtn->move(tx, ty + lh * 3);
+                drawParamLabel(p, fm, tx, ty + lh * 2, "Offset of the line:", m_lineOffsetEdit->toolTip());
+                m_lineOffsetEdit->move(tx + fm.horizontalAdvance("Offset of the line: "), ty + lh * 2);
+                m_lineEraseOutsideBtn->move(tx, ty + lh * 3);
+                m_applyLineBtn->move(tx, ty + lh * 4);
             } else if (m_latticeActive) {
                 drawParamLabel(p, fm, tx, ty, "Smooth edge by pixels:", m_latticeSmoothEdit->toolTip());
                 m_latticeSmoothEdit->move(tx + fm.horizontalAdvance("Smooth edge by pixels: "), ty);
@@ -2467,10 +2470,11 @@ void FtWindow::paintEvent(QPaintEvent *)
                 nRows = 1;
                 textW = fm.horizontalAdvance("Eraser Gaussian diameter: ") + m_p1EraserDiameterEdit->width();
             } else if (m_p1BrushActive) {
-                nRows = 2;
+                nRows = 3;
                 int r1 = fm.horizontalAdvance("Pixel value to enter: ") + m_p1BrushValueEdit->width();
-                int r2 = fm.horizontalAdvance("Paint brush Gaussian diameter: ") + m_p1BrushDiameterEdit->width();
-                textW = std::max(r1, r2);
+                int r2 = fm.horizontalAdvance("Paint brush solid diameter: ") + m_p1BrushSolidDiameterEdit->width();
+                int r3 = fm.horizontalAdvance("Paint brush Gaussian diameter: ") + m_p1BrushDiameterEdit->width();
+                textW = std::max({r1, r2, r3});
             } else if (m_p1TaperActive) {
                 nRows = 2;
                 int r1 = fm.horizontalAdvance("Hanning width: ") + m_p1TaperWidthEdit->width();
@@ -2583,8 +2587,10 @@ void FtWindow::paintEvent(QPaintEvent *)
             } else if (m_p1BrushActive) {
                 drawParamLabel(p, fm, tx, ty, "Pixel value to enter:", m_p1BrushValueEdit->toolTip());
                 m_p1BrushValueEdit->move(tx + fm.horizontalAdvance("Pixel value to enter: "), ty);
-                drawParamLabel(p, fm, tx, ty + lh, "Paint brush Gaussian diameter:", m_p1BrushDiameterEdit->toolTip());
-                m_p1BrushDiameterEdit->move(tx + fm.horizontalAdvance("Paint brush Gaussian diameter: "), ty + lh);
+                drawParamLabel(p, fm, tx, ty + lh, "Paint brush solid diameter:", m_p1BrushSolidDiameterEdit->toolTip());
+                m_p1BrushSolidDiameterEdit->move(tx + fm.horizontalAdvance("Paint brush solid diameter: "), ty + lh);
+                drawParamLabel(p, fm, tx, ty + lh * 2, "Paint brush Gaussian diameter:", m_p1BrushDiameterEdit->toolTip());
+                m_p1BrushDiameterEdit->move(tx + fm.horizontalAdvance("Paint brush Gaussian diameter: "), ty + lh * 2);
             } else if (m_p1TaperActive) {
                 drawParamLabel(p, fm, tx, ty, "Hanning width:", m_p1TaperWidthEdit->toolTip());
                 m_p1TaperWidthEdit->move(tx + fm.horizontalAdvance("Hanning width: "), ty);
