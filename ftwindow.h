@@ -407,6 +407,16 @@ private:
     double brushValue() const;             // max amplitude outside center 3x3
     void onApplyBinning();
 
+    // "New image" overlay (Create-or-Copy popup, launched from top-left button)
+    bool        m_newImageActive = false;
+    QComboBox  *m_newImgSrcCombo    = nullptr;   // "New 512..4096" or slots a..p
+    QComboBox  *m_newImgTgtCombo    = nullptr;   // target slot a..p
+    QPushButton *m_newImgCreateBtn  = nullptr;   // "Execute"
+    QPushButton *m_newImgCancelBtn  = nullptr;   // "Cancel"
+    void onNewImageOpen();
+    void onNewImageCreate();   // "Execute": create new or copy, per source selection
+    void onNewImageCancel();
+
     // Math calculations overlay
     bool        m_mathActive = false;
     QComboBox  *m_mathOutCombo  = nullptr;   // output buffer a..p
@@ -493,8 +503,13 @@ private:
     QLineEdit  *m_latticeSmoothEdit   = nullptr;
     QLabel     *m_latticeDotDiamLabel = nullptr;
     QLineEdit  *m_latticeDotDiamEdit  = nullptr;
+    QLineEdit  *m_latticeUxEdit       = nullptr;
+    QLineEdit  *m_latticeUyEdit       = nullptr;
+    QLineEdit  *m_latticeVxEdit       = nullptr;
+    QLineEdit  *m_latticeVyEdit       = nullptr;
     QCheckBox  *m_latticeEraseOutside = nullptr;
     QPushButton *m_latticeApplyBtn    = nullptr;
+    void syncLatticeVectorEdits();   // write m_lattice{U,V}{x,y} into edits
 
     void drawLattice(QPainter &p, const QRect &screenRect,
                      const ZoomState &zoom, int imgW, int imgH);
@@ -523,7 +538,9 @@ private:
     QComboBox  *m_ftCropCombo     = nullptr;
     QCheckBox  *m_ftCropKeepSizeBtn = nullptr;
     QPushButton *m_applyFtCropBtn = nullptr;
+    QPushButton *m_applyFtPadBtn  = nullptr;
     void onApplyFtCrop();
+    void onApplyFtPad();
 
     // ---- CTF ----
     bool        m_ctfActive = false;

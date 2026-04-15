@@ -5,6 +5,11 @@
 // ---------------------------------------------------------------------------
 void FtWindow::mousePressEvent(QMouseEvent *event)
 {
+    // If the "New image" popup is open, any click outside its child widgets
+    // (which intercept their own clicks) dismisses the popup before the click
+    // proceeds to its normal handler.
+    if (m_newImageActive) onNewImageCancel();
+
     // Title bar click – show About dialog
     if (!m_titleRect.isNull() && m_titleRect.contains(event->pos())) {
         auto *about = new QMessageBox(this);
@@ -481,6 +486,11 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
 
         m_latticeSmoothEdit->setVisible(m_latticeActive);
         m_latticeDotDiamEdit->setVisible(m_latticeActive);
+        m_latticeUxEdit->setVisible(m_latticeActive);
+        m_latticeUyEdit->setVisible(m_latticeActive);
+        m_latticeVxEdit->setVisible(m_latticeActive);
+        m_latticeVyEdit->setVisible(m_latticeActive);
+        if (m_latticeActive) syncLatticeVectorEdits();
         m_latticeEraseOutside->setVisible(m_latticeActive);
         m_latticeApplyBtn->setVisible(m_latticeActive);
 
@@ -489,6 +499,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         m_ftCropCombo->setVisible(m_ftCropActive);
         m_ftCropKeepSizeBtn->setVisible(m_ftCropActive);
         m_applyFtCropBtn->setVisible(m_ftCropActive);
+        m_applyFtPadBtn->setVisible(m_ftCropActive);
 
         m_ftMathOutCombo->setVisible(m_ftMathActive);
         m_ftMathEqualsLabel->setVisible(m_ftMathActive);
@@ -1307,6 +1318,7 @@ void FtWindow::mouseMoveEvent(QMouseEvent *event)
                     m_latticeVx = vx;
                     m_latticeVy = vy;
                 }
+                syncLatticeVectorEdits();
                 update();
                 break;
             }
