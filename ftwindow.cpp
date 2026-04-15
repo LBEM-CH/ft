@@ -1051,6 +1051,19 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_peakExclRadiusSlider->setValue(settings.value("peakExclRadius", 32).toInt());
 
     // Restore amyloid filament settings
+    m_p1BrushValueEdit->setText(settings.value("p1BrushValue", "1").toString());
+    m_p1BrushSolidDiameterEdit->setText(settings.value("p1BrushSolidDiameter", "0").toString());
+    m_p1BrushDiameterEdit->setText(settings.value("p1BrushGaussianDiameter", "5").toString());
+    auto saveP1Brush = [this]() {
+        QSettings s("ft", "ft");
+        s.setValue("p1BrushValue",           m_p1BrushValueEdit->text());
+        s.setValue("p1BrushSolidDiameter",   m_p1BrushSolidDiameterEdit->text());
+        s.setValue("p1BrushGaussianDiameter",m_p1BrushDiameterEdit->text());
+    };
+    connect(m_p1BrushValueEdit,          &QLineEdit::editingFinished, this, saveP1Brush);
+    connect(m_p1BrushSolidDiameterEdit,  &QLineEdit::editingFinished, this, saveP1Brush);
+    connect(m_p1BrushDiameterEdit,       &QLineEdit::editingFinished, this, saveP1Brush);
+
     m_amyloidRiseEdit->setText(settings.value("amyloidRise", "4.75").toString());
     m_amyloidTwistEdit->setText(settings.value("amyloidTwist", "-1").toString());
     m_amyloidMapCombo->setCurrentIndex(settings.value("amyloidMapIdx", 0).toInt());

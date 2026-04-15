@@ -2487,6 +2487,52 @@ void FtWindow::onAmyloidCompute()
     double mapPixSize = m_history[mapIdx].pixelSize;
     if (mapPixSize <= 0.0) mapPixSize = 1.0;
 
+    // Subtract the mean grey value of the border pixels so the surrounding
+    // background becomes (close to) zero. The cross-section typically shows
+    // a bright structure on a ~uniform dark background, so we only want the
+    // central structure contributing to the projection.
+    {
+        double edgeSum = 0.0;
+        int    edgeCnt = 0;
+        for (int x = 0; x < mapW; x++) {
+            edgeSum += mapPixels[x];
+            edgeSum += mapPixels[(mapH - 1) * mapW + x];
+            edgeCnt += 2;
+        }
+        for (int y = 1; y < mapH - 1; y++) {
+            edgeSum += mapPixels[y * mapW];
+            edgeSum += mapPixels[y * mapW + (mapW - 1)];
+            edgeCnt += 2;
+        }
+        double edgeMean = (edgeCnt > 0) ? edgeSum / edgeCnt : 0.0;
+        for (auto &v : mapPixels) v -= edgeMean;
+    }
+
+    // Measure the radius of the central structure so we can skip the
+    // (now essentially zero) background during the slab loop. Threshold
+    // at 5 % of the peak absolute value; take the largest distance of
+    // any above-threshold pixel from the map centre.
+    double mapStructR = 0.0;
+    {
+        const double cx = mapW / 2.0;
+        const double cy = mapH / 2.0;
+        double peakAbs = 0.0;
+        for (double v : mapPixels)
+            if (std::fabs(v) > peakAbs) peakAbs = std::fabs(v);
+        double thresh = 0.05 * peakAbs;
+        double maxR2  = 0.0;
+        for (int mj = 0; mj < mapH; mj++) {
+            for (int mi = 0; mi < mapW; mi++) {
+                if (std::fabs(mapPixels[mj * mapW + mi]) > thresh) {
+                    double du = mi - cx, dv = mj - cy;
+                    double r2 = du * du + dv * dv;
+                    if (r2 > maxR2) maxR2 = r2;
+                }
+            }
+        }
+        mapStructR = std::sqrt(maxR2) + 1.0; // small margin in map pixels
+    }
+
     storeUndoSnapshot();
 
     // ---- Create fresh output image at the size selected in the pulldown ----
@@ -2524,7 +2570,7 @@ void FtWindow::onAmyloidCompute()
     chainSteps({
         [this, outSz, filaments, rise, twistRad,
          addNoise, noiseFrac, blackSignal,
-         mapPixels, mapW, mapH, mapPixSize]() {
+         mapPixels, mapW, mapH, mapPixSize, mapStructR]() {
 
             // True helical fibril simulation:
             //
@@ -2563,11 +2609,18 @@ void FtWindow::onAmyloidCompute()
             const double mapCY = mapH / 2.0;
 
             // Slab thickness along the trajectory axis: Gaussian distributed
-            // over 5 pixel planes (offsets -2..+2) with FWHM = 2.5 pixels.
+            // over 11 pixel planes (offsets -5..+5, i.e. 10 pixel total
+            // thickness) with FWHM = 5 pixels.
             // sigma = FWHM / (2*sqrt(2*ln 2)) = FWHM / 2.3548
-            const int    nSlabSteps  = 5;
-            const double slabFWHM    = 2.5; // pixels
+            const int    nSlabSteps  = 11;
+            const double slabFWHM    = 5.0; // pixels
             const double slabSigma   = slabFWHM / 2.3548200450309493;
+            // Sinusoidal curvature of the slab along the in-plane normal
+            // direction: displaces the cross-section along the tangent
+            // axis by A*sin(2*pi*u/L). u is in Å; output image is 1 Å/px,
+            // so amplitude in Å equals amplitude in pixels for that image.
+            const double curveAmpl   = 2.0;  // pixels / Å
+            const double curveWave   = 50.0; // pixels / Å
             double slabWeights[nSlabSteps];
             double slabWSum = 0.0;
             for (int sl = 0; sl < nSlabSteps; sl++) {
@@ -2650,26 +2703,43 @@ void FtWindow::onAmyloidCompute()
                     double cosPhi = std::cos(phi);
                     double sinPhi = std::sin(phi);
 
+                    // Restrict the inner loop to pixels within the measured
+                    // structure radius – everything further out is background.
+                    const double mapR2 = mapStructR * mapStructR;
+                    int miLo = std::max(0,       (int)std::floor(mapCX - mapStructR));
+                    int miHi = std::min(mapW - 1, (int)std::ceil (mapCX + mapStructR));
+                    int mjLo = std::max(0,       (int)std::floor(mapCY - mapStructR));
+                    int mjHi = std::min(mapH - 1, (int)std::ceil (mapCY + mapStructR));
+
                     // For each pixel in the source map, compute its physical
                     // offset from centre, apply helical twist, and project.
-                    for (int mj = 0; mj < mapH; mj++) {
-                        for (int mi = 0; mi < mapW; mi++) {
+                    for (int mj = mjLo; mj <= mjHi; mj++) {
+                        for (int mi = miLo; mi <= miHi; mi++) {
+                            double du = mi - mapCX, dv = mj - mapCY;
+                            if (du * du + dv * dv > mapR2) continue;
+
                             double val = mapPixels[mj * mapW + mi];
                             if (std::fabs(val) < 1e-15) continue;
 
                             // Physical offset from map centre (Å)
-                            double u = (mi - mapCX) * mapPixSize;
-                            double v = (mj - mapCY) * mapPixSize;
+                            double u = du * mapPixSize;
+                            double v = dv * mapPixSize;
 
                             // Apply helical twist rotation around tangent axis
                             double uRot = u * cosPhi - v * sinPhi;
                             double vRot = u * sinPhi + v * cosPhi;
 
+                            // Sinusoidal bend of the cross-section slab along
+                            // the normal axis: displace the contribution along
+                            // the tangent by A*sin(2*pi*u/L).
+                            double curveDs = curveAmpl *
+                                std::sin(2.0 * M_PI * uRot / curveWave);
+
                             // Splat Gaussian-weighted slab planes along the tangent
                             // using bilinear interpolation for sub-pixel placement.
                             for (int sl = 0; sl < nSlabSteps; sl++) {
-                                double k = sl - (nSlabSteps - 1) / 2.0;  // -2..+2 pixels
-                                double ds = k * mapPixSize;
+                                double k = sl - (nSlabSteps - 1) / 2.0;  // -5..+5 pixels
+                                double ds = k * mapPixSize + curveDs;
                                 double imgX = pos.x() + uRot * norm.x() + ds * tang.x();
                                 double imgY = pos.y() + uRot * norm.y() + ds * tang.y();
 
