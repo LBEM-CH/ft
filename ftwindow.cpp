@@ -127,6 +127,20 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
         "You can also drag the line in panel 2 to change this.");
     m_lineDirectionEdit->hide();
 
+    m_lineOffsetEdit = new QLineEdit("0", this);
+    m_lineOffsetEdit->setFixedSize(50, 22);
+    m_lineOffsetEdit->setStyleSheet("background:#222; color:white; border:1px solid #888;");
+    m_lineOffsetEdit->setToolTip(
+        "Signed offset of the line from the Fourier centre, in pixels,\n"
+        "measured perpendicular to the line direction. Drag the line in\n"
+        "the right half of panel 2 to change this interactively.");
+    m_lineOffsetEdit->hide();
+    connect(m_lineOffsetEdit, &QLineEdit::editingFinished, this, [this]() {
+        bool ok = false;
+        double v = m_lineOffsetEdit->text().toDouble(&ok);
+        if (ok) { m_lineOffset = v; update(); }
+    });
+
     m_lineEraseOutsideBtn = new QCheckBox("Erase pixels outside of line", this);
     m_lineEraseOutsideBtn->setStyleSheet("color: white;");
     m_lineEraseOutsideBtn->setChecked(true);
@@ -464,6 +478,19 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
         "pixels, weighted by the brush profile. Use the image min/max\n"
         "scale shown below the panel as a reference.");
     m_p1BrushValueEdit->hide();
+    m_p1BrushSolidLabel = new QLabel("Paint brush solid diameter:", this);
+    m_p1BrushSolidLabel->setStyleSheet("color: white;");
+    m_p1BrushSolidLabel->hide();
+    m_p1BrushSolidDiameterEdit = new QLineEdit("0", this);
+    m_p1BrushSolidDiameterEdit->setFixedSize(40, 22);
+    m_p1BrushSolidDiameterEdit->setStyleSheet("background:#222; color:white; border:1px solid #888;");
+    m_p1BrushSolidDiameterEdit->setToolTip(
+        "Diameter, in image pixels, of a sharp-edged solid disk used\n"
+        "as the base paint brush footprint. Pixels inside the disk\n"
+        "are painted with the target value. If a Gaussian diameter\n"
+        "is also set, this disk is blurred by that Gaussian to soften\n"
+        "the edge. Set to 0 to use a pure Gaussian brush.");
+    m_p1BrushSolidDiameterEdit->hide();
     m_p1BrushDiamLabel = new QLabel("Paint brush Gaussian diameter:", this);
     m_p1BrushDiamLabel->setStyleSheet("color: white;");
     m_p1BrushDiamLabel->hide();
@@ -688,6 +715,9 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
         "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }");
     connect(m_amyloidComputeBtn, &QPushButton::clicked, this, &FtWindow::onAmyloidCompute);
     m_amyloidComputeBtn->hide();
+    connect(m_amyloidRiseEdit,  &QLineEdit::returnPressed, this, &FtWindow::onAmyloidCompute);
+    connect(m_amyloidTwistEdit, &QLineEdit::returnPressed, this, &FtWindow::onAmyloidCompute);
+    connect(m_amyloidNoiseEdit, &QLineEdit::returnPressed, this, &FtWindow::onAmyloidCompute);
 
     // Measure tool Cancel button
     m_measureCancelBtn = new QPushButton("Cancel", this);
@@ -1128,6 +1158,8 @@ void FtWindow::resizeEvent(QResizeEvent *)
     m_lineWidthEdit->setStyleSheet(editSS);
     m_lineDirectionEdit->setFixedSize(static_cast<int>(50 * sc), editH);
     m_lineDirectionEdit->setStyleSheet(editSS);
+    m_lineOffsetEdit->setFixedSize(static_cast<int>(50 * sc), editH);
+    m_lineOffsetEdit->setStyleSheet(editSS);
     m_lineEraseOutsideBtn->setStyleSheet(cbSS);
     m_applyLineBtn->setFixedSize(static_cast<int>(100 * sc), btnH);
     m_applyLineBtn->setStyleSheet(btnSS);
@@ -1193,6 +1225,8 @@ void FtWindow::resizeEvent(QResizeEvent *)
     m_p1EraserDiameterEdit->setStyleSheet(editSS);
     m_p1BrushValueEdit->setFixedSize(static_cast<int>(60 * sc), editH);
     m_p1BrushValueEdit->setStyleSheet(editSS);
+    m_p1BrushSolidDiameterEdit->setFixedSize(static_cast<int>(40 * sc), editH);
+    m_p1BrushSolidDiameterEdit->setStyleSheet(editSS);
     m_p1BrushDiameterEdit->setFixedSize(static_cast<int>(40 * sc), editH);
     m_p1BrushDiameterEdit->setStyleSheet(editSS);
     m_p1TaperWidthEdit->setFixedSize(static_cast<int>(50 * sc), editH);
