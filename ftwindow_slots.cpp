@@ -1646,19 +1646,81 @@ void FtWindow::p1BrushApply(QPoint pos)
         if (ix < 0 || ix >= w || iy < 0 || iy >= h) return;
 
         double val = m_p1BrushValueEdit->text().toDouble();
-        double diam = m_p1BrushDiameterEdit->text().toDouble();
-        double sigma = diam / 2.0;
-        int rad = (sigma > 0.5) ? (int)std::ceil(sigma * 3) : 0;
+        double solidDiam = m_p1BrushSolidDiameterEdit->text().toDouble();
+        double gaussDiam = m_p1BrushDiameterEdit->text().toDouble();
+        double solidR = solidDiam / 2.0;
+        double sigma = gaussDiam / 2.0;
+        bool hasSolid = solidR > 0.0;
+        bool hasGauss = sigma > 0.5;
+
+        int rad;
+        if (hasSolid && hasGauss)      rad = (int)std::ceil(solidR + 3.0 * sigma);
+        else if (hasSolid)             rad = (int)std::ceil(solidR);
+        else if (hasGauss)             rad = (int)std::ceil(3.0 * sigma);
+        else                           rad = 0;
+
+        int K = 2 * rad + 1;
+        std::vector<double> kernel(K * K, 0.0);
+
+        if (hasSolid) {
+            double sr2 = solidR * solidR;
+            for (int dy = -rad; dy <= rad; dy++) {
+                for (int dx = -rad; dx <= rad; dx++) {
+                    if (dx * dx + dy * dy <= sr2)
+                        kernel[(dy + rad) * K + (dx + rad)] = 1.0;
+                }
+            }
+            if (hasGauss) {
+                int gr = (int)std::ceil(3.0 * sigma);
+                std::vector<double> g(2 * gr + 1);
+                for (int i = -gr; i <= gr; i++)
+                    g[i + gr] = std::exp(-(i * i) / (2.0 * sigma * sigma));
+                std::vector<double> tmp(K * K, 0.0);
+                for (int y = 0; y < K; y++) {
+                    for (int x = 0; x < K; x++) {
+                        double s = 0.0, wsum = 0.0;
+                        for (int i = -gr; i <= gr; i++) {
+                            int xi = x + i;
+                            if (xi < 0 || xi >= K) continue;
+                            s += kernel[y * K + xi] * g[i + gr];
+                            wsum += g[i + gr];
+                        }
+                        tmp[y * K + x] = (wsum > 0.0) ? s / wsum : 0.0;
+                    }
+                }
+                for (int y = 0; y < K; y++) {
+                    for (int x = 0; x < K; x++) {
+                        double s = 0.0, wsum = 0.0;
+                        for (int i = -gr; i <= gr; i++) {
+                            int yi = y + i;
+                            if (yi < 0 || yi >= K) continue;
+                            s += tmp[yi * K + x] * g[i + gr];
+                            wsum += g[i + gr];
+                        }
+                        kernel[y * K + x] = (wsum > 0.0) ? s / wsum : 0.0;
+                    }
+                }
+            }
+        } else if (hasGauss) {
+            for (int dy = -rad; dy <= rad; dy++) {
+                for (int dx = -rad; dx <= rad; dx++) {
+                    kernel[(dy + rad) * K + (dx + rad)] =
+                        std::exp(-(dx * dx + dy * dy) / (2.0 * sigma * sigma));
+                }
+            }
+        } else {
+            kernel[0] = 1.0;
+        }
+
+        double kmax = 0.0;
+        for (double v : kernel) if (v > kmax) kmax = v;
+        if (kmax > 0.0) for (auto &v : kernel) v /= kmax;
 
         for (int dy = -rad; dy <= rad; dy++) {
             for (int dx = -rad; dx <= rad; dx++) {
                 int px = ix + dx, py = iy + dy;
                 if (px < 0 || px >= w || py < 0 || py >= h) continue;
-
-                double weight = 1.0;
-                if (sigma > 0.5)
-                    weight = std::exp(-(dx*dx + dy*dy) / (2.0 * sigma * sigma));
-
+                double weight = kernel[(dy + rad) * K + (dx + rad)];
                 m_imageRawPixels[py * w + px] = m_imageRawPixels[py * w + px] * (1.0 - weight) + val * weight;
             }
         }

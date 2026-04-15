@@ -286,6 +286,18 @@ MrcResult loadMrcFromData(const QByteArray &fileData)
         }
     }
 
+    // MRC stores pixel data bottom-up; the QImage above was built with a
+    // vertical flip so it displays in the conventional top-down screen
+    // orientation. Flip rawPixels the same way so its index order matches
+    // the QImage scanlines (rawPixels[y*nx + x] == scanLine(y)[x]). All
+    // downstream code (eraser, brush, rebuildImageFromRaw, ...) assumes
+    // this top-down ordering.
+    for (int y = 0; y < ny / 2; y++) {
+        double *rowA = result.rawPixels.data() + y * nx;
+        double *rowB = result.rawPixels.data() + (ny - 1 - y) * nx;
+        for (int x = 0; x < nx; x++) std::swap(rowA[x], rowB[x]);
+    }
+
     result.image = img;
     result.valid = true;
 

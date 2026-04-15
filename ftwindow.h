@@ -309,6 +309,8 @@ private:
     QLineEdit  *m_p1EraserDiameterEdit = nullptr;
     QLabel     *m_p1BrushValueLabel = nullptr;
     QLineEdit  *m_p1BrushValueEdit = nullptr;
+    QLabel     *m_p1BrushSolidLabel = nullptr;
+    QLineEdit  *m_p1BrushSolidDiameterEdit = nullptr;
     QLabel     *m_p1BrushDiamLabel = nullptr;
     QLineEdit  *m_p1BrushDiameterEdit = nullptr;
     QLabel     *m_p1TaperWidthLabel = nullptr;
@@ -448,10 +450,11 @@ private:
 
     // ---- line filter ----
     bool        m_lineFilterActive = false;
-    bool        m_lineDragging = false;
+    int         m_lineDragging = 0;    // 0=none, 1=offset (right half), 2=rotate (left half)
     double      m_lineOffset = 0.0;    // signed offset from Fourier center in pixels
     QLineEdit  *m_lineWidthEdit = nullptr;
     QLineEdit  *m_lineDirectionEdit = nullptr;
+    QLineEdit  *m_lineOffsetEdit = nullptr;
     QCheckBox  *m_lineEraseOutsideBtn = nullptr;
     QPushButton *m_applyLineBtn = nullptr;
 
