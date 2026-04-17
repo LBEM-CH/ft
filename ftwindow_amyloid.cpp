@@ -259,10 +259,12 @@ void FtWindow::onAmyloidCompute()
             const int    nSlabSteps  = 11;
             const double slabFWHM    = 2.5; // pixels
             const double slabSigma   = slabFWHM / 2.3548200450309493;
-            // Sinusoidal curvature of the slab along the in-plane normal
-            // direction: displaces the cross-section along the tangent
-            // axis by A*sin(2*pi*u/L). u is in Å; output image is 1 Å/px,
-            // so amplitude in Å equals amplitude in pixels for that image.
+            // Chess-board wavyness of the slab: displaces the thickness
+            // coordinate (slab-local T axis) by the product of sine waves
+            // along the slab's two lateral axes (pre-rotation u and v).
+            // waveShift = A * sin(2*pi*u/L) * sin(2*pi*v/L).
+            // u,v are in Å; output image is 1 Å/px, so amplitude in Å
+            // equals amplitude in pixels for that image.
             const double curveAmpl   = curveAmplVal; // pixels
             const double curveWave   = curveWaveVal; // pixels
             double slabWeights[nSlabSteps];
@@ -369,15 +371,18 @@ void FtWindow::onAmyloidCompute()
                             double u = du * mapPixSize;
                             double v = dv * mapPixSize;
 
+                            // Pre-rotation wavyness: modify the slab in its
+                            // own local (u, v) frame with a product of sine
+                            // waves, producing a chess-board displacement of
+                            // the thickness coordinate. Twist rotates around
+                            // T, so this T-displacement is preserved.
+                            double curveDs = curveAmpl
+                                * std::sin(2.0 * M_PI * u / curveWave)
+                                * std::sin(2.0 * M_PI * v / curveWave);
+
                             // Apply helical twist rotation around tangent axis
                             double uRot = u * cosPhi - v * sinPhi;
                             double vRot = u * sinPhi + v * cosPhi;
-
-                            // Sinusoidal bend of the cross-section slab along
-                            // the normal axis: displace the contribution along
-                            // the tangent by A*sin(2*pi*u/L).
-                            double curveDs = curveAmpl *
-                                std::sin(2.0 * M_PI * uRot / curveWave);
 
                             // Splat Gaussian-weighted slab planes along the tangent
                             // using bilinear interpolation for sub-pixel placement.
