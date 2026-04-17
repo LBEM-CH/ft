@@ -381,6 +381,8 @@ private:
     QCheckBox  *m_amyloidNoiseBtn     = nullptr;
     QLineEdit  *m_amyloidNoiseEdit    = nullptr;
     QLineEdit  *m_amyloidPersistEdit  = nullptr;  // persistence length (μm)
+    QLineEdit  *m_amyloidWaveEdit     = nullptr;  // wavyness wavelength (px)
+    QLineEdit  *m_amyloidAmplEdit     = nullptr;  // wavyness amplitude (px)
     QPushButton *m_amyloidSignalBtn   = nullptr;
     bool        m_amyloidBlackSignal = false;  // false=white signal, true=black signal
     QPushButton *m_amyloidCancelBtn   = nullptr;
