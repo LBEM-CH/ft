@@ -81,6 +81,7 @@ void FtWindow::onLoadImage()
           << "Exercise_08-Artemin-Protein/size_2048_rescaled/reference1_2048_rescaled.png"
           << "Exercise_08-Artemin-Protein/size_2048_rescaled/reference2_2048_rescaled.png"
           << "Exercise_09-Fibrils/aSyn_cryo_EM_image_1024.mrc"
+          << "Exercise_09-Fibrils/aSyn_cryo_EM_image_1024mask.png"
           << "Exercise_09-Fibrils/aSyn_cryo_EM_image_2048.mrc"
           << "Exercise_09-Fibrils/aSyn_PFF1_c2_1024.mrc"
           << "Exercise_09-Fibrils/aSyn_PFF1_c2_BGzero_1024.mrc"
