@@ -6,9 +6,15 @@
 void FtWindow::drawParamLabel(QPainter &p, const QFontMetrics &fm,
                               int x, int y, const QString &text, const QString &tip)
 {
-    p.drawText(x, y + fm.ascent(), text);
+    // Align label baseline with the text baseline inside a standard 22 px tall
+    // input field (line edit / combo box). Input fields vertically centre their
+    // text, so their baseline sits at fieldH/2 + ascent/2 - descent/2 from the
+    // widget top — not at fm.ascent() as with a top-anchored drawText.
+    const int fieldH = 22;
+    int baselineY = y + (fieldH + fm.ascent() - fm.descent()) / 2;
+    p.drawText(x, baselineY, text);
     if (!tip.isEmpty()) {
-        QRect r(x, y, fm.horizontalAdvance(text), fm.height());
+        QRect r(x, baselineY - fm.ascent(), fm.horizontalAdvance(text), fm.height());
         m_paramLabelTips.emplace_back(r, tip);
     }
 }
@@ -2680,17 +2686,22 @@ void FtWindow::paintEvent(QPaintEvent *)
                                   fm.horizontalAdvance("Click two points on the image")});
             } else if (m_amyloidActive) {
                 nRows = 8;
-                int rSz = fm.horizontalAdvance("Image size (px): ")   + m_amyloidSizeCombo->width();
-                int r0 = fm.horizontalAdvance("Cross-section map: ")  + m_amyloidMapCombo->width();
-                int r1 = fm.horizontalAdvance("Helical rise (\u00C5): ")    + m_amyloidRiseEdit->width();
-                int r2 = fm.horizontalAdvance("Helical twist (\u00B0): ")   + m_amyloidTwistEdit->width();
-                int r3n = m_amyloidNoiseBtn->sizeHint().width() + 8 + fm.horizontalAdvance("Sigma: ") + m_amyloidNoiseEdit->width();
-                int r3i = m_amyloidSignalBtn->width();
+                const int colGap = 20;
+                int leftSize  = fm.horizontalAdvance("Image size (px): ")   + m_amyloidSizeCombo->width();
+                int leftRise  = fm.horizontalAdvance("Helical rise (\u00C5): ") + m_amyloidRiseEdit->width();
+                int leftWave  = fm.horizontalAdvance("Wavyness wavelength (px): ") + m_amyloidWaveEdit->width();
+                int leftCol   = std::max({leftSize, leftRise, leftWave}) + colGap;
+                int rRow0 = leftCol + fm.horizontalAdvance("Source map: ")       + m_amyloidMapCombo->width();
+                int rRow1 = leftCol + fm.horizontalAdvance("Helical twist (\u00B0): ") + m_amyloidTwistEdit->width();
+                int rRow2 = leftCol + fm.horizontalAdvance("Wavyness amplitude (px): ") + m_amyloidAmplEdit->width();
+                int rPer  = fm.horizontalAdvance("Persistence length (\u00B5m): ")      + m_amyloidPersistEdit->width();
+                int rNoise = m_amyloidNoiseBtn->sizeHint().width() + 8 + fm.horizontalAdvance("Sigma: ") + m_amyloidNoiseEdit->width();
+                int rSig   = m_amyloidSignalBtn->width();
                 QString infoStr = QString("Filaments: %1  Click image to place start & end")
                                       .arg(m_amyloidFilaments.size());
-                int r4 = fm.horizontalAdvance(infoStr);
-                int r5 = m_amyloidCancelBtn->width() + 8 + m_amyloidComputeBtn->width();
-                textW = std::max({rSz, r0, r1, r2, r3n, r3i, r4, r5});
+                int rInfo = fm.horizontalAdvance(infoStr);
+                int rBtns = m_amyloidCancelBtn->width() + 8 + m_amyloidComputeBtn->width();
+                textW = std::max({rRow0, rRow1, rRow2, rPer, rNoise, rSig, rInfo, rBtns});
             }
 
             int rw = textW * 6 / 5 + 2 * margin;
@@ -2804,32 +2815,46 @@ void FtWindow::paintEvent(QPaintEvent *)
                 p.drawText(tx, ty + lh + fm.ascent(), lenStr);
                 m_measureCancelBtn->move(tx, ty + lh * 2);
             } else if (m_amyloidActive) {
+                const int colGap = 20;
+                int leftSize = fm.horizontalAdvance("Image size (px): ")   + m_amyloidSizeCombo->width();
+                int leftRise = fm.horizontalAdvance("Helical rise (\u00C5): ") + m_amyloidRiseEdit->width();
+                int leftWave = fm.horizontalAdvance("Wavyness wavelength (px): ") + m_amyloidWaveEdit->width();
+                int col2X = tx + std::max({leftSize, leftRise, leftWave}) + colGap;
+                // Row 0: Image size | Source map
                 drawParamLabel(p, fm, tx, ty, "Image size (px):", m_amyloidSizeCombo->toolTip());
                 m_amyloidSizeCombo->move(tx + fm.horizontalAdvance("Image size (px): "), ty);
-                drawParamLabel(p, fm, tx, ty + lh, "Cross-section map:", m_amyloidMapCombo->toolTip());
-                m_amyloidMapCombo->move(tx + fm.horizontalAdvance("Cross-section map: "), ty + lh);
-                drawParamLabel(p, fm, tx, ty + lh * 2, "Helical rise (\u00C5):", m_amyloidRiseEdit->toolTip());
-                m_amyloidRiseEdit->move(tx + fm.horizontalAdvance("Helical rise (\u00C5): "), ty + lh * 2);
-                drawParamLabel(p, fm, tx, ty + lh * 3, "Helical twist (\u00B0):", m_amyloidTwistEdit->toolTip());
-                m_amyloidTwistEdit->move(tx + fm.horizontalAdvance("Helical twist (\u00B0): "), ty + lh * 3);
-                drawParamLabel(p, fm, tx, ty + lh * 4, "Persist. length (\u00B5m):", m_amyloidPersistEdit->toolTip());
-                m_amyloidPersistEdit->move(tx + fm.horizontalAdvance("Persist. length (\u00B5m): "), ty + lh * 4);
-                // Noise checkbox + sigma edit on the same row
-                m_amyloidNoiseBtn->move(tx, ty + lh * 5);
+                drawParamLabel(p, fm, col2X, ty, "Source map:", m_amyloidMapCombo->toolTip());
+                m_amyloidMapCombo->move(col2X + fm.horizontalAdvance("Source map: "), ty);
+                // Row 1: Helical rise | Helical twist
+                drawParamLabel(p, fm, tx, ty + lh, "Helical rise (\u00C5):", m_amyloidRiseEdit->toolTip());
+                m_amyloidRiseEdit->move(tx + fm.horizontalAdvance("Helical rise (\u00C5): "), ty + lh);
+                drawParamLabel(p, fm, col2X, ty + lh, "Helical twist (\u00B0):", m_amyloidTwistEdit->toolTip());
+                m_amyloidTwistEdit->move(col2X + fm.horizontalAdvance("Helical twist (\u00B0): "), ty + lh);
+                // Row 2: Wavyness wavelength | Wavyness amplitude
+                drawParamLabel(p, fm, tx, ty + lh * 2, "Wavyness wavelength (px):", m_amyloidWaveEdit->toolTip());
+                m_amyloidWaveEdit->move(tx + fm.horizontalAdvance("Wavyness wavelength (px): "), ty + lh * 2);
+                drawParamLabel(p, fm, col2X, ty + lh * 2, "Wavyness amplitude (px):", m_amyloidAmplEdit->toolTip());
+                m_amyloidAmplEdit->move(col2X + fm.horizontalAdvance("Wavyness amplitude (px): "), ty + lh * 2);
+                // Row 3: Persistence length
+                drawParamLabel(p, fm, tx, ty + lh * 3, "Persistence length (\u00B5m):", m_amyloidPersistEdit->toolTip());
+                m_amyloidPersistEdit->move(tx + fm.horizontalAdvance("Persistence length (\u00B5m): "), ty + lh * 3);
+                // Row 4: Noise checkbox + Sigma edit
+                m_amyloidNoiseBtn->move(tx, ty + lh * 4);
                 int noiseLblX = tx + m_amyloidNoiseBtn->sizeHint().width() + 8;
-                drawParamLabel(p, fm, noiseLblX, ty + lh * 5, "Sigma:", m_amyloidNoiseEdit->toolTip());
-                m_amyloidNoiseEdit->move(noiseLblX + fm.horizontalAdvance("Sigma: "), ty + lh * 5);
-                // Signal polarity button
-                m_amyloidSignalBtn->move(tx, ty + lh * 6);
-                // Info + buttons
+                drawParamLabel(p, fm, noiseLblX, ty + lh * 4, "Sigma:", m_amyloidNoiseEdit->toolTip());
+                m_amyloidNoiseEdit->move(noiseLblX + fm.horizontalAdvance("Sigma: "), ty + lh * 4);
+                // Row 5: Signal polarity button
+                m_amyloidSignalBtn->move(tx, ty + lh * 5);
+                // Row 6: Filament info
                 QString infoStr;
                 if (m_amyloidPlacing == 1)
                     infoStr = QString("Filaments: %1  Click to place end point").arg(m_amyloidFilaments.size());
                 else
                     infoStr = QString("Filaments: %1  Click image to place start & end").arg(m_amyloidFilaments.size());
-                p.drawText(tx, ty + lh * 7 + fm.ascent(), infoStr);
-                m_amyloidCancelBtn->move(tx, ty + lh * 8);
-                m_amyloidComputeBtn->move(rx + rw - margin - m_amyloidComputeBtn->width(), ty + lh * 8);
+                p.drawText(tx, ty + lh * 6 + fm.ascent(), infoStr);
+                // Row 7: Cancel + Compute
+                m_amyloidCancelBtn->move(tx, ty + lh * 7);
+                m_amyloidComputeBtn->move(rx + rw - margin - m_amyloidComputeBtn->width(), ty + lh * 7);
             }
         }
     }

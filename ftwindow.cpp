@@ -670,7 +670,7 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     // Amyloid filament widgets
     m_amyloidRiseEdit = new QLineEdit("4.75", this);
     m_amyloidRiseEdit->setFixedSize(60, 22);
-    m_amyloidRiseEdit->setStyleSheet("background:#222; color:white; border:1px solid #888;");
+    m_amyloidRiseEdit->setStyleSheet("background:white; color:black; border:1px solid #888;");
     m_amyloidRiseEdit->setToolTip(
         "Helical rise in \u00C5ngstr\u00F6m \u2014 the axial translation between\n"
         "successive subunits along the helix. For typical amyloid\n"
@@ -679,7 +679,7 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_amyloidRiseEdit->hide();
     m_amyloidTwistEdit = new QLineEdit("-1", this);
     m_amyloidTwistEdit->setFixedSize(60, 22);
-    m_amyloidTwistEdit->setStyleSheet("background:#222; color:white; border:1px solid #888;");
+    m_amyloidTwistEdit->setStyleSheet("background:white; color:black; border:1px solid #888;");
     m_amyloidTwistEdit->setToolTip(
         "Helical twist in degrees \u2014 the azimuthal rotation between\n"
         "successive subunits. Negative = left-handed twist.\n"
@@ -690,13 +690,13 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_amyloidMapCombo = new QComboBox(this);
     for (int i = 0; i < HISTORY_SLOTS; i++)
         m_amyloidMapCombo->addItem(QString(QChar('a' + i)));
-    m_amyloidMapCombo->setFixedSize(70, 28);
+    m_amyloidMapCombo->setFixedSize(50, 22);
     m_amyloidMapCombo->setStyleSheet(
-        "QComboBox { background:#222; color:white; border:1px solid #888;"
+        "QComboBox { background:white; color:black; border:1px solid #888;"
         "  padding: 2px 8px; }"
         "QComboBox::drop-down { width: 20px; }"
-        "QComboBox QAbstractItemView { background:#222; color:white;"
-        "  selection-background-color:#555; min-width: 60px; padding: 4px; }");
+        "QComboBox QAbstractItemView { background:white; color:black;"
+        "  selection-background-color:#cce; min-width: 60px; padding: 4px; }");
     m_amyloidMapCombo->setToolTip(
         "Select the 2D map (buffer a\u2026p) that provides the\n"
         "cross-section of the fibril. This map is extruded into\n"
@@ -709,13 +709,13 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_amyloidSizeCombo->addItem("2048");
     m_amyloidSizeCombo->addItem("4096");
     m_amyloidSizeCombo->setCurrentIndex(1);
-    m_amyloidSizeCombo->setFixedSize(80, 28);
+    m_amyloidSizeCombo->setFixedSize(70, 22);
     m_amyloidSizeCombo->setStyleSheet(
-        "QComboBox { background:#222; color:white; border:1px solid #888;"
+        "QComboBox { background:white; color:black; border:1px solid #888;"
         "  padding: 2px 8px; }"
         "QComboBox::drop-down { width: 20px; }"
-        "QComboBox QAbstractItemView { background:#222; color:white;"
-        "  selection-background-color:#555; min-width: 70px; padding: 4px; }");
+        "QComboBox QAbstractItemView { background:white; color:black;"
+        "  selection-background-color:#cce; min-width: 70px; padding: 4px; }");
     m_amyloidSizeCombo->setToolTip(
         "Side length (in pixels) of the black image created for\n"
         "drawing amyloid fibril trajectories. Used when the current\n"
@@ -732,7 +732,7 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_amyloidNoiseBtn->hide();
     m_amyloidNoiseEdit = new QLineEdit("0.3", this);
     m_amyloidNoiseEdit->setFixedSize(40, 22);
-    m_amyloidNoiseEdit->setStyleSheet("background:#222; color:white; border:1px solid #888;");
+    m_amyloidNoiseEdit->setStyleSheet("background:white; color:black; border:1px solid #888;");
     m_amyloidNoiseEdit->setToolTip(
         "Noise level as a fraction of the peak filament signal.\n"
         "0.3 = moderate noise (SNR \u2248 3), 1.0 = very noisy (SNR \u2248 1),\n"
@@ -741,7 +741,7 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_amyloidNoiseEdit->hide();
     m_amyloidPersistEdit = new QLineEdit("14", this);
     m_amyloidPersistEdit->setFixedSize(60, 22);
-    m_amyloidPersistEdit->setStyleSheet("background:#222; color:white; border:1px solid #888;");
+    m_amyloidPersistEdit->setStyleSheet("background:white; color:black; border:1px solid #888;");
     m_amyloidPersistEdit->setToolTip(
         "Persistence length in \u00B5m \u2014 the characteristic length scale\n"
         "over which a filament maintains its directional orientation.\n"
@@ -749,6 +749,22 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
         "A larger value makes the filament stiffer (less bending\n"
         "allowed). Set to 0 to disable the curvature constraint.");
     m_amyloidPersistEdit->hide();
+    m_amyloidWaveEdit = new QLineEdit("50", this);
+    m_amyloidWaveEdit->setFixedSize(60, 22);
+    m_amyloidWaveEdit->setStyleSheet("background:white; color:black; border:1px solid #888;");
+    m_amyloidWaveEdit->setToolTip(
+        "Wavyness wavelength in pixels \u2014 period of the sinusoidal\n"
+        "lateral bending that displaces the cross-section along the\n"
+        "trajectory axis. Typical values 30\u2013100 px.");
+    m_amyloidWaveEdit->hide();
+    m_amyloidAmplEdit = new QLineEdit("1", this);
+    m_amyloidAmplEdit->setFixedSize(60, 22);
+    m_amyloidAmplEdit->setStyleSheet("background:white; color:black; border:1px solid #888;");
+    m_amyloidAmplEdit->setToolTip(
+        "Wavyness amplitude in pixels \u2014 peak lateral displacement\n"
+        "of the sinusoidal bending along the trajectory axis.\n"
+        "Set to 0 to disable wavyness.");
+    m_amyloidAmplEdit->hide();
     m_amyloidSignalBtn = new QPushButton("White signal", this);
     m_amyloidSignalBtn->setFixedSize(110, 26);
     m_amyloidSignalBtn->setStyleSheet(
@@ -787,6 +803,8 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     connect(m_amyloidTwistEdit, &QLineEdit::returnPressed, this, &FtWindow::onAmyloidCompute);
     connect(m_amyloidNoiseEdit,   &QLineEdit::returnPressed, this, &FtWindow::onAmyloidCompute);
     connect(m_amyloidPersistEdit, &QLineEdit::returnPressed, this, &FtWindow::onAmyloidCompute);
+    connect(m_amyloidWaveEdit,    &QLineEdit::returnPressed, this, &FtWindow::onAmyloidCompute);
+    connect(m_amyloidAmplEdit,    &QLineEdit::returnPressed, this, &FtWindow::onAmyloidCompute);
 
     // Measure tool Cancel button
     m_measureCancelBtn = new QPushButton("Cancel", this);
@@ -1188,6 +1206,8 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_amyloidSizeCombo->setCurrentIndex(settings.value("amyloidSizeIdx", 1).toInt());
     m_amyloidNoiseBtn->setChecked(settings.value("amyloidNoise", true).toBool());
     m_amyloidNoiseEdit->setText(settings.value("amyloidNoiseSigma", "0.3").toString());
+    m_amyloidWaveEdit->setText(settings.value("amyloidWave", "50").toString());
+    m_amyloidAmplEdit->setText(settings.value("amyloidAmpl", "1").toString());
     m_amyloidBlackSignal = settings.value("amyloidBlackSignal", false).toBool();
     if (m_amyloidBlackSignal) {
         m_amyloidSignalBtn->setText("Black signal");

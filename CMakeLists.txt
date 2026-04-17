@@ -18,6 +18,7 @@ set(FT_CORE_SOURCES
     ftwindow_paint.cpp
     ftwindow_draw.cpp
     ftwindow_slots.cpp
+    ftwindow_amyloid.cpp
     fft.cpp
     mrcloader.cpp
 )
