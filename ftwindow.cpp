@@ -681,6 +681,16 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
         "0.1 = low noise. The noise is additive Gaussian with zero\n"
         "mean and this sigma, applied to the whole image.");
     m_amyloidNoiseEdit->hide();
+    m_amyloidPersistEdit = new QLineEdit("14", this);
+    m_amyloidPersistEdit->setFixedSize(60, 22);
+    m_amyloidPersistEdit->setStyleSheet("background:#222; color:white; border:1px solid #888;");
+    m_amyloidPersistEdit->setToolTip(
+        "Persistence length in \u00B5m \u2014 the characteristic length scale\n"
+        "over which a filament maintains its directional orientation.\n"
+        "For amyloid fibrils, typical values are 1\u201320 \u00B5m.\n"
+        "A larger value makes the filament stiffer (less bending\n"
+        "allowed). Set to 0 to disable the curvature constraint.");
+    m_amyloidPersistEdit->hide();
     m_amyloidSignalBtn = new QPushButton("White signal", this);
     m_amyloidSignalBtn->setFixedSize(110, 26);
     m_amyloidSignalBtn->setStyleSheet(
@@ -717,7 +727,8 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_amyloidComputeBtn->hide();
     connect(m_amyloidRiseEdit,  &QLineEdit::returnPressed, this, &FtWindow::onAmyloidCompute);
     connect(m_amyloidTwistEdit, &QLineEdit::returnPressed, this, &FtWindow::onAmyloidCompute);
-    connect(m_amyloidNoiseEdit, &QLineEdit::returnPressed, this, &FtWindow::onAmyloidCompute);
+    connect(m_amyloidNoiseEdit,   &QLineEdit::returnPressed, this, &FtWindow::onAmyloidCompute);
+    connect(m_amyloidPersistEdit, &QLineEdit::returnPressed, this, &FtWindow::onAmyloidCompute);
 
     // Measure tool Cancel button
     m_measureCancelBtn = new QPushButton("Cancel", this);
