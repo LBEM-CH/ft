@@ -165,6 +165,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         m_amyloidSizeCombo->setVisible(m_amyloidActive);
         m_amyloidNoiseBtn->setVisible(m_amyloidActive);
         m_amyloidNoiseEdit->setVisible(m_amyloidActive);
+        m_amyloidPersistEdit->setVisible(m_amyloidActive);
         m_amyloidSignalBtn->setVisible(m_amyloidActive);
         m_amyloidCancelBtn->setVisible(m_amyloidActive);
         m_amyloidComputeBtn->setVisible(m_amyloidActive);

@@ -2576,6 +2576,7 @@ void FtWindow::onAmyloidCancel()
     m_amyloidSizeCombo->hide();
     m_amyloidNoiseBtn->hide();
     m_amyloidNoiseEdit->hide();
+    m_amyloidPersistEdit->hide();
     m_amyloidSignalBtn->hide();
     m_amyloidCancelBtn->hide();
     m_amyloidComputeBtn->hide();
@@ -2597,15 +2598,19 @@ void FtWindow::onAmyloidCompute()
     }
 
     // ---- Read parameters ----
-    bool okR = false, okT = false, okNs = false;
+    bool okR = false, okT = false, okNs = false, okLp = false;
     double rise      = m_amyloidRiseEdit->text().toDouble(&okR);
     double twistDeg  = m_amyloidTwistEdit->text().toDouble(&okT);
     double noiseFrac = m_amyloidNoiseEdit->text().toDouble(&okNs);
+    double persistLpUm = m_amyloidPersistEdit->text().toDouble(&okLp);
     bool addNoise    = m_amyloidNoiseBtn->isChecked();
     bool blackSignal = m_amyloidBlackSignal;
     if (!okR  || rise <= 0.0)     rise = 4.75;
     if (!okT)                     twistDeg = -1.0;
     if (!okNs || noiseFrac <= 0.0) noiseFrac = 0.3;
+    if (!okLp || persistLpUm < 0.0) persistLpUm = 14.0;
+    // Persistence length in pixels (1 px = 1 Å): μm → Å
+    double persistLpPx = persistLpUm * 1e4;
 
     // ---- Get the selected 2D cross-section map ----
     int mapIdx = m_amyloidMapCombo->currentIndex();
@@ -2690,6 +2695,68 @@ void FtWindow::onAmyloidCompute()
 
     if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS) {
         m_zoom[0].reset(outSz, outSz);
+    }
+
+    // ---- Enforce persistence length: relax control points so that the
+    //      local curvature never exceeds 1/Lp anywhere along the trajectory.
+    //      We iterate over all interior control points and, for every triplet
+    //      (prev, current, next), compute the circumradius R.  If R < Lp the
+    //      middle point is pushed toward the straight line connecting its
+    //      neighbours until R = Lp.  Multiple passes ensure convergence when
+    //      adjacent triplets interact. ----
+    if (persistLpPx > 0.0) {
+        const int maxIter = 50;
+        for (auto &fil : m_amyloidFilaments) {
+            int nPts = (int)fil.pts.size();
+            if (nPts < 3) continue;
+            for (int iter = 0; iter < maxIter; iter++) {
+                bool changed = false;
+                for (int j = 1; j < nPts - 1; j++) {
+                    QPointF A = fil.pts[j - 1];
+                    QPointF B = fil.pts[j];
+                    QPointF C = fil.pts[j + 1];
+
+                    // Circumradius of triangle ABC
+                    double abx = B.x() - A.x(), aby = B.y() - A.y();
+                    double bcx = C.x() - B.x(), bcy = C.y() - B.y();
+                    double cross = abx * bcy - aby * bcx;
+                    if (std::abs(cross) < 1e-9) continue; // collinear → infinite R
+
+                    double ab = std::sqrt(abx * abx + aby * aby);
+                    double bc = std::sqrt(bcx * bcx + bcy * bcy);
+                    double cax = A.x() - C.x(), cay = A.y() - C.y();
+                    double ca = std::sqrt(cax * cax + cay * cay);
+                    double R = (ab * bc * ca) / (2.0 * std::abs(cross));
+
+                    if (R >= persistLpPx) continue; // curvature OK
+
+                    // Move B toward the midpoint of A–C to reduce curvature.
+                    // The midpoint of A–C is the straight-line position (R → ∞).
+                    QPointF mid((A.x() + C.x()) * 0.5, (A.y() + C.y()) * 0.5);
+                    double halfChord = ca * 0.5;
+
+                    // Maximum sagitta (perpendicular distance from mid to B)
+                    // for a circle of radius Lp through A and C:
+                    //   sagitta = Lp − sqrt(Lp² − halfChord²)
+                    double disc = persistLpPx * persistLpPx - halfChord * halfChord;
+                    double maxSag = (disc > 0.0)
+                        ? (persistLpPx - std::sqrt(disc))
+                        : persistLpPx;
+
+                    double dx = B.x() - mid.x();
+                    double dy = B.y() - mid.y();
+                    double dist = std::sqrt(dx * dx + dy * dy);
+                    if (dist <= maxSag) continue; // already within limit
+
+                    // Clamp B along the mid→B direction at maxSag
+                    double scale = maxSag / dist;
+                    fil.pts[j] = QPointF(mid.x() + dx * scale,
+                                         mid.y() + dy * scale);
+                    changed = true;
+                }
+                if (!changed) break;
+            }
+        }
     }
 
     const double twistRad = twistDeg * M_PI / 180.0;

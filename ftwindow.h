@@ -380,6 +380,7 @@ private:
     QComboBox  *m_amyloidSizeCombo     = nullptr;
     QCheckBox  *m_amyloidNoiseBtn     = nullptr;
     QLineEdit  *m_amyloidNoiseEdit    = nullptr;
+    QLineEdit  *m_amyloidPersistEdit  = nullptr;  // persistence length (μm)
     QPushButton *m_amyloidSignalBtn   = nullptr;
     bool        m_amyloidBlackSignal = false;  // false=white signal, true=black signal
     QPushButton *m_amyloidCancelBtn   = nullptr;

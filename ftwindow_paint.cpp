@@ -2812,22 +2812,24 @@ void FtWindow::paintEvent(QPaintEvent *)
                 m_amyloidRiseEdit->move(tx + fm.horizontalAdvance("Helical rise (\u00C5): "), ty + lh * 2);
                 drawParamLabel(p, fm, tx, ty + lh * 3, "Helical twist (\u00B0):", m_amyloidTwistEdit->toolTip());
                 m_amyloidTwistEdit->move(tx + fm.horizontalAdvance("Helical twist (\u00B0): "), ty + lh * 3);
+                drawParamLabel(p, fm, tx, ty + lh * 4, "Persist. length (\u00B5m):", m_amyloidPersistEdit->toolTip());
+                m_amyloidPersistEdit->move(tx + fm.horizontalAdvance("Persist. length (\u00B5m): "), ty + lh * 4);
                 // Noise checkbox + sigma edit on the same row
-                m_amyloidNoiseBtn->move(tx, ty + lh * 4);
+                m_amyloidNoiseBtn->move(tx, ty + lh * 5);
                 int noiseLblX = tx + m_amyloidNoiseBtn->sizeHint().width() + 8;
-                drawParamLabel(p, fm, noiseLblX, ty + lh * 4, "Sigma:", m_amyloidNoiseEdit->toolTip());
-                m_amyloidNoiseEdit->move(noiseLblX + fm.horizontalAdvance("Sigma: "), ty + lh * 4);
+                drawParamLabel(p, fm, noiseLblX, ty + lh * 5, "Sigma:", m_amyloidNoiseEdit->toolTip());
+                m_amyloidNoiseEdit->move(noiseLblX + fm.horizontalAdvance("Sigma: "), ty + lh * 5);
                 // Signal polarity button
-                m_amyloidSignalBtn->move(tx, ty + lh * 5);
+                m_amyloidSignalBtn->move(tx, ty + lh * 6);
                 // Info + buttons
                 QString infoStr;
                 if (m_amyloidPlacing == 1)
                     infoStr = QString("Filaments: %1  Click to place end point").arg(m_amyloidFilaments.size());
                 else
                     infoStr = QString("Filaments: %1  Click image to place start & end").arg(m_amyloidFilaments.size());
-                p.drawText(tx, ty + lh * 6 + fm.ascent(), infoStr);
-                m_amyloidCancelBtn->move(tx, ty + lh * 7);
-                m_amyloidComputeBtn->move(rx + rw - margin - m_amyloidComputeBtn->width(), ty + lh * 7);
+                p.drawText(tx, ty + lh * 7 + fm.ascent(), infoStr);
+                m_amyloidCancelBtn->move(tx, ty + lh * 8);
+                m_amyloidComputeBtn->move(rx + rw - margin - m_amyloidComputeBtn->width(), ty + lh * 8);
             }
         }
     }
