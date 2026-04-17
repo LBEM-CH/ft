@@ -753,7 +753,7 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_amyloidWaveEdit->setFixedSize(60, 22);
     m_amyloidWaveEdit->setStyleSheet("background:white; color:black; border:1px solid #888;");
     m_amyloidWaveEdit->setToolTip(
-        "Wavyness wavelength in pixels \u2014 period of the sinusoidal\n"
+        "Waviness wavelength in pixels \u2014 period of the sinusoidal\n"
         "lateral bending that displaces the cross-section along the\n"
         "trajectory axis. Typical values 30\u2013100 px.");
     m_amyloidWaveEdit->hide();
@@ -761,9 +761,9 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_amyloidAmplEdit->setFixedSize(60, 22);
     m_amyloidAmplEdit->setStyleSheet("background:white; color:black; border:1px solid #888;");
     m_amyloidAmplEdit->setToolTip(
-        "Wavyness amplitude in pixels \u2014 peak lateral displacement\n"
+        "Waviness amplitude in pixels \u2014 peak lateral displacement\n"
         "of the sinusoidal bending along the trajectory axis.\n"
-        "Set to 0 to disable wavyness.");
+        "Set to 0 to disable waviness.");
     m_amyloidAmplEdit->hide();
     m_amyloidSignalBtn = new QPushButton("White signal", this);
     m_amyloidSignalBtn->setFixedSize(110, 26);

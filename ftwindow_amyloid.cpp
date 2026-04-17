@@ -254,12 +254,12 @@ void FtWindow::onAmyloidCompute()
 
             // Slab thickness along the trajectory axis: Gaussian distributed
             // over 11 pixel planes (offsets -5..+5, i.e. 10 pixel total
-            // thickness) with FWHM = 5 pixels.
+            // thickness) with FWHM = 2.5 pixels.
             // sigma = FWHM / (2*sqrt(2*ln 2)) = FWHM / 2.3548
             const int    nSlabSteps  = 11;
             const double slabFWHM    = 2.5; // pixels
             const double slabSigma   = slabFWHM / 2.3548200450309493;
-            // Chess-board wavyness of the slab: displaces the thickness
+            // Chess-board waviness of the slab: displaces the thickness
             // coordinate (slab-local T axis) by the product of sine waves
             // along the slab's two lateral axes (pre-rotation u and v).
             // waveShift = A * sin(2*pi*u/L) * sin(2*pi*v/L).
@@ -270,7 +270,7 @@ void FtWindow::onAmyloidCompute()
             double slabWeights[nSlabSteps];
             double slabWSum = 0.0;
             for (int sl = 0; sl < nSlabSteps; sl++) {
-                double k = sl - (nSlabSteps - 1) / 2.0;  // -2,-1,0,1,2
+                double k = sl - (nSlabSteps - 1) / 2.0;  // -5,-4,...,0,...,+5 for nSlabSteps = 11
                 slabWeights[sl] = std::exp(-(k * k) / (2.0 * slabSigma * slabSigma));
                 slabWSum += slabWeights[sl];
             }
@@ -371,7 +371,7 @@ void FtWindow::onAmyloidCompute()
                             double u = du * mapPixSize;
                             double v = dv * mapPixSize;
 
-                            // Pre-rotation wavyness: modify the slab in its
+                            // Pre-rotation waviness: modify the slab in its
                             // own local (u, v) frame with a product of sine
                             // waves, producing a chess-board displacement of
                             // the thickness coordinate. Twist rotates around
