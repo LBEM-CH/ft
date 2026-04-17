@@ -172,7 +172,130 @@ void FtWindow::onSaveImage()
 
 void FtWindow::onCreateImage()
 {
-    onCreateImageSized(1024);
+    onNewImageOpen();
+}
+
+void FtWindow::onNewImageOpen()
+{
+    // Dismiss any currently-open math calculation overlays so they do not
+    // linger behind the Create-or-Copy popup.
+    if (m_mathActive)   onMathCancel();
+    if (m_ftMathActive) onFtMathCancel();
+
+    // Source default: always "New 1024".
+    m_newImgSrcCombo->setCurrentIndex(1);   // "New 1024"
+
+    // Target default: active slot if any, else first empty slot, else 0.
+    int defaultTgt = -1;
+    if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS) {
+        defaultTgt = m_activeSlot;
+    } else {
+        for (int i = 0; i < HISTORY_SLOTS; i++) {
+            if (!m_history[i].occupied) { defaultTgt = i; break; }
+        }
+        if (defaultTgt < 0) defaultTgt = 0;
+    }
+    m_newImgTgtCombo->setCurrentIndex(defaultTgt);
+
+    m_newImageActive = true;
+    m_newImgSrcCombo->show();
+    m_newImgTgtCombo->show();
+    m_newImgCreateBtn->show();
+    m_newImgCancelBtn->show();
+    update();
+}
+
+void FtWindow::onNewImageCancel()
+{
+    m_newImageActive = false;
+    m_newImgSrcCombo->hide();
+    m_newImgTgtCombo->hide();
+    m_newImgCreateBtn->hide();
+    m_newImgCancelBtn->hide();
+    update();
+}
+
+void FtWindow::onNewImageCreate()
+{
+    int srcIdx = m_newImgSrcCombo->currentIndex();
+    int tgtIdx = m_newImgTgtCombo->currentIndex();
+    if (tgtIdx < 0 || tgtIdx >= HISTORY_SLOTS) { onNewImageCancel(); return; }
+
+    if (srcIdx < 4) {
+        // Create a new blank image of the selected size in the target slot.
+        static const int sizes[4] = { 512, 1024, 2048, 4096 };
+        int sz = sizes[srcIdx];
+
+        // Save any currently-active buffer back to its slot before switching.
+        if (m_activeSlot >= 0 && m_activeSlot != tgtIdx && !m_image.isNull()) {
+            m_history[m_activeSlot].image        = m_image;
+            m_history[m_activeSlot].path         = m_imagePath;
+            m_history[m_activeSlot].rawPixels    = m_imageRawPixels;
+            m_history[m_activeSlot].minVal       = m_imageMinVal;
+            m_history[m_activeSlot].maxVal       = m_imageMaxVal;
+            m_history[m_activeSlot].pixelSize    = m_pixelSize;
+            m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
+            m_history[m_activeSlot].occupied     = true;
+        }
+        m_activeSlot = tgtIdx;
+        onNewImageCancel();
+        onCreateImageSized(sz);
+        return;
+    }
+
+    // Source is a history slot a..p
+    int slotIdx = srcIdx - 4;
+    if (slotIdx < 0 || slotIdx >= HISTORY_SLOTS) { onNewImageCancel(); return; }
+    if (slotIdx == tgtIdx) { onNewImageCancel(); return; }
+
+    // Resolve source snapshot (use live buffer if it is the active slot).
+    HistoryEntry src;
+    if (slotIdx == m_activeSlot && !m_image.isNull()) {
+        src.image        = m_image;
+        src.path         = m_imagePath;
+        src.rawPixels    = m_imageRawPixels;
+        src.minVal       = m_imageMinVal;
+        src.maxVal       = m_imageMaxVal;
+        src.pixelSize    = m_pixelSize;
+        src.powerSpecImg = computePowerSpecMasked(m_image);
+        src.occupied     = true;
+    } else if (m_history[slotIdx].occupied) {
+        src = m_history[slotIdx];
+    } else {
+        onNewImageCancel();
+        return;  // nothing to copy
+    }
+
+    storeUndoSnapshot();
+
+    m_history[tgtIdx] = src;
+    m_history[tgtIdx].occupied = true;
+
+    m_activeSlot     = tgtIdx;
+    m_image          = m_history[tgtIdx].image;
+    m_imagePath      = m_history[tgtIdx].path;
+    m_imageRawPixels = m_history[tgtIdx].rawPixels;
+    m_imageMinVal    = m_history[tgtIdx].minVal;
+    m_imageMaxVal    = m_history[tgtIdx].maxVal;
+    m_imageDispMin   = m_imageMinVal;
+    m_imageDispMax   = m_imageMaxVal;
+    m_pixelSize      = m_history[tgtIdx].pixelSize;
+    m_zoom[0].reset(m_image.width(), m_image.height());
+
+    m_ftComputed = false;
+    m_modeBtn->setText(modeLabel());
+    m_modeBtn->hide();
+    m_maskBtn->hide();
+
+    computeFFT();
+    m_history[tgtIdx].powerSpecImg = computePowerSpecMasked(m_image);
+
+#ifndef __EMSCRIPTEN__
+    QSettings settings("ft", "ft");
+    settings.setValue("activeSlot", m_activeSlot);
+#endif
+    saveHistory();
+    onNewImageCancel();
 }
 
 void FtWindow::onCreateImageSized(int sz)
@@ -1790,6 +1913,15 @@ void FtWindow::onApplyBandpass()
     });
 }
 
+void FtWindow::syncLatticeVectorEdits()
+{
+    auto fmt = [](double v) { return QString::number(v, 'f', 1); };
+    if (m_latticeUxEdit) m_latticeUxEdit->setText(fmt(m_latticeUx));
+    if (m_latticeUyEdit) m_latticeUyEdit->setText(fmt(m_latticeUy));
+    if (m_latticeVxEdit) m_latticeVxEdit->setText(fmt(m_latticeVx));
+    if (m_latticeVyEdit) m_latticeVyEdit->setText(fmt(m_latticeVy));
+}
+
 void FtWindow::onApplyLattice()
 {
     if (!m_ftComputed || m_fftN == 0) return;
@@ -2680,13 +2812,13 @@ void FtWindow::onAmyloidCompute()
             // thickness) with FWHM = 5 pixels.
             // sigma = FWHM / (2*sqrt(2*ln 2)) = FWHM / 2.3548
             const int    nSlabSteps  = 11;
-            const double slabFWHM    = 5.0; // pixels
+            const double slabFWHM    = 2.5; // pixels
             const double slabSigma   = slabFWHM / 2.3548200450309493;
             // Sinusoidal curvature of the slab along the in-plane normal
             // direction: displaces the cross-section along the tangent
             // axis by A*sin(2*pi*u/L). u is in Å; output image is 1 Å/px,
             // so amplitude in Å equals amplitude in pixels for that image.
-            const double curveAmpl   = 2.0;  // pixels / Å
+            const double curveAmpl   = 1.0;  // pixels / Å
             const double curveWave   = 50.0; // pixels / Å
             double slabWeights[nSlabSteps];
             double slabWSum = 0.0;
@@ -2961,6 +3093,62 @@ void FtWindow::onApplyFtCrop()
                 m_zoom[1].reset(newN, newN);
                 m_zoom[2].reset(newN, newN);
             }
+            m_toolProgress = 0.5;
+        },
+        [this]() {
+            recomputeDisplayImages();
+            computeInverseFFT();
+            m_toolProgress = -1;
+            update();
+        }
+    });
+}
+
+void FtWindow::onApplyFtPad()
+{
+    if (!m_ftComputed || m_fftN == 0) return;
+
+    int factor = m_ftCropCombo->currentData().toInt();
+    if (factor <= 1) return;
+
+    constexpr int FT_PAD_MAX = 4096;
+    int N = m_fftN;
+    if (N >= FT_PAD_MAX) return;
+
+    int newN = N * factor;
+    if (newN > FT_PAD_MAX) newN = FT_PAD_MAX;
+    // Round to the next FFT-friendly size without exceeding the cap.
+    int adjN = nextGoodFFTSize(newN);
+    if (adjN <= FT_PAD_MAX) newN = adjN;
+    if (newN <= N) return;  // nothing to do
+
+    storeUndoSnapshot();
+
+    m_toolProgress = 0.1;
+    update();
+
+    int oldN = N;
+    int oldHalf = N / 2;
+    int newHalf = newN / 2;
+    chainSteps({
+        [this, oldN, oldHalf, newN, newHalf]() {
+            std::vector<Complex> newData(static_cast<size_t>(newN) * newN, Complex(0.0, 0.0));
+            // Center-embed the old FFT inside the zero-padded array so that
+            // the DC component stays at (newHalf, newHalf).
+            int offX = newHalf - oldHalf;
+            int offY = newHalf - oldHalf;
+            for (int y = 0; y < oldN; y++) {
+                for (int x = 0; x < oldN; x++) {
+                    newData[(y + offY) * newN + (x + offX)] =
+                        m_fftData[y * oldN + x];
+                }
+            }
+            m_fftData = std::move(newData);
+            m_fftN = newN;
+            m_origW = newN;
+            m_origH = newN;
+            m_zoom[1].reset(newN, newN);
+            m_zoom[2].reset(newN, newN);
             m_toolProgress = 0.5;
         },
         [this]() {
