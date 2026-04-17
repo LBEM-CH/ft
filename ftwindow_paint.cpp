@@ -4,13 +4,14 @@
 //  Painting
 // ---------------------------------------------------------------------------
 void FtWindow::drawParamLabel(QPainter &p, const QFontMetrics &fm,
-                              int x, int y, const QString &text, const QString &tip)
+                              int x, int y, const QString &text, const QString &tip,
+                              int fieldH)
 {
-    // Align label baseline with the text baseline inside a standard 22 px tall
-    // input field (line edit / combo box). Input fields vertically centre their
-    // text, so their baseline sits at fieldH/2 + ascent/2 - descent/2 from the
-    // widget top — not at fm.ascent() as with a top-anchored drawText.
-    const int fieldH = 22;
+    // Align label baseline with the text baseline inside the adjacent input
+    // field of height `fieldH` (line edit / combo box, typically 22 px).
+    // Input fields vertically centre their text, so their baseline sits at
+    // fieldH/2 + ascent/2 - descent/2 from the widget top — not at
+    // fm.ascent() as with a top-anchored drawText.
     int baselineY = y + (fieldH + fm.ascent() - fm.descent()) / 2;
     p.drawText(x, baselineY, text);
     if (!tip.isEmpty()) {
@@ -2529,27 +2530,30 @@ void FtWindow::paintEvent(QPaintEvent *)
                 int vy = ty + lh * 3;
                 int ex = tx;
                 int editYOffset = (lh - m_latticeUxEdit->height()) / 2;
+                // Align labels to the widgets' actual top so their baselines
+                // match the text inside the vertically-centred edit boxes.
+                int labelY = vy + editYOffset;
 
-                drawParamLabel(p, fm, ex, vy, "u = (", m_latticeUxEdit->toolTip());
+                drawParamLabel(p, fm, ex, labelY, "u = (", m_latticeUxEdit->toolTip());
                 ex += fm.horizontalAdvance("u = ( ");
                 m_latticeUxEdit->move(ex, vy + editYOffset);
                 ex += m_latticeUxEdit->width();
-                drawParamLabel(p, fm, ex, vy, ", ", m_latticeUxEdit->toolTip());
+                drawParamLabel(p, fm, ex, labelY, ", ", m_latticeUxEdit->toolTip());
                 ex += fm.horizontalAdvance(", ");
                 m_latticeUyEdit->move(ex, vy + editYOffset);
                 ex += m_latticeUyEdit->width();
-                drawParamLabel(p, fm, ex, vy, " )", m_latticeUxEdit->toolTip());
+                drawParamLabel(p, fm, ex, labelY, " )", m_latticeUxEdit->toolTip());
                 ex += fm.horizontalAdvance(" )") + fm.horizontalAdvance("   ");
 
-                drawParamLabel(p, fm, ex, vy, "v = (", m_latticeVxEdit->toolTip());
+                drawParamLabel(p, fm, ex, labelY, "v = (", m_latticeVxEdit->toolTip());
                 ex += fm.horizontalAdvance("v = ( ");
                 m_latticeVxEdit->move(ex, vy + editYOffset);
                 ex += m_latticeVxEdit->width();
-                drawParamLabel(p, fm, ex, vy, ", ", m_latticeVxEdit->toolTip());
+                drawParamLabel(p, fm, ex, labelY, ", ", m_latticeVxEdit->toolTip());
                 ex += fm.horizontalAdvance(", ");
                 m_latticeVyEdit->move(ex, vy + editYOffset);
                 ex += m_latticeVyEdit->width();
-                drawParamLabel(p, fm, ex, vy, " )", m_latticeVxEdit->toolTip());
+                drawParamLabel(p, fm, ex, labelY, " )", m_latticeVxEdit->toolTip());
 
                 m_latticeApplyBtn->move(tx, ty + lh * 4);
             } else if (m_crossSectionActive) {
@@ -2689,11 +2693,11 @@ void FtWindow::paintEvent(QPaintEvent *)
                 const int colGap = 20;
                 int leftSize  = fm.horizontalAdvance("Image size (px): ")   + m_amyloidSizeCombo->width();
                 int leftRise  = fm.horizontalAdvance("Helical rise (\u00C5): ") + m_amyloidRiseEdit->width();
-                int leftWave  = fm.horizontalAdvance("Wavyness wavelength (px): ") + m_amyloidWaveEdit->width();
+                int leftWave  = fm.horizontalAdvance("Waviness wavelength (px): ") + m_amyloidWaveEdit->width();
                 int leftCol   = std::max({leftSize, leftRise, leftWave}) + colGap;
                 int rRow0 = leftCol + fm.horizontalAdvance("Source map: ")       + m_amyloidMapCombo->width();
                 int rRow1 = leftCol + fm.horizontalAdvance("Helical twist (\u00B0): ") + m_amyloidTwistEdit->width();
-                int rRow2 = leftCol + fm.horizontalAdvance("Wavyness amplitude (px): ") + m_amyloidAmplEdit->width();
+                int rRow2 = leftCol + fm.horizontalAdvance("Waviness amplitude (px): ") + m_amyloidAmplEdit->width();
                 int rPer  = fm.horizontalAdvance("Persistence length (\u00B5m): ")      + m_amyloidPersistEdit->width();
                 int rNoise = m_amyloidNoiseBtn->sizeHint().width() + 8 + fm.horizontalAdvance("Sigma: ") + m_amyloidNoiseEdit->width();
                 int rSig   = m_amyloidSignalBtn->width();
@@ -2744,7 +2748,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 m_applyBinBtn->move(tx, ty + lh * 2);
             } else if (m_peakPickActive) {
                 // Row 0: source map combo + show/hide button top-right
-                drawParamLabel(p, fm, tx, ty, "Picking source map:", m_peakSourceCombo->toolTip());
+                drawParamLabel(p, fm, tx, ty, "Picking source map:", m_peakSourceCombo->toolTip(),
+                               m_peakSourceCombo->height());
                 m_peakSourceCombo->move(tx + fm.horizontalAdvance("Picking source map: "), ty);
                 m_peakShowPosBtn->move(rx + rw - margin - m_peakShowPosBtn->width(), ty);
                 // Row 1: threshold slider
@@ -2777,11 +2782,14 @@ void FtWindow::paintEvent(QPaintEvent *)
                 if (m_peaks.empty()) {
                     p.drawText(tx, ty + fm.ascent(), "First prepare a particle position list");
                 } else {
-                    drawParamLabel(p, fm, tx, ty, "Source image:", m_extractSourceCombo->toolTip());
+                    drawParamLabel(p, fm, tx, ty, "Source image:", m_extractSourceCombo->toolTip(),
+                                   m_extractSourceCombo->height());
                     m_extractSourceCombo->move(tx + fm.horizontalAdvance("Source image: "), ty);
-                    drawParamLabel(p, fm, tx, ty + lh, "Target image:", m_extractTargetCombo->toolTip());
+                    drawParamLabel(p, fm, tx, ty + lh, "Target image:", m_extractTargetCombo->toolTip(),
+                                   m_extractTargetCombo->height());
                     m_extractTargetCombo->move(tx + fm.horizontalAdvance("Target image: "), ty + lh);
-                    drawParamLabel(p, fm, tx, ty + lh * 2, "Particle size:", m_extractSizeCombo->toolTip());
+                    drawParamLabel(p, fm, tx, ty + lh * 2, "Particle size:", m_extractSizeCombo->toolTip(),
+                                   m_extractSizeCombo->height());
                     m_extractSizeCombo->move(tx + fm.horizontalAdvance("Particle size: "), ty + lh * 2);
                     m_extractCancelBtn->move(tx, ty + lh * 3);
                     m_extractComputeBtn->move(rx + rw - margin - m_extractComputeBtn->width(), ty + lh * 3);
@@ -2818,7 +2826,7 @@ void FtWindow::paintEvent(QPaintEvent *)
                 const int colGap = 20;
                 int leftSize = fm.horizontalAdvance("Image size (px): ")   + m_amyloidSizeCombo->width();
                 int leftRise = fm.horizontalAdvance("Helical rise (\u00C5): ") + m_amyloidRiseEdit->width();
-                int leftWave = fm.horizontalAdvance("Wavyness wavelength (px): ") + m_amyloidWaveEdit->width();
+                int leftWave = fm.horizontalAdvance("Waviness wavelength (px): ") + m_amyloidWaveEdit->width();
                 int col2X = tx + std::max({leftSize, leftRise, leftWave}) + colGap;
                 // Row 0: Image size | Source map
                 drawParamLabel(p, fm, tx, ty, "Image size (px):", m_amyloidSizeCombo->toolTip());
@@ -2830,11 +2838,11 @@ void FtWindow::paintEvent(QPaintEvent *)
                 m_amyloidRiseEdit->move(tx + fm.horizontalAdvance("Helical rise (\u00C5): "), ty + lh);
                 drawParamLabel(p, fm, col2X, ty + lh, "Helical twist (\u00B0):", m_amyloidTwistEdit->toolTip());
                 m_amyloidTwistEdit->move(col2X + fm.horizontalAdvance("Helical twist (\u00B0): "), ty + lh);
-                // Row 2: Wavyness wavelength | Wavyness amplitude
-                drawParamLabel(p, fm, tx, ty + lh * 2, "Wavyness wavelength (px):", m_amyloidWaveEdit->toolTip());
-                m_amyloidWaveEdit->move(tx + fm.horizontalAdvance("Wavyness wavelength (px): "), ty + lh * 2);
-                drawParamLabel(p, fm, col2X, ty + lh * 2, "Wavyness amplitude (px):", m_amyloidAmplEdit->toolTip());
-                m_amyloidAmplEdit->move(col2X + fm.horizontalAdvance("Wavyness amplitude (px): "), ty + lh * 2);
+                // Row 2: Waviness wavelength | Waviness amplitude
+                drawParamLabel(p, fm, tx, ty + lh * 2, "Waviness wavelength (px):", m_amyloidWaveEdit->toolTip());
+                m_amyloidWaveEdit->move(tx + fm.horizontalAdvance("Waviness wavelength (px): "), ty + lh * 2);
+                drawParamLabel(p, fm, col2X, ty + lh * 2, "Waviness amplitude (px):", m_amyloidAmplEdit->toolTip());
+                m_amyloidAmplEdit->move(col2X + fm.horizontalAdvance("Waviness amplitude (px): "), ty + lh * 2);
                 // Row 3: Persistence length
                 drawParamLabel(p, fm, tx, ty + lh * 3, "Persistence length (\u00B5m):", m_amyloidPersistEdit->toolTip());
                 m_amyloidPersistEdit->move(tx + fm.horizontalAdvance("Persistence length (\u00B5m): "), ty + lh * 3);
