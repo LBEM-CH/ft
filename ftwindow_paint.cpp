@@ -6,9 +6,15 @@
 void FtWindow::drawParamLabel(QPainter &p, const QFontMetrics &fm,
                               int x, int y, const QString &text, const QString &tip)
 {
-    p.drawText(x, y + fm.ascent(), text);
+    // Align label baseline with the text baseline inside a standard 22 px tall
+    // input field (line edit / combo box). Input fields vertically centre their
+    // text, so their baseline sits at fieldH/2 + ascent/2 - descent/2 from the
+    // widget top — not at fm.ascent() as with a top-anchored drawText.
+    const int fieldH = 22;
+    int baselineY = y + (fieldH + fm.ascent() - fm.descent()) / 2;
+    p.drawText(x, baselineY, text);
     if (!tip.isEmpty()) {
-        QRect r(x, y, fm.horizontalAdvance(text), fm.height());
+        QRect r(x, baselineY - fm.ascent(), fm.horizontalAdvance(text), fm.height());
         m_paramLabelTips.emplace_back(r, tip);
     }
 }
