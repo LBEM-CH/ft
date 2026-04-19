@@ -161,7 +161,8 @@ private:
     // entry widget). `tip` is the tooltip string (typically fetched from the
     // corresponding entry widget's toolTip()).
     void drawParamLabel(QPainter &p, const QFontMetrics &fm,
-                        int x, int y, const QString &text, const QString &tip);
+                        int x, int y, const QString &text, const QString &tip,
+                        int fieldH = 22);
 
     // Painted parameter-label hover rectangles (populated in paintEvent,
     // consumed in mouseMoveEvent). Cleared at the start of each paintEvent.
@@ -380,6 +381,9 @@ private:
     QComboBox  *m_amyloidSizeCombo     = nullptr;
     QCheckBox  *m_amyloidNoiseBtn     = nullptr;
     QLineEdit  *m_amyloidNoiseEdit    = nullptr;
+    QLineEdit  *m_amyloidPersistEdit  = nullptr;  // persistence length (μm)
+    QLineEdit  *m_amyloidWaveEdit     = nullptr;  // waviness wavelength (px)
+    QLineEdit  *m_amyloidAmplEdit     = nullptr;  // waviness amplitude (px)
     QPushButton *m_amyloidSignalBtn   = nullptr;
     bool        m_amyloidBlackSignal = false;  // false=white signal, true=black signal
     QPushButton *m_amyloidCancelBtn   = nullptr;
@@ -406,6 +410,16 @@ private:
     void brushApply(QPoint pos);
     double brushValue() const;             // max amplitude outside center 3x3
     void onApplyBinning();
+
+    // "New image" overlay (Create-or-Copy popup, launched from top-left button)
+    bool        m_newImageActive = false;
+    QComboBox  *m_newImgSrcCombo    = nullptr;   // "New 512..4096" or slots a..p
+    QComboBox  *m_newImgTgtCombo    = nullptr;   // target slot a..p
+    QPushButton *m_newImgCreateBtn  = nullptr;   // "Execute"
+    QPushButton *m_newImgCancelBtn  = nullptr;   // "Cancel"
+    void onNewImageOpen();
+    void onNewImageCreate();   // "Execute": create new or copy, per source selection
+    void onNewImageCancel();
 
     // Math calculations overlay
     bool        m_mathActive = false;
@@ -493,8 +507,13 @@ private:
     QLineEdit  *m_latticeSmoothEdit   = nullptr;
     QLabel     *m_latticeDotDiamLabel = nullptr;
     QLineEdit  *m_latticeDotDiamEdit  = nullptr;
+    QLineEdit  *m_latticeUxEdit       = nullptr;
+    QLineEdit  *m_latticeUyEdit       = nullptr;
+    QLineEdit  *m_latticeVxEdit       = nullptr;
+    QLineEdit  *m_latticeVyEdit       = nullptr;
     QCheckBox  *m_latticeEraseOutside = nullptr;
     QPushButton *m_latticeApplyBtn    = nullptr;
+    void syncLatticeVectorEdits();   // write m_lattice{U,V}{x,y} into edits
 
     void drawLattice(QPainter &p, const QRect &screenRect,
                      const ZoomState &zoom, int imgW, int imgH);
@@ -523,7 +542,9 @@ private:
     QComboBox  *m_ftCropCombo     = nullptr;
     QCheckBox  *m_ftCropKeepSizeBtn = nullptr;
     QPushButton *m_applyFtCropBtn = nullptr;
+    QPushButton *m_applyFtPadBtn  = nullptr;
     void onApplyFtCrop();
+    void onApplyFtPad();
 
     // ---- CTF ----
     bool        m_ctfActive = false;

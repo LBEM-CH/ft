@@ -4,11 +4,18 @@
 //  Painting
 // ---------------------------------------------------------------------------
 void FtWindow::drawParamLabel(QPainter &p, const QFontMetrics &fm,
-                              int x, int y, const QString &text, const QString &tip)
+                              int x, int y, const QString &text, const QString &tip,
+                              int fieldH)
 {
-    p.drawText(x, y + fm.ascent(), text);
+    // Align label baseline with the text baseline inside the adjacent input
+    // field of height `fieldH` (line edit / combo box, typically 22 px).
+    // Input fields vertically centre their text, so their baseline sits at
+    // fieldH/2 + ascent/2 - descent/2 from the widget top — not at
+    // fm.ascent() as with a top-anchored drawText.
+    int baselineY = y + (fieldH + fm.ascent() - fm.descent()) / 2;
+    p.drawText(x, baselineY, text);
     if (!tip.isEmpty()) {
-        QRect r(x, y, fm.horizontalAdvance(text), fm.height());
+        QRect r(x, baselineY - fm.ascent(), fm.horizontalAdvance(text), fm.height());
         m_paramLabelTips.emplace_back(r, tip);
     }
 }
@@ -1518,8 +1525,14 @@ void FtWindow::paintEvent(QPaintEvent *)
         drawHistogram(p, frame, m_imageRawPixels, m_imageMinVal, m_imageMaxVal, hy - frame.bottom(),
                       HIST_P1, m_imageDispMin, m_imageDispMax);
 
-        // Position the contrast lock checkbox next to the histogram
-        if (!m_histRects[HIST_P1].isNull()) {
+        // Position the contrast lock checkbox next to the histogram. Hide
+        // it when a panel-1 parameter window is open, so it does not overlap
+        // the tool dialog rectangle.
+        bool p1ToolActive = m_p1EraserActive || m_p1BrushActive || m_p1TaperActive
+                          || m_binActive || m_peakPickActive || m_extractActive
+                          || m_gaborActive || m_hessianActive || m_amyloidActive
+                          || m_measureActive;
+        if (!m_histRects[HIST_P1].isNull() && !p1ToolActive) {
             QRect hr = m_histRects[HIST_P1];
             m_imageHistLockBtn->move(hr.right() + 6, hr.top() + hr.height() / 2 - m_imageHistLockBtn->sizeHint().height() / 2);
             showImageHistLock = true;
@@ -1706,6 +1719,104 @@ void FtWindow::paintEvent(QPaintEvent *)
         m_mathComputeBtn->move(fx + fw - btnW - btnMargin, fy + fh - btnH - btnMargin);
     }
 
+    // "Create or Copy an image" popup (launched from top-left "New image" button)
+    if (m_newImageActive) {
+        int side1 = static_cast<int>(0.7 * std::min(panel1W, panel1H));
+        int imgX = (panel1W - side1) / 2;
+        int imgY = (panel1H - side1) / 2;
+        QRect inner = QRect(imgX, imgY, side1, side1).adjusted(2, 2, -2, -2);
+
+        int fw = static_cast<int>(inner.width()  * 0.85);
+        int fh = static_cast<int>(inner.height() * 0.42);
+        int fx = inner.x() + (inner.width()  - fw) / 2;
+        int fy = inner.y() + (inner.height() - fh) / 2;
+        QRect rect(fx, fy, fw, fh);
+
+        drawShadowRect(p, rect);
+
+        // Scale widget sizes relative to frame width (like the math overlay)
+        int fontSize     = std::clamp(fw / 30, 12, 32);
+        int comboH       = fontSize * 2;
+        int srcComboW    = std::max(120, fw / 4);
+        int tgtComboW    = std::max(80,  fw / 6);
+        int btnW         = std::max(90,  fw / 7);
+        int btnH         = comboH;
+
+        auto setStyleSheetIfChanged = [](QWidget *w, const QString &ss) {
+            if (w->styleSheet() != ss) w->setStyleSheet(ss);
+        };
+        auto setFixedSizeIfChanged = [](QWidget *w, int cw, int ch) {
+            if (w->size() != QSize(cw, ch)) w->setFixedSize(cw, ch);
+        };
+
+        QString comboSS = QString(
+            "QComboBox { background:white; color:black; border:1px solid #888;"
+            "  padding: 2px 4px; font-size: %1px; font-weight: bold; }"
+            "QComboBox::drop-down { width: %2px; }"
+            "QComboBox QAbstractItemView { background:white; color:black;"
+            "  selection-background-color:#ccc; min-width: 60px; padding: 4px;"
+            "  font-size: %1px; }")
+            .arg(fontSize).arg(fontSize);
+        setStyleSheetIfChanged(m_newImgSrcCombo, comboSS);
+        setStyleSheetIfChanged(m_newImgTgtCombo, comboSS);
+        setFixedSizeIfChanged(m_newImgSrcCombo, srcComboW, comboH);
+        setFixedSizeIfChanged(m_newImgTgtCombo, tgtComboW, comboH);
+
+        QString btnSS = QString(
+            "QPushButton { background-color: #888; border: 2px outset #aaa;"
+            "  color: #eee; padding: 2px; font-size: %1px; font-weight: bold; }")
+            .arg(fontSize);
+        setStyleSheetIfChanged(m_newImgCancelBtn, btnSS);
+        setStyleSheetIfChanged(m_newImgCreateBtn, btnSS);
+        setFixedSizeIfChanged(m_newImgCancelBtn, btnW, btnH);
+        setFixedSizeIfChanged(m_newImgCreateBtn, btnW, btnH);
+
+        // Title
+        int titleFontSize = std::max(14, fontSize * 4 / 3);
+        QFont tf;
+        tf.setPixelSize(titleFontSize);
+        tf.setBold(true);
+        p.setFont(tf);
+        p.setPen(QColor(60, 60, 60));
+        QFontMetrics tfm(tf);
+        int titleMarginX = std::max(10, fw / 40);
+        int titleMarginY = std::max(8, fh / 20);
+        int titleBaseY = fy + titleMarginY + tfm.ascent();
+        p.drawText(fx + titleMarginX, titleBaseY, "Create or Copy an image");
+
+        // Row labels
+        QFont lf;
+        lf.setPixelSize(fontSize);
+        lf.setBold(true);
+        p.setFont(lf);
+        p.setPen(QColor(40, 40, 40));
+        QFontMetrics lfm(lf);
+
+        int padX = std::max(12, fw / 40);
+        int labelColW = std::max(lfm.horizontalAdvance("Source image: "),
+                                 lfm.horizontalAdvance("Target image: "));
+
+        // ---- Source row: "Source image: [combo]" ----
+        int srcRowY = titleBaseY + tfm.descent() + std::max(14, fh / 10);
+        p.drawText(fx + padX,
+                   srcRowY + comboH / 2 + lfm.ascent() / 2 - 2,
+                   "Source image: ");
+        m_newImgSrcCombo->move(fx + padX + labelColW + 6, srcRowY);
+
+        // ---- Target row: "Target image: [combo]" ----
+        int tgtRowY = srcRowY + comboH + std::max(8, fh / 20);
+        p.drawText(fx + padX,
+                   tgtRowY + comboH / 2 + lfm.ascent() / 2 - 2,
+                   "Target image: ");
+        m_newImgTgtCombo->move(fx + padX + labelColW + 6, tgtRowY);
+
+        // ---- Bottom row: Cancel (left), Execute (right) ----
+        int btnMargin = std::max(10, fh / 12);
+        int btnY = fy + fh - btnH - btnMargin;
+        m_newImgCancelBtn->move(fx + btnMargin, btnY);
+        m_newImgCreateBtn->move(fx + fw - btnW - btnMargin, btnY);
+    }
+
     // ---- Panel 2: FFT results -------------------------------------------------
     if (m_ftComputed) {
         int panel2X = cx + 2;
@@ -1815,8 +1926,13 @@ void FtWindow::paintEvent(QPaintEvent *)
             drawHistogram(p, frame, m_powerVals, m_powerMin, m_powerMax, hy - frame.bottom(),
                           HIST_POWER, m_powerDispMin, m_powerDispMax);
 
-            // Position the FT contrast lock checkbox next to the histogram
-            if (!m_histRects[HIST_POWER].isNull()) {
+            // Position the FT contrast lock checkbox next to the histogram.
+            // Hide it when a panel-2 parameter window is open, so it does
+            // not overlap the tool dialog rectangle.
+            bool p2ToolActive = m_bandpassActive || m_directionalActive || m_lineFilterActive
+                              || m_brushActive || m_eraserActive || m_latticeActive
+                              || m_ftCropActive || m_crossSectionActive || m_ctfActive;
+            if (!m_histRects[HIST_POWER].isNull() && !p2ToolActive) {
                 QRect hr = m_histRects[HIST_POWER];
                 m_ftHistLockBtn->move(hr.right() + 6, hr.top() + hr.height() / 2 - m_ftHistLockBtn->sizeHint().height() / 2);
                 showFtHistLock = true;
@@ -2056,8 +2172,11 @@ void FtWindow::paintEvent(QPaintEvent *)
         int panel2W = width() - panel2X;
         int panel2H = hy - 1;
 
-        int fw = static_cast<int>(panel2W * 0.80);
-        int fh = static_cast<int>(panel2H * 0.35);
+        // Match panel 1's math-overlay dimensions so both popups feel identical.
+        int side1M = static_cast<int>(0.7 * std::min(panel1W, panel1H));
+        int innerM = side1M - 4;
+        int fw = static_cast<int>(innerM * 0.80);
+        int fh = static_cast<int>(innerM * 0.30);
         int fx = panel2X + (panel2W - fw) / 2;
         int fy = (panel2H - fh) / 2;
         QRect ftMathRect(fx, fy, fw, fh);
@@ -2072,16 +2191,21 @@ void FtWindow::paintEvent(QPaintEvent *)
             p.drawRect(fx + 1, fy + 1, progW, fh - 2);
         }
 
-        // Scale widget sizes relative to frame width
-        int fontSize = std::clamp(fw / 30, 12, 32);
+        // Scale widget sizes relative to panel 1's math-overlay frame width
+        // so that widgets/fonts in panel 2's math overlay match panel 1's.
+        int side1Ref  = static_cast<int>(0.7 * std::min(panel1W, panel1H));
+        int innerRefW = side1Ref - 4;
+        int fwRef     = static_cast<int>(innerRefW * 0.80);
+
+        int fontSize = std::clamp(fwRef / 30, 12, 32);
         int comboH = fontSize * 2;
-        int bufW = fw / 8;
-        int eqW  = fw / 16;
-        int opW  = fw / 10;
-        int conjW = fw * 3 / 10;
-        int btnW = fw * 3 / 16;
+        int bufW = fwRef / 8;
+        int eqW  = fwRef / 16;
+        int opW  = fwRef / 12;   // only single-char +, -, *, /
+        int conjW = fwRef * 3 / 10;
+        int btnW = fwRef * 3 / 16;
         int btnH2 = comboH;
-        int gap  = fw / 80;
+        int gap  = fwRef / 80;
 
         QString comboSS = QString(
             "QComboBox { background:white; color:black; border:1px solid #888;"
@@ -2304,10 +2428,13 @@ void FtWindow::paintEvent(QPaintEvent *)
                 int r1 = fm.horizontalAdvance("Smooth edge by pixels: ") + m_latticeSmoothEdit->width();
                 int r2 = fm.horizontalAdvance("Diameter of dots: ") + m_latticeDotDiamEdit->width();
                 int r3 = fm.horizontalAdvance("Erase pixels outside of lattice");
-                QString vecStr = QString("u=<%1,%2>  v=<%3,%4>")
-                    .arg(m_latticeUx, 0, 'f', 1).arg(m_latticeUy, 0, 'f', 1)
-                    .arg(m_latticeVx, 0, 'f', 1).arg(m_latticeVy, 0, 'f', 1);
-                int r4 = fm.horizontalAdvance(vecStr);
+                int sepW = fm.horizontalAdvance(",  ");
+                int gapW = fm.horizontalAdvance("   ");
+                int rU = fm.horizontalAdvance("u = ( ") + m_latticeUxEdit->width()
+                         + sepW + m_latticeUyEdit->width() + fm.horizontalAdvance(" )");
+                int rV = fm.horizontalAdvance("v = ( ") + m_latticeVxEdit->width()
+                         + sepW + m_latticeVyEdit->width() + fm.horizontalAdvance(" )");
+                int r4 = rU + gapW + rV;
                 int r5 = m_latticeApplyBtn->width();
                 textW = std::max({r1, r2, r3, r4, r5});
             } else if (m_crossSectionActive) {
@@ -2316,8 +2443,8 @@ void FtWindow::paintEvent(QPaintEvent *)
             } else if (m_ftCropActive) {
                 nRows = 3;
                 int r1 = m_ftCropCombo->width();
-                int r2 = fm.horizontalAdvance("Keep original Fourier transform size");
-                int r3 = m_applyFtCropBtn->width();
+                int r2 = fm.horizontalAdvance("Keep original size");
+                int r3 = m_applyFtCropBtn->width() + 12 + m_applyFtPadBtn->width();
                 textW = std::max({r1, r2, r3});
             } else if (m_ctfActive) {
                 nRows = 5;
@@ -2409,14 +2536,36 @@ void FtWindow::paintEvent(QPaintEvent *)
                 drawParamLabel(p, fm, tx, ty + lh, "Diameter of dots:", m_latticeDotDiamEdit->toolTip());
                 m_latticeDotDiamEdit->move(tx + fm.horizontalAdvance("Diameter of dots: "), ty + lh);
                 m_latticeEraseOutside->move(tx, ty + lh * 2);
-                QString vecStr = QString("u=<%1,%2>  v=<%3,%4>")
-                    .arg(m_latticeUx, 0, 'f', 1).arg(m_latticeUy, 0, 'f', 1)
-                    .arg(m_latticeVx, 0, 'f', 1).arg(m_latticeVy, 0, 'f', 1);
-                drawParamLabel(p, fm, tx, ty + lh * 3, vecStr,
-                    "Reciprocal-lattice basis vectors u and v, in Fourier pixels\n"
-                    "relative to the FFT centre. All lattice spots generated by\n"
-                    "integer combinations of u and v are selected. Drag the two\n"
-                    "basis handles in panel 2 to change these vectors.");
+
+                // Vector-edit row: u = ( Ux , Uy )   v = ( Vx , Vy )
+                int vy = ty + lh * 3;
+                int ex = tx;
+                int editYOffset = (lh - m_latticeUxEdit->height()) / 2;
+                // Align labels to the widgets' actual top so their baselines
+                // match the text inside the vertically-centred edit boxes.
+                int labelY = vy + editYOffset;
+
+                drawParamLabel(p, fm, ex, labelY, "u = (", m_latticeUxEdit->toolTip());
+                ex += fm.horizontalAdvance("u = ( ");
+                m_latticeUxEdit->move(ex, vy + editYOffset);
+                ex += m_latticeUxEdit->width();
+                drawParamLabel(p, fm, ex, labelY, ", ", m_latticeUxEdit->toolTip());
+                ex += fm.horizontalAdvance(", ");
+                m_latticeUyEdit->move(ex, vy + editYOffset);
+                ex += m_latticeUyEdit->width();
+                drawParamLabel(p, fm, ex, labelY, " )", m_latticeUxEdit->toolTip());
+                ex += fm.horizontalAdvance(" )") + fm.horizontalAdvance("   ");
+
+                drawParamLabel(p, fm, ex, labelY, "v = (", m_latticeVxEdit->toolTip());
+                ex += fm.horizontalAdvance("v = ( ");
+                m_latticeVxEdit->move(ex, vy + editYOffset);
+                ex += m_latticeVxEdit->width();
+                drawParamLabel(p, fm, ex, labelY, ", ", m_latticeVxEdit->toolTip());
+                ex += fm.horizontalAdvance(", ");
+                m_latticeVyEdit->move(ex, vy + editYOffset);
+                ex += m_latticeVyEdit->width();
+                drawParamLabel(p, fm, ex, labelY, " )", m_latticeVxEdit->toolTip());
+
                 m_latticeApplyBtn->move(tx, ty + lh * 4);
             } else if (m_crossSectionActive) {
                 drawParamLabel(p, fm, tx, ty, "Integration width in % of image size:",
@@ -2425,7 +2574,11 @@ void FtWindow::paintEvent(QPaintEvent *)
             } else if (m_ftCropActive) {
                 m_ftCropCombo->move(tx, ty);
                 m_ftCropKeepSizeBtn->move(tx, ty + lh);
+                // Fourier crop left-aligned, Fourier pad right-aligned
+                int rowRight = rx + rw - margin;
                 m_applyFtCropBtn->move(tx, ty + lh * 2);
+                m_applyFtPadBtn->move(rowRight - m_applyFtPadBtn->width(),
+                                      ty + lh * 2);
             } else if (m_ctfActive) {
                 // Row 0: Voltage, Energy spread
                 drawParamLabel(p, fm, tx, ty, "Acceleration Voltage (kV):", m_ctfVoltageEdit->toolTip());
@@ -2548,17 +2701,22 @@ void FtWindow::paintEvent(QPaintEvent *)
                                   fm.horizontalAdvance("Click two points on the image")});
             } else if (m_amyloidActive) {
                 nRows = 8;
-                int rSz = fm.horizontalAdvance("Image size (px): ")   + m_amyloidSizeCombo->width();
-                int r0 = fm.horizontalAdvance("Cross-section map: ")  + m_amyloidMapCombo->width();
-                int r1 = fm.horizontalAdvance("Helical rise (\u00C5): ")    + m_amyloidRiseEdit->width();
-                int r2 = fm.horizontalAdvance("Helical twist (\u00B0): ")   + m_amyloidTwistEdit->width();
-                int r3n = m_amyloidNoiseBtn->sizeHint().width() + 8 + fm.horizontalAdvance("Sigma: ") + m_amyloidNoiseEdit->width();
-                int r3i = m_amyloidSignalBtn->width();
+                const int colGap = 20;
+                int leftSize  = fm.horizontalAdvance("Image size (px): ")   + m_amyloidSizeCombo->width();
+                int leftRise  = fm.horizontalAdvance("Helical rise (\u00C5): ") + m_amyloidRiseEdit->width();
+                int leftWave  = fm.horizontalAdvance("Waviness wavelength (px): ") + m_amyloidWaveEdit->width();
+                int leftCol   = std::max({leftSize, leftRise, leftWave}) + colGap;
+                int rRow0 = leftCol + fm.horizontalAdvance("Source map: ")       + m_amyloidMapCombo->width();
+                int rRow1 = leftCol + fm.horizontalAdvance("Helical twist (\u00B0): ") + m_amyloidTwistEdit->width();
+                int rRow2 = leftCol + fm.horizontalAdvance("Waviness amplitude (px): ") + m_amyloidAmplEdit->width();
+                int rPer  = fm.horizontalAdvance("Persistence length (\u00B5m): ")      + m_amyloidPersistEdit->width();
+                int rNoise = m_amyloidNoiseBtn->sizeHint().width() + 8 + fm.horizontalAdvance("Sigma: ") + m_amyloidNoiseEdit->width();
+                int rSig   = m_amyloidSignalBtn->width();
                 QString infoStr = QString("Filaments: %1  Click image to place start & end")
                                       .arg(m_amyloidFilaments.size());
-                int r4 = fm.horizontalAdvance(infoStr);
-                int r5 = m_amyloidCancelBtn->width() + 8 + m_amyloidComputeBtn->width();
-                textW = std::max({rSz, r0, r1, r2, r3n, r3i, r4, r5});
+                int rInfo = fm.horizontalAdvance(infoStr);
+                int rBtns = m_amyloidCancelBtn->width() + 8 + m_amyloidComputeBtn->width();
+                textW = std::max({rRow0, rRow1, rRow2, rPer, rNoise, rSig, rInfo, rBtns});
             }
 
             int rw = textW * 6 / 5 + 2 * margin;
@@ -2601,7 +2759,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 m_applyBinBtn->move(tx, ty + lh * 2);
             } else if (m_peakPickActive) {
                 // Row 0: source map combo + show/hide button top-right
-                drawParamLabel(p, fm, tx, ty, "Picking source map:", m_peakSourceCombo->toolTip());
+                drawParamLabel(p, fm, tx, ty, "Picking source map:", m_peakSourceCombo->toolTip(),
+                               m_peakSourceCombo->height());
                 m_peakSourceCombo->move(tx + fm.horizontalAdvance("Picking source map: "), ty);
                 m_peakShowPosBtn->move(rx + rw - margin - m_peakShowPosBtn->width(), ty);
                 // Row 1: threshold slider
@@ -2634,11 +2793,14 @@ void FtWindow::paintEvent(QPaintEvent *)
                 if (m_peaks.empty()) {
                     p.drawText(tx, ty + fm.ascent(), "First prepare a particle position list");
                 } else {
-                    drawParamLabel(p, fm, tx, ty, "Source image:", m_extractSourceCombo->toolTip());
+                    drawParamLabel(p, fm, tx, ty, "Source image:", m_extractSourceCombo->toolTip(),
+                                   m_extractSourceCombo->height());
                     m_extractSourceCombo->move(tx + fm.horizontalAdvance("Source image: "), ty);
-                    drawParamLabel(p, fm, tx, ty + lh, "Target image:", m_extractTargetCombo->toolTip());
+                    drawParamLabel(p, fm, tx, ty + lh, "Target image:", m_extractTargetCombo->toolTip(),
+                                   m_extractTargetCombo->height());
                     m_extractTargetCombo->move(tx + fm.horizontalAdvance("Target image: "), ty + lh);
-                    drawParamLabel(p, fm, tx, ty + lh * 2, "Particle size:", m_extractSizeCombo->toolTip());
+                    drawParamLabel(p, fm, tx, ty + lh * 2, "Particle size:", m_extractSizeCombo->toolTip(),
+                                   m_extractSizeCombo->height());
                     m_extractSizeCombo->move(tx + fm.horizontalAdvance("Particle size: "), ty + lh * 2);
                     m_extractCancelBtn->move(tx, ty + lh * 3);
                     m_extractComputeBtn->move(rx + rw - margin - m_extractComputeBtn->width(), ty + lh * 3);
@@ -2672,28 +2834,44 @@ void FtWindow::paintEvent(QPaintEvent *)
                 p.drawText(tx, ty + lh + fm.ascent(), lenStr);
                 m_measureCancelBtn->move(tx, ty + lh * 2);
             } else if (m_amyloidActive) {
+                const int colGap = 20;
+                int leftSize = fm.horizontalAdvance("Image size (px): ")   + m_amyloidSizeCombo->width();
+                int leftRise = fm.horizontalAdvance("Helical rise (\u00C5): ") + m_amyloidRiseEdit->width();
+                int leftWave = fm.horizontalAdvance("Waviness wavelength (px): ") + m_amyloidWaveEdit->width();
+                int col2X = tx + std::max({leftSize, leftRise, leftWave}) + colGap;
+                // Row 0: Image size | Source map
                 drawParamLabel(p, fm, tx, ty, "Image size (px):", m_amyloidSizeCombo->toolTip());
                 m_amyloidSizeCombo->move(tx + fm.horizontalAdvance("Image size (px): "), ty);
-                drawParamLabel(p, fm, tx, ty + lh, "Cross-section map:", m_amyloidMapCombo->toolTip());
-                m_amyloidMapCombo->move(tx + fm.horizontalAdvance("Cross-section map: "), ty + lh);
-                drawParamLabel(p, fm, tx, ty + lh * 2, "Helical rise (\u00C5):", m_amyloidRiseEdit->toolTip());
-                m_amyloidRiseEdit->move(tx + fm.horizontalAdvance("Helical rise (\u00C5): "), ty + lh * 2);
-                drawParamLabel(p, fm, tx, ty + lh * 3, "Helical twist (\u00B0):", m_amyloidTwistEdit->toolTip());
-                m_amyloidTwistEdit->move(tx + fm.horizontalAdvance("Helical twist (\u00B0): "), ty + lh * 3);
-                // Noise checkbox + sigma edit on the same row
+                drawParamLabel(p, fm, col2X, ty, "Source map:", m_amyloidMapCombo->toolTip());
+                m_amyloidMapCombo->move(col2X + fm.horizontalAdvance("Source map: "), ty);
+                // Row 1: Helical rise | Helical twist
+                drawParamLabel(p, fm, tx, ty + lh, "Helical rise (\u00C5):", m_amyloidRiseEdit->toolTip());
+                m_amyloidRiseEdit->move(tx + fm.horizontalAdvance("Helical rise (\u00C5): "), ty + lh);
+                drawParamLabel(p, fm, col2X, ty + lh, "Helical twist (\u00B0):", m_amyloidTwistEdit->toolTip());
+                m_amyloidTwistEdit->move(col2X + fm.horizontalAdvance("Helical twist (\u00B0): "), ty + lh);
+                // Row 2: Waviness wavelength | Waviness amplitude
+                drawParamLabel(p, fm, tx, ty + lh * 2, "Waviness wavelength (px):", m_amyloidWaveEdit->toolTip());
+                m_amyloidWaveEdit->move(tx + fm.horizontalAdvance("Waviness wavelength (px): "), ty + lh * 2);
+                drawParamLabel(p, fm, col2X, ty + lh * 2, "Waviness amplitude (px):", m_amyloidAmplEdit->toolTip());
+                m_amyloidAmplEdit->move(col2X + fm.horizontalAdvance("Waviness amplitude (px): "), ty + lh * 2);
+                // Row 3: Persistence length
+                drawParamLabel(p, fm, tx, ty + lh * 3, "Persistence length (\u00B5m):", m_amyloidPersistEdit->toolTip());
+                m_amyloidPersistEdit->move(tx + fm.horizontalAdvance("Persistence length (\u00B5m): "), ty + lh * 3);
+                // Row 4: Noise checkbox + Sigma edit
                 m_amyloidNoiseBtn->move(tx, ty + lh * 4);
                 int noiseLblX = tx + m_amyloidNoiseBtn->sizeHint().width() + 8;
                 drawParamLabel(p, fm, noiseLblX, ty + lh * 4, "Sigma:", m_amyloidNoiseEdit->toolTip());
                 m_amyloidNoiseEdit->move(noiseLblX + fm.horizontalAdvance("Sigma: "), ty + lh * 4);
-                // Signal polarity button
+                // Row 5: Signal polarity button
                 m_amyloidSignalBtn->move(tx, ty + lh * 5);
-                // Info + buttons
+                // Row 6: Filament info
                 QString infoStr;
                 if (m_amyloidPlacing == 1)
                     infoStr = QString("Filaments: %1  Click to place end point").arg(m_amyloidFilaments.size());
                 else
                     infoStr = QString("Filaments: %1  Click image to place start & end").arg(m_amyloidFilaments.size());
                 p.drawText(tx, ty + lh * 6 + fm.ascent(), infoStr);
+                // Row 7: Cancel + Compute
                 m_amyloidCancelBtn->move(tx, ty + lh * 7);
                 m_amyloidComputeBtn->move(rx + rw - margin - m_amyloidComputeBtn->width(), ty + lh * 7);
             }
