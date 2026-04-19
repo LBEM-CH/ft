@@ -776,15 +776,9 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
         "cryo-EM display where protein appears dark.");
     connect(m_amyloidSignalBtn, &QPushButton::clicked, this, [this]() {
         m_amyloidBlackSignal = !m_amyloidBlackSignal;
-        if (m_amyloidBlackSignal) {
-            m_amyloidSignalBtn->setText("Black signal");
-            m_amyloidSignalBtn->setStyleSheet(
-                "QPushButton { background-color: #222; color: #eee; border: 2px outset #555; padding: 2px; font-weight: bold; }");
-        } else {
-            m_amyloidSignalBtn->setText("White signal");
-            m_amyloidSignalBtn->setStyleSheet(
-                "QPushButton { background-color: #eee; color: #111; border: 2px outset #aaa; padding: 2px; font-weight: bold; }");
-        }
+        m_amyloidSignalBtn->setText(m_amyloidBlackSignal ? "Black signal" : "White signal");
+        QResizeEvent ev(size(), size());
+        resizeEvent(&ev);
     });
     m_amyloidSignalBtn->hide();
     m_amyloidCancelBtn = new QPushButton("Cancel", this);
@@ -1209,11 +1203,8 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_amyloidWaveEdit->setText(settings.value("amyloidWave", "50").toString());
     m_amyloidAmplEdit->setText(settings.value("amyloidAmpl", "1").toString());
     m_amyloidBlackSignal = settings.value("amyloidBlackSignal", false).toBool();
-    if (m_amyloidBlackSignal) {
+    if (m_amyloidBlackSignal)
         m_amyloidSignalBtn->setText("Black signal");
-        m_amyloidSignalBtn->setStyleSheet(
-            "QPushButton { background:#222; color:white; border:1px solid #888; }");
-    }
 
     // Restore extract particles settings
     m_extractSourceCombo->setCurrentIndex(settings.value("extractSourceIdx", 0).toInt());
@@ -1465,4 +1456,43 @@ void FtWindow::resizeEvent(QResizeEvent *)
     m_binKeepSizeBtn->setStyleSheet(cbSS);
     m_applyBinBtn->setFixedSize(static_cast<int>(110 * sc), btnH);
     m_applyBinBtn->setStyleSheet(btnSS);
+
+    // Amyloid filament widgets (sizes only)
+    QString amyloidComboSS = QString(
+        "QComboBox { background:white; color:black; border:1px solid #888;"
+        "  padding: 2px 4px; font-size: %1px; }"
+        "QComboBox::drop-down { width: %2px; }"
+        "QComboBox QAbstractItemView { background:white; color:black;"
+        "  selection-background-color:#cce; min-width: 60px; padding: 4px;"
+        "  font-size: %1px; }").arg(fontSize).arg(static_cast<int>(20 * sc));
+    m_amyloidRiseEdit->setFixedSize(static_cast<int>(60 * sc), editH);
+    m_amyloidRiseEdit->setStyleSheet(editSS);
+    m_amyloidTwistEdit->setFixedSize(static_cast<int>(60 * sc), editH);
+    m_amyloidTwistEdit->setStyleSheet(editSS);
+    m_amyloidMapCombo->setFixedSize(static_cast<int>(50 * sc), btnH);
+    m_amyloidMapCombo->setStyleSheet(amyloidComboSS);
+    m_amyloidSizeCombo->setFixedSize(static_cast<int>(70 * sc), btnH);
+    m_amyloidSizeCombo->setStyleSheet(amyloidComboSS);
+    m_amyloidNoiseBtn->setStyleSheet(cbSS);
+    m_amyloidNoiseEdit->setFixedSize(static_cast<int>(40 * sc), editH);
+    m_amyloidNoiseEdit->setStyleSheet(editSS);
+    m_amyloidPersistEdit->setFixedSize(static_cast<int>(60 * sc), editH);
+    m_amyloidPersistEdit->setStyleSheet(editSS);
+    m_amyloidWaveEdit->setFixedSize(static_cast<int>(60 * sc), editH);
+    m_amyloidWaveEdit->setStyleSheet(editSS);
+    m_amyloidAmplEdit->setFixedSize(static_cast<int>(60 * sc), editH);
+    m_amyloidAmplEdit->setStyleSheet(editSS);
+    m_amyloidSignalBtn->setFixedSize(static_cast<int>(110 * sc), btnH);
+    if (m_amyloidBlackSignal)
+        m_amyloidSignalBtn->setStyleSheet(QString(
+            "QPushButton { background-color: #222; color: #eee; border: 2px outset #555;"
+            "  padding: 2px; font-weight: bold; font-size: %1px; }").arg(fontSize));
+    else
+        m_amyloidSignalBtn->setStyleSheet(QString(
+            "QPushButton { background-color: #eee; color: #111; border: 2px outset #aaa;"
+            "  padding: 2px; font-weight: bold; font-size: %1px; }").arg(fontSize));
+    m_amyloidCancelBtn->setFixedSize(static_cast<int>(80 * sc), btnH);
+    m_amyloidCancelBtn->setStyleSheet(btnSS);
+    m_amyloidComputeBtn->setFixedSize(static_cast<int>(80 * sc), btnH);
+    m_amyloidComputeBtn->setStyleSheet(btnSS);
 }
