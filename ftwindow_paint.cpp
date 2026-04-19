@@ -1525,8 +1525,14 @@ void FtWindow::paintEvent(QPaintEvent *)
         drawHistogram(p, frame, m_imageRawPixels, m_imageMinVal, m_imageMaxVal, hy - frame.bottom(),
                       HIST_P1, m_imageDispMin, m_imageDispMax);
 
-        // Position the contrast lock checkbox next to the histogram
-        if (!m_histRects[HIST_P1].isNull()) {
+        // Position the contrast lock checkbox next to the histogram. Hide
+        // it when a panel-1 parameter window is open, so it does not overlap
+        // the tool dialog rectangle.
+        bool p1ToolActive = m_p1EraserActive || m_p1BrushActive || m_p1TaperActive
+                          || m_binActive || m_peakPickActive || m_extractActive
+                          || m_gaborActive || m_hessianActive || m_amyloidActive
+                          || m_measureActive;
+        if (!m_histRects[HIST_P1].isNull() && !p1ToolActive) {
             QRect hr = m_histRects[HIST_P1];
             m_imageHistLockBtn->move(hr.right() + 6, hr.top() + hr.height() / 2 - m_imageHistLockBtn->sizeHint().height() / 2);
             showImageHistLock = true;
@@ -1920,8 +1926,13 @@ void FtWindow::paintEvent(QPaintEvent *)
             drawHistogram(p, frame, m_powerVals, m_powerMin, m_powerMax, hy - frame.bottom(),
                           HIST_POWER, m_powerDispMin, m_powerDispMax);
 
-            // Position the FT contrast lock checkbox next to the histogram
-            if (!m_histRects[HIST_POWER].isNull()) {
+            // Position the FT contrast lock checkbox next to the histogram.
+            // Hide it when a panel-2 parameter window is open, so it does
+            // not overlap the tool dialog rectangle.
+            bool p2ToolActive = m_bandpassActive || m_directionalActive || m_lineFilterActive
+                              || m_brushActive || m_eraserActive || m_latticeActive
+                              || m_ftCropActive || m_crossSectionActive || m_ctfActive;
+            if (!m_histRects[HIST_POWER].isNull() && !p2ToolActive) {
                 QRect hr = m_histRects[HIST_POWER];
                 m_ftHistLockBtn->move(hr.right() + 6, hr.top() + hr.height() / 2 - m_ftHistLockBtn->sizeHint().height() / 2);
                 showFtHistLock = true;
