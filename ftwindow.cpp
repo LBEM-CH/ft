@@ -114,6 +114,15 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     });
     m_applyBandBtn->hide();
 
+    m_resetBandBtn = new QPushButton("Reset", this);
+    m_resetBandBtn->setFixedSize(80, 26);
+    connect(m_resetBandBtn, &QPushButton::clicked, this, [this]() {
+        m_bandInnerR = 0.1;
+        m_bandOuterR = 0.9;
+        update();
+    });
+    m_resetBandBtn->hide();
+
     // Line filter widgets (hidden until line filter mode active)
     m_lineWidthEdit = new QLineEdit("10", this);
     m_lineWidthEdit->setFixedSize(40, 22);
@@ -1295,6 +1304,8 @@ void FtWindow::resizeEvent(QResizeEvent *)
     m_bandEraseOutside->setStyleSheet(cbSS);
     m_applyBandBtn->setFixedSize(static_cast<int>(100 * sc), btnH);
     m_applyBandBtn->setStyleSheet(btnSS);
+    m_resetBandBtn->setFixedSize(static_cast<int>(80 * sc), btnH);
+    m_resetBandBtn->setStyleSheet(btnSS);
 
     m_lineWidthEdit->setFixedSize(static_cast<int>(40 * sc), editH);
     m_lineWidthEdit->setStyleSheet(editSS);

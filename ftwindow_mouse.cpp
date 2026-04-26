@@ -475,6 +475,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         m_smoothEdit->setVisible(showFilter);
         m_bandEraseOutside->setVisible(showFilter);
         m_applyBandBtn->setVisible(showFilter);
+        m_resetBandBtn->setVisible(m_bandpassActive);
 
         m_brushValueEdit->setVisible(m_brushActive);
         m_brushDiameterEdit->setVisible(m_brushActive);

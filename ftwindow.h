@@ -458,6 +458,7 @@ private:
     QLineEdit  *m_smoothEdit   = nullptr;
     QCheckBox  *m_bandEraseOutside = nullptr;
     QPushButton *m_applyBandBtn = nullptr;
+    QPushButton *m_resetBandBtn = nullptr;
 
     void drawBandpassRing(QPainter &p, const QRect &screenRect,
                           const ZoomState &zoom, int imgW, int imgH);

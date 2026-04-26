@@ -2395,7 +2395,7 @@ void FtWindow::paintEvent(QPaintEvent *)
                     .arg(m_bandInnerR * 2.0 * halfN, 0, 'f', 1)
                     .arg(m_bandOuterR * 2.0 * halfN, 0, 'f', 1);
                 int r3 = fm.horizontalAdvance(diamStr);
-                int r4 = m_applyBandBtn->width();
+                int r4 = m_resetBandBtn->width() + 12 + m_applyBandBtn->width();
                 textW = std::max({r1, r2, r3, r4});
             } else if (m_directionalActive) {
                 nRows = 4;
@@ -2499,7 +2499,9 @@ void FtWindow::paintEvent(QPaintEvent *)
                     "frequencies), outer d is the diameter of the outer edge (large\n"
                     "numbers = high frequencies). Drag the ring handles in panel 2\n"
                     "to change these values.");
-                m_applyBandBtn->move(tx, ty + lh * 3);
+                int rowRight = rx + rw - margin;
+                m_resetBandBtn->move(tx, ty + lh * 3);
+                m_applyBandBtn->move(rowRight - m_applyBandBtn->width(), ty + lh * 3);
             } else if (m_directionalActive) {
                 drawParamLabel(p, fm, tx, ty, "Smooth edge by pixels:", m_smoothEdit->toolTip());
                 m_smoothEdit->move(tx + fm.horizontalAdvance("Smooth edge by pixels: "), ty);
