@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Panel 2 — Fourier tools — Fourier Analyzer Manual</title>
+<style>
+  :root {
+    --bg: #f7f7f8;
+    --fg: #1d1d20;
+    --muted: #5a5a62;
+    --accent: #2858c4;
+    --border: #d8d8de;
+    --panel: #ffffff;
+    --code-bg: #eef0f4;
+    --hover: #ebeef5;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI",
+          "Helvetica Neue", Arial, sans-serif;
+    color: var(--fg);
+    background: var(--bg);
+  }
+  header {
+    background: #1d1d20;
+    color: #fff;
+    padding: 18px 24px;
+    border-bottom: 1px solid #000;
+  }
+  header h1 { margin: 0; font-size: 22px; font-weight: 600; }
+  header .breadcrumb {
+    margin-top: 4px; font-size: 13px; color: #b0b0b8;
+  }
+  header a { color: #9bbcff; text-decoration: none; }
+  header a:hover { text-decoration: underline; }
+
+  main { max-width: 920px; margin: 0 auto; padding: 24px; }
+
+  details {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin: 0 0 12px 0;
+    padding: 0 18px;
+  }
+  details summary {
+    padding: 12px 0;
+    cursor: pointer;
+    font-weight: 600;
+    list-style: none;
+    user-select: none;
+  }
+  details summary::-webkit-details-marker { display: none; }
+  details summary::before {
+    content: "▶";
+    display: inline-block;
+    margin-right: 10px;
+    font-size: 11px;
+    color: var(--muted);
+    transform: translateY(-2px);
+    transition: transform 0.15s;
+  }
+  details[open] summary::before { transform: rotate(90deg) translateX(-2px); }
+  details > *:not(summary) { padding-bottom: 14px; }
+  details summary:hover { color: var(--accent); }
+
+  p { margin: 0.6em 0; }
+  ul { padding-left: 22px; }
+  li { margin: 3px 0; }
+  code, kbd {
+    background: var(--code-bg);
+    padding: 1px 6px;
+    border-radius: 3px;
+    font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+
+  .controls {
+    background: var(--code-bg);
+    border-left: 3px solid var(--accent);
+    padding: 8px 12px;
+    margin: 8px 0 0 0;
+    font-size: 14px;
+  }
+  .controls strong { display: inline-block; min-width: 130px; }
+  .note {
+    background: #fff8e6;
+    border-left: 3px solid #d4a000;
+    padding: 8px 12px;
+    margin: 10px 0 0 0;
+    font-size: 14px;
+  }
+
+  footer {
+    color: var(--muted);
+    font-size: 13px;
+    margin-top: 40px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Panel 2 — Fourier tools</h1>
+  <div class="breadcrumb">
+    <a href="manual.html">← Manual</a>
+  </div>
+</header>
+
+<main>
+
+<p>
+Panel 2 holds the Fourier transform of the panel-1 image, with the
+zero-frequency term at the centre. Tool icons run vertically along the
+right edge of the panel. Activating a tool opens its parameter window
+at the bottom of the panel.
+</p>
+
+<p>
+Most filters offer a <em>smooth-edge</em> width. A value of zero gives
+a hard cut-off and produces ringing in the back-transformed image; a
+value of 5–20 pixels typically gives a clean Hanning fall-off and a
+much cleaner real-space result.
+</p>
+
+<details open>
+<summary>Eraser</summary>
+<p>
+Multiplies the FFT by <code>(1 − Gaussian)</code> under the cursor,
+smoothly attenuating Fourier components. Useful for removing isolated
+diffraction spots or noise peaks.
+</p>
+<div class="controls">
+  <strong>Diameter:</strong> width of the Gaussian footprint, in
+  Fourier pixels.
+</div>
+</details>
+
+<details>
+<summary>Paint brush</summary>
+<p>
+Writes a chosen real value (with zero imaginary part) into the FFT
+under a Gaussian footprint. Use a value of 0 to gently push amplitudes
+to zero; use larger values to boost or inject specific Fourier
+components.
+</p>
+<div class="controls">
+  <strong>Pixel value:</strong> real part of the amplitude to paint. <br>
+  <strong>Diameter:</strong> Gaussian footprint width, in Fourier pixels.
+</div>
+</details>
+
+<details>
+<summary>Bandpass filter</summary>
+<p>
+Keep (or erase) Fourier pixels inside a circular ring centred on the
+origin. The two ring radii are dragged interactively in panel 2; the
+parameter window shows their current diameters.
+</p>
+<div class="controls">
+  <strong>Smooth edge:</strong> width of the soft Hanning transition
+  at both ring edges, in Fourier pixels. 0 = hard cut-off. <br>
+  <strong>Erase outside band:</strong> when checked the filter is a
+  band-pass (keep inside the ring); when unchecked it is a band-stop
+  (erase inside the ring). <br>
+  <strong>Inner d / Outer d:</strong> live read-out of the current
+  ring diameters in Fourier pixels. <br>
+  <strong>Reset:</strong> resets the ring to inner = 10 % and outer =
+  90 % of the Fourier radius. <br>
+  <strong>Apply filter:</strong> commits the filter to the FFT and
+  updates panel 1.
+</div>
+</details>
+
+<details>
+<summary>Directional filter</summary>
+<p>
+Keep (or erase) Fourier pixels inside an angular wedge centred on the
+origin. The two wedge edges are dragged interactively. The wedge is
+mirror-symmetric so that the filter respects the Friedel symmetry of
+real images.
+</p>
+<div class="controls">
+  <strong>Smooth edge:</strong> width of the soft transition at both
+  edges, in Fourier pixels. <br>
+  <strong>Erase outside band:</strong> band-pass vs band-stop, as for
+  the bandpass filter. <br>
+  <strong>Angle 1 / Angle 2:</strong> live read-out of the wedge
+  boundary directions, in degrees. <br>
+  <strong>Apply filter:</strong> commits the filter to the FFT.
+</div>
+</details>
+
+<details>
+<summary>Line filter</summary>
+<p>
+Keep (or erase) Fourier pixels inside a straight stripe. Useful for
+isolating a single Fourier direction, or for removing scan-line and
+grid-pattern artefacts.
+</p>
+<div class="controls">
+  <strong>Width:</strong> half-width of the stripe perpendicular to
+  the line direction, in Fourier pixels. <br>
+  <strong>Direction:</strong> orientation in degrees (0° = horizontal,
+  90° = vertical, CCW positive). Drag the line in panel 2 to change. <br>
+  <strong>Offset:</strong> signed perpendicular distance of the line
+  from the Fourier centre. Drag the right half of the line in panel 2
+  to change. <br>
+  <strong>Erase outside line:</strong> band-pass vs band-stop. <br>
+  <strong>Apply filter:</strong> commits the filter.
+</div>
+</details>
+
+<details>
+<summary>Lattice filter</summary>
+<p>
+Build a reciprocal lattice from two basis vectors <code>u</code> and
+<code>v</code> (in Fourier pixels) and keep (or erase) circular spots
+at every lattice position. Used to extract or suppress crystalline
+content — for example, to denoise a 2D crystal or to remove residual
+lattice contamination from a non-crystalline target.
+</p>
+<div class="controls">
+  <strong>Smooth edge:</strong> Hanning fall-off at each spot, in
+  Fourier pixels. <br>
+  <strong>Diameter of dots:</strong> diameter of each lattice spot. <br>
+  <strong>u / v:</strong> the two basis vectors, edited as
+  <code>(x, y)</code> components. They can also be dragged
+  interactively in panel 2. <br>
+  <strong>Erase outside lattice:</strong> band-pass vs band-stop. <br>
+  <strong>Apply filter:</strong> commits the filter.
+</div>
+</details>
+
+<details>
+<summary>Rotate Fourier space</summary>
+<p>
+Drag in panel 2 to rotate the Fourier transform around the centre.
+This is mathematically equivalent to rotating the real-space image,
+but it operates directly on the FFT.
+</p>
+</details>
+
+<details>
+<summary>Cross-section profile</summary>
+<p>
+Draw a 1D radial / oriented profile of the Fourier amplitude. The line
+direction is dragged in panel 2; pixels within the chosen integration
+band perpendicular to the line are averaged.
+</p>
+<div class="controls">
+  <strong>Integration width:</strong> band width perpendicular to the
+  line, as a percentage of the image size. Increase for less noise,
+  decrease for higher angular resolution. The profile redraws live as
+  you type.
+</div>
+</details>
+
+<details>
+<summary>Fourier crop / Fourier pad</summary>
+<p>
+Resample the FFT by an integer factor:
+</p>
+<ul>
+  <li><strong>Fourier crop</strong> keeps only the central
+      <code>1/N×1/N</code> region. Real-space sampling stays the same
+      (with <em>Keep original size</em> checked) or becomes
+      <code>N×</code> coarser.</li>
+  <li><strong>Fourier pad</strong> zero-pads the FFT to
+      <code>N×</code> its current size, oversampling the real-space
+      image without adding information.</li>
+</ul>
+<div class="controls">
+  <strong>Factor N:</strong> 2 – 8. <br>
+  <strong>Keep original size:</strong> when checked the FFT array
+  stays at its original dimensions and pixels outside the crop window
+  are zeroed. When unchecked the array is physically shrunk by
+  <code>N</code>.
+</div>
+</details>
+
+<details>
+<summary>Phase ramp</summary>
+<p>
+Synthesise a fresh Fourier transform whose amplitude is uniformly
+1 and whose phase increases linearly along a chosen direction. Pure
+teaching tool: a phase ramp of step <em>s</em> at angle <em>θ</em>
+back-transforms to a single delta at the corresponding real-space
+position, illustrating the shift theorem.
+</p>
+<div class="controls">
+  <strong>Size of FFT:</strong> 512, 1024, 2048, or 4096
+  (default 1024). <br>
+  <strong>Direction:</strong> ramp direction in degrees, CCW from
+  the +x axis (default 30°). <br>
+  <strong>Phase step:</strong> phase increment per pixel along the
+  direction, in degrees (default 10°). <br>
+  <strong>Cancel:</strong> close the parameter window without
+  computing. <br>
+  <strong>Compute:</strong> build the FFT, back-transform to panel 1,
+  and store the result in the active history slot.
+</div>
+</details>
+
+<details>
+<summary>CTF (contrast transfer function)</summary>
+<p>
+Synthesise a 2D contrast transfer function for an electron microscope
+with the chosen optical parameters, including astigmatism, defocus
+spread, and the spatial-coherence envelope from a finite gun-opening
+angle.
+</p>
+<div class="controls">
+  <strong>Acceleration voltage:</strong> in kV. <br>
+  <strong>Energy spread:</strong> in eV (chromatic temporal coherence). <br>
+  <strong>Spherical aberration Cs:</strong> in mm. <br>
+  <strong>Open angle gun:</strong> half-convergence angle in mrad. <br>
+  <strong>Defocus:</strong> in nm (positive = underfocus). <br>
+  <strong>Defocus spread:</strong> in nm (temporal coherence). <br>
+  <strong>Astigmatism:</strong> defocus deviation along the
+  astigmatism axis, in nm. <br>
+  <strong>Astigmatism direction:</strong> in degrees, CCW from +x. <br>
+  <strong>Cancel / Compute:</strong> as for the phase ramp.
+</div>
+<div class="note">
+The CTF is built on a fixed 1024×1024 grid using the slot's pixel size
+to map Fourier pixels to spatial frequencies. A 1D radial profile is
+also computed and overlaid in panel 2.
+</div>
+</details>
+
+<details>
+<summary>Math calculation</summary>
+<p>
+Combine the Fourier transforms of two history slots with an arithmetic
+operation, optionally complex-conjugating one of the inputs. The
+result is written to a third slot. Useful for cross-correlation,
+deconvolution, complex amplitude division, and similar Fourier
+arithmetic.
+</p>
+<div class="controls">
+  <strong>Output slot:</strong> destination slot a–p. <br>
+  <strong>Inputs:</strong> two source slots. <br>
+  <strong>Operation:</strong> +, −, ×, ÷ (with optional conjugate). <br>
+  <strong>Conjugate:</strong> apply complex conjugation to one input
+  before the operation.
+</div>
+</details>
+
+<footer>
+  Fourier Analyzer · Stahlberg Lab, EPFL ·
+  <a href="manual.html">← Back to manual</a> ·
+  <a href="https://lbem-status.epfl.ch/ft/">Launch the app</a>
+</footer>
+
+</main>
+</body>
+</html>
