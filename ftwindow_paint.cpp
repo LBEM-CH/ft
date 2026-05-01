@@ -834,8 +834,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 (i == 2 && m_bandpassActive) || (i == 3 && m_directionalActive) ||
                 (i == 4 && m_lineFilterActive) || (i == 5 && m_latticeActive) ||
                 (i == 6 && m_ftRotateActive) || (i == 7 && m_crossSectionActive) ||
-                (i == 8 && m_ftCropActive) || (i == 9 && m_ctfActive) ||
-                (i == 10 && m_ftMathActive))
+                (i == 8 && m_ftCropActive) || (i == 9 && m_phaseRampActive) ||
+                (i == 10 && m_ctfActive) || (i == 11 && m_ftMathActive))
                 p.setBrush(QColor(60, 60, 60));
             else
                 p.setBrush(QColor(0, 0, 0));
@@ -1224,8 +1224,48 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Fourier math icon (button 10): Sigma/Sum sign
-            if (i == 10) {
+            // Phase ramp icon (button 9): grey gradient (dark BL to bright TR)
+            // with blue "Ramp" text overlaid.
+            if (i == 9) {
+                QLinearGradient grad(r.left(), r.bottom(), r.right(), r.top());
+                grad.setColorAt(0.0, QColor(0, 0, 0));
+                grad.setColorAt(1.0, QColor(140, 140, 140));
+                p.setPen(Qt::NoPen);
+                p.setBrush(grad);
+                p.drawRect(r);
+
+                p.setRenderHint(QPainter::Antialiasing, true);
+                QFont rf;
+                rf.setBold(true);
+                rf.setPixelSize(std::max(8, (int)(btnSide * 0.38)));
+                p.setFont(rf);
+                p.setPen(QPen(QColor(60, 100, 240), 1));
+                p.setBrush(Qt::NoBrush);
+                p.drawText(r, Qt::AlignCenter, "Ramp");
+                p.setRenderHint(QPainter::Antialiasing, false);
+
+                // Re-draw the rect outline so the active highlight border is visible
+                p.setPen(QPen(Qt::white, 1));
+                p.setBrush(Qt::NoBrush);
+                p.drawRect(r);
+
+                if (r.contains(m_mousePos)) {
+                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                    QFontMetrics ttfm(ttf);
+                    QString tip = "Phase ramp";
+                    int ttw = ttfm.horizontalAdvance(tip) + 8;
+                    int tth = ttfm.height() + 4;
+                    int ttx = r.left() - ttw - 4;
+                    int tty = r.center().y() - tth / 2;
+                    p.setPen(QPen(Qt::white, 1));
+                    p.setBrush(QColor(40, 40, 40));
+                    p.drawRect(ttx, tty, ttw, tth);
+                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                }
+            }
+
+            // Fourier math icon (button 11): Sigma/Sum sign
+            if (i == 11) {
                 p.setRenderHint(QPainter::Antialiasing, true);
                 int inset = std::max(3, btnSide / 4);
                 QRect ir = r.adjusted(inset, inset, -inset, -inset);
@@ -1263,8 +1303,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // CTF icon (button 9): black background with white "CTF" text
-            if (i == 9) {
+            // CTF icon (button 10): black background with white "CTF" text
+            if (i == 10) {
                 p.setRenderHint(QPainter::Antialiasing, true);
                 QFont cf;
                 cf.setBold(true);
@@ -2382,7 +2422,7 @@ void FtWindow::paintEvent(QPaintEvent *)
         // Panel 2 tool option rectangles (bottom-right of panel 2)
         bool p2Tool = m_bandpassActive || m_directionalActive || m_lineFilterActive || m_brushActive
                       || m_eraserActive || m_latticeActive || m_ftCropActive || m_crossSectionActive
-                      || m_ctfActive;
+                      || m_ctfActive || m_phaseRampActive;
         if (p2Tool) {
             int nRows = 0;
             int textW = 0;
@@ -2462,6 +2502,13 @@ void FtWindow::paintEvent(QPaintEvent *)
                          + m_ctfAstigAngleEdit->width();
                 int r4 = m_ctfCancelBtn->width() + 8 + m_ctfComputeBtn->width();
                 textW = std::max({r0, r1, r2, r3, r4});
+            } else if (m_phaseRampActive) {
+                nRows = 4;
+                int r0 = fm.horizontalAdvance("Size of FFT to be created: ") + m_phaseRampSizeCombo->width();
+                int r1 = fm.horizontalAdvance("Direction of phase ramp (\u00B0): ") + m_phaseRampDirEdit->width();
+                int r2 = fm.horizontalAdvance("Phase step of first pixel (\u00B0): ") + m_phaseRampStepEdit->width();
+                int r3 = m_phaseRampCancelBtn->width() + 12 + m_phaseRampComputeBtn->width();
+                textW = std::max({r0, r1, r2, r3});
             }
 
             int rw = textW * 6 / 5 + 2 * margin;
@@ -2613,6 +2660,15 @@ void FtWindow::paintEvent(QPaintEvent *)
                 // Row 4: Cancel / Compute
                 m_ctfCancelBtn->move(tx, ty + lh * 4);
                 m_ctfComputeBtn->move(rx + rw - margin - m_ctfComputeBtn->width(), ty + lh * 4);
+            } else if (m_phaseRampActive) {
+                drawParamLabel(p, fm, tx, ty, "Size of FFT to be created:", m_phaseRampSizeCombo->toolTip());
+                m_phaseRampSizeCombo->move(tx + fm.horizontalAdvance("Size of FFT to be created: "), ty);
+                drawParamLabel(p, fm, tx, ty + lh, "Direction of phase ramp (°):", m_phaseRampDirEdit->toolTip());
+                m_phaseRampDirEdit->move(tx + fm.horizontalAdvance("Direction of phase ramp (°): "), ty + lh);
+                drawParamLabel(p, fm, tx, ty + lh * 2, "Phase step of first pixel (°):", m_phaseRampStepEdit->toolTip());
+                m_phaseRampStepEdit->move(tx + fm.horizontalAdvance("Phase step of first pixel (°): "), ty + lh * 2);
+                m_phaseRampCancelBtn->move(tx, ty + lh * 3);
+                m_phaseRampComputeBtn->move(rx + rw - margin - m_phaseRampComputeBtn->width(), ty + lh * 3);
             }
         }
 
