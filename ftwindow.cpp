@@ -518,6 +518,58 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
                           m_ctfAstigEdit, m_ctfAstigAngleEdit })
         connect(e, &QLineEdit::returnPressed, this, &FtWindow::onCtfCompute);
 
+    // Phase ramp parameter widgets
+    m_phaseRampSizeCombo = new QComboBox(this);
+    for (int sz : {512, 1024, 2048, 4096})
+        m_phaseRampSizeCombo->addItem(QString::number(sz), sz);
+    m_phaseRampSizeCombo->setCurrentIndex(1);   // 1024 default
+    m_phaseRampSizeCombo->setFixedSize(80, 28);
+    m_phaseRampSizeCombo->setStyleSheet(
+        "QComboBox { background:#222; color:white; border:1px solid #888;"
+        "  padding: 2px 8px; }"
+        "QComboBox::drop-down { width: 20px; }"
+        "QComboBox QAbstractItemView { background:#222; color:white;"
+        "  selection-background-color:#555; min-width: 70px; padding: 4px; }"
+    );
+    m_phaseRampSizeCombo->setToolTip(
+        "Linear size N of the Fourier transform to be created (NxN).");
+    m_phaseRampSizeCombo->hide();
+
+    m_phaseRampDirEdit = new QLineEdit("30", this);
+    m_phaseRampDirEdit->setFixedSize(60, 22);
+    m_phaseRampDirEdit->setStyleSheet("background:#222; color:white; border:1px solid #888;");
+    m_phaseRampDirEdit->setToolTip(
+        "Direction of the phase ramp, in degrees, measured counter-\n"
+        "clockwise from the +x axis. The phase increases linearly along\n"
+        "this direction.");
+    m_phaseRampDirEdit->hide();
+
+    m_phaseRampStepEdit = new QLineEdit("10", this);
+    m_phaseRampStepEdit->setFixedSize(60, 22);
+    m_phaseRampStepEdit->setStyleSheet("background:#222; color:white; border:1px solid #888;");
+    m_phaseRampStepEdit->setToolTip(
+        "Phase increment per pixel along the ramp direction, in degrees.\n"
+        "The phase at the origin is zero and grows by this amount for\n"
+        "each unit step along the chosen direction.");
+    m_phaseRampStepEdit->hide();
+
+    m_phaseRampCancelBtn = new QPushButton("Cancel", this);
+    m_phaseRampCancelBtn->setFixedSize(80, 26);
+    m_phaseRampCancelBtn->setStyleSheet(
+        "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }");
+    connect(m_phaseRampCancelBtn, &QPushButton::clicked, this, &FtWindow::onPhaseRampCancel);
+    m_phaseRampCancelBtn->hide();
+
+    m_phaseRampComputeBtn = new QPushButton("Compute", this);
+    m_phaseRampComputeBtn->setFixedSize(80, 26);
+    m_phaseRampComputeBtn->setStyleSheet(
+        "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }");
+    connect(m_phaseRampComputeBtn, &QPushButton::clicked, this, &FtWindow::onPhaseRampCompute);
+    m_phaseRampComputeBtn->hide();
+
+    for (QLineEdit *e : {m_phaseRampDirEdit, m_phaseRampStepEdit})
+        connect(e, &QLineEdit::returnPressed, this, &FtWindow::onPhaseRampCompute);
+
     // Panel 1 eraser parameter widgets
     m_p1EraserDiamLabel = new QLabel("Eraser Gaussian diameter:", this);
     m_p1EraserDiamLabel->setStyleSheet("color: white;");
@@ -1364,6 +1416,24 @@ void FtWindow::resizeEvent(QResizeEvent *)
     m_ctfCancelBtn->setStyleSheet(btnSS);
     m_ctfComputeBtn->setFixedSize(static_cast<int>(80 * sc), btnH);
     m_ctfComputeBtn->setStyleSheet(btnSS);
+
+    // Phase ramp widgets (sizes only)
+    m_phaseRampSizeCombo->setFixedSize(static_cast<int>(80 * sc), btnH);
+    m_phaseRampSizeCombo->setStyleSheet(QString(
+        "QComboBox { background:white; color:black; border:1px solid #888;"
+        "  padding: 2px 4px; font-size: %1px; }"
+        "QComboBox::drop-down { width: %2px; }"
+        "QComboBox QAbstractItemView { background:white; color:black;"
+        "  selection-background-color:#ccc; min-width: 70px; padding: 4px;"
+        "  font-size: %1px; }").arg(fontSize).arg(static_cast<int>(20 * sc)));
+    m_phaseRampDirEdit->setFixedSize(static_cast<int>(60 * sc), editH);
+    m_phaseRampDirEdit->setStyleSheet(editSS);
+    m_phaseRampStepEdit->setFixedSize(static_cast<int>(60 * sc), editH);
+    m_phaseRampStepEdit->setStyleSheet(editSS);
+    m_phaseRampCancelBtn->setFixedSize(static_cast<int>(80 * sc), btnH);
+    m_phaseRampCancelBtn->setStyleSheet(btnSS);
+    m_phaseRampComputeBtn->setFixedSize(static_cast<int>(80 * sc), btnH);
+    m_phaseRampComputeBtn->setStyleSheet(btnSS);
 
     // Fourier crop widgets (sizes only)
     m_ftCropCombo->setFixedSize(static_cast<int>(70 * sc), btnH);

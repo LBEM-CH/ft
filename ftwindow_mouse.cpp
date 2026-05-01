@@ -469,6 +469,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         m_crossSectionActive = false;
         m_ftCropActive = false; m_ftMathActive = false;
         m_ctfActive = false;
+        m_phaseRampActive = false;
     };
     auto showToolWidgets = [&]() {
         bool showFilter = m_bandpassActive || m_directionalActive;
@@ -524,6 +525,12 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         m_ctfAstigAngleEdit->setVisible(m_ctfActive);
         m_ctfCancelBtn->setVisible(m_ctfActive);
         m_ctfComputeBtn->setVisible(m_ctfActive);
+
+        m_phaseRampSizeCombo->setVisible(m_phaseRampActive);
+        m_phaseRampDirEdit->setVisible(m_phaseRampActive);
+        m_phaseRampStepEdit->setVisible(m_phaseRampActive);
+        m_phaseRampCancelBtn->setVisible(m_phaseRampActive);
+        m_phaseRampComputeBtn->setVisible(m_phaseRampActive);
     };
     if (m_toolBtnRects[0].contains(event->pos())) {
         bool was = m_eraserActive; deactivateAllTools();
@@ -573,12 +580,16 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         m_ftCropActive = !was; showToolWidgets(); update(); return;
     }
     if (m_toolBtnRects[9].contains(event->pos())) {
+        bool was = m_phaseRampActive; deactivateAllTools();
+        m_phaseRampActive = !was; showToolWidgets(); update(); return;
+    }
+    if (m_toolBtnRects[10].contains(event->pos())) {
         bool was = m_ctfActive; deactivateAllTools();
         m_ctfActive = !was;
         m_ctfProfile.clear();
         showToolWidgets(); update(); return;
     }
-    if (m_toolBtnRects[10].contains(event->pos())) {
+    if (m_toolBtnRects[11].contains(event->pos())) {
         bool was = m_ftMathActive; deactivateAllTools();
         m_ftMathActive = !was; showToolWidgets(); update(); return;
     }

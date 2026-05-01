@@ -289,7 +289,7 @@ private:
 
     // ---- tool buttons ----
     static constexpr int P1_TOOL_BUTTONS = 16;
-    static constexpr int P2_TOOL_BUTTONS = 11;
+    static constexpr int P2_TOOL_BUTTONS = 12;
     QRect       m_p1BtnRects[P1_TOOL_BUTTONS];       // panel 1 left edge
     QRect       m_toolBtnRects[P2_TOOL_BUTTONS];     // panel 2 right edge
 
@@ -577,6 +577,16 @@ private:
     void drawDirectionalWedge(QPainter &p, const QRect &screenRect,
                               const ZoomState &zoom, int imgW, int imgH);
     void onApplyDirectional();
+
+    // ---- phase ramp ----
+    bool        m_phaseRampActive = false;
+    QComboBox  *m_phaseRampSizeCombo = nullptr;
+    QLineEdit  *m_phaseRampDirEdit   = nullptr;
+    QLineEdit  *m_phaseRampStepEdit  = nullptr;
+    QPushButton *m_phaseRampCancelBtn = nullptr;
+    QPushButton *m_phaseRampComputeBtn = nullptr;
+    void onPhaseRampCompute();
+    void onPhaseRampCancel();
 };
 
 #endif // FTWINDOW_H

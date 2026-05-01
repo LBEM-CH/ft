@@ -3923,3 +3923,112 @@ void FtWindow::onCtfCompute()
     saveHistory();
     update();
 }
+
+void FtWindow::onPhaseRampCancel()
+{
+    m_phaseRampActive = false;
+    m_phaseRampSizeCombo->hide();
+    m_phaseRampDirEdit->hide();
+    m_phaseRampStepEdit->hide();
+    m_phaseRampCancelBtn->hide();
+    m_phaseRampComputeBtn->hide();
+    update();
+}
+
+void FtWindow::onPhaseRampCompute()
+{
+    int N = m_phaseRampSizeCombo->currentData().toInt();
+    if (N <= 0) N = 1024;
+
+    bool okDir = false, okStep = false;
+    double dirDeg  = m_phaseRampDirEdit->text().toDouble(&okDir);
+    double stepDeg = m_phaseRampStepEdit->text().toDouble(&okStep);
+    if (!okDir)  dirDeg  = 30.0;
+    if (!okStep) stepDeg = 10.0;
+
+    storeUndoSnapshot();
+
+    // Pick or create an active history slot, allocate a real-space buffer.
+    if (m_activeSlot < 0) {
+        m_activeSlot = HISTORY_SLOTS - 1;
+        for (int i = 0; i < HISTORY_SLOTS; i++) {
+            if (!m_history[i].occupied) { m_activeSlot = i; break; }
+        }
+    }
+    m_image = QImage(N, N, QImage::Format_Grayscale8);
+    m_image.fill(0);
+    m_imageRawPixels.assign((size_t)N * N, 0.0);
+    m_pixelSize = (m_pixelSize > 0) ? m_pixelSize : 1.0;
+
+    // Build shifted FFT: amplitude 1, phase = stepRad * projection along
+    // the chosen direction, with the origin at the array centre.
+    double dirRad  = dirDeg  * M_PI / 180.0;
+    double stepRad = stepDeg * M_PI / 180.0;
+    double cd = std::cos(dirRad);
+    double sd = std::sin(dirRad);
+
+    m_fftN = N;
+    m_fftData.assign((size_t)N * N, Complex(0.0, 0.0));
+    double half = N / 2.0;
+    for (int y = 0; y < N; y++) {
+        // Image y axis points downward; flip for the math CCW convention so
+        // that "direction" matches the angle shown elsewhere in the UI.
+        double dy = -(y - half);
+        for (int x = 0; x < N; x++) {
+            double dx = x - half;
+            double phase = stepRad * (dx * cd + dy * sd);
+            m_fftData[y * N + x] = Complex(std::cos(phase), std::sin(phase));
+        }
+    }
+
+    m_ftComputed = true;
+    m_origW = N;
+    m_origH = N;
+    m_modeBtn->show();
+    m_maskBtn->show();
+    m_zoom[0].reset(N, N);
+    m_zoom[1].reset(N, N);
+    m_zoom[2].reset(N, N);
+    recomputeDisplayImages();
+
+    // Inverse-transform to real space for panel 1.
+    computeInverseFFT();
+
+    // Quadrant-swap so the real-space origin sits at the image centre.
+    if ((int)m_imageRawPixels.size() == N * N) {
+        int h2 = N / 2;
+        std::vector<double> shifted(N * N);
+        for (int y = 0; y < N; y++) {
+            int sy = (y + h2) % N;
+            for (int x = 0; x < N; x++) {
+                int sx = (x + h2) % N;
+                shifted[sy * N + sx] = m_imageRawPixels[y * N + x];
+            }
+        }
+        m_imageRawPixels = std::move(shifted);
+        double scale = (m_imageMaxVal > m_imageMinVal)
+                         ? 255.0 / (m_imageMaxVal - m_imageMinVal) : 1.0;
+        for (int y = 0; y < N; y++) {
+            uchar *row = m_image.scanLine(y);
+            for (int x = 0; x < N; x++)
+                row[x] = static_cast<uchar>(std::clamp(
+                    (m_imageRawPixels[y * N + x] - m_imageMinVal) * scale, 0.0, 255.0));
+        }
+    }
+
+    if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS) {
+        m_imagePath = QString("phase ramp: N=%1 dir=%2° step=%3°")
+                          .arg(N).arg(dirDeg).arg(stepDeg);
+        m_history[m_activeSlot].image        = m_image;
+        m_history[m_activeSlot].path         = m_imagePath;
+        m_history[m_activeSlot].rawPixels    = m_imageRawPixels;
+        m_history[m_activeSlot].minVal       = m_imageMinVal;
+        m_history[m_activeSlot].maxVal       = m_imageMaxVal;
+        m_history[m_activeSlot].pixelSize    = m_pixelSize;
+        m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
+        m_history[m_activeSlot].occupied     = true;
+    }
+
+    saveHistory();
+    update();
+}
