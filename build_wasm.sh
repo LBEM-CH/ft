@@ -104,6 +104,13 @@ if [ -d "$SCRIPT_DIR/EXAMPLE_IMAGES" ]; then
     ln -sfn "$SCRIPT_DIR/EXAMPLE_IMAGES" images
 fi
 
+# Symlink the static manual pages so build_webserver.sh can pack them.
+for f in manual.html manual_panel1.html manual_panel2.html manual_exercises.html; do
+    if [ -e "$SCRIPT_DIR/$f" ]; then
+        ln -sfn "$SCRIPT_DIR/$f" "$f"
+    fi
+done
+
 echo ""
 echo "=== Build complete ==="
 echo "Output files in: $BUILD_DIR"

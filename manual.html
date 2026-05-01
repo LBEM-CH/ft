@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fourier Analyzer — Manual</title>
+<style>
+  :root {
+    --bg: #f7f7f8;
+    --fg: #1d1d20;
+    --muted: #5a5a62;
+    --accent: #2858c4;
+    --border: #d8d8de;
+    --panel: #ffffff;
+    --code-bg: #eef0f4;
+    --hover: #ebeef5;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI",
+          "Helvetica Neue", Arial, sans-serif;
+    color: var(--fg);
+    background: var(--bg);
+  }
+  header {
+    background: #1d1d20;
+    color: #fff;
+    padding: 18px 24px;
+    border-bottom: 1px solid #000;
+  }
+  header h1 { margin: 0; font-size: 22px; font-weight: 600; }
+  header .subtitle { margin-top: 4px; font-size: 13px; color: #b0b0b8; }
+  header a { color: #9bbcff; text-decoration: none; }
+  header a:hover { text-decoration: underline; }
+
+  main {
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 24px;
+  }
+
+  nav.toc {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 18px;
+    margin-bottom: 24px;
+  }
+  nav.toc h2 {
+    margin: 0 0 8px 0;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+  }
+  nav.toc ul { list-style: none; padding: 0; margin: 0;
+               display: grid; grid-template-columns: repeat(2, 1fr);
+               gap: 4px 16px; }
+  nav.toc a { color: var(--accent); text-decoration: none; }
+  nav.toc a:hover { text-decoration: underline; }
+
+  details {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin: 0 0 12px 0;
+    padding: 0 18px;
+    transition: background 0.1s;
+  }
+  details[open] { background: var(--panel); }
+  details summary {
+    padding: 12px 0;
+    cursor: pointer;
+    font-weight: 600;
+    list-style: none;
+    user-select: none;
+  }
+  details summary::-webkit-details-marker { display: none; }
+  details summary::before {
+    content: "▶";
+    display: inline-block;
+    margin-right: 10px;
+    font-size: 11px;
+    color: var(--muted);
+    transform: translateY(-2px);
+    transition: transform 0.15s;
+  }
+  details[open] summary::before { transform: rotate(90deg) translateX(-2px); }
+  details > *:not(summary) { padding-bottom: 14px; }
+  details summary:hover { color: var(--accent); }
+
+  /* Nested details (e.g. individual exercises) sit inside an outer
+     details block; render them with a subtle alternate background and
+     a thinner left border so the hierarchy is visible. */
+  details details {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    margin: 8px 0;
+    padding: 0 14px;
+  }
+  details details summary { padding: 10px 0; font-weight: 500; }
+
+  h2.section { margin-top: 32px; font-size: 14px; text-transform: uppercase;
+               letter-spacing: 0.06em; color: var(--muted); }
+  h3 { margin-top: 0; }
+  p { margin: 0.6em 0; }
+  ul, ol { padding-left: 22px; }
+  li { margin: 3px 0; }
+  code, kbd {
+    background: var(--code-bg);
+    padding: 1px 6px;
+    border-radius: 3px;
+    font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  kbd { border: 1px solid var(--border); }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 8px 0;
+    font-size: 14px;
+  }
+  th, td {
+    border: 1px solid var(--border);
+    padding: 6px 10px;
+    text-align: left;
+    vertical-align: top;
+  }
+  th { background: var(--code-bg); font-weight: 600; }
+
+  .subpages {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    margin-top: 8px;
+  }
+  .subpages a {
+    display: block;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 16px;
+    text-decoration: none;
+    color: var(--fg);
+    transition: background 0.1s, border-color 0.1s;
+  }
+  .subpages a:hover { background: var(--hover); border-color: var(--accent); }
+  .subpages a strong { color: var(--accent); display: block; margin-bottom: 4px; }
+  .subpages a span { font-size: 13px; color: var(--muted); }
+
+  footer {
+    color: var(--muted);
+    font-size: 13px;
+    margin-top: 40px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+  }
+
+  @media (max-width: 600px) {
+    nav.toc ul, .subpages { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Fourier Analyzer — User Manual</h1>
+  <div class="subtitle">
+    Stahlberg Lab, EPFL · <a href="https://lbem-status.epfl.ch/ft/">Launch the app</a>
+  </div>
+</header>
+
+<main>
+
+<nav class="toc">
+  <h2>On this page</h2>
+  <ul>
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#quickstart">Quick start</a></li>
+    <li><a href="#gui">GUI layout</a></li>
+    <li><a href="#toolbar">Top toolbar</a></li>
+    <li><a href="#modes">FT display modes</a></li>
+    <li><a href="#mouse">Mouse &amp; trackpad</a></li>
+    <li><a href="#history">History slots</a></li>
+    <li><a href="#exercises">Exercises</a></li>
+    <li><a href="#tools">Tool reference (sub-pages)</a></li>
+  </ul>
+</nav>
+
+<details id="overview" open>
+<summary>Overview</summary>
+<p>
+Fourier Analyzer is an interactive teaching and analysis tool for the
+Fourier transform of 2D images. It is designed for classroom use in
+electron microscopy and image processing, but it works just as well as a
+general-purpose image &amp; FFT explorer.
+</p>
+<p>
+The window is split into four panels: the real-space image, its Fourier
+transform, a history of the images you have loaded or produced, and the
+matching power spectra. Edits in either panel update the other in real
+time, so you can directly observe how a change in real space affects
+Fourier space and vice versa.
+</p>
+</details>
+
+<details id="quickstart">
+<summary>Quick start</summary>
+<ol>
+  <li>Click <strong>Load</strong> in the top toolbar and select an image
+      (PNG, JPG, MRC, …). It appears in panel 1 (top-left); the FFT
+      appears in panel 2 (top-right).</li>
+  <li>Cycle the FT display with the <strong>Mode</strong> button to see
+      cos/sin, amplitude/phase, complex (HSV), or power-spectrum
+      representations.</li>
+  <li>Pan with click-and-drag, zoom with the scroll wheel or pinch
+      gesture, in either panel.</li>
+  <li>Pick a tool from the icon column on the right of panel 2 (or the
+      left of panel 1). A parameter window appears at the bottom of the
+      panel; adjust the values and click <strong>Apply</strong>.</li>
+  <li>Mistakes are cheap: <kbd>⌘Z</kbd> / <kbd>Ctrl-Z</kbd> undoes the
+      last operation. Each result is also stored in a history slot
+      (panel 3) so you can return to it later.</li>
+</ol>
+</details>
+
+<details id="gui">
+<summary>GUI layout</summary>
+<p>The window is divided into four resizable panels:</p>
+<table>
+  <tr><th>Panel 1 (top-left)</th>
+      <td>The real-space image. Tool icons run down the left edge.</td></tr>
+  <tr><th>Panel 2 (top-right)</th>
+      <td>The Fourier transform of the panel-1 image. Tool icons run
+          down the right edge.</td></tr>
+  <tr><th>Panel 3 (bottom-left)</th>
+      <td>Sixteen history slots (labelled <code>a</code>–<code>p</code>).
+          Click a slot to load it into panel 1, or to start a new slot.</td></tr>
+  <tr><th>Panel 4 (bottom-right)</th>
+      <td>The matching power spectrum thumbnails for the same sixteen
+          slots.</td></tr>
+</table>
+<p>
+The header bar at the top contains two clickable fields: the
+<strong>Fourier Analyzer</strong> title (opens an About dialog with
+contact info) and <strong>Manual</strong> (this page).
+</p>
+</details>
+
+<details id="toolbar">
+<summary>Top toolbar</summary>
+<table>
+  <tr><th>Button</th><th>Function</th></tr>
+  <tr><td><strong>Load</strong></td>
+      <td>Open an image file (PNG, JPG, BMP, MRC). MRC reads include
+          the pixel size from the header.</td></tr>
+  <tr><td><strong>Save</strong></td>
+      <td>Save the current panel-1 image. The file format follows the
+          extension you choose.</td></tr>
+  <tr><td><strong>New</strong></td>
+      <td>Create a blank image of a chosen size (512–4096 pixels) in a
+          fresh slot.</td></tr>
+  <tr><td><strong>Reload</strong></td>
+      <td>Re-read the current file from disk, discarding any edits.</td></tr>
+  <tr><td><strong>Undo</strong> / <strong>Redo</strong></td>
+      <td>Step backward or forward through the edit history of the
+          current slot. Also bound to <kbd>⌘Z</kbd> and <kbd>⇧⌘Z</kbd>.</td></tr>
+  <tr><td><strong>Fullscreen</strong></td>
+      <td>Toggle fullscreen mode.</td></tr>
+  <tr><td><strong>Mode</strong></td>
+      <td>Cycle the panel-2 display through cos/sin, amplitude/phase,
+          complex (HSV), and power-spectrum modes.</td></tr>
+  <tr><td><strong>Mask center</strong></td>
+      <td>Hide the central low-frequency peak in the power-spectrum
+          display so the rest of the FT becomes easier to see.</td></tr>
+</table>
+</details>
+
+<details id="modes">
+<summary>FT display modes</summary>
+<p>
+The panel-2 display can show the Fourier transform in four ways. Cycle
+through them with the <strong>Mode</strong> button in the top toolbar.
+</p>
+<table>
+  <tr><th>Mode</th><th>What is shown</th></tr>
+  <tr><td><strong>cos / sin</strong></td>
+      <td>Two side-by-side panels showing the real (cos) and imaginary
+          (sin) parts of the FT. Useful for visualising symmetry: the
+          cos panel is symmetric, the sin panel is anti-symmetric for
+          real input images.</td></tr>
+  <tr><td><strong>amplitude / phase</strong></td>
+      <td>Two side-by-side panels: amplitude
+          (<code>√(real² + imag²)</code>) and phase
+          (<code>atan2(imag, real)</code>). Phase carries most of the
+          structural information.</td></tr>
+  <tr><td><strong>complex</strong></td>
+      <td>A single panel using HSV colour: <em>hue</em> encodes phase,
+          <em>brightness</em> encodes amplitude. Compact view that
+          shows both at once.</td></tr>
+  <tr><td><strong>power</strong></td>
+      <td>The squared amplitude with a logarithmic look-up table. This
+          is what is shown in the panel-4 thumbnails.</td></tr>
+</table>
+<p>
+The Fourier transform is always centred: the DC term (zero frequency)
+sits at the centre of panel 2, and high frequencies are at the corners.
+</p>
+</details>
+
+<details id="mouse">
+<summary>Mouse &amp; trackpad</summary>
+<table>
+  <tr><th>Action</th><th>Effect</th></tr>
+  <tr><td>Left-click + drag</td>
+      <td>In an empty area: pan the panel. With a tool active: paint,
+          erase, or drag the tool's handle.</td></tr>
+  <tr><td>Scroll wheel</td>
+      <td>Zoom in or out at the cursor position.</td></tr>
+  <tr><td>Pinch gesture (trackpad)</td>
+      <td>Zoom in or out smoothly.</td></tr>
+  <tr><td>Click on the histogram bar</td>
+      <td>Drag the white triangles below a panel to clip the display
+          look-up table (LUT) for contrast adjustment. The underlying
+          pixel values are not changed.</td></tr>
+  <tr><td>Hover over a parameter label</td>
+      <td>A tooltip explains what the parameter controls.</td></tr>
+  <tr><td>Click a history slot (panel 3 or 4)</td>
+      <td>Activate that slot. Any pending edits in the previous slot
+          are stored before switching.</td></tr>
+</table>
+</details>
+
+<details id="history">
+<summary>History slots</summary>
+<p>
+Panel 3 holds sixteen image slots labelled <code>a</code> through
+<code>p</code>. The currently active slot is highlighted. Each slot
+keeps:
+</p>
+<ul>
+  <li>The real-space image and its raw pixel values.</li>
+  <li>The file path or generated label (e.g. <em>“phase ramp: N=1024 dir=30° step=10°”</em>).</li>
+  <li>The pixel size in Ångström.</li>
+  <li>A power-spectrum thumbnail (shown in panel 4).</li>
+</ul>
+<p>
+History is persisted between sessions — you can close the app and pick
+up where you left off. Use the <strong>New</strong> button to start a
+fresh slot, or click an empty thumbnail to begin one.
+</p>
+</details>
+
+<h2 class="section" id="exercises">Exercises</h2>
+<p>
+A set of guided exercises for classroom or self-study use. Each one
+introduces a different aspect of the Fourier transform and the
+relevant tools in the app. Try to predict the outcome before clicking
+<strong>Compute</strong> or <strong>Apply</strong>.
+</p>
+
+<div class="subpages">
+  <a href="manual_exercises.html">
+    <strong>Exercises</strong>
+    <span>Chessboard from Fourier pixels, high/low/band-pass filters,
+          eraser-based image restoration, lattice filtering, the
+          convolution theorem with Andreas, phase ramp and the shift
+          theorem, cross-correlation and particle picking.</span>
+  </a>
+</div>
+
+<h2 class="section">Tool reference (sub-pages)</h2>
+<p>
+Each panel has its own column of tool icons. Click an icon to activate
+the tool; click again to deactivate. The detailed reference for every
+tool lives on its own page:
+</p>
+
+<div class="subpages">
+  <a href="manual_panel1.html">
+    <strong>Panel 1 — real-space tools</strong>
+    <span>Eraser, brush, measure, flip, shift, rotate, invert, taper,
+          bin, Gabor, Hessian, amyloid, math, peak search, extract.</span>
+  </a>
+  <a href="manual_panel2.html">
+    <strong>Panel 2 — Fourier tools</strong>
+    <span>Eraser, brush, bandpass, directional, line, lattice, rotate,
+          cross-section, Fourier crop, phase ramp, CTF, math.</span>
+  </a>
+</div>
+
+<footer>
+  Fourier Analyzer · Stahlberg Lab, EPFL ·
+  <a href="https://lbem-status.epfl.ch/ft/">Back to the app</a>
+</footer>
+
+</main>
+</body>
+</html>

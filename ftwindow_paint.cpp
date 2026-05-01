@@ -3392,6 +3392,21 @@ void FtWindow::paintEvent(QPaintEvent *)
         p.drawRect(titleRect);
 
         p.drawText(titleRect, Qt::AlignCenter, title);
+
+        // "Manual" button, same size and style, positioned directly below.
+        QRect manualRect(titleRect.x(), titleRect.bottom() + 2,
+                         titleRect.width(), titleRect.height());
+        m_manualRect = manualRect;
+
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(75, 75, 75));
+        p.drawRect(manualRect);
+
+        p.setPen(QPen(Qt::white, 1));
+        p.setBrush(Qt::NoBrush);
+        p.drawRect(manualRect);
+
+        p.drawText(manualRect, Qt::AlignCenter, "Manual");
     }
 
     // ---- arrows ---------------------------------------------------------------
