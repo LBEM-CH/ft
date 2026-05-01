@@ -38,7 +38,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         manual->setIconPixmap(QApplication::windowIcon().pixmap(64, 64));
         manual->setText(
             "<h3>Fourier Analyzer</h3>"
-            "<p>For instructions and example tasks, visit this website:</p>"
+            "<p>For instructions and Exercises, visit this website:</p>"
             "<p><a href=\"https://lbem-status.epfl.ch/ft/manual.html\">"
             "https://lbem-status.epfl.ch/ft/manual.html</a></p>");
         manual->open();
