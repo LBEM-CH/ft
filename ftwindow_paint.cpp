@@ -1225,7 +1225,7 @@ void FtWindow::paintEvent(QPaintEvent *)
             }
 
             // Phase ramp icon (button 9): grey gradient (dark BL to bright TR)
-            // with blue "Ramp" text overlaid.
+            // with white "Ramp" text overlaid.
             if (i == 9) {
                 QLinearGradient grad(r.left(), r.bottom(), r.right(), r.top());
                 grad.setColorAt(0.0, QColor(0, 0, 0));
@@ -1239,7 +1239,7 @@ void FtWindow::paintEvent(QPaintEvent *)
                 rf.setBold(true);
                 rf.setPixelSize(std::max(8, (int)(btnSide * 0.38)));
                 p.setFont(rf);
-                p.setPen(QPen(QColor(60, 100, 240), 1));
+                p.setPen(QPen(Qt::white, 1));
                 p.setBrush(Qt::NoBrush);
                 p.drawText(r, Qt::AlignCenter, "Ramp");
                 p.setRenderHint(QPainter::Antialiasing, false);
