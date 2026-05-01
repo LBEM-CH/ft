@@ -1329,9 +1329,10 @@ void FtWindow::resizeEvent(QResizeEvent *)
     m_createBtn->move(8 + m_loadBtn->width() + 4, 8 + m_saveBtn->height() + 4);
     int hy0 = height() - height() / 5;
     m_reloadBtn->move(8, 8 + m_loadBtn->height() + 4);
-    // When running standalone, the "Fourier Analyzer" title bar occupies the
-    // top-center area, so push undo/redo below it to avoid overlap.
-    int undoY = isWindow() ? (8 + 42) : 8;
+    // When running standalone, the "Fourier Analyzer" title and the "Manual"
+    // button below it occupy the top-center area, so push undo/redo below
+    // both of them to avoid overlap.
+    int undoY = isWindow() ? (8 + 42 * 2) : 8;
     m_undoBtn->move((width() - m_undoBtn->width()) / 2, undoY);
     m_redoBtn->move((width() - m_redoBtn->width()) / 2, undoY + m_undoBtn->height() + 4);
     m_fullscreenBtn->move(width() - m_fullscreenBtn->width() - 8, 8);

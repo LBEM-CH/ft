@@ -28,6 +28,23 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         return;
     }
 
+    // "Manual" click – show manual link dialog
+    if (!m_manualRect.isNull() && m_manualRect.contains(event->pos())) {
+        auto *manual = new QMessageBox(this);
+        manual->setAttribute(Qt::WA_DeleteOnClose);
+        manual->setWindowTitle("Manual");
+        manual->setTextFormat(Qt::RichText);
+        manual->setTextInteractionFlags(Qt::TextBrowserInteraction);
+        manual->setIconPixmap(QApplication::windowIcon().pixmap(64, 64));
+        manual->setText(
+            "<h3>Fourier Analyzer</h3>"
+            "<p>For instructions and example tasks, visit this website:</p>"
+            "<p><a href=\"https://lbem-status.epfl.ch/ft/manual.html\">"
+            "https://lbem-status.epfl.ch/ft/manual.html</a></p>");
+        manual->open();
+        return;
+    }
+
     // Check history / power-spectrum slot clicks (panels 3 & 4) – activate clicked slot
     int clickedSlot = -1;
     for (int i = 0; i < HISTORY_SLOTS; i++) {

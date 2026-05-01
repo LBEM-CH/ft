@@ -286,6 +286,7 @@ private:
 
     QPoint      m_mousePos;         // current mouse position
     QRect       m_titleRect;        // title bar click region ("Fourier Analyzer")
+    QRect       m_manualRect;       // "Manual" click region below title
 
     // ---- tool buttons ----
     static constexpr int P1_TOOL_BUTTONS = 16;
