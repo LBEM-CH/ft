@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Exercises — Fourier Analyzer Manual</title>
+<style>
+  :root {
+    --bg: #f7f7f8;
+    --fg: #1d1d20;
+    --muted: #5a5a62;
+    --accent: #2858c4;
+    --border: #d8d8de;
+    --panel: #ffffff;
+    --code-bg: #eef0f4;
+    --hover: #ebeef5;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI",
+          "Helvetica Neue", Arial, sans-serif;
+    color: var(--fg);
+    background: var(--bg);
+  }
+  header {
+    background: #1d1d20;
+    color: #fff;
+    padding: 18px 24px;
+    border-bottom: 1px solid #000;
+  }
+  header h1 { margin: 0; font-size: 22px; font-weight: 600; }
+  header .breadcrumb {
+    margin-top: 4px; font-size: 13px; color: #b0b0b8;
+  }
+  header a { color: #9bbcff; text-decoration: none; }
+  header a:hover { text-decoration: underline; }
+
+  main { max-width: 920px; margin: 0 auto; padding: 24px; }
+
+  details {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin: 0 0 12px 0;
+    padding: 0 18px;
+  }
+  details summary {
+    padding: 12px 0;
+    cursor: pointer;
+    font-weight: 600;
+    list-style: none;
+    user-select: none;
+  }
+  details summary::-webkit-details-marker { display: none; }
+  details summary::before {
+    content: "▶";
+    display: inline-block;
+    margin-right: 10px;
+    font-size: 11px;
+    color: var(--muted);
+    transform: translateY(-2px);
+    transition: transform 0.15s;
+  }
+  details[open] summary::before { transform: rotate(90deg) translateX(-2px); }
+  details > *:not(summary) { padding-bottom: 14px; }
+  details summary:hover { color: var(--accent); }
+
+  p { margin: 0.6em 0; }
+  ul { padding-left: 22px; }
+  li { margin: 3px 0; }
+  code, kbd {
+    background: var(--code-bg);
+    padding: 1px 6px;
+    border-radius: 3px;
+    font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+
+  footer {
+    color: var(--muted);
+    font-size: 13px;
+    margin-top: 40px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Exercises</h1>
+  <div class="breadcrumb">
+    <a href="manual.html">← Manual</a>
+  </div>
+</header>
+
+<main>
+
+<p>
+A set of guided exercises for classroom or self-study use. Each one
+introduces a different aspect of the Fourier transform and the
+relevant tools in the app. Try to predict the outcome before clicking
+<strong>Compute</strong> or <strong>Apply</strong>.
+</p>
+
+<details open>
+<summary>Exercise 0 — Build a chessboard from Fourier-space pixels</summary>
+<p>
+Create an empty image (top toolbar → <strong>New</strong>). With the
+<strong>paint brush</strong> in panel 2, place pixels in Fourier
+space. Can you create a chessboard pattern in real space?
+</p>
+</details>
+
+<details>
+<summary>Exercise 1 — High-, low-, band-pass and directional filters</summary>
+<p>
+Load an image. Apply high-pass, low-pass and band-pass filters, as
+well as directional and line filters from the panel-2 tool column.
+Try to first predict the effect of each filter on the real-space
+image before clicking <strong>Apply</strong>.
+</p>
+</details>
+
+<details>
+<summary>Exercise 2 — Restore an image with the Fourier eraser</summary>
+<p>
+Load the <code>restauration_512.png</code> image. Inspect it in
+Fourier space (panel 2). Use the <strong>eraser</strong> tool to
+remove suspicious peaks there and observe how the real-space image
+changes.
+</p>
+</details>
+
+<details>
+<summary>Exercise 3 — Intact vs anisotropic EM images</summary>
+<p>
+Load intact and anisotropic electron microscopy images. Inspect them
+both in real space (panel 1) and in Fourier space (panel 2). What
+distinguishes the two in each domain?
+</p>
+</details>
+
+<details>
+<summary>Exercise 4 — Lattice filtering of crystals and periodic scenes</summary>
+<p>
+Load the <code>2d_protein_crystal</code> and <code>Polyhead_virus</code>
+images. Use the <strong>Lattice filter</strong> to obtain the protein
+maps.
+</p>
+<p>
+Then load the <code>Biozentrum_Basel_Eyes</code> image. In Fourier
+space, use the lattice filter to either keep only the periodic
+content, or to delete the periodic content (toggle
+<em>Erase outside lattice</em>). Compare the two results.
+</p>
+</details>
+
+<details>
+<summary>Exercise 5 — Denoise a noisy apple with the lattice filter</summary>
+<p>
+Load a noisy apple image. Are you able to use the <strong>lattice
+filter</strong> to remove the noise? This requires precision in
+positioning the basis vectors.
+</p>
+</details>
+
+<details>
+<summary>Exercise 6 — Convolution theorem with Andreas</summary>
+<p>
+Load <code>andreas_1024.png</code>. Use a lattice filter with vectors
+<code>(4, 0)</code> and <code>(0, 4)</code>, and a 1-pixel mask
+radius. Explain the effect using the convolution theorem.
+</p>
+<p>
+Then create an empty image and manually place a few pixels into it.
+Convolute that with Andreas. Correlate the result with Andreas. Run a
+<strong>peak search</strong> (particle picking) and
+<strong>extract</strong> 128-pixel "particles" from the convoluted
+map.
+</p>
+</details>
+
+<details>
+<summary>Exercise 7 — Phase ramp and the shift theorem</summary>
+<p>
+Load an image. Create a <strong>phase ramp</strong> in a different
+slot (panel-2 tool column). Look at it in Fourier space in the "Amplitude and Phase" mode. 
+</p>
+<p>
+Multiply this phase ramp with the Fourier
+transform of the image using <strong>Math calculation</strong>. What
+do you observe to happen with the image?
+</p>
+</details>
+
+<details>
+<summary>Exercise 8 — Real-space convolution vs Fourier multiplication</summary>
+<p>
+Load <code>Fourier_text</code> and <code>Fourier_word</code> and use
+the <strong>Math calculation</strong> function to convolute them in
+real space. Adjust the histogram to visualise the highest peaks.
+</p>
+<p>
+Alternatively, multiply their Fourier transforms in Fourier space.
+Compare the results — they should match up to a constant factor.
+</p>
+</details>
+
+<details>
+<summary>Exercise 9 — Cross-correlation, picking and lattice averaging</summary>
+<p>
+Load a single particle protein image (<code>a</code>) and a particle
+template (<code>b</code>). Cross-correlate them with
+<code>c = a × b</code> using <strong>Math calculation</strong>.
+Apply a <strong>high-pass</strong> to the cross-correlation map
+<code>c</code> with inner radius 100.
+</p>
+<p>
+Run <strong>peak search</strong> on the cross-correlation map
+<code>c</code>. Inspect the picked particles on <code>a</code>.
+<strong>Extract</strong> 64-pixel particles from <code>a</code> into
+slot <code>d</code>.
+</p>
+<p>
+Use a lattice filter with exactly <code>(16, 0)</code> and
+<code>(0, 16)</code> on <code>d</code> to obtain the average
+particle (not rotationally aligned).
+</p>
+</details>
+
+
+<details>
+<summary>Exercise 10 — Helix synthesis</summary>
+<p>
+Load a an image of a fibril cross-section into a buffer (<code>a</code>) 
+and use the Amyloid function template to create a fibril projection image with that cross-section. 
+</p>
+<p>
+Alternatively, draw a cross-section with the paint brush and create a fibril from that. 
+</p>
+<p>
+Can you create a synthetic fibril image that in Fourier space resembles the Fourier transform 
+of a real fibril image, especially concerning the reflection line at 4.75 Å?
+</p>
+</details>
+
+<footer>
+  Fourier Analyzer · Stahlberg Lab, EPFL ·
+  <a href="manual.html">← Back to manual</a> ·
+  <a href="https://lbem-status.epfl.ch/ft/">Launch the app</a>
+</footer>
+
+</main>
+</body>
+</html>

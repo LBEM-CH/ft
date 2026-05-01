@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Panel 1 — real-space tools — Fourier Analyzer Manual</title>
+<style>
+  :root {
+    --bg: #f7f7f8;
+    --fg: #1d1d20;
+    --muted: #5a5a62;
+    --accent: #2858c4;
+    --border: #d8d8de;
+    --panel: #ffffff;
+    --code-bg: #eef0f4;
+    --hover: #ebeef5;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI",
+          "Helvetica Neue", Arial, sans-serif;
+    color: var(--fg);
+    background: var(--bg);
+  }
+  header {
+    background: #1d1d20;
+    color: #fff;
+    padding: 18px 24px;
+    border-bottom: 1px solid #000;
+  }
+  header h1 { margin: 0; font-size: 22px; font-weight: 600; }
+  header .breadcrumb {
+    margin-top: 4px; font-size: 13px; color: #b0b0b8;
+  }
+  header a { color: #9bbcff; text-decoration: none; }
+  header a:hover { text-decoration: underline; }
+
+  main { max-width: 920px; margin: 0 auto; padding: 24px; }
+
+  details {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin: 0 0 12px 0;
+    padding: 0 18px;
+  }
+  details summary {
+    padding: 12px 0;
+    cursor: pointer;
+    font-weight: 600;
+    list-style: none;
+    user-select: none;
+  }
+  details summary::-webkit-details-marker { display: none; }
+  details summary::before {
+    content: "▶";
+    display: inline-block;
+    margin-right: 10px;
+    font-size: 11px;
+    color: var(--muted);
+    transform: translateY(-2px);
+    transition: transform 0.15s;
+  }
+  details[open] summary::before { transform: rotate(90deg) translateX(-2px); }
+  details > *:not(summary) { padding-bottom: 14px; }
+  details summary:hover { color: var(--accent); }
+
+  p { margin: 0.6em 0; }
+  ul { padding-left: 22px; }
+  li { margin: 3px 0; }
+  code, kbd {
+    background: var(--code-bg);
+    padding: 1px 6px;
+    border-radius: 3px;
+    font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+
+  .controls {
+    background: var(--code-bg);
+    border-left: 3px solid var(--accent);
+    padding: 8px 12px;
+    margin: 8px 0 0 0;
+    font-size: 14px;
+  }
+  .controls strong { display: inline-block; min-width: 110px; }
+
+  footer {
+    color: var(--muted);
+    font-size: 13px;
+    margin-top: 40px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Panel 1 — real-space tools</h1>
+  <div class="breadcrumb">
+    <a href="manual.html">← Manual</a>
+  </div>
+</header>
+
+<main>
+
+<p>
+Panel 1 holds the real-space image. Tool icons run vertically along the
+left edge of the panel. Click an icon to activate the corresponding
+tool; click it again to deactivate. While a tool is active a
+parameter window appears at the bottom of the panel; hover any
+parameter label for an inline tooltip.
+</p>
+
+<details open>
+<summary>Eraser</summary>
+<p>
+Multiplies pixel values by <code>(1 − Gaussian)</code> under a soft
+footprint, smoothly fading them toward zero. Useful for removing
+unwanted features without a hard edge that would generate ringing in
+Fourier space.
+</p>
+<div class="controls">
+  <strong>Diameter:</strong> width of the Gaussian footprint, in image
+  pixels. <br>
+  <strong>Use:</strong> click and drag in panel 1 to erase along a path.
+</div>
+</details>
+
+<details>
+<summary>Paint brush</summary>
+<p>
+Writes a chosen pixel value into the image, blended with the existing
+pixels through a Gaussian or solid-disk footprint. The image min/max
+scale at the bottom of the panel is a useful reference for picking a
+sensible value.
+</p>
+<div class="controls">
+  <strong>Pixel value:</strong> the value to paint. <br>
+  <strong>Solid diameter:</strong> width of the flat-top region of the
+  brush. <br>
+  <strong>Gaussian diameter:</strong> width of the Gaussian fall-off.
+  Set to 0 for a sharp edge.
+</div>
+</details>
+
+<details>
+<summary>Measure</summary>
+<p>
+Click and drag in panel 1 to measure distances. The pixel count and the
+corresponding distance in Ångström (using the slot's pixel size) are
+shown next to the line.
+</p>
+</details>
+
+<details>
+<summary>Flip horizontally / Flip vertically</summary>
+<p>
+Mirror the image along its horizontal or vertical axis. Pure geometric
+operations, lossless. The Fourier transform updates accordingly.
+</p>
+</details>
+
+<details>
+<summary>Shift image</summary>
+<p>
+Translate the image by an integer number of pixels in <code>x</code>
+and <code>y</code>. The shift is cyclic (wrap-around), so no pixel
+values are lost.
+</p>
+</details>
+
+<details>
+<summary>Rotate image</summary>
+<p>
+Rotate the image by a chosen angle. The corners are clipped if the
+rotation is non-trivial; consider padding the image first if this
+matters for downstream FFT analysis.
+</p>
+</details>
+
+<details>
+<summary>Invert contrast</summary>
+<p>
+Replaces each pixel value with <code>max + min − value</code>. Often
+useful for cryo-EM data where particles are darker than background and
+you want a positive-contrast view.
+</p>
+</details>
+
+<details>
+<summary>Taper edges (Hanning)</summary>
+<p>
+Apply a Hanning window of a chosen width around the image border. This
+suppresses the sharp edges that would otherwise leak into the FFT as a
+strong cross of high-frequency content.
+</p>
+<div class="controls">
+  <strong>Hanning width:</strong> width of the cosine-taper band, in
+  image pixels.
+</div>
+</details>
+
+<details>
+<summary>Bin image</summary>
+<p>
+Reduce the image dimensions by averaging adjacent pixels in
+<code>N×N</code> blocks. The pixel size in the slot metadata is updated
+accordingly. Binning is the cleanest way to reduce resolution; it
+acts as a low-pass filter followed by downsampling.
+</p>
+<div class="controls">
+  <strong>Bin factor N:</strong> integer divisor (2, 3, 4, …). <br>
+  <strong>Keep original size:</strong> if checked, the image is
+  re-expanded to its original dimensions after binning so that pixel
+  counts stay comparable across slots.
+</div>
+</details>
+
+<details>
+<summary>Gabor filter</summary>
+<p>
+Apply a Gabor (oriented sinusoidal) filter to the image. The filter
+emphasises features that match the chosen wavelength and orientation,
+making it useful for finding striations, lattice rows, or oriented
+texture.
+</p>
+</details>
+
+<details>
+<summary>Hessian filter</summary>
+<p>
+Compute a Hessian-based ridge / blob enhancement. Good for highlighting
+filaments and elongated features whose width matches the chosen scale.
+</p>
+</details>
+
+<details>
+<summary>Amyloid filament</summary>
+<p>
+Specialised analysis tool for amyloid filaments: extract straight
+sections, compute averaged power spectra, and analyse periodicities
+along filament axes.
+</p>
+</details>
+
+<details>
+<summary>Math calculations</summary>
+<p>
+Combine images from two history slots with a chosen arithmetic
+operation. The result is written to a third slot.
+</p>
+<div class="controls">
+  <strong>Output slot:</strong> destination (a–p). <br>
+  <strong>Operation:</strong> add, subtract, multiply, divide,
+  convolve, correlate, etc. <br>
+  <strong>Inputs:</strong> two source slots from the history bar.
+</div>
+</details>
+
+<details>
+<summary>Peak search</summary>
+<p>
+Locate local maxima in the image. The detected peaks can be displayed
+as green plus signs and exported. Useful for picking particles, dots,
+or crystalline reflections in a real-space image.
+</p>
+</details>
+
+<details>
+<summary>Extract particles</summary>
+<p>
+Cut sub-images of a chosen size around each picked peak and write them
+into a target slot as a montage. Combine with <em>Peak search</em> for
+a complete pick-and-extract pipeline.
+</p>
+</details>
+
+<footer>
+  Fourier Analyzer · Stahlberg Lab, EPFL ·
+  <a href="manual.html">← Back to manual</a> ·
+  <a href="https://lbem-status.epfl.ch/ft/">Launch the app</a>
+</footer>
+
+</main>
+</body>
+</html>

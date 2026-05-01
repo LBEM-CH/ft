@@ -28,7 +28,8 @@ TARBALL="ft-wasm.tar.gz"
 REMOTE="${1:-}"
 REMOTE_DIR="${2:-/srv/ft}"
 
-ARTIFACTS=(ft.html ft.js ft.wasm qtloader.js qtlogo.svg images)
+ARTIFACTS=(ft.html ft.js ft.wasm qtloader.js qtlogo.svg images
+           manual.html manual_panel1.html manual_panel2.html manual_exercises.html)
 
 if [[ ! -d "$BUILD_DIR" ]]; then
     echo "error: $BUILD_DIR not found — run the WASM build first (see WASM_SERVER.txt)" >&2
@@ -71,7 +72,7 @@ ssh -tt "$REMOTE" bash -s <<EOF
 set -euo pipefail
 sudo mkdir -p "$REMOTE_DIR"
 # Wipe only the app artifacts, not the whole directory, in case it holds other files.
-sudo rm -rf "$REMOTE_DIR"/{ft.html,ft.js,ft.wasm,qtloader.js,qtlogo.svg,images}
+sudo rm -rf "$REMOTE_DIR"/{ft.html,ft.js,ft.wasm,qtloader.js,qtlogo.svg,images,manual.html,manual_panel1.html,manual_panel2.html,manual_exercises.html}
 sudo tar xzf ~/$TARBALL -C "$REMOTE_DIR"
 sudo chown -R root:root "$REMOTE_DIR"
 rm ~/$TARBALL
