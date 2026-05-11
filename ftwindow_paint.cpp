@@ -3366,36 +3366,48 @@ void FtWindow::paintEvent(QPaintEvent *)
     // ---- title bar ------------------------------------------------------------
     // When embedded in another Qt application (i.e. FtWindow is not a
     // top-level window), the host provides its own window chrome, so skip
-    // drawing the internal "Fourier Analyzer" title. m_titleRect stays null
-    // and the corresponding mouse handler therefore does nothing.
-    if (isWindow()) {
+    // drawing the internal "Fourier Analyzer" title. The "Manual" button is
+    // still drawn (at the top, in place of the title) so users can access the
+    // manual in any build mode.
+    {
         QFont titleFont;
         titleFont.setBold(true);
         titleFont.setPixelSize(18);
         p.setFont(titleFont);
         QFontMetrics tfm(titleFont);
-        QString title = "Fourier Analyzer";
-        int tw = tfm.horizontalAdvance(title);
+        // Size the boxes from the longer of the two labels so the Manual
+        // button has a consistent width whether or not the title is shown.
+        QString refLabel = "Fourier Analyzer";
+        int tw = tfm.horizontalAdvance(refLabel);
         int th = tfm.height();
         int pad = 8;
         int tx = (width() - tw) / 2 - pad;
         int ty = 4;
-        QRect titleRect(tx, ty, tw + 2 * pad, th + 2 * pad);
-        m_titleRect = titleRect;
+        int boxW = tw + 2 * pad;
+        int boxH = th + 2 * pad;
 
-        p.setPen(Qt::NoPen);
-        p.setBrush(QColor(75, 75, 75));
-        p.drawRect(titleRect);
+        QRect manualRect;
+        if (isWindow()) {
+            QRect titleRect(tx, ty, boxW, boxH);
+            m_titleRect = titleRect;
 
-        p.setPen(QPen(Qt::white, 1));
-        p.setBrush(Qt::NoBrush);
-        p.drawRect(titleRect);
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(75, 75, 75));
+            p.drawRect(titleRect);
 
-        p.drawText(titleRect, Qt::AlignCenter, title);
+            p.setPen(QPen(Qt::white, 1));
+            p.setBrush(Qt::NoBrush);
+            p.drawRect(titleRect);
 
-        // "Manual" button, same size and style, positioned directly below.
-        QRect manualRect(titleRect.x(), titleRect.bottom() + 2,
-                         titleRect.width(), titleRect.height());
+            p.drawText(titleRect, Qt::AlignCenter, "Fourier Analyzer");
+
+            manualRect = QRect(titleRect.x(), titleRect.bottom() + 2,
+                               titleRect.width(), titleRect.height());
+        } else {
+            m_titleRect = QRect();
+            manualRect = QRect(tx, ty, boxW, boxH);
+        }
+
         m_manualRect = manualRect;
 
         p.setPen(Qt::NoPen);

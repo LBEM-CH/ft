@@ -1331,8 +1331,9 @@ void FtWindow::resizeEvent(QResizeEvent *)
     m_reloadBtn->move(8, 8 + m_loadBtn->height() + 4);
     // When running standalone, the "Fourier Analyzer" title and the "Manual"
     // button below it occupy the top-center area, so push undo/redo below
-    // both of them to avoid overlap.
-    int undoY = isWindow() ? (8 + 42 * 2) : 8;
+    // both of them. When embedded, the title is hidden but the Manual
+    // button is still drawn at the top, so reserve space for one box.
+    int undoY = isWindow() ? (8 + 42 * 2) : (8 + 42);
     m_undoBtn->move((width() - m_undoBtn->width()) / 2, undoY);
     m_redoBtn->move((width() - m_redoBtn->width()) / 2, undoY + m_undoBtn->height() + 4);
     m_fullscreenBtn->move(width() - m_fullscreenBtn->width() - 8, 8);
