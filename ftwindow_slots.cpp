@@ -866,6 +866,14 @@ void FtWindow::computeFFT(bool keepZoom)
             data[y * N + x] = Complex(row[x], 0.0);
     }
 
+    // Centered real-space convention: the real-space image's logical origin
+    // lives at (N/2, N/2). fftShift swaps quadrants to convert it to the
+    // (0,0)-origin form that the raw FFT expects. The matching post-shift
+    // happens in computeInverseFFT, so a forward-then-inverse round trip is
+    // self-consistent and the FT of a phase ramp no longer carries an
+    // unwanted (-1)^(u+v) checkerboard phase factor.
+    fftShift(data, N);
+
     // Data prepared – show a small slice of progress
     m_fftProgress = 0.02;
     repaint();
@@ -1065,6 +1073,10 @@ void FtWindow::computeInverseFFT()
     }
 
     m_iftProgress = -1;
+
+    // Centered real-space convention: convert the (0,0)-origin output of the
+    // raw inverse FFT to centered form. Matches the pre-shift in computeFFT.
+    fftShift(data, N);
 
     int outW = (m_origW > 0) ? std::min(m_origW, N) : N;
     int outH = (m_origH > 0) ? std::min(m_origH, N) : N;
@@ -1276,6 +1288,8 @@ QImage FtWindow::computePowerSpecMasked(const QImage &img)
             data[y * N + x] = Complex(row[x], 0.0);
     }
 
+    // Centered real-space convention (mirrors computeFFT).
+    fftShift(data, N);
     fft2d(data, N, false);
     fftShift(data, N);
 
@@ -2982,6 +2996,9 @@ void FtWindow::onFtMathCompute()
             }
         }
 
+        // Centered real-space convention (mirrors computeFFT).
+        fftShift(data, N);
+
         std::vector<Complex> row(N);
         for (int y = 0; y < N; y++) {
             for (int x = 0; x < N; x++) row[x] = data[y * N + x];
@@ -3081,26 +3098,21 @@ void FtWindow::onFtMathCompute()
                 fft1d(col, true);
                 for (int y = 0; y < N; y++) st->result[y * N + x] = col[y];
             }
+            // Centered real-space convention: convert the (0,0)-origin output
+            // of the raw inverse FFT to centered form. This also moves the
+            // convolution/correlation peak from index (0,0) to the centre
+            // automatically (no per-op manual fftShift needed in stage 6).
+            fftShift(st->result, N);
             m_ftMathProgress = 0.95;
         },
         // Stage 6: build output, save to slot
         [this, st]() {
             int N = st->N;
-            int halfN = N / 2;
             int outS = N;
             std::vector<double> realResult(outS * outS);
-            if (st->opIdx == 2 || st->opIdx == 3) {
-                for (int y = 0; y < outS; y++)
-                    for (int x = 0; x < outS; x++) {
-                        int sy = (y + halfN) % N;
-                        int sx = (x + halfN) % N;
-                        realResult[y * outS + x] = st->result[sy * N + sx].real();
-                    }
-            } else {
-                for (int y = 0; y < outS; y++)
-                    for (int x = 0; x < outS; x++)
-                        realResult[y * outS + x] = st->result[y * N + x].real();
-            }
+            for (int y = 0; y < outS; y++)
+                for (int x = 0; x < outS; x++)
+                    realResult[y * outS + x] = st->result[y * N + x].real();
             st->result.clear();
 
             double minVal = *std::min_element(realResult.begin(), realResult.end());
@@ -4024,30 +4036,11 @@ void FtWindow::onPhaseRampCompute()
     m_zoom[2].reset(N, N);
     recomputeDisplayImages();
 
-    // Inverse-transform to real space for panel 1.
+    // Inverse-transform to real space for panel 1. computeInverseFFT now
+    // produces the result in centered real-space form, so the delta of a
+    // phase ramp already lands at (N/2, N/2) plus the shift implied by the
+    // ramp — no extra quadrant swap needed.
     computeInverseFFT();
-
-    // Quadrant-swap so the real-space origin sits at the image centre.
-    if ((int)m_imageRawPixels.size() == N * N) {
-        int h2 = N / 2;
-        std::vector<double> shifted(N * N);
-        for (int y = 0; y < N; y++) {
-            int sy = (y + h2) % N;
-            for (int x = 0; x < N; x++) {
-                int sx = (x + h2) % N;
-                shifted[sy * N + sx] = m_imageRawPixels[y * N + x];
-            }
-        }
-        m_imageRawPixels = std::move(shifted);
-        double scale = (m_imageMaxVal > m_imageMinVal)
-                         ? 255.0 / (m_imageMaxVal - m_imageMinVal) : 1.0;
-        for (int y = 0; y < N; y++) {
-            uchar *row = m_image.scanLine(y);
-            for (int x = 0; x < N; x++)
-                row[x] = static_cast<uchar>(std::clamp(
-                    (m_imageRawPixels[y * N + x] - m_imageMinVal) * scale, 0.0, 255.0));
-        }
-    }
 
     if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS) {
         m_imagePath = QString("phase ramp: N=%1 dir=%2° step=%3°")
