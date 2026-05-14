@@ -287,7 +287,7 @@ void FtWindow::onNewImageCreate()
     m_ftComputed = false;
     m_modeBtn->setText(modeLabel());
     m_modeBtn->hide();
-    m_maskBtn->hide();
+    m_maskBtnVisible = false;
 
     computeFFT();
     m_history[tgtIdx].powerSpecImg = computePowerSpecMasked(m_image);
@@ -332,7 +332,7 @@ void FtWindow::onCreateImageSized(int sz)
     m_ftComputed = false;
     m_modeBtn->setText(modeLabel());
     m_modeBtn->hide();
-    m_maskBtn->hide();
+    m_maskBtnVisible = false;
 
     m_zoom[0].reset(sz, sz);
     computeFFT();
@@ -399,7 +399,7 @@ void FtWindow::onReloadImage()
     m_ftComputed = false;
     m_modeBtn->setText(modeLabel());
     m_modeBtn->hide();
-    m_maskBtn->hide();
+    m_maskBtnVisible = false;
 
     if (!m_image.isNull()) {
         m_zoom[0].reset(m_image.width(), m_image.height());
@@ -622,7 +622,7 @@ void FtWindow::loadImageFile(const QString &path)
     m_ftComputed = false;
     m_modeBtn->setText(modeLabel());
     m_modeBtn->hide();
-    m_maskBtn->hide();
+    m_maskBtnVisible = false;
 
     if (!m_image.isNull()) {
         m_zoom[0].reset(m_image.width(), m_image.height());
@@ -692,7 +692,7 @@ void FtWindow::loadImageData(const QString &fileName, const QByteArray &fileData
     m_ftComputed = false;
     m_modeBtn->setText(modeLabel());
     m_modeBtn->hide();
-    m_maskBtn->hide();
+    m_maskBtnVisible = false;
 
     if (!m_image.isNull()) {
         m_zoom[0].reset(m_image.width(), m_image.height());
@@ -961,7 +961,7 @@ void FtWindow::computeFFT(bool keepZoom)
     m_fftProgress = -1;
     m_ftComputed = true;
     m_modeBtn->show();
-    m_maskBtn->show();
+    m_maskBtnVisible = true;
 
     if (!keepZoom) {
         m_zoom[1].reset(N, N);
@@ -1144,10 +1144,31 @@ void FtWindow::recomputeDisplayImages()
     m_phaseImg = floatToImage(m_phaseVals, N);
     m_powerImg = floatToImage(m_powerVals, N);
 
-    // Complex FT image: brightness = power, hue = phase
+    // Complex FT image: brightness = power, hue = phase.
+    //
+    // pMax is computed while excluding the central 3x3 pixels around the DC
+    // term. Without this, a single huge DC peak (typical for e.g. a phase
+    // ramp, whose FT is essentially a delta) crushes the brightness range
+    // so that every other pixel maps to val ≈ 0. FFT round-off then pushes
+    // some pixels to power == pMin exactly (→ val = 0, pure black) while
+    // their neighbours land slightly above (dim colour) — the visible
+    // result is a "starfield" of scattered black dots over a dim image,
+    // which only goes away when the user enables "mask center for display".
     {
-        double pMin = *std::min_element(m_powerVals.begin(), m_powerVals.end());
-        double pMax = *std::max_element(m_powerVals.begin(), m_powerVals.end());
+        int half = N / 2;
+        double pMin = std::numeric_limits<double>::infinity();
+        double pMax = -std::numeric_limits<double>::infinity();
+        double pMaxAll = pMax;
+        for (int y = 0; y < N; y++) {
+            for (int x = 0; x < N; x++) {
+                double v = m_powerVals[y * N + x];
+                if (v < pMin) pMin = v;
+                if (v > pMaxAll) pMaxAll = v;
+                bool nearCenter = std::abs(x - half) <= 1 && std::abs(y - half) <= 1;
+                if (!nearCenter && v > pMax) pMax = v;
+            }
+        }
+        if (pMax <= pMin) pMax = pMaxAll;   // tiny image — fall back to global max
         double pScale = (pMax > pMin) ? 1.0 / (pMax - pMin) : 1.0;
 
         m_complexImg = QImage(N, N, QImage::Format_RGB32);
@@ -3120,7 +3141,7 @@ void FtWindow::onFtMathCompute()
             m_ftComputed  = false;
             m_modeBtn->setText(modeLabel());
             m_modeBtn->hide();
-            m_maskBtn->hide();
+            m_maskBtnVisible = false;
 
             computeFFT();
             m_history[outIdx].powerSpecImg = computePowerSpecMasked(m_image);
@@ -3328,7 +3349,7 @@ void FtWindow::onMathCompute()
         m_ftComputed  = false;
         m_modeBtn->setText(modeLabel());
         m_modeBtn->hide();
-        m_maskBtn->hide();
+        m_maskBtnVisible = false;
 
         computeFFT();
         m_history[outIdx].powerSpecImg = computePowerSpecMasked(m_image);
@@ -3876,7 +3897,7 @@ void FtWindow::onCtfCompute()
         m_origH = N;
     }
     m_modeBtn->show();
-    m_maskBtn->show();
+    m_maskBtnVisible = true;
     m_zoom[1].reset(N, N);
     m_zoom[2].reset(N, N);
     recomputeDisplayImages();
@@ -3986,7 +4007,7 @@ void FtWindow::onPhaseRampCompute()
     m_origW = N;
     m_origH = N;
     m_modeBtn->show();
-    m_maskBtn->show();
+    m_maskBtnVisible = true;
     m_zoom[0].reset(N, N);
     m_zoom[1].reset(N, N);
     m_zoom[2].reset(N, N);
