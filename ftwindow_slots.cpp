@@ -1146,14 +1146,16 @@ void FtWindow::recomputeDisplayImages()
 
     // Complex FT image: brightness = power, hue = phase.
     //
-    // pMax is computed while excluding the central 3x3 pixels around the DC
-    // term. Without this, a single huge DC peak (typical for e.g. a phase
-    // ramp, whose FT is essentially a delta) crushes the brightness range
-    // so that every other pixel maps to val ≈ 0. FFT round-off then pushes
-    // some pixels to power == pMin exactly (→ val = 0, pure black) while
-    // their neighbours land slightly above (dim colour) — the visible
-    // result is a "starfield" of scattered black dots over a dim image,
-    // which only goes away when the user enables "mask center for display".
+    // Two pitfalls handled here:
+    //   (1) A huge DC peak (typical real image) crushes the dynamic range,
+    //       so pMax is taken while excluding the central 3x3 pixels.
+    //   (2) A uniformly-amplitude FT (e.g. a phase ramp, where every
+    //       pixel has amplitude exactly 1 in math) has a range of just
+    //       floating-point round-off (~1e-15). Without guarding, pScale
+    //       = 1/range ≈ 1e15 magnifies that noise into the full 0..1
+    //       brightness range and the display becomes a "starfield" of
+    //       scattered black/dim dots. We detect that case and treat the
+    //       FT as uniformly bright so the pure hue shows.
     {
         int half = N / 2;
         double pMin = std::numeric_limits<double>::infinity();
@@ -1168,15 +1170,24 @@ void FtWindow::recomputeDisplayImages()
                 if (!nearCenter && v > pMax) pMax = v;
             }
         }
-        if (pMax <= pMin) pMax = pMaxAll;   // tiny image — fall back to global max
-        double pScale = (pMax > pMin) ? 1.0 / (pMax - pMin) : 1.0;
+        if (pMax <= pMin) pMax = pMaxAll;
+
+        // If the dynamic range is at the noise floor of doubles (relative
+        // to the magnitudes involved), the image is effectively flat —
+        // treat all pixels as full brightness so the pure hue is visible.
+        double range = pMax - pMin;
+        double mag = std::max({std::abs(pMax), std::abs(pMin), 1.0});
+        bool flatBrightness = range <= 1e-9 * mag;
+        double pScale = flatBrightness ? 0.0 : 1.0 / range;
 
         m_complexImg = QImage(N, N, QImage::Format_RGB32);
         for (int y = 0; y < N; y++) {
             QRgb *row = reinterpret_cast<QRgb *>(m_complexImg.scanLine(y));
             for (int x = 0; x < N; x++) {
                 int idx = y * N + x;
-                double val = std::clamp((m_powerVals[idx] - pMin) * pScale, 0.0, 1.0);
+                double val = flatBrightness
+                    ? 1.0
+                    : std::clamp((m_powerVals[idx] - pMin) * pScale, 0.0, 1.0);
                 double hue = m_phaseVals[idx] + 180.0;
                 QColor c = QColor::fromHsvF(hue / 360.0, 1.0, val);
                 row[x] = c.rgb();
