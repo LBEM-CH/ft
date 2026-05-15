@@ -195,12 +195,23 @@ void fftShift(std::vector<Complex> &data, int N) {
 QImage floatToImage(const std::vector<double> &vals, int N) {
     double mn = *std::min_element(vals.begin(), vals.end());
     double mx = *std::max_element(vals.begin(), vals.end());
-    double scale = (mx > mn) ? 255.0 / (mx - mn) : 1.0;
+    // If the dynamic range is at the floating-point noise floor relative
+    // to the magnitudes (e.g. amp / power of a phase ramp, where every
+    // pixel has amplitude exactly 1), rendering (v - mn) / (mx - mn)
+    // magnifies that noise into the full 0..255 range and produces a
+    // "starfield" of scattered black/dim pixels. Detect that case and
+    // emit a uniform value instead.
+    double range = mx - mn;
+    double mag = std::max({std::abs(mx), std::abs(mn), 1.0});
+    bool flat = range <= 1e-9 * mag;
+    double scale = flat ? 0.0 : 255.0 / range;
     QImage img(N, N, QImage::Format_Grayscale8);
     for (int y = 0; y < N; y++) {
         uchar *row = img.scanLine(y);
         for (int x = 0; x < N; x++)
-            row[x] = static_cast<uchar>(std::clamp((vals[y * N + x] - mn) * scale, 0.0, 255.0));
+            row[x] = flat
+                ? static_cast<uchar>(255)
+                : static_cast<uchar>(std::clamp((vals[y * N + x] - mn) * scale, 0.0, 255.0));
     }
     return img;
 }

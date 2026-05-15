@@ -29,9 +29,41 @@ void FtWindow::paintEvent(QPaintEvent *)
     // below as the tool option panels are drawn.
     m_paramLabelTips.clear();
 
-    // Track whether histograms are drawn this frame; position checkboxes accordingly
-    bool showImageHistLock = false;
-    bool showFtHistLock = false;
+    m_p1ToolRect = QRect();   // cleared each frame, set when a p1 tool dialog draws
+    m_p2ToolRect = QRect();   // cleared each frame, set when a p2 tool dialog draws
+    m_imageHistLockRect = QRect();
+    m_markImageCenterRect = QRect();
+    m_ftHistLockRect = QRect();
+    m_maskBtnRect = QRect();
+
+    // Function-button tooltips are stashed here during tool-button rendering
+    // and drawn at the very end of this paintEvent, so they appear on top of
+    // the image / Fourier display rather than being clipped by them.
+    QRect   pendingTipRect;
+    QString pendingTipText;
+
+    // Helper to paint a 3D-look toggle button (raised when up, sunken when
+    // down). Shared by all panel-1 / panel-2 toggle buttons.
+    auto paintToggleButton = [&](const QRect &br, const QString &text, bool down) {
+        QFont bf; bf.setPixelSize(11);
+        p.save();
+        p.fillRect(br, down ? QColor(0xb8, 0xb8, 0xb8) : QColor(0xdc, 0xdc, 0xdc));
+        QColor lite(0xff, 0xff, 0xff), dark(0x60, 0x60, 0x60);
+        QColor topC   = down ? dark : lite;
+        QColor leftC  = down ? dark : lite;
+        QColor rightC = down ? lite : dark;
+        QColor botC   = down ? lite : dark;
+        p.fillRect(QRect(br.left(),       br.top(),         br.width(), 2), topC);
+        p.fillRect(QRect(br.left(),       br.top(),         2, br.height()), leftC);
+        p.fillRect(QRect(br.right() - 1,  br.top(),         2, br.height()), rightC);
+        p.fillRect(QRect(br.left(),       br.bottom() - 1,  br.width(), 2), botC);
+        p.setFont(bf);
+        p.setPen(Qt::black);
+        QRect textRect = br.adjusted(2, 2, -2, -2);
+        if (down) textRect.translate(1, 1);
+        p.drawText(textRect, Qt::AlignCenter, text);
+        p.restore();
+    };
 
     int cx = width() / 2;
     int hy = height() - height() / 5;
@@ -179,10 +211,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                     int tth = ttfm.height() + 4;
                     int ttx = r.right() + 4;
                     int tty = r.center().y() - tth / 2;
-                    p.setPen(QPen(Qt::white, 1));
-                    p.setBrush(QColor(40, 40, 40));
-                    p.drawRect(ttx, tty, ttw, tth);
-                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                    pendingTipRect = QRect(ttx, tty, ttw, tth);
+                    pendingTipText = tip;
                 }
             }
 
@@ -218,10 +248,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                     int tth = ttfm.height() + 4;
                     int ttx = r.right() + 4;
                     int tty = r.center().y() - tth / 2;
-                    p.setPen(QPen(Qt::white, 1));
-                    p.setBrush(QColor(40, 40, 40));
-                    p.drawRect(ttx, tty, ttw, tth);
-                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                    pendingTipRect = QRect(ttx, tty, ttw, tth);
+                    pendingTipText = tip;
                 }
             }
 
@@ -259,10 +287,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                     int tth = ttfm.height() + 4;
                     int ttx = r.right() + 4;
                     int tty = r.center().y() - tth / 2;
-                    p.setPen(QPen(Qt::white, 1));
-                    p.setBrush(QColor(40, 40, 40));
-                    p.drawRect(ttx, tty, ttw, tth);
-                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                    pendingTipRect = QRect(ttx, tty, ttw, tth);
+                    pendingTipText = tip;
                 }
             }
 
@@ -301,10 +327,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                     int tth = ttfm.height() + 4;
                     int ttx = r.right() + 4;
                     int tty = r.center().y() - tth / 2;
-                    p.setPen(QPen(Qt::white, 1));
-                    p.setBrush(QColor(40, 40, 40));
-                    p.drawRect(ttx, tty, ttw, tth);
-                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                    pendingTipRect = QRect(ttx, tty, ttw, tth);
+                    pendingTipText = tip;
                 }
             }
 
@@ -343,10 +367,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                     int tth = ttfm.height() + 4;
                     int ttx = r.right() + 4;
                     int tty = r.center().y() - tth / 2;
-                    p.setPen(QPen(Qt::white, 1));
-                    p.setBrush(QColor(40, 40, 40));
-                    p.drawRect(ttx, tty, ttw, tth);
-                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                    pendingTipRect = QRect(ttx, tty, ttw, tth);
+                    pendingTipText = tip;
                 }
             }
 
@@ -400,10 +422,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                     int tth = ttfm.height() + 4;
                     int ttx = r.right() + 4;
                     int tty = r.center().y() - tth / 2;
-                    p.setPen(QPen(Qt::white, 1));
-                    p.setBrush(QColor(40, 40, 40));
-                    p.drawRect(ttx, tty, ttw, tth);
-                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                    pendingTipRect = QRect(ttx, tty, ttw, tth);
+                    pendingTipText = tip;
                 }
             }
 
@@ -451,10 +471,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                     int tth = ttfm.height() + 4;
                     int ttx = r.right() + 4;
                     int tty = r.center().y() - tth / 2;
-                    p.setPen(QPen(Qt::white, 1));
-                    p.setBrush(QColor(40, 40, 40));
-                    p.drawRect(ttx, tty, ttw, tth);
-                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                    pendingTipRect = QRect(ttx, tty, ttw, tth);
+                    pendingTipText = tip;
                 }
             }
 
@@ -488,10 +506,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                     int tth = ttfm.height() + 4;
                     int ttx = r.right() + 4;
                     int tty = r.center().y() - tth / 2;
-                    p.setPen(QPen(Qt::white, 1));
-                    p.setBrush(QColor(40, 40, 40));
-                    p.drawRect(ttx, tty, ttw, tth);
-                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                    pendingTipRect = QRect(ttx, tty, ttw, tth);
+                    pendingTipText = tip;
                 }
             }
 
@@ -521,10 +537,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                     int tth = ttfm.height() + 4;
                     int ttx = r.right() + 4;
                     int tty = r.center().y() - tth / 2;
-                    p.setPen(QPen(Qt::white, 1));
-                    p.setBrush(QColor(40, 40, 40));
-                    p.drawRect(ttx, tty, ttw, tth);
-                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                    pendingTipRect = QRect(ttx, tty, ttw, tth);
+                    pendingTipText = tip;
                 }
             }
 
@@ -562,10 +576,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                     int tth = ttfm.height() + 4;
                     int ttx = r.right() + 4;
                     int tty = r.center().y() - tth / 2;
-                    p.setPen(QPen(Qt::white, 1));
-                    p.setBrush(QColor(40, 40, 40));
-                    p.drawRect(ttx, tty, ttw, tth);
-                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                    pendingTipRect = QRect(ttx, tty, ttw, tth);
+                    pendingTipText = tip;
                 }
             }
 
@@ -611,10 +623,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                     int tth = ttfm.height() + 4;
                     int ttx = r.right() + 4;
                     int tty = r.center().y() - tth / 2;
-                    p.setPen(QPen(Qt::white, 1));
-                    p.setBrush(QColor(40, 40, 40));
-                    p.drawRect(ttx, tty, ttw, tth);
-                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                    pendingTipRect = QRect(ttx, tty, ttw, tth);
+                    pendingTipText = tip;
                 }
             }
 
@@ -677,10 +687,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                     int tth = ttfm.height() + 4;
                     int ttx = r.right() + 4;
                     int tty = r.center().y() - tth / 2;
-                    p.setPen(QPen(Qt::white, 1));
-                    p.setBrush(QColor(40, 40, 40));
-                    p.drawRect(ttx, tty, ttw, tth);
-                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                    pendingTipRect = QRect(ttx, tty, ttw, tth);
+                    pendingTipText = tip;
                 }
             }
 
@@ -729,10 +737,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                     int tth = ttfm.height() + 4;
                     int ttx = r.right() + 4;
                     int tty = r.center().y() - tth / 2;
-                    p.setPen(QPen(Qt::white, 1));
-                    p.setBrush(QColor(40, 40, 40));
-                    p.drawRect(ttx, tty, ttw, tth);
-                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                    pendingTipRect = QRect(ttx, tty, ttw, tth);
+                    pendingTipText = tip;
                 }
             }
 
@@ -756,10 +762,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                     int tth = ttfm.height() + 4;
                     int ttx = r.right() + 4;
                     int tty = r.center().y() - tth / 2;
-                    p.setPen(QPen(Qt::white, 1));
-                    p.setBrush(QColor(40, 40, 40));
-                    p.drawRect(ttx, tty, ttw, tth);
-                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                    pendingTipRect = QRect(ttx, tty, ttw, tth);
+                    pendingTipText = tip;
                 }
             }
 
@@ -788,10 +792,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                     int tth = ttfm.height() + 4;
                     int ttx = r.right() + 4;
                     int tty = r.center().y() - tth / 2;
-                    p.setPen(QPen(Qt::white, 1));
-                    p.setBrush(QColor(40, 40, 40));
-                    p.drawRect(ttx, tty, ttw, tth);
-                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                    pendingTipRect = QRect(ttx, tty, ttw, tth);
+                    pendingTipText = tip;
                 }
             }
 
@@ -815,10 +817,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                     int tth = ttfm.height() + 4;
                     int ttx = r.right() + 4;
                     int tty = r.center().y() - tth / 2;
-                    p.setPen(QPen(Qt::white, 1));
-                    p.setBrush(QColor(40, 40, 40));
-                    p.drawRect(ttx, tty, ttw, tth);
-                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                    pendingTipRect = QRect(ttx, tty, ttw, tth);
+                    pendingTipText = tip;
                 }
             }
         }
@@ -912,10 +912,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                     int tth = ttfm.height() + 4;
                     int ttx = r.left() - ttw - 4;
                     int tty = r.center().y() - tth / 2;
-                    p.setPen(QPen(Qt::white, 1));
-                    p.setBrush(QColor(40, 40, 40));
-                    p.drawRect(ttx, tty, ttw, tth);
-                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                    pendingTipRect = QRect(ttx, tty, ttw, tth);
+                    pendingTipText = tip;
                 }
             }
 
@@ -951,10 +949,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                     int tth = ttfm.height() + 4;
                     int ttx = r.left() - ttw - 4;
                     int tty = r.center().y() - tth / 2;
-                    p.setPen(QPen(Qt::white, 1));
-                    p.setBrush(QColor(40, 40, 40));
-                    p.drawRect(ttx, tty, ttw, tth);
-                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                    pendingTipRect = QRect(ttx, tty, ttw, tth);
+                    pendingTipText = tip;
                 }
             }
 
@@ -994,10 +990,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                     int tth = ttfm.height() + 4;
                     int ttx = r.left() - ttw - 4;
                     int tty = r.center().y() - tth / 2;
-                    p.setPen(QPen(Qt::white, 1));
-                    p.setBrush(QColor(40, 40, 40));
-                    p.drawRect(ttx, tty, ttw, tth);
-                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                    pendingTipRect = QRect(ttx, tty, ttw, tth);
+                    pendingTipText = tip;
                 }
             }
 
@@ -1042,10 +1036,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                     int tth = ttfm.height() + 4;
                     int ttx = r.left() - ttw - 4;
                     int tty = r.center().y() - tth / 2;
-                    p.setPen(QPen(Qt::white, 1));
-                    p.setBrush(QColor(40, 40, 40));
-                    p.drawRect(ttx, tty, ttw, tth);
-                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                    pendingTipRect = QRect(ttx, tty, ttw, tth);
+                    pendingTipText = tip;
                 }
             }
 
@@ -1074,10 +1066,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                     int tth = ttfm.height() + 4;
                     int ttx = r.left() - ttw - 4;
                     int tty = r.center().y() - tth / 2;
-                    p.setPen(QPen(Qt::white, 1));
-                    p.setBrush(QColor(40, 40, 40));
-                    p.drawRect(ttx, tty, ttw, tth);
-                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                    pendingTipRect = QRect(ttx, tty, ttw, tth);
+                    pendingTipText = tip;
                 }
             }
 
@@ -1110,10 +1100,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                     int tth = ttfm.height() + 4;
                     int ttx = r.left() - ttw - 4;
                     int tty = r.center().y() - tth / 2;
-                    p.setPen(QPen(Qt::white, 1));
-                    p.setBrush(QColor(40, 40, 40));
-                    p.drawRect(ttx, tty, ttw, tth);
-                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                    pendingTipRect = QRect(ttx, tty, ttw, tth);
+                    pendingTipText = tip;
                 }
             }
 
@@ -1160,10 +1148,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                     int tth = ttfm.height() + 4;
                     int ttx = r.left() - ttw - 4;
                     int tty = r.center().y() - tth / 2;
-                    p.setPen(QPen(Qt::white, 1));
-                    p.setBrush(QColor(40, 40, 40));
-                    p.drawRect(ttx, tty, ttw, tth);
-                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                    pendingTipRect = QRect(ttx, tty, ttw, tth);
+                    pendingTipText = tip;
                 }
             }
 
@@ -1184,10 +1170,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                     int tth = ttfm.height() + 4;
                     int ttx = r.left() - ttw - 4;
                     int tty = r.center().y() - tth / 2;
-                    p.setPen(QPen(Qt::white, 1));
-                    p.setBrush(QColor(40, 40, 40));
-                    p.drawRect(ttx, tty, ttw, tth);
-                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                    pendingTipRect = QRect(ttx, tty, ttw, tth);
+                    pendingTipText = tip;
                 }
             }
 
@@ -1217,10 +1201,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                     int tth = ttfm.height() + 4;
                     int ttx = r.left() - ttw - 4;
                     int tty = r.center().y() - tth / 2;
-                    p.setPen(QPen(Qt::white, 1));
-                    p.setBrush(QColor(40, 40, 40));
-                    p.drawRect(ttx, tty, ttw, tth);
-                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                    pendingTipRect = QRect(ttx, tty, ttw, tth);
+                    pendingTipText = tip;
                 }
             }
 
@@ -1257,10 +1239,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                     int tth = ttfm.height() + 4;
                     int ttx = r.left() - ttw - 4;
                     int tty = r.center().y() - tth / 2;
-                    p.setPen(QPen(Qt::white, 1));
-                    p.setBrush(QColor(40, 40, 40));
-                    p.drawRect(ttx, tty, ttw, tth);
-                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                    pendingTipRect = QRect(ttx, tty, ttw, tth);
+                    pendingTipText = tip;
                 }
             }
 
@@ -1296,10 +1276,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                     int tth = ttfm.height() + 4;
                     int ttx = r.left() - ttw - 4;
                     int tty = r.center().y() - tth / 2;
-                    p.setPen(QPen(Qt::white, 1));
-                    p.setBrush(QColor(40, 40, 40));
-                    p.drawRect(ttx, tty, ttw, tth);
-                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                    pendingTipRect = QRect(ttx, tty, ttw, tth);
+                    pendingTipText = tip;
                 }
             }
 
@@ -1323,10 +1301,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                     int tth = ttfm.height() + 4;
                     int ttx = r.left() - ttw - 4;
                     int tty = r.center().y() - tth / 2;
-                    p.setPen(QPen(Qt::white, 1));
-                    p.setBrush(QColor(40, 40, 40));
-                    p.drawRect(ttx, tty, ttw, tth);
-                    p.drawText(ttx + 4, tty + 2 + ttfm.ascent(), tip);
+                    pendingTipRect = QRect(ttx, tty, ttw, tth);
+                    pendingTipText = tip;
                 }
             }
         }
@@ -1565,17 +1541,26 @@ void FtWindow::paintEvent(QPaintEvent *)
         drawHistogram(p, frame, m_imageRawPixels, m_imageMinVal, m_imageMaxVal, hy - frame.bottom(),
                       HIST_P1, m_imageDispMin, m_imageDispMax);
 
-        // Position the contrast lock checkbox next to the histogram. Hide
-        // it when a panel-1 parameter window is open, so it does not overlap
-        // the tool dialog rectangle.
-        bool p1ToolActive = m_p1EraserActive || m_p1BrushActive || m_p1TaperActive
-                          || m_binActive || m_peakPickActive || m_extractActive
-                          || m_gaborActive || m_hessianActive || m_amyloidActive
-                          || m_measureActive;
-        if (!m_histRects[HIST_P1].isNull() && !p1ToolActive) {
+        if (!m_histRects[HIST_P1].isNull()) {
             QRect hr = m_histRects[HIST_P1];
-            m_imageHistLockBtn->move(hr.right() + 6, hr.top() + hr.height() / 2 - m_imageHistLockBtn->sizeHint().height() / 2);
-            showImageHistLock = true;
+            // Stack "mark image center" above "freeze display contrast" to
+            // the left of the histogram, both at the same fixed size. These
+            // are custom-painted (before any panel-1 tool dialog) so that
+            // the dialog overpaints them, leaving them visually behind it.
+            QFont bf; bf.setPixelSize(11);
+            QFontMetrics bfm(bf);
+            const QString markText = "mark image center";
+            const QString freezeText = "freeze display contrast";
+            int w = std::max(bfm.horizontalAdvance(markText),
+                             bfm.horizontalAdvance(freezeText)) + 16;
+            int h = bfm.height() + 8;
+            const int gap = 4;
+            int x = hr.left() - 6 - w;
+            int cy = hr.center().y();
+            m_markImageCenterRect = QRect(x, cy - h - gap / 2, w, h);
+            m_imageHistLockRect   = QRect(x, cy + gap / 2,     w, h);
+            paintToggleButton(m_markImageCenterRect, markText, m_imageCenterMarked);
+            paintToggleButton(m_imageHistLockRect,   freezeText, m_imageContrastLocked);
         }
 
         // Pixel size label above top-left corner of image (outside frame)
@@ -1604,6 +1589,24 @@ void FtWindow::paintEvent(QPaintEvent *)
                 QString fname = QFileInfo(m_imagePath).fileName();
                 p.drawText(infoX - pfm.horizontalAdvance(fname), infoY + pfm.ascent(), fname);
             }
+        }
+
+        // Red plus sign at image center (mirrors Fourier-space origin cross)
+        if (m_imageCenterMarked) {
+            QRect target = frame.adjusted(2, 2, -2, -2);
+            QRectF src = m_zoom[0].visibleRect(imgW, imgH);
+            double originX = imgW / 2.0 + 0.5;
+            double originY = imgH / 2.0 + 0.5;
+            double sx = target.x() + (originX - src.x()) / src.width()  * target.width();
+            double sy = target.y() + (originY - src.y()) / src.height() * target.height();
+            double armImg = imgW / 32.0;
+            double armScreen = armImg / src.width() * target.width();
+            p.save();
+            p.setClipRect(target);
+            p.setPen(QPen(Qt::red, 1));
+            p.drawLine(QPointF(sx - armScreen, sy), QPointF(sx + armScreen, sy));
+            p.drawLine(QPointF(sx, sy - armScreen), QPointF(sx, sy + armScreen));
+            p.restore();
         }
 
         DisplayItem &di = m_dispItems[m_numDispItems++];
@@ -1966,31 +1969,46 @@ void FtWindow::paintEvent(QPaintEvent *)
             drawHistogram(p, frame, m_powerVals, m_powerMin, m_powerMax, hy - frame.bottom(),
                           HIST_POWER, m_powerDispMin, m_powerDispMax);
 
-            // Position the FT contrast lock checkbox next to the histogram.
-            // Hide it when a panel-2 parameter window is open, so it does
-            // not overlap the tool dialog rectangle.
-            bool p2ToolActive = m_bandpassActive || m_directionalActive || m_lineFilterActive
-                              || m_brushActive || m_eraserActive || m_latticeActive
-                              || m_ftCropActive || m_crossSectionActive || m_ctfActive;
-            if (!m_histRects[HIST_POWER].isNull() && !p2ToolActive) {
+            // Custom-paint the FT contrast lock and mask-center toggles
+            // stacked to the right of the histogram, both same size. They are
+            // painted BEFORE the bottom-right tool dialog so the dialog
+            // covers them, leaving them visually behind it.
+            if (!m_histRects[HIST_POWER].isNull()) {
                 QRect hr = m_histRects[HIST_POWER];
-                m_ftHistLockBtn->move(hr.right() + 6, hr.top() + hr.height() / 2 - m_ftHistLockBtn->sizeHint().height() / 2);
-                showFtHistLock = true;
+                QFont bf; bf.setPixelSize(11);
+                QFontMetrics bfm(bf);
+                const QString maskText   = "mask center for display";
+                const QString freezeText = "freeze display contrast";
+                int bw = std::max(bfm.horizontalAdvance(maskText),
+                                  bfm.horizontalAdvance(freezeText)) + 16;
+                int bh = bfm.height() + 8;
+                const int gap = 4;
+                int x = hr.right() + 6;
+                int cy = hr.center().y();
+                if (m_maskBtnVisible)
+                    m_maskBtnRect = QRect(x, cy - bh - gap / 2, bw, bh);
+                m_ftHistLockRect = QRect(x, cy + gap / 2, bw, bh);
+                if (m_maskBtnVisible)
+                    paintToggleButton(m_maskBtnRect, maskText, m_maskCenter);
+                paintToggleButton(m_ftHistLockRect, freezeText, m_ftContrastLocked);
             }
 
-            // Color wheel for complex FT mode
+            // Color wheel for complex FT mode — vertically centred on the
+            // power-spectrum histogram, horizontally flush with the left
+            // edge of the FT display.
             if (m_displayMode == 2) {
                 int availBelow = hy - frame.bottom();
                 int histH = std::max(16, availBelow / 3);
-                int histW = frame.width() / 2;
-                int histX = frame.x() + (frame.width() - histW) / 2;
-                int histY = frame.bottom() + histH;
 
-                int wheelD = std::min(histH, histX - frame.x() - 4);
+                int wheelD = std::min(histH, frame.width() / 6);
                 if (wheelD > 8) {
-                    int wcx = histX - wheelD / 2 - 12;
-                    int wcy = histY + histH / 2;
                     int r = wheelD / 2;
+                    // Left edge of wheel aligns with left edge of FT frame;
+                    // vertical centre matches the histogram's vertical centre.
+                    int wcx = frame.left() + r;
+                    int wcy = !m_histRects[HIST_POWER].isNull()
+                                ? m_histRects[HIST_POWER].center().y()
+                                : frame.bottom() + (3 * histH) / 2;
 
                     QImage wheelImg(wheelD, wheelD, QImage::Format_ARGB32);
                     wheelImg.fill(Qt::transparent);
@@ -2516,6 +2534,7 @@ void FtWindow::paintEvent(QPaintEvent *)
             int rx = width() - rw - margin;
             int ry = hy - rh - margin;
             QRect toolRect(rx, ry, rw, rh);
+            m_p2ToolRect = toolRect;   // recorded so mouse handling can detect overlap
             drawShadowRect(p, toolRect);
 
             // Blue progress fill for apply operations
@@ -2782,6 +2801,7 @@ void FtWindow::paintEvent(QPaintEvent *)
             int rx = margin;
             int ry = hy - rh - margin;
             QRect toolRect(rx, ry, rw, rh);
+            m_p1ToolRect = toolRect;
             drawShadowRect(p, toolRect);
 
             // Blue progress fill for apply operations
@@ -3401,7 +3421,8 @@ void FtWindow::paintEvent(QPaintEvent *)
 
             p.drawText(titleRect, Qt::AlignCenter, "Fourier Analyzer");
 
-            manualRect = QRect(titleRect.x(), titleRect.bottom() + 2,
+            // Manual button sits just below the title with a small gap.
+            manualRect = QRect(titleRect.x(), titleRect.bottom() + 8,
                                titleRect.width(), titleRect.height());
         } else {
             m_titleRect = QRect();
@@ -3614,10 +3635,19 @@ void FtWindow::paintEvent(QPaintEvent *)
 
     p.setRenderHint(QPainter::Antialiasing, false);
 
-    // Update histogram lock checkbox visibility (done outside painting to avoid
-    // hide/show flickering that would block mouse events)
-    m_imageHistLockBtn->setVisible(showImageHistLock);
-    m_ftHistLockBtn->setVisible(showFtHistLock);
+    // Render the function-button tooltip last so it always appears on top of
+    // the image / Fourier display, rather than being painted over by them.
+    if (!pendingTipText.isEmpty()) {
+        QFont ttf; ttf.setPixelSize(11);
+        p.setFont(ttf);
+        QFontMetrics ttfm(ttf);
+        p.setPen(QPen(Qt::white, 1));
+        p.setBrush(QColor(40, 40, 40));
+        p.drawRect(pendingTipRect);
+        p.drawText(pendingTipRect.x() + 4,
+                   pendingTipRect.y() + 2 + ttfm.ascent(),
+                   pendingTipText);
+    }
 }
 
 // ---------------------------------------------------------------------------

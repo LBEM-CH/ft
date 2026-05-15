@@ -177,7 +177,10 @@ private:
     QPushButton *m_redoBtn   = nullptr;
     QPushButton *m_fullscreenBtn = nullptr;
     QPushButton *m_modeBtn   = nullptr;
-    QCheckBox   *m_maskBtn   = nullptr;
+    // m_maskBtn (panel-2 "mask center for display") is custom-painted in
+    // paintEvent so that the panel-2 parameter window can cover it.
+    QRect       m_maskBtnRect;
+    bool        m_maskBtnVisible = false;
 
     // ---- loaded image ----
     bool                m_loadingImage = false;
@@ -226,8 +229,17 @@ private:
     int   m_histDragStartX = 0;         // screen X at mouse press
     bool  m_imageContrastLocked = false; // lock real-space contrast range
     bool  m_ftContrastLocked = false;    // lock Fourier-space contrast range
-    QCheckBox *m_imageHistLockBtn = nullptr;
-    QCheckBox *m_ftHistLockBtn    = nullptr;
+    // Panel-1 / panel-2 toggle buttons next to the histograms are all
+    // custom-painted so the panel-1/panel-2 tool dialogs can sit on top of
+    // them. Click hit-testing uses these rects, gated by the tool-dialog rect.
+    QRect       m_imageHistLockRect;
+    QRect       m_ftHistLockRect;
+    QRect       m_p1ToolRect;       // current panel-1 tool-dialog rect
+    QRect       m_p2ToolRect;       // current panel-2 tool-dialog rect
+
+    // ---- mark image center toggle (custom-painted) ----
+    QRect       m_markImageCenterRect;
+    bool         m_imageCenterMarked = false;
 
     // ---- image history (panel 3) ----
     static constexpr int HISTORY_SLOTS = 16;
