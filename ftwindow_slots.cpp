@@ -1147,6 +1147,7 @@ void FtWindow::recomputeDisplayImages()
         double amp     = std::abs(data[i]);
         m_ampVals[i]   = std::log(1.0 + amp);
         m_phaseVals[i] = std::arg(data[i]) * 180.0 / M_PI;
+        m_phaseVals[i] = std::round(m_phaseVals[i] * 100.0) / 100.0;
         if (m_phaseVals[i] <= -180.0) m_phaseVals[i] = 180.0;
         m_powerVals[i] = std::log(1.0 + amp * amp);
     }
