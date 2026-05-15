@@ -287,7 +287,7 @@ void FtWindow::onNewImageCreate()
     m_ftComputed = false;
     m_modeBtn->setText(modeLabel());
     m_modeBtn->hide();
-    m_maskBtn->hide();
+    m_maskBtnVisible = false;
 
     computeFFT();
     m_history[tgtIdx].powerSpecImg = computePowerSpecMasked(m_image);
@@ -332,7 +332,7 @@ void FtWindow::onCreateImageSized(int sz)
     m_ftComputed = false;
     m_modeBtn->setText(modeLabel());
     m_modeBtn->hide();
-    m_maskBtn->hide();
+    m_maskBtnVisible = false;
 
     m_zoom[0].reset(sz, sz);
     computeFFT();
@@ -399,7 +399,7 @@ void FtWindow::onReloadImage()
     m_ftComputed = false;
     m_modeBtn->setText(modeLabel());
     m_modeBtn->hide();
-    m_maskBtn->hide();
+    m_maskBtnVisible = false;
 
     if (!m_image.isNull()) {
         m_zoom[0].reset(m_image.width(), m_image.height());
@@ -622,7 +622,7 @@ void FtWindow::loadImageFile(const QString &path)
     m_ftComputed = false;
     m_modeBtn->setText(modeLabel());
     m_modeBtn->hide();
-    m_maskBtn->hide();
+    m_maskBtnVisible = false;
 
     if (!m_image.isNull()) {
         m_zoom[0].reset(m_image.width(), m_image.height());
@@ -692,7 +692,7 @@ void FtWindow::loadImageData(const QString &fileName, const QByteArray &fileData
     m_ftComputed = false;
     m_modeBtn->setText(modeLabel());
     m_modeBtn->hide();
-    m_maskBtn->hide();
+    m_maskBtnVisible = false;
 
     if (!m_image.isNull()) {
         m_zoom[0].reset(m_image.width(), m_image.height());
@@ -866,6 +866,14 @@ void FtWindow::computeFFT(bool keepZoom)
             data[y * N + x] = Complex(row[x], 0.0);
     }
 
+    // Centered real-space convention: the real-space image's logical origin
+    // lives at (N/2, N/2). fftShift swaps quadrants to convert it to the
+    // (0,0)-origin form that the raw FFT expects. The matching post-shift
+    // happens in computeInverseFFT, so a forward-then-inverse round trip is
+    // self-consistent and the FT of a phase ramp no longer carries an
+    // unwanted (-1)^(u+v) checkerboard phase factor.
+    fftShift(data, N);
+
     // Data prepared – show a small slice of progress
     m_fftProgress = 0.02;
     repaint();
@@ -961,7 +969,7 @@ void FtWindow::computeFFT(bool keepZoom)
     m_fftProgress = -1;
     m_ftComputed = true;
     m_modeBtn->show();
-    m_maskBtn->show();
+    m_maskBtnVisible = true;
 
     if (!keepZoom) {
         m_zoom[1].reset(N, N);
@@ -1066,6 +1074,10 @@ void FtWindow::computeInverseFFT()
 
     m_iftProgress = -1;
 
+    // Centered real-space convention: convert the (0,0)-origin output of the
+    // raw inverse FFT to centered form. Matches the pre-shift in computeFFT.
+    fftShift(data, N);
+
     int outW = (m_origW > 0) ? std::min(m_origW, N) : N;
     int outH = (m_origH > 0) ? std::min(m_origH, N) : N;
 
@@ -1144,18 +1156,50 @@ void FtWindow::recomputeDisplayImages()
     m_phaseImg = floatToImage(m_phaseVals, N);
     m_powerImg = floatToImage(m_powerVals, N);
 
-    // Complex FT image: brightness = power, hue = phase
+    // Complex FT image: brightness = power, hue = phase.
+    //
+    // Two pitfalls handled here:
+    //   (1) A huge DC peak (typical real image) crushes the dynamic range,
+    //       so pMax is taken while excluding the central 3x3 pixels.
+    //   (2) A uniformly-amplitude FT (e.g. a phase ramp, where every
+    //       pixel has amplitude exactly 1 in math) has a range of just
+    //       floating-point round-off (~1e-15). Without guarding, pScale
+    //       = 1/range ≈ 1e15 magnifies that noise into the full 0..1
+    //       brightness range and the display becomes a "starfield" of
+    //       scattered black/dim dots. We detect that case and treat the
+    //       FT as uniformly bright so the pure hue shows.
     {
-        double pMin = *std::min_element(m_powerVals.begin(), m_powerVals.end());
-        double pMax = *std::max_element(m_powerVals.begin(), m_powerVals.end());
-        double pScale = (pMax > pMin) ? 1.0 / (pMax - pMin) : 1.0;
+        int half = N / 2;
+        double pMin = std::numeric_limits<double>::infinity();
+        double pMax = -std::numeric_limits<double>::infinity();
+        double pMaxAll = pMax;
+        for (int y = 0; y < N; y++) {
+            for (int x = 0; x < N; x++) {
+                double v = m_powerVals[y * N + x];
+                if (v < pMin) pMin = v;
+                if (v > pMaxAll) pMaxAll = v;
+                bool nearCenter = std::abs(x - half) <= 1 && std::abs(y - half) <= 1;
+                if (!nearCenter && v > pMax) pMax = v;
+            }
+        }
+        if (pMax <= pMin) pMax = pMaxAll;
+
+        // If the dynamic range is at the noise floor of doubles (relative
+        // to the magnitudes involved), the image is effectively flat —
+        // treat all pixels as full brightness so the pure hue is visible.
+        double range = pMax - pMin;
+        double mag = std::max({std::abs(pMax), std::abs(pMin), 1.0});
+        bool flatBrightness = range <= 1e-9 * mag;
+        double pScale = flatBrightness ? 0.0 : 1.0 / range;
 
         m_complexImg = QImage(N, N, QImage::Format_RGB32);
         for (int y = 0; y < N; y++) {
             QRgb *row = reinterpret_cast<QRgb *>(m_complexImg.scanLine(y));
             for (int x = 0; x < N; x++) {
                 int idx = y * N + x;
-                double val = std::clamp((m_powerVals[idx] - pMin) * pScale, 0.0, 1.0);
+                double val = flatBrightness
+                    ? 1.0
+                    : std::clamp((m_powerVals[idx] - pMin) * pScale, 0.0, 1.0);
                 double hue = m_phaseVals[idx] + 180.0;
                 QColor c = QColor::fromHsvF(hue / 360.0, 1.0, val);
                 row[x] = c.rgb();
@@ -1244,6 +1288,8 @@ QImage FtWindow::computePowerSpecMasked(const QImage &img)
             data[y * N + x] = Complex(row[x], 0.0);
     }
 
+    // Centered real-space convention (mirrors computeFFT).
+    fftShift(data, N);
     fft2d(data, N, false);
     fftShift(data, N);
 
@@ -2950,6 +2996,9 @@ void FtWindow::onFtMathCompute()
             }
         }
 
+        // Centered real-space convention (mirrors computeFFT).
+        fftShift(data, N);
+
         std::vector<Complex> row(N);
         for (int y = 0; y < N; y++) {
             for (int x = 0; x < N; x++) row[x] = data[y * N + x];
@@ -3049,26 +3098,21 @@ void FtWindow::onFtMathCompute()
                 fft1d(col, true);
                 for (int y = 0; y < N; y++) st->result[y * N + x] = col[y];
             }
+            // Centered real-space convention: convert the (0,0)-origin output
+            // of the raw inverse FFT to centered form. This also moves the
+            // convolution/correlation peak from index (0,0) to the centre
+            // automatically (no per-op manual fftShift needed in stage 6).
+            fftShift(st->result, N);
             m_ftMathProgress = 0.95;
         },
         // Stage 6: build output, save to slot
         [this, st]() {
             int N = st->N;
-            int halfN = N / 2;
             int outS = N;
             std::vector<double> realResult(outS * outS);
-            if (st->opIdx == 2 || st->opIdx == 3) {
-                for (int y = 0; y < outS; y++)
-                    for (int x = 0; x < outS; x++) {
-                        int sy = (y + halfN) % N;
-                        int sx = (x + halfN) % N;
-                        realResult[y * outS + x] = st->result[sy * N + sx].real();
-                    }
-            } else {
-                for (int y = 0; y < outS; y++)
-                    for (int x = 0; x < outS; x++)
-                        realResult[y * outS + x] = st->result[y * N + x].real();
-            }
+            for (int y = 0; y < outS; y++)
+                for (int x = 0; x < outS; x++)
+                    realResult[y * outS + x] = st->result[y * N + x].real();
             st->result.clear();
 
             double minVal = *std::min_element(realResult.begin(), realResult.end());
@@ -3120,7 +3164,7 @@ void FtWindow::onFtMathCompute()
             m_ftComputed  = false;
             m_modeBtn->setText(modeLabel());
             m_modeBtn->hide();
-            m_maskBtn->hide();
+            m_maskBtnVisible = false;
 
             computeFFT();
             m_history[outIdx].powerSpecImg = computePowerSpecMasked(m_image);
@@ -3328,7 +3372,7 @@ void FtWindow::onMathCompute()
         m_ftComputed  = false;
         m_modeBtn->setText(modeLabel());
         m_modeBtn->hide();
-        m_maskBtn->hide();
+        m_maskBtnVisible = false;
 
         computeFFT();
         m_history[outIdx].powerSpecImg = computePowerSpecMasked(m_image);
@@ -3876,7 +3920,7 @@ void FtWindow::onCtfCompute()
         m_origH = N;
     }
     m_modeBtn->show();
-    m_maskBtn->show();
+    m_maskBtnVisible = true;
     m_zoom[1].reset(N, N);
     m_zoom[2].reset(N, N);
     recomputeDisplayImages();
@@ -3986,36 +4030,17 @@ void FtWindow::onPhaseRampCompute()
     m_origW = N;
     m_origH = N;
     m_modeBtn->show();
-    m_maskBtn->show();
+    m_maskBtnVisible = true;
     m_zoom[0].reset(N, N);
     m_zoom[1].reset(N, N);
     m_zoom[2].reset(N, N);
     recomputeDisplayImages();
 
-    // Inverse-transform to real space for panel 1.
+    // Inverse-transform to real space for panel 1. computeInverseFFT now
+    // produces the result in centered real-space form, so the delta of a
+    // phase ramp already lands at (N/2, N/2) plus the shift implied by the
+    // ramp — no extra quadrant swap needed.
     computeInverseFFT();
-
-    // Quadrant-swap so the real-space origin sits at the image centre.
-    if ((int)m_imageRawPixels.size() == N * N) {
-        int h2 = N / 2;
-        std::vector<double> shifted(N * N);
-        for (int y = 0; y < N; y++) {
-            int sy = (y + h2) % N;
-            for (int x = 0; x < N; x++) {
-                int sx = (x + h2) % N;
-                shifted[sy * N + sx] = m_imageRawPixels[y * N + x];
-            }
-        }
-        m_imageRawPixels = std::move(shifted);
-        double scale = (m_imageMaxVal > m_imageMinVal)
-                         ? 255.0 / (m_imageMaxVal - m_imageMinVal) : 1.0;
-        for (int y = 0; y < N; y++) {
-            uchar *row = m_image.scanLine(y);
-            for (int x = 0; x < N; x++)
-                row[x] = static_cast<uchar>(std::clamp(
-                    (m_imageRawPixels[y * N + x] - m_imageMinVal) * scale, 0.0, 255.0));
-        }
-    }
 
     if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS) {
         m_imagePath = QString("phase ramp: N=%1 dir=%2° step=%3°")

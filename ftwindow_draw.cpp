@@ -312,7 +312,7 @@ void FtWindow::drawHistogram(QPainter &p, const QRect &frame,
         hf.setPixelSize(9);
         p.setFont(hf);
         QFontMetrics hfm(hf);
-        QString hint = "Click to adjust display parameters";
+        QString hint = "Click to adjust display contrast";
         int hintX = histX + (histW - hfm.horizontalAdvance(hint)) / 2;
         p.drawText(hintX, histY - 2, hint);
     }

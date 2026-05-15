@@ -168,16 +168,21 @@ positioning the basis vectors.
 <details>
 <summary>Exercise 6 — Convolution theorem with Andreas</summary>
 <p>
-Load <code>andreas_1024.png</code>. Use a lattice filter with vectors
+Load <code>andreas_1024.png</code> (-> g). Use a lattice filter with vectors
 <code>(4, 0)</code> and <code>(0, 4)</code>, and a 1-pixel mask
 radius. Explain the effect using the convolution theorem.
 </p>
 <p>
-Then create an empty image and manually place a few pixels into it.
-Convolute that with Andreas. Correlate the result with Andreas. Run a
-<strong>peak search</strong> (particle picking) and
-<strong>extract</strong> 128-pixel "particles" from the convoluted
-map.
+Then create an empty image with the "New image" function (1024 size -> h). 
+Use the paint brush to manually place a few pixels into it (pixel value 1, diameters 1).
+Convolute that newly created image with Andreas (Math calculation: i = g * h). Inspect the result.
+Correlate the result with Andreas (Math calculation: j = i × g). 
+High-pass flatten the cross-correlation map <code>j</code> (Band pass filter in Fourier space, inner diameter 50, erase pixels outisde of band). 
+Run a <strong>peak search</strong> on the high-pass filtered cross-correlation map and create a list of peaks. 
+Inspect the peaks in real space and Fourier space. Do they correspond to the pixels you placed in the image? Can you use the peak list to
+<strong>extract particles</strong> (128-pixel size) from the convoluted map <code>i</code> into a new slot? Do the extracted particles look like Andreas?
+Use in Fourier space the <strong>lattice filter</strong> (smooth edge: 0, diameter 1, lattice vectors (4,0) and (0,4)) to obtain the average particle from the extracted particles. 
+Does it look like Andreas?
 </p>
 </details>
 

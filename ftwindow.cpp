@@ -70,12 +70,9 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     connect(m_modeBtn, &QPushButton::clicked, this, &FtWindow::onCycleMode);
     m_modeBtn->hide();
 
-    // Mask-center toggle checkbox
-    m_maskBtn = new QCheckBox("mask center for display", this);
-    m_maskBtn->setStyleSheet("color: white;");
-    m_maskBtn->adjustSize();
-    connect(m_maskBtn, &QCheckBox::toggled, this, &FtWindow::onToggleMask);
-    m_maskBtn->hide();
+    // m_maskBtn ("mask center for display") is custom-painted in paintEvent
+    // so the panel-2 tool dialog can cover it. Click handling lives in
+    // mousePressEvent via m_maskBtnRect.
 
     // Any top-level button click should dismiss the "New image" popup
     // (these buttons intercept mouse events, so mousePressEvent does not run).
@@ -1190,30 +1187,12 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     connect(m_extractComputeBtn, &QPushButton::clicked, this, &FtWindow::onExtractCompute);
     m_extractComputeBtn->hide();
 
-    // Histogram contrast lock checkboxes
-    m_imageHistLockBtn = new QCheckBox("Fix", this);
-    m_imageHistLockBtn->setStyleSheet("QCheckBox { color: #aaa; font-size: 10px; }"
-        "QCheckBox::indicator { width: 12px; height: 12px; }");
-    m_imageHistLockBtn->setToolTip(
-        "Lock the display contrast range for the real-space image.\n"
-        "When checked, the contrast is preserved across Compute\n"
-        "operations. Uncheck for auto-contrast (full dynamic range).");
-    connect(m_imageHistLockBtn, &QCheckBox::toggled, this, [this](bool checked) {
-        m_imageContrastLocked = checked;
-    });
-    m_imageHistLockBtn->hide();
-
-    m_ftHistLockBtn = new QCheckBox("Fix", this);
-    m_ftHistLockBtn->setStyleSheet("QCheckBox { color: #aaa; font-size: 10px; }"
-        "QCheckBox::indicator { width: 12px; height: 12px; }");
-    m_ftHistLockBtn->setToolTip(
-        "Lock the display contrast range for all Fourier-space images.\n"
-        "When checked, the contrast is preserved across Compute\n"
-        "operations. Uncheck for auto-contrast (full dynamic range).");
-    connect(m_ftHistLockBtn, &QCheckBox::toggled, this, [this](bool checked) {
-        m_ftContrastLocked = checked;
-    });
-    m_ftHistLockBtn->hide();
+    // All four toggle buttons next to the histograms ("freeze display
+    // contrast" x2, "mark image center", "mask center for display") are
+    // custom-painted in paintEvent so that panel-1 / panel-2 tool dialogs
+    // can sit on top of them. State lives in m_imageContrastLocked,
+    // m_ftContrastLocked, m_imageCenterMarked, m_maskCenter; click handling
+    // is in mousePressEvent via the corresponding rects.
 
     // Restore history and active slot
 #ifndef __EMSCRIPTEN__
@@ -1221,7 +1200,6 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
 
     QSettings settings("ft", "ft");
     m_maskCenter = settings.value("maskCenter", false).toBool();
-    m_maskBtn->setChecked(m_maskCenter);
     m_displayMode = settings.value("displayMode", 3).toInt();
     m_modeBtn->setText(modeLabel());
 
@@ -1338,7 +1316,6 @@ void FtWindow::resizeEvent(QResizeEvent *)
     m_redoBtn->move((width() - m_redoBtn->width()) / 2, undoY + m_undoBtn->height() + 4);
     m_fullscreenBtn->move(width() - m_fullscreenBtn->width() - 8, 8);
     m_modeBtn->move(width() - m_modeBtn->width() - 8, 8 + m_fullscreenBtn->height() + 4);
-    m_maskBtn->move(width() - m_maskBtn->width() - 8, 8 + m_fullscreenBtn->height() + 4 + m_modeBtn->height() + 4);
 
     // Scale factor for tool dialogue widgets based on panel height
     int hy = height() - height() / 5;

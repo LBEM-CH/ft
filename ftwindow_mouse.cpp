@@ -99,7 +99,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
             m_ftComputed = false;
             m_modeBtn->setText(modeLabel());
             m_modeBtn->hide();
-            m_maskBtn->hide();
+            m_maskBtnVisible = false;
 
             if (!m_image.isNull())
                 computeFFT(true);
@@ -113,6 +113,33 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
             update();
             return;
         }
+    }
+
+    // Custom-painted toggle buttons next to the histograms. Each sits behind
+    // its panel's tool dialog, so a click only fires when the click lands on
+    // the visible (uncovered) portion of the button.
+    if (!m_imageHistLockRect.isNull() && m_imageHistLockRect.contains(event->pos())
+        && !m_p1ToolRect.contains(event->pos())) {
+        m_imageContrastLocked = !m_imageContrastLocked;
+        update();
+        return;
+    }
+    if (!m_markImageCenterRect.isNull() && m_markImageCenterRect.contains(event->pos())
+        && !m_p1ToolRect.contains(event->pos())) {
+        m_imageCenterMarked = !m_imageCenterMarked;
+        update();
+        return;
+    }
+    if (!m_ftHistLockRect.isNull() && m_ftHistLockRect.contains(event->pos())
+        && !m_p2ToolRect.contains(event->pos())) {
+        m_ftContrastLocked = !m_ftContrastLocked;
+        update();
+        return;
+    }
+    if (!m_maskBtnRect.isNull() && m_maskBtnRect.contains(event->pos())
+        && !m_p2ToolRect.contains(event->pos())) {
+        onToggleMask(!m_maskCenter);
+        return;
     }
 
     // Check histogram clicks – start drag for display range adjustment
@@ -1161,8 +1188,29 @@ void FtWindow::mouseMoveEvent(QMouseEvent *event)
                 break;
             }
         }
+        auto overRect = [&](const QRect &r, bool p2) {
+            const QRect &dlg = p2 ? m_p2ToolRect : m_p1ToolRect;
+            return !r.isNull() && r.contains(event->pos()) && !dlg.contains(event->pos());
+        };
+        QString lockTipImg =
+            "Lock the display contrast range for the real-space image.\n"
+            "When checked, the contrast is preserved across Compute\n"
+            "operations. Uncheck for auto-contrast (full dynamic range).";
+        QString lockTipFt =
+            "Lock the display contrast range for all Fourier-space images.\n"
+            "When checked, the contrast is preserved across Compute\n"
+            "operations. Uncheck for auto-contrast (full dynamic range).";
         if (overHist)
-            setToolTip("Click to adjust display parameters");
+            setToolTip("Click to adjust display contrast");
+        else if (overRect(m_imageHistLockRect, false))
+            setToolTip(lockTipImg);
+        else if (overRect(m_markImageCenterRect, false))
+            setToolTip("Mark the geometric center of the loaded image with a red cross.");
+        else if (overRect(m_ftHistLockRect, true))
+            setToolTip(lockTipFt);
+        else if (overRect(m_maskBtnRect, true))
+            setToolTip("Mask out the central pixels of the Fourier transform display so\n"
+                       "the bright DC component does not dominate the contrast.");
         else if (!paramTip.isEmpty())
             setToolTip(paramTip);
         else if (!m_histDragging)

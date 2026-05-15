@@ -173,29 +173,76 @@
 
 <main>
 
-<nav class="toc">
-  <h2>On this page</h2>
-  <ul>
-    <li><a href="#overview">Overview</a></li>
-    <li><a href="#quickstart">Quick start</a></li>
-    <li><a href="#gui">GUI layout</a></li>
-    <li><a href="#toolbar">Top toolbar</a></li>
-    <li><a href="#modes">FT display modes</a></li>
-    <li><a href="#mouse">Mouse &amp; trackpad</a></li>
-    <li><a href="#history">History slots</a></li>
-    <li><a href="#exercises">Exercises</a></li>
-    <li><a href="#tools">Tool reference (sub-pages)</a></li>
-  </ul>
-</nav>
+<section id="primer">
+<h2 class="section">The Fourier transform</h2>
+<p>
+Jean-Baptiste Joseph Fourier (1768-1830) discovered that any signal can be decomposed into a sum of
+sinusoidal waves. The Fourier transform is the mathematical operation that performs this decomposition. 
+This program serves to illustrate the Fourier transform of 2D images, 
+which is fundamental to many image processing techniques in electron microscopy and beyond.
+</p>
 
-<details id="overview" open>
-<summary>Overview</summary>
+<details id="quickstart">
+<summary>What is the Fourier transform?</summary>
+<p>
+The Fourier transform decomposes an image <em>f</em>(<em>x</em>,<em>y</em>) into a sum
+of plane waves. For a 2D continuous image its forward transform is
+</p>
+<p style="text-align:center; font-style:italic;">
+F(u,v) = ∫∫ f(x,y) · e<sup>−i 2π(ux + vy)</sup> dx dy.
+</p>
+<p>
+Using Euler's identity <em>e</em><sup>−<em>i</em>θ</sup> = cos θ − <em>i</em> sin θ,
+the integral splits into a <strong>cosine</strong> part (the real component) and a
+<strong>sine</strong> part (the imaginary component):
+F(<em>u</em>,<em>v</em>) = R(<em>u</em>,<em>v</em>) − <em>i</em>·I(<em>u</em>,<em>v</em>).
+The complex value F therefore carries two real numbers at every frequency
+(<em>u</em>,<em>v</em>): how much of a cosine wave and how much of a sine wave at
+that spatial frequency is needed to reconstruct the image.
+</p>
+<p>
+The same information can be re-expressed in polar form.
+The <strong>amplitude</strong> is the modulus
+|F| = √(R² + I²); it tells how strong the wave at frequency
+(<em>u</em>,<em>v</em>) is. The <strong>phase</strong> is the angle
+φ = atan2(I, R); it tells where that wave is positioned on the image.
+Amplitude alone discards location; phase alone keeps structure but loses
+contrast.
+</p>
+<p>
+After centring (which the app does automatically), the <strong>zero
+frequency</strong> — the DC term, equal to the mean of the image —
+sits at the centre of displayed Fourier transform. <strong>Low spatial frequencies</strong>
+(large features, slow variation) lie close to that centre;
+<strong>high spatial frequencies</strong> (fine detail, sharp edges)
+lie near the corners. The highest frequency representable on a sampled
+grid is the <strong>Nyquist frequency</strong>: along each axis it
+equals 1 / (2 · pixel size), so a 1 Å pixel resolves down to 2 Å along
+the row / column directions and √2 · pixel size at the corners.
+</p>
+<p>
+For any <em>real-valued</em> input image the transform obeys
+<strong>Friedel symmetry</strong>:
+F(−<em>u</em>,−<em>v</em>) = F*(<em>u</em>,<em>v</em>),
+where * denotes the complex conjugate. As a consequence the amplitude
+display is point-symmetric about the centre, and the phase display is
+anti-symmetric (opposite frequencies carry opposite-sign phases).
+This means the Fourier transform display is fully described by one half of its area; the
+other half is a redundant mirror image.
+</p>
+</details>
+
+<h2 class="section" id="exercises">The Fourier Analyzer</h2>
 <p>
 Fourier Analyzer is an interactive teaching and analysis tool for the
 Fourier transform of 2D images. It is designed for classroom use in
 electron microscopy and image processing, but it works just as well as a
-general-purpose image &amp; FFT explorer.
+general-purpose image &amp; FFT explorer. It is available as a web app (no installation required),
+as a native desktop application for macOS and Windows, and as part of the 4d software suite.
 </p>
+
+<details id="overview">
+<summary>Overview</summary>
 <p>
 The window is split into four panels: the real-space image, its Fourier
 transform, a history of the images you have loaded or produced, and the
@@ -203,7 +250,7 @@ matching power spectra. Edits in either panel update the other in real
 time, so you can directly observe how a change in real space affects
 Fourier space and vice versa.
 </p>
-</details>
+</details>  
 
 <details id="quickstart">
 <summary>Quick start</summary>
@@ -271,10 +318,13 @@ contact info) and <strong>Manual</strong> (this page).
   <tr><td><strong>Mode</strong></td>
       <td>Cycle the panel-2 display through cos/sin, amplitude/phase,
           complex (HSV), and power-spectrum modes.</td></tr>
-  <tr><td><strong>Mask center</strong></td>
-      <td>Hide the central low-frequency peak in the power-spectrum
-          display so the rest of the FT becomes easier to see.</td></tr>
 </table>
+<p>
+The <strong>mask center for display</strong> toggle that used to live
+in this toolbar now sits next to the panel-2 histogram, stacked above
+the <strong>freeze display contrast</strong> toggle — see the
+<a href="#mouse">Mouse &amp; trackpad</a> section below.
+</p>
 </details>
 
 <details id="modes">
@@ -298,7 +348,9 @@ through them with the <strong>Mode</strong> button in the top toolbar.
   <tr><td><strong>complex</strong></td>
       <td>A single panel using HSV colour: <em>hue</em> encodes phase,
           <em>brightness</em> encodes amplitude. Compact view that
-          shows both at once.</td></tr>
+          shows both at once. A small colour-wheel legend with phase
+          labels (<code>0°</code>, <code>±180°</code>, <code>±90°</code>)
+          is drawn below the bottom-left corner of the display.</td></tr>
   <tr><td><strong>power</strong></td>
       <td>The squared amplitude with a logarithmic look-up table. This
           is what is shown in the panel-4 thumbnails.</td></tr>
@@ -324,8 +376,34 @@ sits at the centre of panel 2, and high frequencies are at the corners.
       <td>Drag the white triangles below a panel to clip the display
           look-up table (LUT) for contrast adjustment. The underlying
           pixel values are not changed.</td></tr>
+  <tr><td>Click a toggle next to the histogram</td>
+      <td>Each panel shows two 3D-look toggle buttons stacked
+          vertically next to its histogram. Raised = off, sunken = on.
+          <ul>
+            <li><strong>Panel 1</strong> (to the <em>left</em> of the
+                real-space histogram):
+                <strong>mark image center</strong> draws a red plus at
+                the geometric centre of the image;
+                <strong>freeze display contrast</strong> locks the
+                real-space LUT across Compute operations.</li>
+            <li><strong>Panel 2</strong> (to the <em>right</em> of the
+                Fourier-space histogram, in <em>complex</em> and
+                <em>power-spectrum</em> modes):
+                <strong>mask center for display</strong> hides the
+                bright DC pixels so the rest of the FT becomes
+                readable; <strong>freeze display contrast</strong>
+                locks the Fourier-space LUT across Compute
+                operations.</li>
+          </ul>
+          When a parameter window opens over a panel, the toggle
+          buttons sit visually behind it; clicks on the still-visible
+          part continue to toggle them.</td></tr>
   <tr><td>Hover over a parameter label</td>
       <td>A tooltip explains what the parameter controls.</td></tr>
+  <tr><td>Hover over a tool icon</td>
+      <td>A tooltip with the tool name appears next to the icon and
+          floats above the image / Fourier display rather than being
+          clipped by it.</td></tr>
   <tr><td>Click a history slot (panel 3 or 4)</td>
       <td>Activate that slot. Any pending edits in the previous slot
           are stored before switching.</td></tr>
@@ -346,29 +424,11 @@ keeps:
   <li>A power-spectrum thumbnail (shown in panel 4).</li>
 </ul>
 <p>
-History is persisted between sessions — you can close the app and pick
+In the desktop versions of the program, the History is persisted between sessions — you can close the app and pick
 up where you left off. Use the <strong>New</strong> button to start a
 fresh slot, or click an empty thumbnail to begin one.
 </p>
 </details>
-
-<h2 class="section" id="exercises">Exercises</h2>
-<p>
-A set of guided exercises for classroom or self-study use. Each one
-introduces a different aspect of the Fourier transform and the
-relevant tools in the app. Try to predict the outcome before clicking
-<strong>Compute</strong> or <strong>Apply</strong>.
-</p>
-
-<div class="subpages">
-  <a href="manual_exercises.html">
-    <strong>Exercises</strong>
-    <span>Chessboard from Fourier pixels, high/low/band-pass filters,
-          eraser-based image restoration, lattice filtering, the
-          convolution theorem with Andreas, phase ramp and the shift
-          theorem, cross-correlation and particle picking.</span>
-  </a>
-</div>
 
 <h2 class="section">Tool reference (sub-pages)</h2>
 <p>
@@ -389,6 +449,26 @@ tool lives on its own page:
           cross-section, Fourier crop, phase ramp, CTF, math.</span>
   </a>
 </div>
+
+<h2 class="section" id="exercises">Exercises</h2>
+<p>
+A set of guided exercises for classroom or self-study use. Each one
+introduces a different aspect of the Fourier transform and the
+relevant tools in the app. Try to predict the outcome before clicking
+<strong>Compute</strong> or <strong>Apply</strong>.
+</p>
+
+<div class="subpages" style="grid-template-columns: 1fr;">
+  <a href="manual_exercises.html">
+    <strong>Exercises</strong>
+    <span>Click here to find a series of exercises to experience Fourier space: 
+          Chessboard from Fourier pixels, high/low/band-pass filters,
+          eraser-based image restoration, lattice filtering, the
+          convolution theorem with Andreas, phase ramp and the shift
+          theorem, cross-correlation and particle picking.</span>
+  </a>
+</div>
+
 
 <footer>
   Fourier Analyzer · Stahlberg Lab, EPFL ·
