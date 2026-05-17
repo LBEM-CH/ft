@@ -156,7 +156,8 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
     auto deactivateAllP1Tools = [&]() {
         m_p1EraserActive = false; m_p1BrushActive = false;
         m_shiftActive = false; m_rotateActive = false;
-        m_p1TaperActive = false; m_binActive = false; m_mathActive = false;
+        m_p1TaperActive = false; m_p1SymmetrizeActive = false;
+        m_binActive = false; m_mathActive = false;
         m_peakPickActive = false; m_extractActive = false;
         m_gaborActive = false; m_hessianActive = false;
         m_amyloidActive = false; m_amyloidPlacing = 0;
@@ -169,6 +170,8 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         m_p1BrushDiameterEdit->setVisible(m_p1BrushActive);
         m_p1TaperWidthEdit->setVisible(m_p1TaperActive);
         m_applyP1TaperBtn->setVisible(m_p1TaperActive);
+        m_p1SymmetryEdit->setVisible(m_p1SymmetrizeActive);
+        m_applyP1SymmetryBtn->setVisible(m_p1SymmetrizeActive);
         m_binCombo->setVisible(m_binActive);
         m_binKeepSizeBtn->setVisible(m_binActive);
         m_applyBinBtn->setVisible(m_binActive);
@@ -272,18 +275,22 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         m_p1TaperActive = !was; showP1ToolWidgets(); update(); return;
     }
     if (m_p1BtnRects[9].contains(event->pos())) {
+        bool was = m_p1SymmetrizeActive; deactivateAllP1Tools();
+        m_p1SymmetrizeActive = !was; showP1ToolWidgets(); update(); return;
+    }
+    if (m_p1BtnRects[10].contains(event->pos())) {
         bool was = m_binActive; deactivateAllP1Tools();
         m_binActive = !was; showP1ToolWidgets(); update(); return;
     }
-    if (m_p1BtnRects[10].contains(event->pos())) {
+    if (m_p1BtnRects[11].contains(event->pos())) {
         bool was = m_gaborActive; deactivateAllP1Tools();
         m_gaborActive = !was; showP1ToolWidgets(); update(); return;
     }
-    if (m_p1BtnRects[11].contains(event->pos())) {
+    if (m_p1BtnRects[12].contains(event->pos())) {
         bool was = m_hessianActive; deactivateAllP1Tools();
         m_hessianActive = !was; showP1ToolWidgets(); update(); return;
     }
-    if (m_p1BtnRects[12].contains(event->pos())) {
+    if (m_p1BtnRects[13].contains(event->pos())) {
         bool was = m_amyloidActive; deactivateAllP1Tools();
         m_amyloidActive = !was;
         if (!m_amyloidActive) { m_amyloidPlacing = 0; }
@@ -294,11 +301,11 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         }
         showP1ToolWidgets(); update(); return;
     }
-    if (m_p1BtnRects[13].contains(event->pos())) {
+    if (m_p1BtnRects[14].contains(event->pos())) {
         bool was = m_mathActive; deactivateAllP1Tools();
         m_mathActive = !was; showP1ToolWidgets(); update(); return;
     }
-    if (m_p1BtnRects[14].contains(event->pos())) {
+    if (m_p1BtnRects[15].contains(event->pos())) {
         bool was = m_peakPickActive; deactivateAllP1Tools();
         m_peakPickActive = !was;
         if (m_peakPickActive) {
@@ -308,7 +315,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         }
         showP1ToolWidgets(); update(); return;
     }
-    if (m_p1BtnRects[15].contains(event->pos())) {
+    if (m_p1BtnRects[16].contains(event->pos())) {
         bool was = m_extractActive; deactivateAllP1Tools();
         m_extractActive = !was;
         if (m_extractActive && m_activeSlot >= 0)
@@ -511,6 +518,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         m_lineFilterActive = false;
         m_latticeActive = false; m_ftRotateActive = false;
         m_crossSectionActive = false;
+        m_p2SymmetrizeActive = false;
         m_ftCropActive = false; m_ftMathActive = false;
         m_ctfActive = false;
         m_phaseRampActive = false;
@@ -544,6 +552,9 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         m_latticeApplyBtn->setVisible(m_latticeActive);
 
         m_crossSectionWidthEdit->setVisible(m_crossSectionActive);
+
+        m_p2SymmetryEdit->setVisible(m_p2SymmetrizeActive);
+        m_applyP2SymmetryBtn->setVisible(m_p2SymmetrizeActive);
 
         m_ftCropCombo->setVisible(m_ftCropActive);
         m_ftCropKeepSizeBtn->setVisible(m_ftCropActive);
@@ -620,20 +631,24 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         showToolWidgets(); update(); return;
     }
     if (m_toolBtnRects[8].contains(event->pos())) {
+        bool was = m_p2SymmetrizeActive; deactivateAllTools();
+        m_p2SymmetrizeActive = !was; showToolWidgets(); update(); return;
+    }
+    if (m_toolBtnRects[9].contains(event->pos())) {
         bool was = m_ftCropActive; deactivateAllTools();
         m_ftCropActive = !was; showToolWidgets(); update(); return;
     }
-    if (m_toolBtnRects[9].contains(event->pos())) {
+    if (m_toolBtnRects[10].contains(event->pos())) {
         bool was = m_phaseRampActive; deactivateAllTools();
         m_phaseRampActive = !was; showToolWidgets(); update(); return;
     }
-    if (m_toolBtnRects[10].contains(event->pos())) {
+    if (m_toolBtnRects[11].contains(event->pos())) {
         bool was = m_ctfActive; deactivateAllTools();
         m_ctfActive = !was;
         m_ctfProfile.clear();
         showToolWidgets(); update(); return;
     }
-    if (m_toolBtnRects[11].contains(event->pos())) {
+    if (m_toolBtnRects[12].contains(event->pos())) {
         bool was = m_ftMathActive; deactivateAllTools();
         m_ftMathActive = !was; showToolWidgets(); update(); return;
     }
