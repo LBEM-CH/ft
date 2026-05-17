@@ -448,6 +448,22 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     });
     m_crossSectionWidthEdit->hide();
 
+    // Panel 2 Fourier-space symmetrize widgets
+    m_p2SymmetryEdit = new QLineEdit("4", this);
+    m_p2SymmetryEdit->setFixedSize(50, 22);
+    m_p2SymmetryEdit->setStyleSheet("background:#222; color:white; border:1px solid #888;");
+    m_p2SymmetryEdit->setToolTip(
+        "Rotational symmetry order N to enforce on the Fourier\n"
+        "transform around its center (DC term). The current FT is\n"
+        "averaged with its rotated copies at angles k·360°/N\n"
+        "(k = 0…N−1). The real-space image is updated via the\n"
+        "inverse FFT. Use N = 2 for two-fold, 3 for three-fold, etc.");
+    m_p2SymmetryEdit->hide();
+    m_applyP2SymmetryBtn = new QPushButton("Apply symmetry", this);
+    m_applyP2SymmetryBtn->setFixedSize(130, 26);
+    connect(m_applyP2SymmetryBtn, &QPushButton::clicked, this, &FtWindow::onApplyFtSymmetry);
+    m_applyP2SymmetryBtn->hide();
+
     // CTF parameter widgets
     auto makeCtfEdit = [this](const QString &def) {
         auto *e = new QLineEdit(def, this);
@@ -638,6 +654,24 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_applyP1TaperBtn->setFixedSize(130, 26);
     connect(m_applyP1TaperBtn, &QPushButton::clicked, this, &FtWindow::onApplyEdgeTaper);
     m_applyP1TaperBtn->hide();
+
+    // Panel 1 symmetrize widgets
+    m_p1SymmetryLabel = new QLabel("Symmetry to apply:", this);
+    m_p1SymmetryLabel->setStyleSheet("color: white;");
+    m_p1SymmetryLabel->hide();
+    m_p1SymmetryEdit = new QLineEdit("4", this);
+    m_p1SymmetryEdit->setFixedSize(50, 22);
+    m_p1SymmetryEdit->setStyleSheet("background:#222; color:white; border:1px solid #888;");
+    m_p1SymmetryEdit->setToolTip(
+        "Rotational symmetry order N to apply around the image\n"
+        "center. The image is averaged with its rotated copies at\n"
+        "angles k·360°/N (k = 0…N−1), enforcing N-fold rotational\n"
+        "symmetry. Use N = 2 for two-fold, 3 for three-fold, etc.");
+    m_p1SymmetryEdit->hide();
+    m_applyP1SymmetryBtn = new QPushButton("Apply symmetry", this);
+    m_applyP1SymmetryBtn->setFixedSize(130, 26);
+    connect(m_applyP1SymmetryBtn, &QPushButton::clicked, this, &FtWindow::onApplySymmetry);
+    m_applyP1SymmetryBtn->hide();
 
     // Gabor filter widgets
     auto makeGaborEdit = [this](const QString &def) {
@@ -1373,6 +1407,10 @@ void FtWindow::resizeEvent(QResizeEvent *)
     // Cross-section profile width widget (sizes only)
     m_crossSectionWidthEdit->setFixedSize(static_cast<int>(40 * sc), editH);
     m_crossSectionWidthEdit->setStyleSheet(editSS);
+    m_p2SymmetryEdit->setFixedSize(static_cast<int>(50 * sc), editH);
+    m_p2SymmetryEdit->setStyleSheet(editSS);
+    m_applyP2SymmetryBtn->setFixedSize(static_cast<int>(130 * sc), btnH);
+    m_applyP2SymmetryBtn->setStyleSheet(btnSS);
 
     // CTF widgets (sizes only)
     m_ctfVoltageEdit->setFixedSize(static_cast<int>(60 * sc), editH);
@@ -1442,6 +1480,10 @@ void FtWindow::resizeEvent(QResizeEvent *)
     m_p1TaperWidthEdit->setStyleSheet(editSS);
     m_applyP1TaperBtn->setFixedSize(static_cast<int>(130 * sc), btnH);
     m_applyP1TaperBtn->setStyleSheet(btnSS);
+    m_p1SymmetryEdit->setFixedSize(static_cast<int>(50 * sc), editH);
+    m_p1SymmetryEdit->setStyleSheet(editSS);
+    m_applyP1SymmetryBtn->setFixedSize(static_cast<int>(130 * sc), btnH);
+    m_applyP1SymmetryBtn->setStyleSheet(btnSS);
 
     // Gabor filter widgets (sizes only)
     m_gaborSigmaEdit->setFixedSize(static_cast<int>(60 * sc), editH);

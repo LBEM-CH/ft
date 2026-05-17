@@ -110,6 +110,8 @@ private slots:
     void onToggleMask(bool checked);
     void onApplyBandpass();
     void onApplyEdgeTaper();
+    void onApplySymmetry();
+    void onApplyFtSymmetry();
     void onInvertContrast();
     void onApplyLineFilter();
     void onApplyGaborFilter();
@@ -301,8 +303,8 @@ private:
     QRect       m_manualRect;       // "Manual" click region below title
 
     // ---- tool buttons ----
-    static constexpr int P1_TOOL_BUTTONS = 16;
-    static constexpr int P2_TOOL_BUTTONS = 12;
+    static constexpr int P1_TOOL_BUTTONS = 17;
+    static constexpr int P2_TOOL_BUTTONS = 13;
     QRect       m_p1BtnRects[P1_TOOL_BUTTONS];       // panel 1 left edge
     QRect       m_toolBtnRects[P2_TOOL_BUTTONS];     // panel 2 right edge
 
@@ -316,6 +318,7 @@ private:
     bool        m_p1EraserActive = false;
     bool        m_p1BrushActive = false;
     bool        m_p1TaperActive = false;
+    bool        m_p1SymmetrizeActive = false;
     bool        m_p1ToolDragging = false;  // mouse button held while painting/erasing in panel 1
 
     // Panel 1 eraser/brush parameter widgets
@@ -330,6 +333,9 @@ private:
     QLabel     *m_p1TaperWidthLabel = nullptr;
     QLineEdit  *m_p1TaperWidthEdit = nullptr;
     QPushButton *m_applyP1TaperBtn = nullptr;
+    QLabel     *m_p1SymmetryLabel = nullptr;
+    QLineEdit  *m_p1SymmetryEdit = nullptr;
+    QPushButton *m_applyP1SymmetryBtn = nullptr;
 
     void p1EraserApply(QPoint pos);
     void p1BrushApply(QPoint pos);
@@ -510,6 +516,11 @@ private:
     void drawCrossSectionLines(QPainter &p, const QRect &screenRect,
                                const ZoomState &zoom, int imgW, int imgH);
     void computeCrossSectionProfile();
+
+    // ---- Fourier-space symmetrize ----
+    bool        m_p2SymmetrizeActive = false;
+    QLineEdit  *m_p2SymmetryEdit = nullptr;
+    QPushButton *m_applyP2SymmetryBtn = nullptr;
 
     // ---- lattice filter ----
     bool        m_latticeActive = false;

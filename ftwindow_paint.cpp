@@ -131,10 +131,11 @@ void FtWindow::paintEvent(QPaintEvent *)
             if ((i == 0 && m_p1EraserActive) || (i == 1 && m_p1BrushActive) ||
                 (i == 2 && m_measureActive) ||
                 (i == 5 && m_shiftActive) || (i == 6 && m_rotateActive) ||
-                (i == 8 && m_p1TaperActive) || (i == 9 && m_binActive) ||
-                (i == 10 && m_gaborActive) || (i == 11 && m_hessianActive) ||
-                (i == 12 && m_amyloidActive) || (i == 13 && m_mathActive) ||
-                (i == 14 && m_peakPickActive) || (i == 15 && m_extractActive))
+                (i == 8 && m_p1TaperActive) || (i == 9 && m_p1SymmetrizeActive) ||
+                (i == 10 && m_binActive) ||
+                (i == 11 && m_gaborActive) || (i == 12 && m_hessianActive) ||
+                (i == 13 && m_amyloidActive) || (i == 14 && m_mathActive) ||
+                (i == 15 && m_peakPickActive) || (i == 16 && m_extractActive))
                 p.setBrush(QColor(60, 60, 60));
             else
                 p.setBrush(QColor(0, 0, 0));
@@ -542,8 +543,44 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Bin image icon (button 8): 2x2 grid representing pixel binning
+            // Symmetrize icon (button 9): white five-fold star on black field
             if (i == 9) {
+                p.setRenderHint(QPainter::Antialiasing, true);
+                double cx2 = r.x() + r.width() / 2.0;
+                double cy2 = r.y() + r.height() / 2.0;
+                double outerR = std::min(r.width(), r.height()) * 0.42;
+                double innerR = outerR * 0.40;
+                QPainterPath star;
+                for (int k = 0; k < 10; k++) {
+                    double rad = (k % 2 == 0) ? outerR : innerR;
+                    // Start with the top point pointing up (angle = -90°)
+                    double ang = -M_PI / 2.0 + k * (M_PI / 5.0);
+                    double px = cx2 + rad * std::cos(ang);
+                    double py = cy2 + rad * std::sin(ang);
+                    if (k == 0) star.moveTo(px, py);
+                    else        star.lineTo(px, py);
+                }
+                star.closeSubpath();
+                p.setPen(Qt::NoPen);
+                p.setBrush(m_p1SymmetrizeActive ? QColor(180, 180, 255) : Qt::white);
+                p.drawPath(star);
+                p.setRenderHint(QPainter::Antialiasing, false);
+
+                if (r.contains(m_mousePos)) {
+                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                    QFontMetrics ttfm(ttf);
+                    QString tip = "Symmetrize Image";
+                    int ttw = ttfm.horizontalAdvance(tip) + 8;
+                    int tth = ttfm.height() + 4;
+                    int ttx = r.right() + 4;
+                    int tty = r.center().y() - tth / 2;
+                    pendingTipRect = QRect(ttx, tty, ttw, tth);
+                    pendingTipText = tip;
+                }
+            }
+
+            // Bin image icon (button 10): 2x2 grid representing pixel binning
+            if (i == 10) {
                 if (m_binActive) {
                     p.setPen(QPen(Qt::white, 1));
                     p.setBrush(QColor(60, 60, 60));
@@ -581,8 +618,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Math calculations icon (button 12): Sigma/Sum sign
-            if (i == 13) {
+            // Math calculations icon (button 14): Sigma/Sum sign
+            if (i == 14) {
                 if (m_mathActive) {
                     p.setPen(QPen(Qt::white, 1));
                     p.setBrush(QColor(60, 60, 60));
@@ -628,8 +665,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Particle picking icon (button 13): four green plus signs in 2x2 grid
-            if (i == 14) {
+            // Particle picking icon (button 15): four green plus signs in 2x2 grid
+            if (i == 15) {
                 if (m_peakPickActive) {
                     p.setPen(QPen(Qt::white, 1));
                     p.setBrush(QColor(60, 60, 60));
@@ -692,8 +729,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Extract particles icon (button 14): white smiley face
-            if (i == 15) {
+            // Extract particles icon (button 16): white smiley face
+            if (i == 16) {
                 if (m_extractActive) {
                     p.setPen(QPen(Qt::white, 1));
                     p.setBrush(QColor(60, 60, 60));
@@ -742,8 +779,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Hessian filter icon (button 10): letter "H"
-            if (i == 11) {
+            // Hessian filter icon (button 12): letter "H"
+            if (i == 12) {
                 p.setRenderHint(QPainter::Antialiasing, true);
                 QFont gf;
                 gf.setBold(true);
@@ -767,8 +804,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Amyloid filament icon (button 11): letter "A"
-            if (i == 12) {
+            // Amyloid filament icon (button 13): letter "A"
+            if (i == 13) {
                 if (m_amyloidActive) {
                     p.setPen(QPen(Qt::white, 1));
                     p.setBrush(QColor(60, 60, 60));
@@ -797,8 +834,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Gabor filter icon (button 9): letter "G"
-            if (i == 10) {
+            // Gabor filter icon (button 11): letter "G"
+            if (i == 11) {
                 p.setRenderHint(QPainter::Antialiasing, true);
                 QFont gf;
                 gf.setBold(true);
@@ -834,8 +871,9 @@ void FtWindow::paintEvent(QPaintEvent *)
                 (i == 2 && m_bandpassActive) || (i == 3 && m_directionalActive) ||
                 (i == 4 && m_lineFilterActive) || (i == 5 && m_latticeActive) ||
                 (i == 6 && m_ftRotateActive) || (i == 7 && m_crossSectionActive) ||
-                (i == 8 && m_ftCropActive) || (i == 9 && m_phaseRampActive) ||
-                (i == 10 && m_ctfActive) || (i == 11 && m_ftMathActive))
+                (i == 8 && m_p2SymmetrizeActive) ||
+                (i == 9 && m_ftCropActive) || (i == 10 && m_phaseRampActive) ||
+                (i == 11 && m_ctfActive) || (i == 12 && m_ftMathActive))
                 p.setBrush(QColor(60, 60, 60));
             else
                 p.setBrush(QColor(0, 0, 0));
@@ -1175,8 +1213,43 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Fourier crop icon (button 8): 2x2 grid (same as panel 1 binning)
+            // Symmetrize icon (button 8): white five-fold star on black field
             if (i == 8) {
+                p.setRenderHint(QPainter::Antialiasing, true);
+                double cx2 = r.x() + r.width() / 2.0;
+                double cy2 = r.y() + r.height() / 2.0;
+                double outerR = std::min(r.width(), r.height()) * 0.42;
+                double innerR = outerR * 0.40;
+                QPainterPath star;
+                for (int k = 0; k < 10; k++) {
+                    double rad = (k % 2 == 0) ? outerR : innerR;
+                    double ang = -M_PI / 2.0 + k * (M_PI / 5.0);
+                    double px = cx2 + rad * std::cos(ang);
+                    double py = cy2 + rad * std::sin(ang);
+                    if (k == 0) star.moveTo(px, py);
+                    else        star.lineTo(px, py);
+                }
+                star.closeSubpath();
+                p.setPen(Qt::NoPen);
+                p.setBrush(m_p2SymmetrizeActive ? QColor(180, 180, 255) : Qt::white);
+                p.drawPath(star);
+                p.setRenderHint(QPainter::Antialiasing, false);
+
+                if (r.contains(m_mousePos)) {
+                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                    QFontMetrics ttfm(ttf);
+                    QString tip = "Symmetrize Fourier space";
+                    int ttw = ttfm.horizontalAdvance(tip) + 8;
+                    int tth = ttfm.height() + 4;
+                    int ttx = r.left() - ttw - 4;
+                    int tty = r.center().y() - tth / 2;
+                    pendingTipRect = QRect(ttx, tty, ttw, tth);
+                    pendingTipText = tip;
+                }
+            }
+
+            // Fourier crop icon (button 9): 2x2 grid (same as panel 1 binning)
+            if (i == 9) {
                 QColor col = m_ftCropActive ? QColor(180, 180, 255) : Qt::white;
                 int m = std::max(2, btnSide / 5);
                 QRect inner = r.adjusted(m, m, -m, -m);
@@ -1206,9 +1279,9 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Phase ramp icon (button 9): grey gradient (dark BL to bright TR)
+            // Phase ramp icon (button 10): grey gradient (dark BL to bright TR)
             // with white "Ramp" text overlaid.
-            if (i == 9) {
+            if (i == 10) {
                 QLinearGradient grad(r.left(), r.bottom(), r.right(), r.top());
                 grad.setColorAt(0.0, QColor(0, 0, 0));
                 grad.setColorAt(1.0, QColor(140, 140, 140));
@@ -1244,8 +1317,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Fourier math icon (button 11): Sigma/Sum sign
-            if (i == 11) {
+            // Fourier math icon (button 12): Sigma/Sum sign
+            if (i == 12) {
                 p.setRenderHint(QPainter::Antialiasing, true);
                 int inset = std::max(3, btnSide / 4);
                 QRect ir = r.adjusted(inset, inset, -inset, -inset);
@@ -1281,8 +1354,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // CTF icon (button 10): black background with white "CTF" text
-            if (i == 10) {
+            // CTF icon (button 11): black background with white "CTF" text
+            if (i == 11) {
                 p.setRenderHint(QPainter::Antialiasing, true);
                 QFont cf;
                 cf.setBold(true);
@@ -2440,7 +2513,7 @@ void FtWindow::paintEvent(QPaintEvent *)
         // Panel 2 tool option rectangles (bottom-right of panel 2)
         bool p2Tool = m_bandpassActive || m_directionalActive || m_lineFilterActive || m_brushActive
                       || m_eraserActive || m_latticeActive || m_ftCropActive || m_crossSectionActive
-                      || m_ctfActive || m_phaseRampActive;
+                      || m_ctfActive || m_phaseRampActive || m_p2SymmetrizeActive;
         if (p2Tool) {
             int nRows = 0;
             int textW = 0;
@@ -2498,6 +2571,11 @@ void FtWindow::paintEvent(QPaintEvent *)
             } else if (m_crossSectionActive) {
                 nRows = 1;
                 textW = fm.horizontalAdvance("Integration width in % of image size: ") + m_crossSectionWidthEdit->width();
+            } else if (m_p2SymmetrizeActive) {
+                nRows = 2;
+                int r1 = fm.horizontalAdvance("Symmetry to apply: ") + m_p2SymmetryEdit->width();
+                int r2 = m_applyP2SymmetryBtn->width();
+                textW = std::max(r1, r2);
             } else if (m_ftCropActive) {
                 nRows = 3;
                 int r1 = m_ftCropCombo->width();
@@ -2639,6 +2717,10 @@ void FtWindow::paintEvent(QPaintEvent *)
                 drawParamLabel(p, fm, tx, ty, "Integration width in % of image size:",
                                m_crossSectionWidthEdit->toolTip());
                 m_crossSectionWidthEdit->move(tx + fm.horizontalAdvance("Integration width in % of image size: "), ty);
+            } else if (m_p2SymmetrizeActive) {
+                drawParamLabel(p, fm, tx, ty, "Symmetry to apply:", m_p2SymmetryEdit->toolTip());
+                m_p2SymmetryEdit->move(tx + fm.horizontalAdvance("Symmetry to apply: "), ty);
+                m_applyP2SymmetryBtn->move(tx, ty + lh);
             } else if (m_ftCropActive) {
                 m_ftCropCombo->move(tx, ty);
                 m_ftCropKeepSizeBtn->move(tx, ty + lh);
@@ -2692,7 +2774,7 @@ void FtWindow::paintEvent(QPaintEvent *)
         }
 
         // Panel 1 tool option rectangles (bottom-left of panel 1)
-        bool p1Tool = m_p1EraserActive || m_p1BrushActive || m_p1TaperActive || m_binActive || m_peakPickActive || m_extractActive || m_gaborActive || m_hessianActive || m_amyloidActive || m_measureActive;
+        bool p1Tool = m_p1EraserActive || m_p1BrushActive || m_p1TaperActive || m_p1SymmetrizeActive || m_binActive || m_peakPickActive || m_extractActive || m_gaborActive || m_hessianActive || m_amyloidActive || m_measureActive;
         if (p1Tool) {
             int nRows = 0;
             int textW = 0;
@@ -2709,6 +2791,11 @@ void FtWindow::paintEvent(QPaintEvent *)
                 nRows = 2;
                 int r1 = fm.horizontalAdvance("Hanning width: ") + m_p1TaperWidthEdit->width();
                 int r2 = m_applyP1TaperBtn->width();
+                textW = std::max(r1, r2);
+            } else if (m_p1SymmetrizeActive) {
+                nRows = 2;
+                int r1 = fm.horizontalAdvance("Symmetry to apply: ") + m_p1SymmetryEdit->width();
+                int r2 = m_applyP1SymmetryBtn->width();
                 textW = std::max(r1, r2);
             } else if (m_binActive) {
                 nRows = 3;
@@ -2831,6 +2918,10 @@ void FtWindow::paintEvent(QPaintEvent *)
                 drawParamLabel(p, fm, tx, ty, "Hanning width:", m_p1TaperWidthEdit->toolTip());
                 m_p1TaperWidthEdit->move(tx + fm.horizontalAdvance("Hanning width: "), ty);
                 m_applyP1TaperBtn->move(tx, ty + lh);
+            } else if (m_p1SymmetrizeActive) {
+                drawParamLabel(p, fm, tx, ty, "Symmetry to apply:", m_p1SymmetryEdit->toolTip());
+                m_p1SymmetryEdit->move(tx + fm.horizontalAdvance("Symmetry to apply: "), ty);
+                m_applyP1SymmetryBtn->move(tx, ty + lh);
             } else if (m_binActive) {
                 m_binCombo->move(tx, ty);
                 m_binKeepSizeBtn->move(tx, ty + lh);
