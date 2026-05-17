@@ -2328,6 +2328,189 @@ void FtWindow::onApplyEdgeTaper()
     });
 }
 
+void FtWindow::onApplySymmetry()
+{
+    if (m_image.isNull()) return;
+
+    int w = m_image.width();
+    int h = m_image.height();
+    if ((int)m_imageRawPixels.size() != w * h) return;
+
+    bool ok = false;
+    int order = m_p1SymmetryEdit->text().toInt(&ok);
+    if (!ok || order < 1) return;
+    if (order > 64) order = 64;   // sanity clamp
+    if (order == 1) return;       // nothing to do
+
+    storeUndoSnapshot();
+
+    // Mean pixel value used to fill samples that fall outside the image
+    double meanVal = 0.0;
+    for (double v : m_imageRawPixels) meanVal += v;
+    meanVal /= static_cast<double>(w * h);
+
+    auto src = std::make_shared<std::vector<double>>(m_imageRawPixels);
+    auto dst = std::make_shared<std::vector<double>>(w * h, 0.0);
+
+    m_toolProgress = 0.05;
+    update();
+
+    std::vector<std::function<void()>> steps;
+    for (int k = 0; k < order; k++) {
+        steps.push_back([this, src, dst, k, order, w, h, meanVal]() {
+            const double cx = w / 2;
+            const double cy = h / 2;
+            const double theta = 2.0 * M_PI * k / static_cast<double>(order);
+            const double c = std::cos(theta);
+            const double s = std::sin(theta);
+            for (int y = 0; y < h; y++) {
+                double dy = y - cy;
+                for (int x = 0; x < w; x++) {
+                    double dx = x - cx;
+                    // Source coords obtained by inverse-rotating output coords
+                    double sx = cx + dx * c + dy * s;
+                    double sy = cy - dx * s + dy * c;
+                    double sample;
+                    int x0 = static_cast<int>(std::floor(sx));
+                    int y0 = static_cast<int>(std::floor(sy));
+                    if (x0 < 0 || x0 >= w - 1 || y0 < 0 || y0 >= h - 1) {
+                        sample = meanVal;
+                    } else {
+                        double fx = sx - x0;
+                        double fy = sy - y0;
+                        const double *p = src->data() + y0 * w + x0;
+                        double v00 = p[0];
+                        double v10 = p[1];
+                        double v01 = p[w];
+                        double v11 = p[w + 1];
+                        sample = (1.0 - fx) * (1.0 - fy) * v00
+                               +        fx  * (1.0 - fy) * v10
+                               + (1.0 - fx) *        fy  * v01
+                               +        fx  *        fy  * v11;
+                    }
+                    (*dst)[y * w + x] += sample;
+                }
+            }
+            m_toolProgress = 0.05 + 0.85 * (k + 1) / static_cast<double>(order);
+        });
+    }
+
+    steps.push_back([this, dst, w, h, order]() {
+        double invN = 1.0 / static_cast<double>(order);
+        for (int i = 0; i < w * h; i++)
+            m_imageRawPixels[i] = (*dst)[i] * invN;
+        rebuildImageFromRaw();
+        m_toolProgress = 0.95;
+    });
+
+    steps.push_back([this]() {
+        if (m_ftComputed)
+            computeFFT();
+
+        if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS) {
+            m_history[m_activeSlot].image = m_image;
+            m_history[m_activeSlot].rawPixels = m_imageRawPixels;
+            m_history[m_activeSlot].minVal = m_imageMinVal;
+            m_history[m_activeSlot].maxVal = m_imageMaxVal;
+            m_history[m_activeSlot].pixelSize = m_pixelSize;
+            m_history[m_activeSlot].occupied = true;
+            if (m_ftComputed)
+                m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
+        }
+
+        saveHistory();
+        m_toolProgress = -1;
+        update();
+    });
+
+    chainSteps(std::move(steps));
+}
+
+void FtWindow::onApplyFtSymmetry()
+{
+    if (!m_ftComputed || m_fftN == 0) return;
+
+    bool ok = false;
+    int order = m_p2SymmetryEdit->text().toInt(&ok);
+    if (!ok || order < 1) return;
+    if (order > 64) order = 64;
+    if (order == 1) return;
+
+    storeUndoSnapshot();
+
+    const int N = m_fftN;
+    const int halfN = N / 2;
+    // Rotation centre in real-space pixel coordinates. Matches the panel-1
+    // symmetrize convention: integer pixel (w/2, h/2) of the original image.
+    const double rcx = (m_origW > 0 ? m_origW : N) / 2;
+    const double rcy = (m_origH > 0 ? m_origH : N) / 2;
+
+    // Un-shift current FFT to DC-at-(0,0) layout for rotation arithmetic.
+    auto src = std::make_shared<std::vector<Complex>>(m_fftData);
+    fftShift(*src, N);
+    auto acc = std::make_shared<std::vector<Complex>>(N * N, Complex(0, 0));
+
+    m_toolProgress = 0.05;
+    update();
+
+    std::vector<std::function<void()>> steps;
+    for (int k = 0; k < order; k++) {
+        steps.push_back([this, src, acc, k, order, N, halfN, rcx, rcy]() {
+            const double angle = 2.0 * M_PI * k / static_cast<double>(order);
+            // Inverse rotation maps target frequency back to source frequency.
+            const double cosA = std::cos(-angle);
+            const double sinA = std::sin(-angle);
+            for (int v = 0; v < N; v++) {
+                for (int u = 0; u < N; u++) {
+                    double us = (u <= halfN) ? (double)u : (double)(u - N);
+                    double vs = (v <= halfN) ? (double)v : (double)(v - N);
+
+                    double uSrcF = us * cosA - vs * sinA;
+                    double vSrcF = us * sinA + vs * cosA;
+
+                    int uSrcI = (int)std::round(uSrcF);
+                    int vSrcI = (int)std::round(vSrcF);
+
+                    int su = ((uSrcI % N) + N) % N;
+                    int sv = ((vSrcI % N) + N) % N;
+
+                    // Phase correction so the rotation centre matches the
+                    // original image centre, not the array origin.
+                    double du = (double)uSrcI - us;
+                    double dv = (double)vSrcI - vs;
+                    double phase = -2.0 * M_PI * (du * rcx + dv * rcy) / N;
+                    Complex phasor(std::cos(phase), std::sin(phase));
+
+                    (*acc)[v * N + u] += (*src)[sv * N + su] * phasor;
+                }
+            }
+            m_toolProgress = 0.05 + 0.80 * (k + 1) / static_cast<double>(order);
+        });
+    }
+
+    steps.push_back([this, acc, N, order]() {
+        double invN = 1.0 / static_cast<double>(order);
+        for (auto &c : *acc) c *= invN;
+        // Re-shift back to centred layout for m_fftData storage.
+        fftShift(*acc, N);
+        m_fftData = std::move(*acc);
+        recomputeDisplayImages();
+        m_toolProgress = 0.90;
+    });
+
+    steps.push_back([this]() {
+        computeInverseFFT();
+        if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS) {
+            m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
+        }
+        saveHistory();
+        m_toolProgress = -1;
+        update();
+    });
+
+    chainSteps(std::move(steps));
+}
+
 void FtWindow::onGaborCancel()
 {
     m_gaborActive = false;
