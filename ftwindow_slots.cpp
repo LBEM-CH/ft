@@ -105,6 +105,21 @@ void FtWindow::onLoadImage()
         list->setCurrentRow(0);
     layout->addWidget(list);
 
+    // Let the user upload an image straight from their own computer via the
+    // browser's native file picker, as an alternative to the example list.
+    auto *uploadBtn = new QPushButton("Upload from my computer…", dlg);
+    layout->addWidget(uploadBtn);
+    connect(uploadBtn, &QPushButton::clicked, this, [this, dlg]() {
+        dlg->reject();   // close the example chooser without loading a list item
+        QFileDialog::getOpenFileContent(
+            "Images (*.tif *.tiff *.jpg *.jpeg *.png *.mrc *.MRC)",
+            [this](const QString &fileName, const QByteArray &fileContent) {
+                if (fileName.isEmpty())   // user cancelled the picker
+                    return;
+                loadImageData(fileName, fileContent);
+            });
+    });
+
     auto *buttons = new QDialogButtonBox(
         QDialogButtonBox::Ok | QDialogButtonBox::Cancel, dlg);
     layout->addWidget(buttons);
