@@ -76,6 +76,13 @@ public:
     static void setExampleImagesDir(const QString &dir);
     static QString exampleImagesDir();
 
+    // Public entry point for embedding applications (e.g. the 4d STEM app) to
+    // push an image into the analyzer. The image is loaded into buffer "a"
+    // (slot 0) when that slot is free; otherwise the first free slot is used,
+    // falling back to "a" when every slot is occupied. The currently-active
+    // buffer is persisted to its slot before switching so live edits survive.
+    void loadImageIntoBuffer(const QString &path);
+
 signals:
     // Emitted by onToggleFullscreen when FtWindow is embedded (i.e. not a
     // top-level window). Standalone builds handle fullscreen themselves via
