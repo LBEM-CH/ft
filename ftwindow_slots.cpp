@@ -574,6 +574,39 @@ void FtWindow::onToggleMask(bool checked)
 // ---------------------------------------------------------------------------
 //  Loading
 // ---------------------------------------------------------------------------
+void FtWindow::loadImageIntoBuffer(const QString &path)
+{
+    // Persist the currently-active buffer back to its slot before switching,
+    // mirroring the Create/Copy flow, so any live edits are not lost.
+    if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS && !m_image.isNull()) {
+        m_history[m_activeSlot].image        = m_image;
+        m_history[m_activeSlot].path         = m_imagePath;
+        m_history[m_activeSlot].rawPixels    = m_imageRawPixels;
+        m_history[m_activeSlot].minVal       = m_imageMinVal;
+        m_history[m_activeSlot].maxVal       = m_imageMaxVal;
+        m_history[m_activeSlot].pixelSize    = m_pixelSize;
+        m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
+        m_history[m_activeSlot].occupied     = true;
+    }
+
+    // Prefer buffer "a" (slot 0) when it is free; otherwise the first free
+    // slot, falling back to "a" when every slot is occupied.
+    int target = -1;
+    if (!m_history[0].occupied) {
+        target = 0;
+    } else {
+        for (int i = 0; i < HISTORY_SLOTS; i++) {
+            if (!m_history[i].occupied) { target = i; break; }
+        }
+        if (target < 0) target = 0;
+    }
+
+    // Pin the chosen slot so loadImageFile() loads into it rather than
+    // auto-selecting one itself.
+    m_activeSlot = target;
+    loadImageFile(path);
+}
+
 void FtWindow::loadImageFile(const QString &path)
 {
     qDebug() << "Loading image:" << path;
