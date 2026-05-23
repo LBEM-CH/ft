@@ -4156,46 +4156,40 @@ void FtWindow::onCtfCompute()
     m_maskBtnVisible = true;
     m_zoom[1].reset(N, N);
     m_zoom[2].reset(N, N);
+    // Build the panel-2 mode images (cos/sin, amp/phase, complex, power). The
+    // current display mode is honoured here exactly as for a real transform.
+    // Note: the synthetic CTF is stored with raw amplitudes of order 1, whereas
+    // the FFT of an actual image (or this CTF after a real-space round trip,
+    // whose forward FFT runs on the 8-bit PSF image with its DC pedestal) has
+    // amplitudes orders of magnitude larger. Because the amplitude panel shows
+    // log(1+amp) — which is ~linear for amp≲1 but truly logarithmic for amp≫1 —
+    // the fresh CTF's envelope fall-off looks much steeper than the same shape
+    // after a round trip. This is expected (a log-scale regime difference), not
+    // a wrong-display-mode bug.
     recomputeDisplayImages();
 
-    // Inverse-transform to real space for panel 1, with a centre-shifted origin.
+    // Inverse-transform to real space for panel 1. The CTF is built in the
+    // centred Fourier convention (zero frequency at (N/2, N/2), real-valued and
+    // with smooth phases), and computeInverseFFT() already returns the result
+    // in centred real-space form — so the PSF lands at the image centre
+    // directly. No manual quadrant swap is performed here: that extra fftShift
+    // is equivalent to multiplying the Fourier data by (-1)^(x+y) (a 180° phase
+    // flip on every second pixel) and would push the PSF back into the corners.
     m_origW = N;
     m_origH = N;
     computeInverseFFT();
 
-    // Swap quadrants so that the real-space origin is at the image centre
-    // (equivalent to a phase ramp exp(iπ(x+y)) in Fourier space).
-    if ((int)m_imageRawPixels.size() == N * N) {
-        int h2 = N / 2;
-        std::vector<double> shifted(N * N);
-        for (int y = 0; y < N; y++) {
-            int sy = (y + h2) % N;
-            for (int x = 0; x < N; x++) {
-                int sx = (x + h2) % N;
-                shifted[sy * N + sx] = m_imageRawPixels[y * N + x];
-            }
-        }
-        m_imageRawPixels = std::move(shifted);
-        double scale = (m_imageMaxVal > m_imageMinVal)
-                         ? 255.0 / (m_imageMaxVal - m_imageMinVal) : 1.0;
-        for (int y = 0; y < N; y++) {
-            uchar *row = m_image.scanLine(y);
-            for (int x = 0; x < N; x++)
-                row[x] = static_cast<uchar>(std::clamp(
-                    (m_imageRawPixels[y * N + x] - m_imageMinVal) * scale, 0.0, 255.0));
-        }
-        if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS) {
-            m_imagePath = QString("ctf: %1kV df=%2nm Cs=%3mm")
-                              .arg(voltageKV).arg(defocusNM).arg(csMM);
-            m_history[m_activeSlot].image        = m_image;
-            m_history[m_activeSlot].path         = m_imagePath;
-            m_history[m_activeSlot].rawPixels    = m_imageRawPixels;
-            m_history[m_activeSlot].minVal       = m_imageMinVal;
-            m_history[m_activeSlot].maxVal       = m_imageMaxVal;
-            m_history[m_activeSlot].pixelSize    = m_pixelSize;
-            m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
-            m_history[m_activeSlot].occupied     = true;
-        }
+    if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS) {
+        m_imagePath = QString("ctf: %1kV df=%2nm Cs=%3mm")
+                          .arg(voltageKV).arg(defocusNM).arg(csMM);
+        m_history[m_activeSlot].image        = m_image;
+        m_history[m_activeSlot].path         = m_imagePath;
+        m_history[m_activeSlot].rawPixels    = m_imageRawPixels;
+        m_history[m_activeSlot].minVal       = m_imageMinVal;
+        m_history[m_activeSlot].maxVal       = m_imageMaxVal;
+        m_history[m_activeSlot].pixelSize    = m_pixelSize;
+        m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
+        m_history[m_activeSlot].occupied     = true;
     }
 
     saveHistory();
