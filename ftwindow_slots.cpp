@@ -1391,7 +1391,7 @@ void FtWindow::restoreHistory()
             continue;
         }
 
-        qDebug() << "Restoring history slot" << i << ":" << path;
+        // qDebug() << "Restoring history slot" << i << ":" << path;
 
         QImage img;
         std::vector<double> rawPixels;
