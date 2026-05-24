@@ -15,8 +15,8 @@ MrcResult loadMrc(const QString &path)
         return MrcResult();
     }
 
-    qDebug() << "MRC: Opening file:" << path;
-    qDebug() << "MRC: File size:" << f.size() << "bytes";
+    // qDebug() << "MRC: Opening file:" << path;
+    // qDebug() << "MRC: File size:" << f.size() << "bytes";
 
     QByteArray fileData = f.readAll();
     f.close();
@@ -28,7 +28,7 @@ MrcResult loadMrcFromData(const QByteArray &fileData)
 {
     MrcResult result;
 
-    qDebug() << "MRC: Data size:" << fileData.size() << "bytes";
+    // qDebug() << "MRC: Data size:" << fileData.size() << "bytes";
 
     if (fileData.size() < 1024) {
         qDebug() << "MRC: Data too small for MRC header (need >= 1024 bytes)";
@@ -44,30 +44,30 @@ MrcResult loadMrcFromData(const QByteArray &fileData)
     bool hasMapStamp = (hdr[208] == 'M' && hdr[209] == 'A' &&
                         hdr[210] == 'P' && hdr[211] == ' ');
 
-    qDebug() << "MRC: MAP stamp bytes:" << QString("%1 %2 %3 %4")
-                .arg((quint8)hdr[208], 2, 16, QChar('0'))
-                .arg((quint8)hdr[209], 2, 16, QChar('0'))
-                .arg((quint8)hdr[210], 2, 16, QChar('0'))
-                .arg((quint8)hdr[211], 2, 16, QChar('0'))
-             << (hasMapStamp ? "(valid)" : "(MISSING or invalid)");
+    // qDebug() << "MRC: MAP stamp bytes:" << QString("%1 %2 %3 %4")
+    //             .arg((quint8)hdr[208], 2, 16, QChar('0'))
+    //             .arg((quint8)hdr[209], 2, 16, QChar('0'))
+    //             .arg((quint8)hdr[210], 2, 16, QChar('0'))
+    //             .arg((quint8)hdr[211], 2, 16, QChar('0'))
+    //          << (hasMapStamp ? "(valid)" : "(MISSING or invalid)");
 
     if (hasMapStamp) {
         quint8 machst0 = (quint8)hdr[212];
         quint8 machst1 = (quint8)hdr[213];
-        qDebug() << "MRC: Machine stamp:" << QString("0x%1 0x%2")
-                    .arg(machst0, 2, 16, QChar('0'))
-                    .arg(machst1, 2, 16, QChar('0'));
+        // qDebug() << "MRC: Machine stamp:" << QString("0x%1 0x%2")
+        //             .arg(machst0, 2, 16, QChar('0'))
+        //             .arg(machst1, 2, 16, QChar('0'));
 
         // 0x44 = little-endian (Intel / ARM), 0x11 = big-endian
 #if Q_BYTE_ORDER == Q_LITTLE_ENDIAN
         if (machst0 == 0x11) {
             needSwap = true;
-            qDebug() << "MRC: Big-endian file detected – will byte-swap";
+            // qDebug() << "MRC: Big-endian file detected – will byte-swap";
         }
 #else
         if (machst0 == 0x44) {
             needSwap = true;
-            qDebug() << "MRC: Little-endian file on big-endian host – will byte-swap";
+            // qDebug() << "MRC: Little-endian file on big-endian host – will byte-swap";
         }
 #endif
     } else {
@@ -76,11 +76,11 @@ MrcResult loadMrcFromData(const QByteArray &fileData)
         memcpy(&rawMode, hdr.constData() + 12, 4);
         if (rawMode < 0 || rawMode > 16) {
             needSwap = true;
-            qDebug() << "MRC: No MAP stamp; raw mode =" << rawMode
-                     << "looks wrong – trying byte-swap";
+            // qDebug() << "MRC: No MAP stamp; raw mode =" << rawMode
+            //          << "looks wrong – trying byte-swap";
         } else {
-            qDebug() << "MRC: No MAP stamp; raw mode =" << rawMode
-                     << "looks plausible – assuming native byte order";
+            // qDebug() << "MRC: No MAP stamp; raw mode =" << rawMode
+            //          << "looks plausible – assuming native byte order";
         }
     }
 
@@ -126,29 +126,29 @@ MrcResult loadMrcFromData(const QByteArray &fileData)
     int ispg    = readI32(88);
     int nsymbt  = readI32(92);
 
-    qDebug() << "MRC: ---- Header ----";
-    qDebug() << "MRC:  nx =" << nx << " ny =" << ny << " nz =" << nz;
-    qDebug() << "MRC:  mode =" << mode;
-    qDebug() << "MRC:  nxStart =" << nxStart << " nyStart =" << nyStart << " nzStart =" << nzStart;
-    qDebug() << "MRC:  mx =" << mx << " my =" << my << " mz =" << mz;
-    qDebug() << "MRC:  cellA =" << cellA << " cellB =" << cellB << " cellC =" << cellC;
-    qDebug() << "MRC:  cellAlpha =" << cellAlpha << " cellBeta =" << cellBeta << " cellGamma =" << cellGamma;
-    qDebug() << "MRC:  mapc =" << mapc << " mapr =" << mapr << " maps =" << maps;
-    qDebug() << "MRC:  dmin =" << dmin << " dmax =" << dmax << " dmean =" << dmean;
-    qDebug() << "MRC:  ispg =" << ispg << " nsymbt (extended header bytes) =" << nsymbt;
+    // qDebug() << "MRC: ---- Header ----";
+    // qDebug() << "MRC:  nx =" << nx << " ny =" << ny << " nz =" << nz;
+    // qDebug() << "MRC:  mode =" << mode;
+    // qDebug() << "MRC:  nxStart =" << nxStart << " nyStart =" << nyStart << " nzStart =" << nzStart;
+    // qDebug() << "MRC:  mx =" << mx << " my =" << my << " mz =" << mz;
+    // qDebug() << "MRC:  cellA =" << cellA << " cellB =" << cellB << " cellC =" << cellC;
+    // qDebug() << "MRC:  cellAlpha =" << cellAlpha << " cellBeta =" << cellBeta << " cellGamma =" << cellGamma;
+    // qDebug() << "MRC:  mapc =" << mapc << " mapr =" << mapr << " maps =" << maps;
+    // qDebug() << "MRC:  dmin =" << dmin << " dmax =" << dmax << " dmean =" << dmean;
+    // qDebug() << "MRC:  ispg =" << ispg << " nsymbt (extended header bytes) =" << nsymbt;
 
     if (mx > 0 && cellA > 0) {
         result.pixelSize = cellA / mx;
-        qDebug() << "MRC:  pixel size X =" << result.pixelSize << "Angstrom";
+        // qDebug() << "MRC:  pixel size X =" << result.pixelSize << "Angstrom";
     } else if (nx > 0 && cellA > 0) {
         result.pixelSize = cellA / nx;
         qDebug() << "MRC:  pixel size X (from cellA/nx) =" << result.pixelSize << "Angstrom";
     } else {
         result.pixelSize = 1.0;
-        qDebug() << "MRC:  pixel size not available in header, assuming 1.0 Angstrom";
+        // qDebug() << "MRC:  pixel size not available in header, assuming 1.0 Angstrom";
     }
     if (my > 0 && cellB > 0)
-        qDebug() << "MRC:  pixel size Y =" << (cellB / my) << "Angstrom";
+        // qDebug() << "MRC:  pixel size Y =" << (cellB / my) << "Angstrom";
 
     // --- sanity checks ----------------------------------------------------------
     if (nx <= 0 || ny <= 0) {
@@ -172,7 +172,7 @@ MrcResult loadMrcFromData(const QByteArray &fileData)
 
     // --- read pixel data --------------------------------------------------------
     qint64 dataOffset = 1024 + nsymbt;
-    qDebug() << "MRC: Data offset =" << dataOffset;
+    // qDebug() << "MRC: Data offset =" << dataOffset;
 
     qint64 pixelCount = (qint64)nx * ny;
     result.nx = nx;
@@ -301,9 +301,9 @@ MrcResult loadMrcFromData(const QByteArray &fileData)
     result.image = img;
     result.valid = true;
 
-    qDebug() << "MRC: Successfully loaded" << nx << "x" << ny
-             << "image, mode" << mode
-             << ", pixel range [" << result.minVal << "," << result.maxVal << "]";
+    // qDebug() << "MRC: Successfully loaded" << nx << "x" << ny
+    //          << "image, mode" << mode
+    //          << ", pixel range [" << result.minVal << "," << result.maxVal << "]";
 
     return result;
 }
