@@ -176,6 +176,16 @@ sensible value.
   Set to 0 for a sharp edge.
 </div>
 <BR>
+<p>
+Have some fun: Create an empty image (value 0 everywhere) and use the paint brush to place one singel pixel 
+of value 1 into the image. 
+The Fourier transform of that will be flat white (value 1 everywhere, but potentially with interesting phases), because the Fourier transform of a 
+delta function is a constant. 
+If you now place a second pixel into the real-space image, then the Fourier transform will show and interference patterns,
+so you can use it to test the Fourier-space tools and to get a visual intuition for how they work. 
+Try combining this with the <em>symmetry</em> tool in real space, and with the <em>filter</em> tool in Fourier space, 
+to see how the symmetry and periodicity of the real-space image affect the Fourier transform.
+</p>
 </details>
 
 <details>

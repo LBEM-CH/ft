@@ -1317,7 +1317,7 @@ QString FtWindow::modeLabel() const
     switch (m_displayMode) {
     case 0: return "cosinus and sinus";
     case 1: return "amplitude and phase";
-    case 2: return "complex Fourier transform";
+    case 2: return "complex FT";
     case 3: return "powerspectrum";
     }
     return "";
@@ -4097,8 +4097,10 @@ void FtWindow::onCtfCompute()
     double maxR = (N / 2.0) * std::sqrt(2.0);
     int nProf = std::max(64, (int)std::ceil(maxR) + 1);
     m_ctfProfile.assign(nProf, 0.0);
-    const double A = 0.97;
-    const double B = 1.0 - A * A;  // amplitude contrast term per user's formula
+    const double A = 0.9975;  // phase contrast. 
+    const double B = 0.07;  // amplitude contrast
+    // A*A + B*B should be 1.0
+    
     double alphaRad = openAngleMrad * 1.0e-3;
     auto ctfAt = [&](double dfLocalA, double rPix) -> double {
         // Spatial frequency q (1/Å) for this radial pixel distance.

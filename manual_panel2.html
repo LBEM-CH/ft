@@ -191,6 +191,20 @@ components.
   <strong>Diameter:</strong> Gaussian footprint width, in Fourier pixels.
 </div>
 <BR>
+<p>
+Have some fun: Create an empty image (value 0 everywhere) and use the paint brush in Fourier space 
+to place one singel pixel of value 1 into the Fourier transform. That will back-transform to a 
+sinusoidal wave in real space, because the Fourier transform of a delta function is a sinusoid.<BR>
+Try placing that single pixel into either the Cosinus or the Sinus half of the Fourier transform, 
+and see how the resulting wave changes.
+</p>
+<div class="note">
+ Note that the Fourier Analyzer assumes the <B>origin of the real-space image 
+in the center</B> of the image. This is a deviation from the mathematical definition of the Fourier transform, 
+but it is useful here because it makes the relationship between the real-space image 
+and its Fourier transform more intuitive to visualise and interact with.
+ </div>
+ <BR>
 </details>
 
 <details>
@@ -285,6 +299,13 @@ lattice contamination from a non-crystalline target.
 Drag in panel 2 to rotate the Fourier transform around the centre.
 This is mathematically equivalent to rotating the real-space image,
 but it operates directly on the FFT.
+</p>
+<p>
+Remember that Fourier space assumes periodic boundaries in real space. 
+When you rotate the FT, then the periodicity in real space may cause some unexpected results, 
+because the rotated FT corresponds to a rotated image that is periodically tiled in the original orientation.
+You will see many copies of the rotated neigbors from outside of the current image appearing in the 
+back-transformed image, and they will interfere with the rotated version of the current image.
 </p>
 </details>
 
@@ -403,9 +424,25 @@ angle.
 <div class="note">
 The CTF is built on a fixed 1024×1024 grid using the slot's pixel size
 to map Fourier pixels to spatial frequencies. A 1D radial profile is
-also computed and overlaid in panel 2.
+also computed and overlaid in panel 2.<BR><BR>
+  The CTF calculation here includes 7% amplitude contrast, which is a typical 
+  value for thin biological cryo-EM samples. This means that the CTF is not purely a sinusoid, 
+  but it has a small constant offset that makes it non-zero at low spatial frequencies.
 </div>
 <BR>
+<p>
+Note that the CTF is computed in Fourier-space with values between -1 and 1. 
+When you back-transform it to real space, the result is the Point Spread Function (PSF) that corresponds to that CTF. 
+The PSF is the impulse response of the imaging system. It shows you, how a single atom would be 
+imaged by the microscope with the given parameters.  The PSF has very small values.
+<BR><BR> 
+ If you forward Fourier transform the PSF from real space back to Fourier space, you will get back the original CTF. 
+ However, now the values in Fourier space are numerically higher than before, because the Fourier transform 
+ is not normalised.
+ As a result, the display of the Powerspectrum as log(1 + amp*amp) will show the CTF differently than before. 
+ The different appearance of the back-transformed and again forward-transformed CTF is due to the 
+ non-linear scaling for the Powerspectrum display. 
+ </p>
 </details>
 
 <details>
