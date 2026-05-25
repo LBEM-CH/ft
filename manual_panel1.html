@@ -229,6 +229,26 @@ strong cross of high-frequency content.
 </details>
 
 <details>
+<summary>Symmetrize image</summary>
+<p>
+Enforce <code>N</code>-fold rotational symmetry on the real-space image
+around its centre. The image is averaged with <code>N</code> copies of
+itself, each rotated by <code>k·360°/N</code> (<code>k = 0…N−1</code>),
+so the result is identical under a rotation of <code>360°/N</code>.
+Rotated samples are bilinearly interpolated; samples that fall outside
+the image are filled with the mean pixel value. The rotation centre is
+the integer pixel <code>(w/2, h/2)</code>.
+</p>
+<div class="controls">
+  <strong>Symmetry to apply:</strong> rotational order <code>N</code>
+  (default 4). Use 2 for two-fold, 3 for three-fold, and so on; values
+  are clamped to a maximum of 64, and <code>N = 1</code> does nothing. <br>
+  <strong>Apply symmetry:</strong> commits the operation, updates the
+  Fourier transform, and stores the result in the active history slot.
+</div>
+</details>
+
+<details>
 <summary>Bin image</summary>
 <p>
 Reduce the image dimensions by averaging adjacent pixels in
@@ -258,7 +278,16 @@ texture.
 <summary>Hessian filter</summary>
 <p>
 Compute a Hessian-based ridge / blob enhancement. Good for highlighting
-filaments and elongated features whose width matches the chosen scale.
+filaments and elongated features whose width matches the chosen scale.  
+The Hessian filter is a second-derivative operator that responds strongly 
+to curvilinear structures, making it useful for tracing filaments or enhancing 
+tubular features in the image. It is most powerful when the scale parameter 
+is tuned to match the width of the features of interest, 
+as it suppresses structures that are either much thinner or much thicker 
+than the specified scale.
+Try combining it prior contrast inversion and downscaling with the <em>Bin image</em> tool for 
+a fast and effective way to enhance filaments of a certain width.
+You can also combine it with the <em>Gabor filter</em> for orientation-specific enhancement.
 </p>
 </details>
 
@@ -267,7 +296,16 @@ filaments and elongated features whose width matches the chosen scale.
 <p>
 Specialised analysis tool for amyloid filaments: extract straight
 sections, compute averaged power spectra, and analyse periodicities
-along filament axes.
+along filament axes.<BR>
+This tool takes an existing image of a filament cross-section and produces a helical 
+filament image from it in a target slot.
+As source you can create an empty (black) image and draw a small snake trace into it. 
+Then use this tool to generate a long filament image from the trace, which can be used 
+for Fourier analysis of the filament's helical parameters.<BR>
+You can also use the mouse to draw a long filament directly into the source slot, 
+and then use the mouse to add curvature to the filament trajectory. Use this to study,
+how a bent filament's Fourier spectrum differs from that of a straight filament, 
+and to get a visual intuition for the effects of curvature on the Fourier transform.
 </p>
 </details>
 
@@ -282,7 +320,22 @@ operation. The result is written to a third slot.
   <strong>Operation:</strong> add, subtract, multiply, divide,
   convolve, correlate, etc. <br>
   <strong>Inputs:</strong> two source slots from the history bar.
-</div>
+</div> <BR>
+<p>
+Use this tool to study the <b>convolution and correlation theorems</b>.  These state that
+the convolution of an image with another image is the same as the multiplication of their Fourier transforms.
+And the correlation of an image with another image is the same as the multiplication 
+of one Fourier transform with the complex conjugate of the other.  You can directly 
+try these out, by creating two simple images (e.g. a dot and a line), convolving or correlating them, 
+and comparing the result to the Fourier-space multiplication of their transforms.<BR>
+
+Alternatively, multiply their Fourier transforms with the <em>Math</em> tool in Fourier space, and compare the 
+result to the convolution or correlation in real space. 
+</p><p> 
+Since explicit convolution and correlation in real space are computationally very expensive, 
+the Fourier-space multiplication is much faster. So this is a good way to get a visual 
+intuition for why the convolution and correlation theorems are so useful in practice.
+</p>
 </details>
 
 <details>
@@ -292,6 +345,18 @@ Locate local maxima in the image. The detected peaks can be displayed
 as green plus signs and exported. Useful for picking particles, dots,
 or crystalline reflections in a real-space image.
 </p>
+<p>
+A typical workflow is to cross-correlate the image of a protein particle with a raw cryo-EM image,
+then high-pass filter that cross-correlation map so that peaks stand out more clearly, 
+and then use the <em>Peak search</em> tool to pick the particles on the high-pass filtered cross-correalation map. 
+While doing so, you can display the raw cryo-EM image in panel 1, while picking particles on the cross-correlation 
+map that is stored in another buffer, so that you can visually verify that the detected peaks correspond 
+to actual particles in the raw image.
+</p>
+<p>
+The coordinates of the detected peaks can then be exported and used for particle extraction with the 
+<em>Extract particles</em> tool.
+</p>
 </details>
 
 <details>
@@ -300,6 +365,15 @@ or crystalline reflections in a real-space image.
 Cut sub-images of a chosen size around each picked peak and write them
 into a target slot as a montage. Combine with <em>Peak search</em> for
 a complete pick-and-extract pipeline.
+</p>
+<p>
+The extracted <em>particles</em> are arranged in a montage in the target slot, 
+which has 1024x1024 pixels and either 64px or 128px wide particle images. That means, there will be 
+either 16 or 8 particles per row, depending on the chosen particle size.
+You can then use the Fourier space lattice filter with filter vectors of either <16,0> and <0,16>, or <8,0> and <0,8>
+to pick out the lattice of particle images in the montage, and to suppress noise between the particles. 
+When using the Fourier lattice filter, do not smooth the edges use a diameter of 1,
+so that you get a clean reconstruction of the average particle image without any blurring.
 </p>
 </details>
 

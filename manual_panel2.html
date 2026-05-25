@@ -293,6 +293,32 @@ band perpendicular to the line are averaged.
 </details>
 
 <details>
+<summary>Symmetrize Fourier space</summary>
+<p>
+Enforce <code>N</code>-fold rotational symmetry on the Fourier
+transform around its centre (the DC term). The current FT is averaged
+with <code>N</code> copies of itself, each rotated by
+<code>k·360°/N</code> (<code>k = 0…N−1</code>), and the real-space image
+is updated through the inverse FFT. Because the operation acts directly
+on the FT, a phase correction is applied so that the rotation centre
+coincides with the original image centre rather than the array origin.
+</p>
+<p>
+This is the Fourier-space counterpart of <em>Symmetrize image</em> in
+panel 1: mathematically the two are equivalent, but symmetrizing here
+lets you watch the diffraction pattern become N-fold symmetric directly.
+</p>
+<div class="controls">
+  <strong>Symmetry to apply:</strong> rotational order <code>N</code>
+  (default 4). Use 2 for two-fold, 3 for three-fold, and so on; values
+  are clamped to a maximum of 64, and <code>N = 1</code> does nothing. <br>
+  <strong>Apply symmetry:</strong> commits the operation to the FFT,
+  back-transforms to panel 1, and stores the result in the active
+  history slot.
+</div>
+</details>
+
+<details>
 <summary>Fourier crop / Fourier pad</summary>
 <p>
 Resample the FFT by an integer factor:
