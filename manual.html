@@ -24,10 +24,10 @@
     background: var(--bg);
   }
   header {
-    background: #1d1d20;
+    background: #2858c4;
     color: #fff;
     padding: 18px 24px;
-    border-bottom: 1px solid #000;
+    border-bottom: 1px solid #1c428f;
   }
   header h1 { margin: 0; font-size: 22px; font-weight: 600; }
   header .subtitle { margin-top: 4px; font-size: 13px; color: #b0b0b8; }
@@ -149,6 +149,13 @@
   .subpages a strong { color: var(--accent); display: block; margin-bottom: 4px; }
   .subpages a span { font-size: 13px; color: var(--muted); }
 
+  .note {
+    background: #fff8e6;
+    border-left: 3px solid #d4a000;
+    padding: 8px 12px;
+    margin: 10px 0 0 0;
+    font-size: 14px;
+  }
   footer {
     color: var(--muted);
     font-size: 13px;
@@ -167,7 +174,7 @@
 <header>
   <h1>Fourier Analyzer — User Manual</h1>
   <div class="subtitle">
-    Stahlberg Lab, EPFL · <a href="https://lbem-status.epfl.ch/ft/">Launch the app</a>
+    <a href="https://lbem.ch">Stahlberg Lab</a>, EPFL & UNIL · <a href="https://lbem-status.epfl.ch/ft/"><b>Launch the app</b></a>
   </div>
 </header>
 
@@ -250,6 +257,13 @@ matching power spectra. Edits in either panel update the other in real
 time, so you can directly observe how a change in real space affects
 Fourier space and vice versa.
 </p>
+<div class="note">
+ Note that the Fourier Analyzer assumes the <B>origin of the real-space image 
+in the center</B> of the image. This is a deviation from the mathematical definition of the Fourier transform, 
+but it is useful here because it makes the relationship between the real-space image 
+and its Fourier transform more intuitive to visualise and interact with.
+ </div>
+ <BR>
 </details>  
 
 <details id="quickstart">
@@ -441,12 +455,14 @@ tool lives on its own page:
   <a href="manual_panel1.html">
     <strong>Panel 1 — real-space tools</strong>
     <span>Eraser, brush, measure, flip, shift, rotate, invert, taper,
-          bin, Gabor, Hessian, amyloid, math, peak search, extract.</span>
+          symmetrize, bin, Gabor, Hessian, amyloid, math, peak search,
+          extract.</span>
   </a>
   <a href="manual_panel2.html">
     <strong>Panel 2 — Fourier tools</strong>
     <span>Eraser, brush, bandpass, directional, line, lattice, rotate,
-          cross-section, Fourier crop, phase ramp, CTF, math.</span>
+          cross-section, symmetrize, Fourier crop, phase ramp, CTF,
+          math.</span>
   </a>
 </div>
 
@@ -471,7 +487,7 @@ relevant tools in the app. Try to predict the outcome before clicking
 
 
 <footer>
-  Fourier Analyzer · Stahlberg Lab, EPFL ·
+  Fourier Analyzer · <a href="https://lbem.ch">Stahlberg Lab</a>, EPFL & UNIL ·
   <a href="https://lbem-status.epfl.ch/ft/">Back to the app</a>
 </footer>
 

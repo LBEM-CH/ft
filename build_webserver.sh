@@ -51,7 +51,11 @@ echo "Created $BUILD_DIR/$TARBALL ($(du -h "$TARBALL" | cut -f1))"
 if [[ -z "$REMOTE" ]]; then
     cat <<EOF
 
-To deploy manually, copy $TARBALL to the target and run:
+To deploy manually, copy $TARBALL to the target:
+
+    scp build_wasm/ft-wasm.tar.gz henning@lbem-status:/home/henning
+
+Then run on target host:
 
     sudo \rm -rf /srv/ft 
     sudo mkdir -p /srv/ft
@@ -59,6 +63,16 @@ To deploy manually, copy $TARBALL to the target and run:
     sudo systemctl reload apache2
 
 One-time Apache setup: see ft-apache.conf for the snippet and instructions.
+
+To evaluate website usage, on the target host, run:
+
+    sudo bash -c 'zcat -f /var/log/apache2/access.log* | grep " /ft/" | goaccess --log-format=COMBINED -o /home/henning/ft-report.html -'
+    sudo chown henning:henning /home/henning/ft-report.html
+
+From your local machine:
+    scp henning@lbem-status.epfl.ch:~/ft-report.html .
+    open ft-report.html
+
 EOF
     exit 0
 fi

@@ -1983,7 +1983,7 @@ void FtWindow::paintEvent(QPaintEvent *)
                            frame.y() - 4, "displayed as log(1 + amp*amp)");
                 p.setFont(lf);
             } else {
-                p.drawText(frame.x(), frame.y() - 4, "Complex Fourier Transform");
+                p.drawText(frame.x(), frame.y() - 4, "Complex FT");
             }
 
             const QImage &img = (m_displayMode == 3) ? m_powerImg : m_complexImg;
