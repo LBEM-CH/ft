@@ -26,6 +26,13 @@ set(FT_CORE_SOURCES
 add_library(ft_core STATIC ${FT_CORE_SOURCES})
 target_include_directories(ft_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(ft_core PUBLIC Qt6::Widgets)
+if(EMSCRIPTEN)
+    # Enable C++ exceptions so a failed allocation (with ABORTING_MALLOC=0,
+    # see below) surfaces as std::bad_alloc that the load code can catch and
+    # report, instead of throwing through code that cannot unwind. PUBLIC so
+    # the flag propagates to the ft executable that links this library.
+    target_compile_options(ft_core PUBLIC -fexceptions)
+endif()
 if(NOT EMSCRIPTEN)
     find_package(Threads REQUIRED)
     target_link_libraries(ft_core PUBLIC Threads::Threads)
@@ -41,9 +48,17 @@ if(NOT FT_EMBEDDED)
     if(EMSCRIPTEN)
         # ---- WebAssembly build ----
         target_link_options(ft PRIVATE
+            -fexceptions
             -sALLOW_MEMORY_GROWTH=1
             -sINITIAL_MEMORY=256MB
-            -sMAXIMUM_MEMORY=2GB
+            # 32-bit WASM can address up to 4 GB; raise the ceiling from the
+            # previous 2 GB so more / larger images fit before the heap is
+            # exhausted.
+            -sMAXIMUM_MEMORY=4GB
+            # Do not hard-abort ("Application Exit") when an allocation fails.
+            # malloc returns null and operator new throws std::bad_alloc, which
+            # the load code catches to show a graceful out-of-memory message.
+            -sABORTING_MALLOC=0
             -sMODULARIZE=1
             -sEXPORT_NAME=createQtAppInstance
             "-sEXPORTED_RUNTIME_METHODS=UTF16ToString,stringToUTF16,JSEvents,specialHTMLTargets,FS,callMain,ccall,cwrap"

@@ -132,6 +132,45 @@ private:
     // loading / computation
     void loadImageFile(const QString &path);
     void loadImageData(const QString &fileName, const QByteArray &fileData);
+    // Shrink an over-large source image (and its raw pixels) so a single image
+    // cannot consume an outsized share of the WASM heap. No-op on desktop and
+    // for images already within the size cap.
+    void downsampleForMemoryLimit();
+    // Show the out-of-memory dialog (used by the load-time bad_alloc handlers).
+    void reportOutOfMemory(const QString &context);
+    // Roll back the partially-loaded current image / active slot after an
+    // allocation failure, then show the out-of-memory dialog.
+    void discardLoadAfterOutOfMemory(const QString &context);
+    // Roll a calculation back to the pre-operation state (restored from the
+    // undo snapshot the handler stored before running) after an allocation
+    // failure, then show the out-of-memory dialog. `context` is a verb phrase
+    // such as "apply the bandpass filter".
+    void rollbackAfterCalcOOM(const QString &context);
+
+    // Implementations of the calculation handlers. The public slots above are
+    // thin wrappers that call these inside a try/catch so an out-of-memory
+    // failure mid-calculation rolls back (rollbackAfterCalcOOM) instead of
+    // aborting the WASM module.
+    void onNewImageCreateImpl();
+    void onApplyBandpassImpl();
+    void onApplyLatticeImpl();
+    void onApplyBinningImpl();
+    void onInvertContrastImpl();
+    void onApplyEdgeTaperImpl();
+    void onApplySymmetryImpl();
+    void onApplyFtSymmetryImpl();
+    void onApplyGaborFilterImpl();
+    void onApplyHessianFilterImpl();
+    void onApplyFtCropImpl();
+    void onApplyFtPadImpl();
+    void onApplyDirectionalImpl();
+    void onApplyLineFilterImpl();
+    void onFtMathComputeImpl();
+    void onMathComputeImpl();
+    void onExtractComputeImpl();
+    void onCtfComputeImpl();
+    void onPhaseRampComputeImpl();
+    void onAmyloidComputeImpl();
 #ifdef __EMSCRIPTEN__
     void fetchAndLoadImage(const QString &relativePath);
 #endif
@@ -295,6 +334,11 @@ private:
     void storeUndoSnapshot();
     void clearRedoStack();
     void updateUndoRedoButtons();
+    // Approximate heap footprint of one snapshot (raw pixels + images + FFT).
+    static qint64 snapshotBytes(const BufferSnapshot &s);
+    // Evict redo, then oldest undo, snapshots until the combined undo+redo
+    // history fits the memory budget. Always keeps the newest undo step.
+    void trimUndoMemory();
 
     // ---- zoom (0 = image, 1 = FT left/top, 2 = FT right/bottom) ----
     static constexpr int NUM_ZOOM = 3;

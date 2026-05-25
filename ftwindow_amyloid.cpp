@@ -26,6 +26,15 @@ void FtWindow::onAmyloidCancel()
 
 void FtWindow::onAmyloidCompute()
 {
+    try {
+        onAmyloidComputeImpl();
+    } catch (const std::bad_alloc &) {
+        rollbackAfterCalcOOM(tr("render the amyloid filaments"));
+    }
+}
+
+void FtWindow::onAmyloidComputeImpl()
+{
     if (m_amyloidFilaments.empty()) {
         int defSz = m_amyloidSizeCombo->currentText().toInt();
         if (defSz <= 0) defSz = 1024;

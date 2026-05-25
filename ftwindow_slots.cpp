@@ -1,4 +1,5 @@
 #include "ftwindow_common.h"
+#include <new>       // std::bad_alloc
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -7,6 +8,20 @@ extern "C" EMSCRIPTEN_KEEPALIVE void ft_on_fullscreen_change(int isFs)
 {
     if (g_fsWindow) g_fsWindow->updateFullscreenButton(isFs != 0);
 }
+
+// Largest source-image dimension permitted in the 32-bit WASM build. Bigger
+// inputs are downsampled on load so one image cannot, on its own, consume an
+// outsized fraction of the capped linear heap (see CMakeLists.txt). A 4096
+// image already costs ~128 MB of raw pixels plus ~256 MB of FFT working set.
+static constexpr int kMaxLoadDim = 4096;
+// Cap on the total memory held by the undo + redo history. Each undo snapshot
+// deep-copies every buffer, so the history can dwarf the live data; this bound
+// keeps headroom free for the calculation itself in the capped WASM heap.
+static constexpr qint64 kUndoBudgetBytes = 768LL * 1024 * 1024;
+#else
+// Effectively unlimited on desktop: behaviour is unchanged there.
+static constexpr int kMaxLoadDim = 1 << 20;
+static constexpr qint64 kUndoBudgetBytes = 8LL * 1024 * 1024 * 1024;
 #endif
 
 // ---------------------------------------------------------------------------
@@ -233,6 +248,15 @@ void FtWindow::onNewImageCancel()
 }
 
 void FtWindow::onNewImageCreate()
+{
+    try {
+        onNewImageCreateImpl();
+    } catch (const std::bad_alloc &) {
+        rollbackAfterCalcOOM(tr("create the image"));
+    }
+}
+
+void FtWindow::onNewImageCreateImpl()
 {
     int srcIdx = m_newImgSrcCombo->currentIndex();
     int tgtIdx = m_newImgTgtCombo->currentIndex();
@@ -574,6 +598,125 @@ void FtWindow::onToggleMask(bool checked)
 // ---------------------------------------------------------------------------
 //  Loading
 // ---------------------------------------------------------------------------
+void FtWindow::reportOutOfMemory(const QString &context)
+{
+    // Use a heap-allocated, non-blocking message box (open() not exec()) and
+    // setText() rather than the static QMessageBox::warning() convenience:
+    // under Qt for WebAssembly the blocking static variant does not render its
+    // body text, showing only the title.
+    auto *msg = new QMessageBox(this);
+    msg->setAttribute(Qt::WA_DeleteOnClose);
+    msg->setIcon(QMessageBox::Warning);
+    msg->setWindowTitle(tr("Out of memory"));
+    msg->setText(
+        tr("Not enough memory to %1.\n\n"
+           "This browser tab has a fixed memory budget, and the images "
+           "currently loaded have used it up. Overwrite an existing image "
+           "buffer (the \"New image\" tool can target any slot a…p), or "
+           "reload the page, then open fewer or smaller images.").arg(context));
+    msg->setStandardButtons(QMessageBox::Ok);
+    msg->open();
+}
+
+void FtWindow::discardLoadAfterOutOfMemory(const QString &context)
+{
+    qWarning() << "Out of memory while loading – rolling back";
+
+    // Drop the half-built current image and any FFT working set so the heap
+    // is released, and clear the slot we were loading into (its previous
+    // contents are unrecoverable once the allocation failed).
+    m_image = QImage();
+    m_imageRawPixels.clear();
+    m_imageRawPixels.shrink_to_fit();
+    m_fftData.clear();
+    m_fftData.shrink_to_fit();
+    m_ftComputed = false;
+
+    if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS)
+        m_history[m_activeSlot] = HistoryEntry();
+
+    reportOutOfMemory(context);
+}
+
+void FtWindow::rollbackAfterCalcOOM(const QString &context)
+{
+    qWarning() << "Out of memory during calculation – rolling back";
+
+    // The handler stored the pre-operation state as the newest undo snapshot
+    // before doing any work. Stack unwinding has already freed the failed
+    // operation's transient buffers, so restoring that snapshot returns the
+    // app to a consistent state and discards the partial result.
+    if (!m_undoStack.empty()) {
+        BufferSnapshot pre = std::move(m_undoStack.back());
+        m_undoStack.pop_back();
+        try {
+            applySnapshot(pre, true);
+        } catch (const std::bad_alloc &) {
+            // Extremely tight: leave whatever state we managed to restore.
+        }
+    }
+    updateUndoRedoButtons();
+    reportOutOfMemory(context);
+}
+
+void FtWindow::downsampleForMemoryLimit()
+{
+    if (m_image.isNull()) return;
+    const int w = m_image.width();
+    const int h = m_image.height();
+    const int maxDim = std::max(w, h);
+    if (maxDim <= kMaxLoadDim) return;
+
+    const int factor = (maxDim + kMaxLoadDim - 1) / kMaxLoadDim;   // ceil
+    const int nw = std::max(1, w / factor);
+    const int nh = std::max(1, h / factor);
+
+    if (static_cast<qint64>(m_imageRawPixels.size()) == static_cast<qint64>(w) * h) {
+        // Box-average the raw pixels so MRC float precision is preserved.
+        std::vector<double> down(static_cast<size_t>(nw) * nh, 0.0);
+        for (int y = 0; y < nh; y++) {
+            for (int x = 0; x < nw; x++) {
+                double sum = 0; int cnt = 0;
+                for (int dy = 0; dy < factor; dy++) {
+                    const int sy = y * factor + dy;
+                    if (sy >= h) break;
+                    const double *srow = m_imageRawPixels.data() + static_cast<size_t>(sy) * w;
+                    for (int dx = 0; dx < factor; dx++) {
+                        const int sx = x * factor + dx;
+                        if (sx >= w) break;
+                        sum += srow[sx];
+                        cnt++;
+                    }
+                }
+                down[static_cast<size_t>(y) * nw + x] = (cnt > 0) ? sum / cnt : 0.0;
+            }
+        }
+        m_imageRawPixels = std::move(down);
+        m_imageMinVal = *std::min_element(m_imageRawPixels.begin(), m_imageRawPixels.end());
+        m_imageMaxVal = *std::max_element(m_imageRawPixels.begin(), m_imageRawPixels.end());
+        m_imageDispMin = m_imageMinVal;
+        m_imageDispMax = m_imageMaxVal;
+        const double range = m_imageMaxVal - m_imageMinVal;
+        const double scale = (range > 0) ? 255.0 / range : 1.0;
+        m_image = QImage(nw, nh, QImage::Format_Grayscale8);
+        for (int y = 0; y < nh; y++) {
+            uchar *row = m_image.scanLine(y);
+            for (int x = 0; x < nw; x++)
+                row[x] = static_cast<uchar>(std::clamp(
+                    (m_imageRawPixels[static_cast<size_t>(y) * nw + x] - m_imageMinVal) * scale,
+                    0.0, 255.0));
+        }
+    } else {
+        // No matching raw pixels (e.g. a regular image before extraction):
+        // scale the QImage; extractImageData() rebuilds raw pixels afterwards.
+        m_image = m_image.scaled(nw, nh, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+    }
+
+    qDebug() << "Downsampled large input by factor" << factor
+             << "from" << w << "x" << h << "to" << nw << "x" << nh
+             << "to stay within the memory budget";
+}
+
 void FtWindow::loadImageIntoBuffer(const QString &path)
 {
     // Persist the currently-active buffer back to its slot before switching,
@@ -619,64 +762,70 @@ void FtWindow::loadImageFile(const QString &path)
         }
     }
 
-    if (path.endsWith(".mrc", Qt::CaseInsensitive)) {
-        MrcResult r = loadMrc(path);
-        m_image = r.image;
-        m_imageRawPixels = std::move(r.rawPixels);
-        m_imageMinVal = r.minVal;
-        m_imageMaxVal = r.maxVal;
-        m_imageDispMin = r.minVal;
-        m_imageDispMax = r.maxVal;
-        m_pixelSize = r.pixelSize;
+    try {
+        if (path.endsWith(".mrc", Qt::CaseInsensitive)) {
+            MrcResult r = loadMrc(path);
+            m_image = r.image;
+            m_imageRawPixels = std::move(r.rawPixels);
+            m_imageMinVal = r.minVal;
+            m_imageMaxVal = r.maxVal;
+            m_imageDispMin = r.minVal;
+            m_imageDispMax = r.maxVal;
+            m_pixelSize = r.pixelSize;
 
-        if (m_image.isNull())
-            qDebug() << "MRC load FAILED – image is null";
-        else {
-            qDebug() << "MRC load OK –" << m_image.width() << "x" << m_image.height();
-            padImageToSquare();
-        }
-    } else {
-        m_image = QImage(path);
-        m_pixelSize = 1.0;
-        if (m_image.isNull()) {
-            qDebug() << "Image load FAILED for:" << path;
+            if (m_image.isNull())
+                qDebug() << "MRC load FAILED – image is null";
+            else {
+                qDebug() << "MRC load OK –" << m_image.width() << "x" << m_image.height();
+                downsampleForMemoryLimit();
+                padImageToSquare();
+            }
         } else {
-            qDebug() << "Image loaded:" << m_image.width() << "x" << m_image.height()
-                     << "format:" << m_image.format();
-            padImageToSquare();
-            extractImageData();
+            m_image = QImage(path);
+            m_pixelSize = 1.0;
+            if (m_image.isNull()) {
+                qDebug() << "Image load FAILED for:" << path;
+            } else {
+                qDebug() << "Image loaded:" << m_image.width() << "x" << m_image.height()
+                         << "format:" << m_image.format();
+                downsampleForMemoryLimit();
+                padImageToSquare();
+                extractImageData();
+            }
         }
-    }
 
-    m_imagePath = path;
+        m_imagePath = path;
 
-    // Store in the active slot
-    if (!m_image.isNull()) {
-        m_history[m_activeSlot].image        = m_image;
-        m_history[m_activeSlot].path         = path;
-        m_history[m_activeSlot].rawPixels    = m_imageRawPixels;
-        m_history[m_activeSlot].minVal       = m_imageMinVal;
-        m_history[m_activeSlot].maxVal       = m_imageMaxVal;
-        m_history[m_activeSlot].pixelSize    = m_pixelSize;
-        m_history[m_activeSlot].occupied     = true;
-    }
+        // Store in the active slot
+        if (!m_image.isNull()) {
+            m_history[m_activeSlot].image        = m_image;
+            m_history[m_activeSlot].path         = path;
+            m_history[m_activeSlot].rawPixels    = m_imageRawPixels;
+            m_history[m_activeSlot].minVal       = m_imageMinVal;
+            m_history[m_activeSlot].maxVal       = m_imageMaxVal;
+            m_history[m_activeSlot].pixelSize    = m_pixelSize;
+            m_history[m_activeSlot].occupied     = true;
+        }
 
 #ifndef __EMSCRIPTEN__
-    QSettings settings("ft", "ft");
-    settings.setValue("lastFile", path);
-    settings.setValue("activeSlot", m_activeSlot);
+        QSettings settings("ft", "ft");
+        settings.setValue("lastFile", path);
+        settings.setValue("activeSlot", m_activeSlot);
 #endif
 
-    m_ftComputed = false;
-    m_modeBtn->setText(modeLabel());
-    m_modeBtn->hide();
-    m_maskBtnVisible = false;
+        m_ftComputed = false;
+        m_modeBtn->setText(modeLabel());
+        m_modeBtn->hide();
+        m_maskBtnVisible = false;
 
-    if (!m_image.isNull()) {
-        m_zoom[0].reset(m_image.width(), m_image.height());
-        computeFFT();
-        // Store power spec thumbnail now that FFT is done
-        m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
+        if (!m_image.isNull()) {
+            m_zoom[0].reset(m_image.width(), m_image.height());
+            computeFFT();
+            // Store power spec thumbnail now that FFT is done
+            m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
+        }
+    } catch (const std::bad_alloc &) {
+        discardLoadAfterOutOfMemory(tr("load this image"));
     }
 
     saveHistory();
@@ -695,57 +844,63 @@ void FtWindow::loadImageData(const QString &fileName, const QByteArray &fileData
         }
     }
 
-    if (fileName.endsWith(".mrc", Qt::CaseInsensitive)) {
-        MrcResult r = loadMrcFromData(fileData);
-        m_image = r.image;
-        m_imageRawPixels = std::move(r.rawPixels);
-        m_imageMinVal = r.minVal;
-        m_imageMaxVal = r.maxVal;
-        m_imageDispMin = r.minVal;
-        m_imageDispMax = r.maxVal;
-        m_pixelSize = r.pixelSize;
+    try {
+        if (fileName.endsWith(".mrc", Qt::CaseInsensitive)) {
+            MrcResult r = loadMrcFromData(fileData);
+            m_image = r.image;
+            m_imageRawPixels = std::move(r.rawPixels);
+            m_imageMinVal = r.minVal;
+            m_imageMaxVal = r.maxVal;
+            m_imageDispMin = r.minVal;
+            m_imageDispMax = r.maxVal;
+            m_pixelSize = r.pixelSize;
 
-        if (m_image.isNull())
-            qDebug() << "MRC load FAILED – image is null";
-        else {
-            qDebug() << "MRC load OK –" << m_image.width() << "x" << m_image.height();
-            padImageToSquare();
-        }
-    } else {
-        m_image.loadFromData(fileData);
-        m_pixelSize = 1.0;
-        if (m_image.isNull()) {
-            qDebug() << "Image load FAILED for:" << fileName;
+            if (m_image.isNull())
+                qDebug() << "MRC load FAILED – image is null";
+            else {
+                qDebug() << "MRC load OK –" << m_image.width() << "x" << m_image.height();
+                downsampleForMemoryLimit();
+                padImageToSquare();
+            }
         } else {
-            qDebug() << "Image loaded:" << m_image.width() << "x" << m_image.height()
-                     << "format:" << m_image.format();
-            padImageToSquare();
-            extractImageData();
+            m_image.loadFromData(fileData);
+            m_pixelSize = 1.0;
+            if (m_image.isNull()) {
+                qDebug() << "Image load FAILED for:" << fileName;
+            } else {
+                qDebug() << "Image loaded:" << m_image.width() << "x" << m_image.height()
+                         << "format:" << m_image.format();
+                downsampleForMemoryLimit();
+                padImageToSquare();
+                extractImageData();
+            }
         }
-    }
 
-    m_imagePath = fileName;
+        m_imagePath = fileName;
 
-    // Store in the active slot
-    if (!m_image.isNull()) {
-        m_history[m_activeSlot].image        = m_image;
-        m_history[m_activeSlot].path         = fileName;
-        m_history[m_activeSlot].rawPixels    = m_imageRawPixels;
-        m_history[m_activeSlot].minVal       = m_imageMinVal;
-        m_history[m_activeSlot].maxVal       = m_imageMaxVal;
-        m_history[m_activeSlot].pixelSize    = m_pixelSize;
-        m_history[m_activeSlot].occupied     = true;
-    }
+        // Store in the active slot
+        if (!m_image.isNull()) {
+            m_history[m_activeSlot].image        = m_image;
+            m_history[m_activeSlot].path         = fileName;
+            m_history[m_activeSlot].rawPixels    = m_imageRawPixels;
+            m_history[m_activeSlot].minVal       = m_imageMinVal;
+            m_history[m_activeSlot].maxVal       = m_imageMaxVal;
+            m_history[m_activeSlot].pixelSize    = m_pixelSize;
+            m_history[m_activeSlot].occupied     = true;
+        }
 
-    m_ftComputed = false;
-    m_modeBtn->setText(modeLabel());
-    m_modeBtn->hide();
-    m_maskBtnVisible = false;
+        m_ftComputed = false;
+        m_modeBtn->setText(modeLabel());
+        m_modeBtn->hide();
+        m_maskBtnVisible = false;
 
-    if (!m_image.isNull()) {
-        m_zoom[0].reset(m_image.width(), m_image.height());
-        computeFFT();
-        m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
+        if (!m_image.isNull()) {
+            m_zoom[0].reset(m_image.width(), m_image.height());
+            computeFFT();
+            m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
+        }
+    } catch (const std::bad_alloc &) {
+        discardLoadAfterOutOfMemory(tr("load this image"));
     }
 
     saveHistory();
@@ -1513,12 +1668,56 @@ void FtWindow::clearRedoStack()
     updateUndoRedoButtons();
 }
 
+qint64 FtWindow::snapshotBytes(const BufferSnapshot &s)
+{
+    auto entryBytes = [](const HistoryEntry &e) -> qint64 {
+        return (qint64)e.rawPixels.size() * (qint64)sizeof(double)
+             + (qint64)e.image.sizeInBytes()
+             + (qint64)e.powerSpecImg.sizeInBytes();
+    };
+    qint64 b = 0;
+    for (int i = 0; i < HISTORY_SLOTS; i++)
+        b += entryBytes(s.history[i]);
+    b += (qint64)s.image.sizeInBytes();
+    b += (qint64)s.imageRawPixels.size() * (qint64)sizeof(double);
+    b += (qint64)s.fftData.size() * (qint64)sizeof(Complex);
+    return b;
+}
+
+void FtWindow::trimUndoMemory()
+{
+    auto total = [this]() -> qint64 {
+        qint64 b = 0;
+        for (const auto &s : m_undoStack) b += snapshotBytes(s);
+        for (const auto &s : m_redoStack) b += snapshotBytes(s);
+        return b;
+    };
+    // Sacrifice redo history first, then the oldest undo steps, but always
+    // keep the most recent undo step so a single Undo remains possible.
+    while (total() > kUndoBudgetBytes && !m_redoStack.empty())
+        m_redoStack.pop_front();
+    while (total() > kUndoBudgetBytes && m_undoStack.size() > 1)
+        m_undoStack.pop_front();
+}
+
 void FtWindow::storeUndoSnapshot()
 {
-    m_undoStack.push_back(captureCurrentState());
+    try {
+        m_undoStack.push_back(captureCurrentState());
+    } catch (const std::bad_alloc &) {
+        // Not enough memory to record an undo step. Drop the history rather
+        // than abort: the calculation that requested the snapshot still runs,
+        // it just won't be undoable.
+        m_undoStack.clear();
+        m_redoStack.clear();
+        updateUndoRedoButtons();
+        qWarning() << "Undo history dropped – out of memory capturing snapshot";
+        return;
+    }
     if ((int)m_undoStack.size() > MAX_UNDO)
         m_undoStack.pop_front();
     clearRedoStack();
+    trimUndoMemory();
     updateUndoRedoButtons();
 }
 
@@ -1539,22 +1738,34 @@ void FtWindow::updateUndoRedoButtons()
 void FtWindow::onUndo()
 {
     if (m_undoStack.empty()) return;
-    m_redoStack.push_back(captureCurrentState());
-    if ((int)m_redoStack.size() > MAX_UNDO)
-        m_redoStack.pop_front();
+    // Saving the current state for Redo is best-effort: if memory is too tight
+    // to capture it, skip Redo rather than abort the Undo the user asked for.
+    try {
+        m_redoStack.push_back(captureCurrentState());
+        if ((int)m_redoStack.size() > MAX_UNDO)
+            m_redoStack.pop_front();
+    } catch (const std::bad_alloc &) {
+        m_redoStack.clear();
+    }
     applySnapshot(m_undoStack.back(), true);
     m_undoStack.pop_back();
+    trimUndoMemory();
     updateUndoRedoButtons();
 }
 
 void FtWindow::onRedo()
 {
     if (m_redoStack.empty()) return;
-    m_undoStack.push_back(captureCurrentState());
-    if ((int)m_undoStack.size() > MAX_UNDO)
-        m_undoStack.pop_front();
+    try {
+        m_undoStack.push_back(captureCurrentState());
+        if ((int)m_undoStack.size() > MAX_UNDO)
+            m_undoStack.pop_front();
+    } catch (const std::bad_alloc &) {
+        m_undoStack.clear();
+    }
     applySnapshot(m_redoStack.back(), true);
     m_redoStack.pop_back();
+    trimUndoMemory();
     updateUndoRedoButtons();
 }
 
@@ -1953,6 +2164,15 @@ void FtWindow::p1BrushApply(QPoint pos)
 
 void FtWindow::onApplyBandpass()
 {
+    try {
+        onApplyBandpassImpl();
+    } catch (const std::bad_alloc &) {
+        rollbackAfterCalcOOM(tr("apply the bandpass filter"));
+    }
+}
+
+void FtWindow::onApplyBandpassImpl()
+{
     if (!m_ftComputed || m_fftN == 0) return;
     storeUndoSnapshot();
 
@@ -2021,6 +2241,15 @@ void FtWindow::syncLatticeVectorEdits()
 }
 
 void FtWindow::onApplyLattice()
+{
+    try {
+        onApplyLatticeImpl();
+    } catch (const std::bad_alloc &) {
+        rollbackAfterCalcOOM(tr("apply the lattice filter"));
+    }
+}
+
+void FtWindow::onApplyLatticeImpl()
 {
     if (!m_ftComputed || m_fftN == 0) return;
     storeUndoSnapshot();
@@ -2097,6 +2326,15 @@ void FtWindow::onApplyLattice()
 }
 
 void FtWindow::onApplyBinning()
+{
+    try {
+        onApplyBinningImpl();
+    } catch (const std::bad_alloc &) {
+        rollbackAfterCalcOOM(tr("bin the image"));
+    }
+}
+
+void FtWindow::onApplyBinningImpl()
 {
     if (m_image.isNull()) return;
     storeUndoSnapshot();
@@ -2251,6 +2489,15 @@ void FtWindow::chainSteps(std::vector<std::function<void()>> steps)
 
 void FtWindow::onInvertContrast()
 {
+    try {
+        onInvertContrastImpl();
+    } catch (const std::bad_alloc &) {
+        rollbackAfterCalcOOM(tr("invert the contrast"));
+    }
+}
+
+void FtWindow::onInvertContrastImpl()
+{
     if (m_image.isNull()) return;
     storeUndoSnapshot();
 
@@ -2299,6 +2546,15 @@ void FtWindow::onInvertContrast()
 }
 
 void FtWindow::onApplyEdgeTaper()
+{
+    try {
+        onApplyEdgeTaperImpl();
+    } catch (const std::bad_alloc &) {
+        rollbackAfterCalcOOM(tr("apply the edge taper"));
+    }
+}
+
+void FtWindow::onApplyEdgeTaperImpl()
 {
     if (m_image.isNull()) return;
     storeUndoSnapshot();
@@ -2377,6 +2633,15 @@ void FtWindow::onApplyEdgeTaper()
 }
 
 void FtWindow::onApplySymmetry()
+{
+    try {
+        onApplySymmetryImpl();
+    } catch (const std::bad_alloc &) {
+        rollbackAfterCalcOOM(tr("apply the symmetry"));
+    }
+}
+
+void FtWindow::onApplySymmetryImpl()
 {
     if (m_image.isNull()) return;
 
@@ -2476,6 +2741,15 @@ void FtWindow::onApplySymmetry()
 
 void FtWindow::onApplyFtSymmetry()
 {
+    try {
+        onApplyFtSymmetryImpl();
+    } catch (const std::bad_alloc &) {
+        rollbackAfterCalcOOM(tr("apply the Fourier symmetry"));
+    }
+}
+
+void FtWindow::onApplyFtSymmetryImpl()
+{
     if (!m_ftComputed || m_fftN == 0) return;
 
     bool ok = false;
@@ -2572,6 +2846,15 @@ void FtWindow::onGaborCancel()
 }
 
 void FtWindow::onApplyGaborFilter()
+{
+    try {
+        onApplyGaborFilterImpl();
+    } catch (const std::bad_alloc &) {
+        rollbackAfterCalcOOM(tr("apply the Gabor filter"));
+    }
+}
+
+void FtWindow::onApplyGaborFilterImpl()
 {
     if (m_image.isNull()) return;
 
@@ -2693,6 +2976,15 @@ void FtWindow::onHessianCancel()
 }
 
 void FtWindow::onApplyHessianFilter()
+{
+    try {
+        onApplyHessianFilterImpl();
+    } catch (const std::bad_alloc &) {
+        rollbackAfterCalcOOM(tr("apply the Hessian filter"));
+    }
+}
+
+void FtWindow::onApplyHessianFilterImpl()
 {
     if (m_image.isNull()) return;
 
@@ -2844,6 +3136,15 @@ void FtWindow::onMeasureCancel()
 
 void FtWindow::onApplyFtCrop()
 {
+    try {
+        onApplyFtCropImpl();
+    } catch (const std::bad_alloc &) {
+        rollbackAfterCalcOOM(tr("crop in Fourier space"));
+    }
+}
+
+void FtWindow::onApplyFtCropImpl()
+{
     if (!m_ftComputed || m_fftN == 0) return;
     storeUndoSnapshot();
 
@@ -2905,6 +3206,15 @@ void FtWindow::onApplyFtCrop()
 
 void FtWindow::onApplyFtPad()
 {
+    try {
+        onApplyFtPadImpl();
+    } catch (const std::bad_alloc &) {
+        rollbackAfterCalcOOM(tr("pad in Fourier space"));
+    }
+}
+
+void FtWindow::onApplyFtPadImpl()
+{
     if (!m_ftComputed || m_fftN == 0) return;
 
     int factor = m_ftCropCombo->currentData().toInt();
@@ -2960,6 +3270,15 @@ void FtWindow::onApplyFtPad()
 }
 
 void FtWindow::onApplyDirectional()
+{
+    try {
+        onApplyDirectionalImpl();
+    } catch (const std::bad_alloc &) {
+        rollbackAfterCalcOOM(tr("apply the directional filter"));
+    }
+}
+
+void FtWindow::onApplyDirectionalImpl()
 {
     if (!m_ftComputed || m_fftN == 0) return;
     storeUndoSnapshot();
@@ -3040,6 +3359,15 @@ void FtWindow::onApplyDirectional()
 
 void FtWindow::onApplyLineFilter()
 {
+    try {
+        onApplyLineFilterImpl();
+    } catch (const std::bad_alloc &) {
+        rollbackAfterCalcOOM(tr("apply the line filter"));
+    }
+}
+
+void FtWindow::onApplyLineFilterImpl()
+{
     if (!m_ftComputed || m_fftN == 0) return;
     storeUndoSnapshot();
 
@@ -3105,6 +3433,15 @@ void FtWindow::onFtMathCancel()
 }
 
 void FtWindow::onFtMathCompute()
+{
+    try {
+        onFtMathComputeImpl();
+    } catch (const std::bad_alloc &) {
+        rollbackAfterCalcOOM(tr("compute the Fourier math"));
+    }
+}
+
+void FtWindow::onFtMathComputeImpl()
 {
     storeUndoSnapshot();
 
@@ -3423,6 +3760,15 @@ void FtWindow::onMathCancel()
 }
 
 void FtWindow::onMathCompute()
+{
+    try {
+        onMathComputeImpl();
+    } catch (const std::bad_alloc &) {
+        rollbackAfterCalcOOM(tr("compute the image math"));
+    }
+}
+
+void FtWindow::onMathComputeImpl()
 {
     storeUndoSnapshot();
 
@@ -3856,6 +4202,15 @@ void FtWindow::onExtractCancel()
 
 void FtWindow::onExtractCompute()
 {
+    try {
+        onExtractComputeImpl();
+    } catch (const std::bad_alloc &) {
+        rollbackAfterCalcOOM(tr("extract the particles"));
+    }
+}
+
+void FtWindow::onExtractComputeImpl()
+{
     if (m_peaks.empty()) return;
 
     int srcIdx = m_extractSourceCombo->currentIndex();
@@ -4050,6 +4405,15 @@ void FtWindow::computeCtfProfile1D()
 
 void FtWindow::onCtfCompute()
 {
+    try {
+        onCtfComputeImpl();
+    } catch (const std::bad_alloc &) {
+        rollbackAfterCalcOOM(tr("compute the CTF"));
+    }
+}
+
+void FtWindow::onCtfComputeImpl()
+{
     // Parse parameters
     bool okV = false, okE = false, okC = false, okD = false;
     bool okA = false, okAA = false, okDS = false, okOA = false;
@@ -4210,6 +4574,15 @@ void FtWindow::onPhaseRampCancel()
 }
 
 void FtWindow::onPhaseRampCompute()
+{
+    try {
+        onPhaseRampComputeImpl();
+    } catch (const std::bad_alloc &) {
+        rollbackAfterCalcOOM(tr("apply the phase ramp"));
+    }
+}
+
+void FtWindow::onPhaseRampComputeImpl()
 {
     int N = m_phaseRampSizeCombo->currentData().toInt();
     if (N <= 0) N = 1024;
