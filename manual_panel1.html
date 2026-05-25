@@ -24,10 +24,10 @@
     background: var(--bg);
   }
   header {
-    background: #1d1d20;
+    background: #2858c4;
     color: #fff;
     padding: 18px 24px;
-    border-bottom: 1px solid #000;
+    border-bottom: 1px solid #1c428f;
   }
   header h1 { margin: 0; font-size: 22px; font-weight: 600; }
   header .breadcrumb {
@@ -51,6 +51,8 @@
     font-weight: 600;
     list-style: none;
     user-select: none;
+    display: flex;
+    align-items: center;
   }
   details summary::-webkit-details-marker { display: none; }
   details summary::before {
@@ -65,6 +67,9 @@
   details[open] summary::before { transform: rotate(90deg) translateX(-2px); }
   details > *:not(summary) { padding-bottom: 14px; }
   details summary:hover { color: var(--accent); }
+
+  .toolicons { margin-left: auto; display: inline-flex; align-items: center; }
+  .toolicons svg { margin-left: 8px; }
 
   p { margin: 0.6em 0; }
   ul { padding-left: 22px; }
@@ -140,7 +145,7 @@ the visible portion still toggle them.
 </details>
 
 <details open>
-<summary>Eraser</summary>
+<summary>Eraser<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><polygon points="8.4,4.4 18.3,4.4 15.6,12 5.7,12" fill="#d2b98c" stroke="#a0825a" stroke-width=".7"/><polygon points="8.9,6.2 17.8,6.2 17,8.4 8.2,8.4" fill="#e1c8a0"/><polygon points="5.7,12 15.6,12 14.7,14.2 4.8,14.2" fill="#bec3c8" stroke="#8c8c8c" stroke-width=".5"/><polygon points="4.8,14.2 15.6,14.2 12.9,19.6 3,19.6" fill="#eb7882" stroke="#b44650" stroke-width=".7"/><polygon points="5.2,14.9 12,14.9 11.5,16.7 4.6,16.7" fill="#f5a0a5"/></svg></span></summary>
 <p>
 Multiplies pixel values by <code>(1 − Gaussian)</code> under a soft
 footprint, smoothly fading them toward zero. Useful for removing
@@ -152,10 +157,11 @@ Fourier space.
   pixels. <br>
   <strong>Use:</strong> click and drag in panel 1 to erase along a path.
 </div>
+<BR>
 </details>
 
 <details>
-<summary>Paint brush</summary>
+<summary>Paint brush<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><line x1="12" y1="3.9" x2="12" y2="11.1" stroke="#a0783c" stroke-width="3"/><rect x="7.5" y="10.2" width="9" height="2.7" fill="#b4b4b4"/><polygon points="6.6,12.9 17.4,12.9 14.7,20.1 9.3,20.1" fill="#c8a050"/></svg></span></summary>
 <p>
 Writes a chosen pixel value into the image, blended with the existing
 pixels through a Gaussian or solid-disk footprint. The image min/max
@@ -169,10 +175,21 @@ sensible value.
   <strong>Gaussian diameter:</strong> width of the Gaussian fall-off.
   Set to 0 for a sharp edge.
 </div>
+<BR>
+<p>
+Have some fun: Create an empty image (value 0 everywhere) and use the paint brush to place one singel pixel 
+of value 1 into the image. 
+The Fourier transform of that will be flat white (value 1 everywhere, but potentially with interesting phases), because the Fourier transform of a 
+delta function is a constant. 
+If you now place a second pixel into the real-space image, then the Fourier transform will show and interference patterns,
+so you can use it to test the Fourier-space tools and to get a visual intuition for how they work. 
+Try combining this with the <em>symmetry</em> tool in real space, and with the <em>filter</em> tool in Fourier space, 
+to see how the symmetry and periodicity of the real-space image affect the Fourier transform.
+</p>
 </details>
 
 <details>
-<summary>Measure</summary>
+<summary>Measure<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><rect x="3.9" y="8.4" width="16.2" height="6.3" fill="#f5dc8c" stroke="#785a00" stroke-width=".7"/><g stroke="#282828" stroke-width=".7"><line x1="3.9" y1="8.4" x2="3.9" y2="11.9"/><line x1="5.52" y1="8.4" x2="5.52" y2="10.3"/><line x1="7.14" y1="8.4" x2="7.14" y2="10.3"/><line x1="8.76" y1="8.4" x2="8.76" y2="10.3"/><line x1="10.38" y1="8.4" x2="10.38" y2="10.3"/><line x1="12" y1="8.4" x2="12" y2="11.9"/><line x1="13.62" y1="8.4" x2="13.62" y2="10.3"/><line x1="15.24" y1="8.4" x2="15.24" y2="10.3"/><line x1="16.86" y1="8.4" x2="16.86" y2="10.3"/><line x1="18.48" y1="8.4" x2="18.48" y2="10.3"/><line x1="20.1" y1="8.4" x2="20.1" y2="11.9"/></g></svg></span></summary>
 <p>
 Click and drag in panel 1 to measure distances. The pixel count and the
 corresponding distance in Ångström (using the slot's pixel size) are
@@ -181,7 +198,7 @@ shown next to the line.
 </details>
 
 <details>
-<summary>Flip horizontally / Flip vertically</summary>
+<summary>Flip horizontally / Flip vertically<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><polygon points="3.6,12 9.48,7.2 9.48,16.8" fill="#fff"/><polygon points="20.4,12 14.52,7.2 14.52,16.8" fill="#fff"/><line x1="9.48" y1="12" x2="14.52" y2="12" stroke="#fff" stroke-width="2"/></svg><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><polygon points="12,3.6 7.2,9.48 16.8,9.48" fill="#fff"/><polygon points="12,20.4 7.2,14.52 16.8,14.52" fill="#fff"/><line x1="12" y1="9.48" x2="12" y2="14.52" stroke="#fff" stroke-width="2"/></svg></span></summary>
 <p>
 Mirror the image along its horizontal or vertical axis. Pure geometric
 operations, lossless. The Fourier transform updates accordingly.
@@ -189,7 +206,7 @@ operations, lossless. The Fourier transform updates accordingly.
 </details>
 
 <details>
-<summary>Shift image</summary>
+<summary>Shift image<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><polygon points="20.4,12 15.36,6.72 15.36,17.28" fill="#fff"/><polygon points="3.6,12 8.64,6.72 8.64,17.28" fill="#fff"/><polygon points="12,3.6 6.72,8.64 17.28,8.64" fill="#fff"/><polygon points="12,20.4 6.72,15.36 17.28,15.36" fill="#fff"/></svg></span></summary>
 <p>
 Translate the image by an integer number of pixels in <code>x</code>
 and <code>y</code>. The shift is cyclic (wrap-around), so no pixel
@@ -198,7 +215,7 @@ values are lost.
 </details>
 
 <details>
-<summary>Rotate image</summary>
+<summary>Rotate image<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><path d="M 18.65 8.16 A 7.68 7.68 0 1 0 16.94 17.88" fill="none" stroke="#fff" stroke-width="1.92"/><polygon points="22.82,12.95 18.42,19.65 15.46,16.12" fill="#fff"/></svg></span></summary>
 <p>
 Rotate the image by a chosen angle. The corners are clipped if the
 rotation is non-trivial; consider padding the image first if this
@@ -207,7 +224,7 @@ matters for downstream FFT analysis.
 </details>
 
 <details>
-<summary>Invert contrast</summary>
+<summary>Invert contrast<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><g stroke="#fff" stroke-width="1.5"><line x1="4.93" y1="9.75" x2="10.07" y2="9.75"/><line x1="7.5" y1="7.18" x2="7.5" y2="12.32"/><line x1="13.93" y1="18.75" x2="19.07" y2="18.75"/><line x1="13.8" y1="9.75" x2="10.2" y2="18.75"/></g></svg></span></summary>
 <p>
 Replaces each pixel value with <code>max + min − value</code>. Often
 useful for cryo-EM data where particles are darker than background and
@@ -216,7 +233,7 @@ you want a positive-contrast view.
 </details>
 
 <details>
-<summary>Taper edges (Hanning)</summary>
+<summary>Taper edges (Hanning)<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><rect x="1.8" y="1.8" width="20.4" height="20.4" fill="#fff"/><rect x="3.84" y="3.84" width="16.32" height="16.32" fill="#323232"/></svg></span></summary>
 <p>
 Apply a Hanning window of a chosen width around the image border. This
 suppresses the sharp edges that would otherwise leak into the FFT as a
@@ -225,11 +242,33 @@ strong cross of high-frequency content.
 <div class="controls">
   <strong>Hanning width:</strong> width of the cosine-taper band, in
   image pixels.
-</div>
+</div> 
+<BR>
 </details>
 
 <details>
-<summary>Bin image</summary>
+<summary>Symmetrize image<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><polygon points="12,1.92 14.37,8.74 21.59,8.89 15.83,13.25 17.93,20.16 12,16.03 6.07,20.16 8.17,13.25 2.41,8.89 9.63,8.74" fill="#fff"/></svg></span></summary>
+<p>
+Enforce <code>N</code>-fold rotational symmetry on the real-space image
+around its centre. The image is averaged with <code>N</code> copies of
+itself, each rotated by <code>k·360°/N</code> (<code>k = 0…N−1</code>),
+so the result is identical under a rotation of <code>360°/N</code>.
+Rotated samples are bilinearly interpolated; samples that fall outside
+the image are filled with the mean pixel value. The rotation centre is
+the integer pixel <code>(w/2, h/2)</code>.
+</p>
+<div class="controls">
+  <strong>Symmetry to apply:</strong> rotational order <code>N</code>
+  (default 4). Use 2 for two-fold, 3 for three-fold, and so on; values
+  are clamped to a maximum of 64, and <code>N = 1</code> does nothing. <br>
+  <strong>Apply symmetry:</strong> commits the operation, updates the
+  Fourier transform, and stores the result in the active history slot.
+</div>
+<BR>
+</details>
+
+<details>
+<summary>Bin image<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><rect x="4.8" y="4.8" width="4.8" height="4.8" fill="#fff"/><rect x="14.4" y="4.8" width="4.8" height="4.8" fill="#b6b6b6"/><rect x="4.8" y="14.4" width="4.8" height="4.8" fill="#969696"/><rect x="14.4" y="14.4" width="4.8" height="4.8" fill="#d4d4d4"/></svg></span></summary>
 <p>
 Reduce the image dimensions by averaging adjacent pixels in
 <code>N×N</code> blocks. The pixel size in the slot metadata is updated
@@ -242,10 +281,11 @@ acts as a low-pass filter followed by downsampling.
   re-expanded to its original dimensions after binning so that pixel
   counts stay comparable across slots.
 </div>
+<BR>
 </details>
 
 <details>
-<summary>Gabor filter</summary>
+<summary>Gabor filter<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><text x="12" y="12" font-family="sans-serif" font-weight="bold" font-size="15" fill="#fff" text-anchor="middle" dominant-baseline="central">G</text></svg></span></summary>
 <p>
 Apply a Gabor (oriented sinusoidal) filter to the image. The filter
 emphasises features that match the chosen wavelength and orientation,
@@ -255,24 +295,42 @@ texture.
 </details>
 
 <details>
-<summary>Hessian filter</summary>
+<summary>Hessian filter<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><text x="12" y="12" font-family="sans-serif" font-weight="bold" font-size="15" fill="#fff" text-anchor="middle" dominant-baseline="central">H</text></svg></span></summary>
 <p>
 Compute a Hessian-based ridge / blob enhancement. Good for highlighting
-filaments and elongated features whose width matches the chosen scale.
+filaments and elongated features whose width matches the chosen scale.  
+The Hessian filter is a second-derivative operator that responds strongly 
+to curvilinear structures, making it useful for tracing filaments or enhancing 
+tubular features in the image. It is most powerful when the scale parameter 
+is tuned to match the width of the features of interest, 
+as it suppresses structures that are either much thinner or much thicker 
+than the specified scale.
+Try combining it prior contrast inversion and downscaling with the <em>Bin image</em> tool for 
+a fast and effective way to enhance filaments of a certain width.
+You can also combine it with the <em>Gabor filter</em> for orientation-specific enhancement.
 </p>
 </details>
 
 <details>
-<summary>Amyloid filament</summary>
+<summary>Amyloid filament<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><text x="12" y="12" font-family="sans-serif" font-weight="bold" font-size="15" fill="#fff" text-anchor="middle" dominant-baseline="central">A</text></svg></span></summary>
 <p>
 Specialised analysis tool for amyloid filaments: extract straight
 sections, compute averaged power spectra, and analyse periodicities
-along filament axes.
+along filament axes.<BR>
+This tool takes an existing image of a filament cross-section and produces a helical 
+filament image from it in a target slot.
+As source you can create an empty (black) image and draw a small snake trace into it. 
+Then use this tool to generate a long filament image from the trace, which can be used 
+for Fourier analysis of the filament's helical parameters.<BR>
+You can also use the mouse to draw a long filament directly into the source slot, 
+and then use the mouse to add curvature to the filament trajectory. Use this to study,
+how a bent filament's Fourier spectrum differs from that of a straight filament, 
+and to get a visual intuition for the effects of curvature on the Fourier transform.
 </p>
 </details>
 
 <details>
-<summary>Math calculations</summary>
+<summary>Math calculations<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><path d="M16.2 7.2 L7.8 7.2 L12 12 L7.8 16.8 L16.2 16.8 M16.2 7.2 L16.2 8.6 M16.2 16.8 L16.2 15.4" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"/></svg></span></summary>
 <p>
 Combine images from two history slots with a chosen arithmetic
 operation. The result is written to a third slot.
@@ -282,24 +340,64 @@ operation. The result is written to a third slot.
   <strong>Operation:</strong> add, subtract, multiply, divide,
   convolve, correlate, etc. <br>
   <strong>Inputs:</strong> two source slots from the history bar.
-</div>
+</div> <BR>
+<p>
+Use this tool to study the <b>convolution and correlation theorems</b>.  These state that
+the convolution of an image with another image is the same as the multiplication of their Fourier transforms.
+And the correlation of an image with another image is the same as the multiplication 
+of one Fourier transform with the complex conjugate of the other.  You can directly 
+try these out, by creating two simple images (e.g. a dot and a line), convolving or correlating them, 
+and comparing the result to the Fourier-space multiplication of their transforms.<BR>
+
+Alternatively, multiply their Fourier transforms with the <em>Math</em> tool in Fourier space, and compare the 
+result to the convolution or correlation in real space. 
+</p><p> 
+Since explicit convolution and correlation in real space are computationally very expensive, 
+the Fourier-space multiplication is much faster. So this is a good way to get a visual 
+intuition for why the convolution and correlation theorems are so useful in practice.
+</p>
 </details>
 
 <details>
-<summary>Peak search</summary>
+<summary>Peak search<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><g stroke="#00c800" stroke-width="1.4"><line x1="4.03" y1="6.6" x2="9.17" y2="6.6"/><line x1="6.6" y1="4.03" x2="6.6" y2="9.17"/><line x1="14.83" y1="6.6" x2="19.97" y2="6.6"/><line x1="17.4" y1="4.03" x2="17.4" y2="9.17"/><line x1="4.03" y1="17.4" x2="9.17" y2="17.4"/><line x1="6.6" y1="14.83" x2="6.6" y2="19.97"/><line x1="14.83" y1="17.4" x2="19.97" y2="17.4"/><line x1="17.4" y1="14.83" x2="17.4" y2="19.97"/></g></svg></span></summary>
 <p>
 Locate local maxima in the image. The detected peaks can be displayed
 as green plus signs and exported. Useful for picking particles, dots,
 or crystalline reflections in a real-space image.
 </p>
+<p>
+A typical workflow is to cross-correlate the image of a protein particle with a raw cryo-EM image,
+then high-pass filter that cross-correlation map so that peaks stand out more clearly, 
+and then use the <em>Peak search</em> tool to pick the particles on the high-pass filtered cross-correalation map. 
+While doing so, you can display the raw cryo-EM image in panel 1, while picking particles on the cross-correlation 
+map that is stored in another buffer, so that you can visually verify that the detected peaks correspond 
+to actual particles in the raw image.
+</p>
+<p>
+The coordinates of the detected peaks can then be exported and used for particle extraction with the 
+<em>Extract particles</em> tool.
+</p>
 </details>
 
 <details>
-<summary>Extract particles</summary>
+<summary>Extract particles<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><circle cx="12" cy="12" r="8.4" fill="none" stroke="#fff" stroke-width="1.3"/><circle cx="9.06" cy="9.9" r="1" fill="#fff"/><circle cx="14.94" cy="9.9" r="1" fill="#fff"/><path d="M 7.6 13.2 A 4.6 4.6 0 0 0 16.4 13.2" fill="none" stroke="#fff" stroke-width="1"/></svg></span></summary>
 <p>
 Cut sub-images of a chosen size around each picked peak and write them
 into a target slot as a montage. Combine with <em>Peak search</em> for
 a complete pick-and-extract pipeline.
+</p>
+<p>
+The extracted <em>particles</em> are arranged in a montage in the target slot, 
+which has 1024x1024 pixels and either 64px or 128px wide particle images. That means, there will be 
+either 16 or 8 particles per row, depending on the chosen particle size. The particles will not be 
+rotationally aligned, so the montage will show the raw particle images as they appear in the original micrograph.
+<BR><BR>
+You can then use the Fourier space lattice filter with filter vectors of either <16,0> and <0,16>, or <8,0> and <0,8>
+to pick out the lattice of particle images in the montage, and to suppress noise between the particles. 
+When using the Fourier lattice filter, do not smooth the edges use a diameter of 1,
+so that you get a clean reconstruction of the average particle image without any blurring.
+This works ok-ish for round particles, such as Apoferritin, but for elongated particles, such as ribosomes, 
+you would need to first rotationally align the particles, which is not implemented here.
 </p>
 </details>
 
