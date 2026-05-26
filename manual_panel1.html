@@ -305,8 +305,10 @@ tubular features in the image. It is most powerful when the scale parameter
 is tuned to match the width of the features of interest, 
 as it suppresses structures that are either much thinner or much thicker 
 than the specified scale.
-Try combining it prior contrast inversion and downscaling with the <em>Bin image</em> tool for 
-a fast and effective way to enhance filaments of a certain width.
+In cryo-EM images of amyloid fibrils, fibrils are dark but the Hessian filter responds to bright structures. 
+On such images, try first inverting the contrast and then applying heavy downscaling with the 
+<em>Bin image</em> tool. The Hessian filter then 
+responds to the enhanced structures, providing a fast and effective way to enhance filaments of a certain width.
 You can also combine it with the <em>Gabor filter</em> for orientation-specific enhancement.
 </p>
 </details>
