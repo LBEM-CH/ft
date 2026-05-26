@@ -578,6 +578,9 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         m_ctfDefocusEdit->setVisible(m_ctfActive);
         m_ctfAstigEdit->setVisible(m_ctfActive);
         m_ctfAstigAngleEdit->setVisible(m_ctfActive);
+        m_ctfAmpContrastEdit->setVisible(m_ctfActive);
+        m_ctfBeamtiltEdit->setVisible(m_ctfActive);
+        m_ctfBeamtiltDirEdit->setVisible(m_ctfActive);
         m_ctfCancelBtn->setVisible(m_ctfActive);
         m_ctfComputeBtn->setVisible(m_ctfActive);
 

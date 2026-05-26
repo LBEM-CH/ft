@@ -632,6 +632,9 @@ private:
     QLineEdit  *m_ctfDefocusEdit      = nullptr;
     QLineEdit  *m_ctfAstigEdit        = nullptr;
     QLineEdit  *m_ctfAstigAngleEdit   = nullptr;
+    QLineEdit  *m_ctfAmpContrastEdit  = nullptr;
+    QLineEdit  *m_ctfBeamtiltEdit     = nullptr;
+    QLineEdit  *m_ctfBeamtiltDirEdit  = nullptr;
     QPushButton *m_ctfCancelBtn       = nullptr;
     QPushButton *m_ctfComputeBtn      = nullptr;
     std::vector<double> m_ctfProfile;      // 1D CTF profile from center to corner

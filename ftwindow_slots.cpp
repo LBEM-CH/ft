@@ -4339,6 +4339,9 @@ void FtWindow::onCtfCancel()
     m_ctfDefocusEdit->hide();
     m_ctfAstigEdit->hide();
     m_ctfAstigAngleEdit->hide();
+    m_ctfAmpContrastEdit->hide();
+    m_ctfBeamtiltEdit->hide();
+    m_ctfBeamtiltDirEdit->hide();
     m_ctfCancelBtn->hide();
     m_ctfComputeBtn->hide();
     update();
@@ -4348,6 +4351,7 @@ void FtWindow::computeCtfProfile1D()
 {
     bool okV = false, okE = false, okC = false, okD = false;
     bool okA = false, okAA = false, okDS = false, okOA = false;
+    bool okAC = false, okBT = false, okBTD = false;
     double voltageKV     = m_ctfVoltageEdit->text().toDouble(&okV);
     double energyEV      = m_ctfEnergySpreadEdit->text().toDouble(&okE);
     double defocusSpreadNM = m_ctfDefocusSpreadEdit->text().toDouble(&okDS);
@@ -4356,6 +4360,9 @@ void FtWindow::computeCtfProfile1D()
     double defocusNM     = m_ctfDefocusEdit->text().toDouble(&okD);
     double astigNM       = m_ctfAstigEdit->text().toDouble(&okA);
     double astigAngleDeg = m_ctfAstigAngleEdit->text().toDouble(&okAA);
+    double ampContrastPct = m_ctfAmpContrastEdit->text().toDouble(&okAC);
+    double beamtiltMrad   = m_ctfBeamtiltEdit->text().toDouble(&okBT);
+    double beamtiltDirDeg = m_ctfBeamtiltDirEdit->text().toDouble(&okBTD);
     if (!okV || voltageKV <= 0) voltageKV = 300.0;
     if (!okE)                   energyEV  = 0.7;
     if (!okDS)                  defocusSpreadNM = 5.0;
@@ -4364,6 +4371,9 @@ void FtWindow::computeCtfProfile1D()
     if (!okD)                   defocusNM = 1000.0;
     if (!okA)                   astigNM   = 0.0;
     if (!okAA)                  astigAngleDeg = 0.0;
+    if (!okAC)                  ampContrastPct = 7.0;
+    if (!okBT)                  beamtiltMrad   = 0.0;
+    if (!okBTD)                 beamtiltDirDeg = 0.0;
 
     double V = voltageKV * 1000.0;
     double lambdaA = 12.2639 / std::sqrt(V * (1.0 + V * 0.978466e-6));
@@ -4380,8 +4390,14 @@ void FtWindow::computeCtfProfile1D()
     double maxR = (N / 2.0) * std::sqrt(2.0);
     int nProf = std::max(64, (int)std::ceil(maxR) + 1);
     m_ctfProfile.assign(nProf, 0.0);
-    const double A = 0.97;
-    const double B = 1.0 - A * A;
+    // Amplitude contrast B (from user, in %) and phase contrast A = √(1−B²).
+    double B = ampContrastPct / 100.0;
+    B = std::max(0.0, std::min(1.0, B));
+    const double A = std::sqrt(1.0 - B * B);
+
+    // Beam tilt as a 2D angle vector (radians), CCW from +x (EM convention).
+    double tiltRad    = beamtiltMrad * 1.0e-3;
+    double tiltDirRad = beamtiltDirDeg * M_PI / 180.0;
 
     double profAngleRad = m_ctfAngleDeg * M_PI / 180.0;
     double dfProf = dfA + astigA * std::cos(2.0 * (profAngleRad - astigAngleRad));
@@ -4393,6 +4409,10 @@ void FtWindow::computeCtfProfile1D()
         double q4 = q2 * q2;
         double chi = M_PI * lambdaA * dfProf * q2
                    + 0.5 * M_PI * CsA * lambdaA * lambdaA * lambdaA * q4;
+        // Beam-tilt-induced (coma) phase shift along the profile direction:
+        //   Δχ = 2π·Cs·λ²·q³·τ·cos(θ − τ_dir).
+        chi += 2.0 * M_PI * CsA * lambdaA * lambdaA * q2 * q
+                   * tiltRad * std::cos(profAngleRad - tiltDirRad);
         double tArg = M_PI * lambdaA * defocusSpreadA * q2;
         double envT = std::exp(-0.5 * tArg * tArg);
         // Spatial-coherence envelope from the finite gun opening angle:
@@ -4417,6 +4437,7 @@ void FtWindow::onCtfComputeImpl()
     // Parse parameters
     bool okV = false, okE = false, okC = false, okD = false;
     bool okA = false, okAA = false, okDS = false, okOA = false;
+    bool okAC = false, okBT = false, okBTD = false;
     double voltageKV    = m_ctfVoltageEdit->text().toDouble(&okV);
     double energyEV     = m_ctfEnergySpreadEdit->text().toDouble(&okE);
     double defocusSpreadNM = m_ctfDefocusSpreadEdit->text().toDouble(&okDS);
@@ -4425,6 +4446,9 @@ void FtWindow::onCtfComputeImpl()
     double defocusNM    = m_ctfDefocusEdit->text().toDouble(&okD);
     double astigNM       = m_ctfAstigEdit->text().toDouble(&okA);
     double astigAngleDeg = m_ctfAstigAngleEdit->text().toDouble(&okAA);
+    double ampContrastPct = m_ctfAmpContrastEdit->text().toDouble(&okAC);
+    double beamtiltMrad   = m_ctfBeamtiltEdit->text().toDouble(&okBT);
+    double beamtiltDirDeg = m_ctfBeamtiltDirEdit->text().toDouble(&okBTD);
     if (!okV || voltageKV <= 0) voltageKV = 300.0;
     if (!okE)                   energyEV  = 0.7;
     if (!okDS)                  defocusSpreadNM = 5.0;
@@ -4433,6 +4457,9 @@ void FtWindow::onCtfComputeImpl()
     if (!okD)                   defocusNM = 1000.0;
     if (!okA)                   astigNM   = 0.0;
     if (!okAA)                  astigAngleDeg = 0.0;
+    if (!okAC)                  ampContrastPct = 7.0;
+    if (!okBT)                  beamtiltMrad   = 0.0;
+    if (!okBTD)                 beamtiltDirDeg = 0.0;
 
     // Relativistic electron wavelength in Angstrom
     double V = voltageKV * 1000.0;  // volts
@@ -4461,18 +4488,29 @@ void FtWindow::onCtfComputeImpl()
     double maxR = (N / 2.0) * std::sqrt(2.0);
     int nProf = std::max(64, (int)std::ceil(maxR) + 1);
     m_ctfProfile.assign(nProf, 0.0);
-    const double A = 0.9975;  // phase contrast. 
-    const double B = 0.07;  // amplitude contrast
-    // A*A + B*B should be 1.0
-    
+    // Amplitude contrast B (from user, in %) and phase contrast A = √(1−B²),
+    // so that A² + B² = 1.
+    double B = ampContrastPct / 100.0;
+    B = std::max(0.0, std::min(1.0, B));
+    const double A = std::sqrt(1.0 - B * B);
+
+    // Beam tilt as a 2D angle vector (radians), CCW from +x (EM convention).
+    double tiltRad    = beamtiltMrad * 1.0e-3;
+    double tiltDirRad = beamtiltDirDeg * M_PI / 180.0;
+
     double alphaRad = openAngleMrad * 1.0e-3;
-    auto ctfAt = [&](double dfLocalA, double rPix) -> double {
+    auto ctfAt = [&](double dfLocalA, double rPix, double thetaRad) -> double {
         // Spatial frequency q (1/Å) for this radial pixel distance.
         double q = rPix / (N * dxA);
         double q2 = q * q;
         double q4 = q2 * q2;
         double chi = M_PI * lambdaA * dfLocalA * q2
                    + 0.5 * M_PI * CsA * lambdaA * lambdaA * lambdaA * q4;
+        // Beam-tilt-induced (coma) phase shift. A tilt τ shifts the scattering
+        // angle (k → k + τ/λ); to first order in τ the wave aberration gains
+        //   Δχ = 2π·Cs·λ²·q³·τ·cos(θ − τ_dir).
+        chi += 2.0 * M_PI * CsA * lambdaA * lambdaA * q2 * q
+                   * tiltRad * std::cos(thetaRad - tiltDirRad);
         // Temporal-coherence envelope from defocus spread.
         double tArg = M_PI * lambdaA * defocusSpreadA * q2;
         double envT = std::exp(-0.5 * tArg * tArg);
@@ -4487,7 +4525,7 @@ void FtWindow::onCtfComputeImpl()
     double dfProf = dfA + astigA * std::cos(2.0 * (profAngleRad - astigAngleRad));
     for (int j = 0; j < nProf; j++) {
         double rPix = (double)j / (nProf - 1) * maxR;
-        m_ctfProfile[j] = ctfAt(dfProf, rPix);
+        m_ctfProfile[j] = ctfAt(dfProf, rPix, profAngleRad);
     }
 
     // Fill Fourier transform with a direction-dependent CTF.
@@ -4508,7 +4546,7 @@ void FtWindow::onCtfComputeImpl()
             // Image y axis points downward, so flip it for the math CCW angle.
             double theta = std::atan2(-dy, dx);
             double dfLocal = dfA + astigA * std::cos(2.0 * (theta - astigAngleRad));
-            double v = ctfAt(dfLocal, rPix);
+            double v = ctfAt(dfLocal, rPix, theta);
             m_fftData[y * N + x] = Complex(v, 0.0);
         }
     }
