@@ -177,7 +177,7 @@ Then create an empty image with the "New image" function (1024 size -> h).
 Use the paint brush to manually place a few pixels into it (pixel value 1, diameters 1).
 Convolute that newly created image with Andreas (Math calculation: i = g * h). Inspect the result.
 Correlate the result with Andreas (Math calculation: j = i × g). 
-High-pass flatten the cross-correlation map <code>j</code> (Band pass filter in Fourier space, inner diameter 50, erase pixels outisde of band). 
+High-pass flatten the cross-correlation map <code>j</code> (Band pass filter in Fourier space, inner diameter 50, erase pixels outside of band). 
 Run a <strong>peak search</strong> on the high-pass filtered cross-correlation map and create a list of peaks. 
 Inspect the peaks in real space and Fourier space. Do they correspond to the pixels you placed in the image? Can you use the peak list to
 <strong>extract particles</strong> (128-pixel size) from the convoluted map <code>i</code> into a new slot? Do the extracted particles look like Andreas?
@@ -238,7 +238,7 @@ particle (not rotationally aligned).
 <details>
 <summary>Exercise 10 — Helix synthesis</summary>
 <p>
-Load a an image of a fibril cross-section into a buffer (<code>a</code>) 
+Load an image of a fibril cross-section into a buffer (<code>a</code>) 
 and use the Amyloid function template to create a fibril projection image with that cross-section. 
 </p>
 <p>
@@ -251,7 +251,7 @@ of a real fibril image, especially concerning the reflection line at 4.75 Å?
 </details>
 
 <footer>
-  Fourier Analyzer · Stahlberg Lab, EPFL ·
+  Fourier Analyzer · <a href="https://lbem.ch">Stahlberg Lab</a>, EPFL & UNIL ·
   <a href="manual.html">← Back to manual</a> ·
   <a href="https://lbem-status.epfl.ch/ft/">Launch the app</a>
 </footer>

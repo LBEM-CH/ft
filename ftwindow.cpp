@@ -513,6 +513,22 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_ctfAstigAngleEdit->setToolTip(
         "Astigmatism direction in degrees, measured counter-clockwise\n"
         "from the horizontal axis, following the usual EM convention.");
+    m_ctfAmpContrastEdit = makeCtfEdit("7");
+    m_ctfAmpContrastEdit->setToolTip(
+        "Amplitude contrast in percent. Used as the amplitude-contrast\n"
+        "term B in the CTF; the phase-contrast term is then\n"
+        "   A = √(1 − B²),\n"
+        "and the CTF is A·sin(−χ) + B·cos(−χ).");
+    m_ctfBeamtiltEdit = makeCtfEdit("0");
+    m_ctfBeamtiltEdit->setToolTip(
+        "Beam tilt magnitude in mrad. A tilted illumination adds a\n"
+        "coma-like phase shift to the wave aberration\n"
+        "   Δχ = 2π·Cs·λ²·q³·τ·cos(θ − τ_dir)\n"
+        "where τ is the tilt angle (rad) and τ_dir its direction.");
+    m_ctfBeamtiltDirEdit = makeCtfEdit("0");
+    m_ctfBeamtiltDirEdit->setToolTip(
+        "Beam tilt direction in degrees, measured counter-clockwise\n"
+        "from the horizontal axis, following the usual EM convention.");
     m_ctfCancelBtn = new QPushButton("Cancel", this);
     m_ctfCancelBtn->setFixedSize(80, 26);
     m_ctfCancelBtn->setStyleSheet(
@@ -528,7 +544,9 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     for (QLineEdit *e : { m_ctfVoltageEdit, m_ctfEnergySpreadEdit,
                           m_ctfDefocusSpreadEdit, m_ctfOpenAngleEdit,
                           m_ctfCsEdit, m_ctfDefocusEdit,
-                          m_ctfAstigEdit, m_ctfAstigAngleEdit })
+                          m_ctfAstigEdit, m_ctfAstigAngleEdit,
+                          m_ctfAmpContrastEdit, m_ctfBeamtiltEdit,
+                          m_ctfBeamtiltDirEdit })
         connect(e, &QLineEdit::returnPressed, this, &FtWindow::onCtfCompute);
 
     // Phase ramp parameter widgets
@@ -1429,6 +1447,12 @@ void FtWindow::resizeEvent(QResizeEvent *)
     m_ctfAstigEdit->setStyleSheet(editSS);
     m_ctfAstigAngleEdit->setFixedSize(static_cast<int>(60 * sc), editH);
     m_ctfAstigAngleEdit->setStyleSheet(editSS);
+    m_ctfAmpContrastEdit->setFixedSize(static_cast<int>(60 * sc), editH);
+    m_ctfAmpContrastEdit->setStyleSheet(editSS);
+    m_ctfBeamtiltEdit->setFixedSize(static_cast<int>(60 * sc), editH);
+    m_ctfBeamtiltEdit->setStyleSheet(editSS);
+    m_ctfBeamtiltDirEdit->setFixedSize(static_cast<int>(60 * sc), editH);
+    m_ctfBeamtiltDirEdit->setStyleSheet(editSS);
     m_ctfCancelBtn->setFixedSize(static_cast<int>(80 * sc), btnH);
     m_ctfCancelBtn->setStyleSheet(btnSS);
     m_ctfComputeBtn->setFixedSize(static_cast<int>(80 * sc), btnH);

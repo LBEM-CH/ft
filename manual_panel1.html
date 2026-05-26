@@ -177,11 +177,11 @@ sensible value.
 </div>
 <BR>
 <p>
-Have some fun: Create an empty image (value 0 everywhere) and use the paint brush to place one singel pixel 
+Have some fun: Create an empty image (value 0 everywhere) and use the paint brush to place one single pixel
 of value 1 into the image. 
 The Fourier transform of that will be flat white (value 1 everywhere, but potentially with interesting phases), because the Fourier transform of a 
 delta function is a constant. 
-If you now place a second pixel into the real-space image, then the Fourier transform will show and interference patterns,
+If you now place a second pixel into the real-space image, then the Fourier transform will show an interference pattern,
 so you can use it to test the Fourier-space tools and to get a visual intuition for how they work. 
 Try combining this with the <em>symmetry</em> tool in real space, and with the <em>filter</em> tool in Fourier space, 
 to see how the symmetry and periodicity of the real-space image affect the Fourier transform.
@@ -305,8 +305,10 @@ tubular features in the image. It is most powerful when the scale parameter
 is tuned to match the width of the features of interest, 
 as it suppresses structures that are either much thinner or much thicker 
 than the specified scale.
-Try combining it prior contrast inversion and downscaling with the <em>Bin image</em> tool for 
-a fast and effective way to enhance filaments of a certain width.
+In cryo-EM images of amyloid fibrils, fibrils are dark but the Hessian filter responds to bright structures. 
+On such images, try first inverting the contrast and then applying heavy downscaling with the 
+<em>Bin image</em> tool. The Hessian filter then 
+responds to the enhanced structures, providing a fast and effective way to enhance filaments of a certain width.
 You can also combine it with the <em>Gabor filter</em> for orientation-specific enhancement.
 </p>
 </details>
@@ -352,8 +354,8 @@ and comparing the result to the Fourier-space multiplication of their transforms
 Alternatively, multiply their Fourier transforms with the <em>Math</em> tool in Fourier space, and compare the 
 result to the convolution or correlation in real space. 
 </p><p> 
-Since explicit convolution and correlation in real space are computationally very expensive, 
-the Fourier-space multiplication is much faster. So this is a good way to get a visual 
+Explicit convolution and correlation in real space are computationally very expensive.
+The Fourier-space multiplication is much faster. So this is a good way to get a visual 
 intuition for why the convolution and correlation theorems are so useful in practice.
 </p>
 </details>
@@ -368,7 +370,7 @@ or crystalline reflections in a real-space image.
 <p>
 A typical workflow is to cross-correlate the image of a protein particle with a raw cryo-EM image,
 then high-pass filter that cross-correlation map so that peaks stand out more clearly, 
-and then use the <em>Peak search</em> tool to pick the particles on the high-pass filtered cross-correalation map. 
+and then use the <em>Peak search</em> tool to pick the particles on the high-pass filtered cross-correlation map.
 While doing so, you can display the raw cryo-EM image in panel 1, while picking particles on the cross-correlation 
 map that is stored in another buffer, so that you can visually verify that the detected peaks correspond 
 to actual particles in the raw image.
@@ -402,7 +404,7 @@ you would need to first rotationally align the particles, which is not implement
 </details>
 
 <footer>
-  Fourier Analyzer · Stahlberg Lab, EPFL ·
+  Fourier Analyzer · <a href="https://lbem.ch">Stahlberg Lab</a>, EPFL & UNIL ·
   <a href="manual.html">← Back to manual</a> ·
   <a href="https://lbem-status.epfl.ch/ft/">Launch the app</a>
 </footer>

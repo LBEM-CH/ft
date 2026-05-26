@@ -2583,7 +2583,7 @@ void FtWindow::paintEvent(QPaintEvent *)
                 int r3 = m_applyFtCropBtn->width() + 12 + m_applyFtPadBtn->width();
                 textW = std::max({r1, r2, r3});
             } else if (m_ctfActive) {
-                nRows = 5;
+                nRows = 7;
                 int r0 = fm.horizontalAdvance("Acceleration Voltage (kV): ") + m_ctfVoltageEdit->width()
                          + 12 + fm.horizontalAdvance("Energy spread (eV): ")
                          + m_ctfEnergySpreadEdit->width();
@@ -2596,8 +2596,12 @@ void FtWindow::paintEvent(QPaintEvent *)
                 int r3 = fm.horizontalAdvance("Astigmatism (nm): ") + m_ctfAstigEdit->width()
                          + 12 + fm.horizontalAdvance("Astigmatism direction (\u00B0): ")
                          + m_ctfAstigAngleEdit->width();
-                int r4 = m_ctfCancelBtn->width() + 8 + m_ctfComputeBtn->width();
-                textW = std::max({r0, r1, r2, r3, r4});
+                int r4 = fm.horizontalAdvance("Amplitude contrast (%): ") + m_ctfAmpContrastEdit->width();
+                int r5 = fm.horizontalAdvance("Beamtilt (mrad): ") + m_ctfBeamtiltEdit->width()
+                         + 12 + fm.horizontalAdvance("Direction (\u00B0): ")
+                         + m_ctfBeamtiltDirEdit->width();
+                int r6 = m_ctfCancelBtn->width() + 8 + m_ctfComputeBtn->width();
+                textW = std::max({r0, r1, r2, r3, r4, r5, r6});
             } else if (m_phaseRampActive) {
                 nRows = 4;
                 int r0 = fm.horizontalAdvance("Size of FFT to be created: ") + m_phaseRampSizeCombo->width();
@@ -2758,9 +2762,19 @@ void FtWindow::paintEvent(QPaintEvent *)
                 int ax2 = ax1 + m_ctfAstigEdit->width() + 12;
                 drawParamLabel(p, fm, ax2, ty + lh * 3, "Astigmatism direction (\u00B0):", m_ctfAstigAngleEdit->toolTip());
                 m_ctfAstigAngleEdit->move(ax2 + fm.horizontalAdvance("Astigmatism direction (\u00B0): "), ty + lh * 3);
-                // Row 4: Cancel / Compute
-                m_ctfCancelBtn->move(tx, ty + lh * 4);
-                m_ctfComputeBtn->move(rx + rw - margin - m_ctfComputeBtn->width(), ty + lh * 4);
+                // Row 4: Amplitude contrast
+                drawParamLabel(p, fm, tx, ty + lh * 4, "Amplitude contrast (%):", m_ctfAmpContrastEdit->toolTip());
+                m_ctfAmpContrastEdit->move(tx + fm.horizontalAdvance("Amplitude contrast (%): "), ty + lh * 4);
+                // Row 5: Beamtilt, Direction
+                drawParamLabel(p, fm, tx, ty + lh * 5, "Beamtilt (mrad):", m_ctfBeamtiltEdit->toolTip());
+                int btX = tx + fm.horizontalAdvance("Beamtilt (mrad): ");
+                m_ctfBeamtiltEdit->move(btX, ty + lh * 5);
+                int btdLblX = btX + m_ctfBeamtiltEdit->width() + 12;
+                drawParamLabel(p, fm, btdLblX, ty + lh * 5, "Direction (\u00B0):", m_ctfBeamtiltDirEdit->toolTip());
+                m_ctfBeamtiltDirEdit->move(btdLblX + fm.horizontalAdvance("Direction (\u00B0): "), ty + lh * 5);
+                // Row 6: Cancel / Compute
+                m_ctfCancelBtn->move(tx, ty + lh * 6);
+                m_ctfComputeBtn->move(rx + rw - margin - m_ctfComputeBtn->width(), ty + lh * 6);
             } else if (m_phaseRampActive) {
                 drawParamLabel(p, fm, tx, ty, "Size of FFT to be created:", m_phaseRampSizeCombo->toolTip());
                 m_phaseRampSizeCombo->move(tx + fm.horizontalAdvance("Size of FFT to be created: "), ty);
