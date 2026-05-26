@@ -1,5 +1,25 @@
 #include "ftwindow_common.h"
-#include <new>       // std::bad_alloc
+#include <cstdlib>   // std::malloc / std::free (allocation preflight probe)
+
+// Probe whether `bytes` can currently be allocated. The WASM build links with
+// ABORTING_MALLOC=0, so a failed malloc returns null instead of aborting the
+// app, making this a safe test. A single contiguous probe is deliberately
+// conservative: it is stricter than the many smaller allocations the real work
+// performs, so passing it is a strong signal the operation will fit. On desktop
+// memory is effectively unlimited, so the probe is skipped.
+static bool probeAlloc(qint64 bytes)
+{
+#ifdef __EMSCRIPTEN__
+    if (bytes <= 0) return true;
+    void *p = std::malloc(static_cast<size_t>(bytes));
+    if (!p) return false;
+    std::free(p);
+    return true;
+#else
+    Q_UNUSED(bytes);
+    return true;
+#endif
+}
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -249,11 +269,8 @@ void FtWindow::onNewImageCancel()
 
 void FtWindow::onNewImageCreate()
 {
-    try {
-        onNewImageCreateImpl();
-    } catch (const std::bad_alloc &) {
-        rollbackAfterCalcOOM(tr("create the image"));
-    }
+    if (!ensureCalcHeadroom(tr("create the image"))) return;
+    onNewImageCreateImpl();
 }
 
 void FtWindow::onNewImageCreateImpl()
@@ -618,13 +635,61 @@ void FtWindow::reportOutOfMemory(const QString &context)
     msg->open();
 }
 
-void FtWindow::discardLoadAfterOutOfMemory(const QString &context)
+qint64 FtWindow::currentStateBytes() const
 {
-    qWarning() << "Out of memory while loading – rolling back";
+    auto entryBytes = [](const HistoryEntry &e) -> qint64 {
+        return (qint64)e.rawPixels.size() * (qint64)sizeof(double)
+             + (qint64)e.image.sizeInBytes()
+             + (qint64)e.powerSpecImg.sizeInBytes();
+    };
+    qint64 b = 0;
+    for (int i = 0; i < HISTORY_SLOTS; i++)
+        b += entryBytes(m_history[i]);
+    b += (qint64)m_image.sizeInBytes();
+    b += (qint64)m_imageRawPixels.size() * (qint64)sizeof(double);
+    b += (qint64)m_fftData.size() * (qint64)sizeof(Complex);
+    return b;
+}
 
-    // Drop the half-built current image and any FFT working set so the heap
-    // is released, and clear the slot we were loading into (its previous
-    // contents are unrecoverable once the allocation failed).
+qint64 FtWindow::estimatedWorkingBytes() const
+{
+    // Use whichever is larger: the current FFT size or the (possibly new)
+    // image dimension, so the estimate is valid both during a calculation and
+    // when loading a fresh image (where m_fftN still reflects the old image).
+    qint64 N = m_fftN;
+    if (!m_image.isNull())
+        N = std::max<qint64>(N, std::max(m_image.width(), m_image.height()));
+    if (N <= 0) return 64LL * 1024 * 1024;   // generic floor when nothing is loaded
+    // Headroom for one operation: a complex FFT buffer (16 B/px), a working
+    // copy, and a few real-space / display buffers (8 B/px each).
+    return N * N * (qint64)(16 + 16 + 8 + 8 + 8 + 8);
+}
+
+bool FtWindow::ensureCalcHeadroom(const QString &context)
+{
+    trimUndoMemory();
+    if (probeAlloc(currentStateBytes() + estimatedWorkingBytes()))
+        return true;
+
+    // Not enough room while keeping the undo history. Undo is a convenience;
+    // sacrifice it (and redo) to free memory for the operation itself.
+    if (!m_undoStack.empty() || !m_redoStack.empty()) {
+        m_undoStack.clear();
+        m_redoStack.clear();
+        updateUndoRedoButtons();
+        qWarning() << "Undo history cleared to free memory for:" << context;
+    }
+    if (probeAlloc(estimatedWorkingBytes()))
+        return true;
+
+    reportOutOfMemory(context);
+    return false;
+}
+
+void FtWindow::discardCurrentImageState()
+{
+    // Drop the half-built current image and any FFT working set so the heap is
+    // released, and clear the slot we were loading into.
     m_image = QImage();
     m_imageRawPixels.clear();
     m_imageRawPixels.shrink_to_fit();
@@ -634,29 +699,6 @@ void FtWindow::discardLoadAfterOutOfMemory(const QString &context)
 
     if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS)
         m_history[m_activeSlot] = HistoryEntry();
-
-    reportOutOfMemory(context);
-}
-
-void FtWindow::rollbackAfterCalcOOM(const QString &context)
-{
-    qWarning() << "Out of memory during calculation – rolling back";
-
-    // The handler stored the pre-operation state as the newest undo snapshot
-    // before doing any work. Stack unwinding has already freed the failed
-    // operation's transient buffers, so restoring that snapshot returns the
-    // app to a consistent state and discards the partial result.
-    if (!m_undoStack.empty()) {
-        BufferSnapshot pre = std::move(m_undoStack.back());
-        m_undoStack.pop_back();
-        try {
-            applySnapshot(pre, true);
-        } catch (const std::bad_alloc &) {
-            // Extremely tight: leave whatever state we managed to restore.
-        }
-    }
-    updateUndoRedoButtons();
-    reportOutOfMemory(context);
 }
 
 void FtWindow::downsampleForMemoryLimit()
@@ -762,70 +804,73 @@ void FtWindow::loadImageFile(const QString &path)
         }
     }
 
-    try {
-        if (path.endsWith(".mrc", Qt::CaseInsensitive)) {
-            MrcResult r = loadMrc(path);
-            m_image = r.image;
-            m_imageRawPixels = std::move(r.rawPixels);
-            m_imageMinVal = r.minVal;
-            m_imageMaxVal = r.maxVal;
-            m_imageDispMin = r.minVal;
-            m_imageDispMax = r.maxVal;
-            m_pixelSize = r.pixelSize;
+    if (path.endsWith(".mrc", Qt::CaseInsensitive)) {
+        MrcResult r = loadMrc(path);
+        m_image = r.image;
+        m_imageRawPixels = std::move(r.rawPixels);
+        m_imageMinVal = r.minVal;
+        m_imageMaxVal = r.maxVal;
+        m_imageDispMin = r.minVal;
+        m_imageDispMax = r.maxVal;
+        m_pixelSize = r.pixelSize;
 
-            if (m_image.isNull())
-                qDebug() << "MRC load FAILED – image is null";
-            else {
-                qDebug() << "MRC load OK –" << m_image.width() << "x" << m_image.height();
-                downsampleForMemoryLimit();
-                padImageToSquare();
-            }
+        if (m_image.isNull())
+            qDebug() << "MRC load FAILED – image is null";
+        else {
+            qDebug() << "MRC load OK –" << m_image.width() << "x" << m_image.height();
+            downsampleForMemoryLimit();
+            padImageToSquare();
+        }
+    } else {
+        m_image = QImage(path);
+        m_pixelSize = 1.0;
+        if (m_image.isNull()) {
+            qDebug() << "Image load FAILED for:" << path;
         } else {
-            m_image = QImage(path);
-            m_pixelSize = 1.0;
-            if (m_image.isNull()) {
-                qDebug() << "Image load FAILED for:" << path;
-            } else {
-                qDebug() << "Image loaded:" << m_image.width() << "x" << m_image.height()
-                         << "format:" << m_image.format();
-                downsampleForMemoryLimit();
-                padImageToSquare();
-                extractImageData();
-            }
+            qDebug() << "Image loaded:" << m_image.width() << "x" << m_image.height()
+                     << "format:" << m_image.format();
+            downsampleForMemoryLimit();
+            padImageToSquare();
+            extractImageData();
         }
+    }
 
-        m_imagePath = path;
+    m_imagePath = path;
 
-        // Store in the active slot
-        if (!m_image.isNull()) {
-            m_history[m_activeSlot].image        = m_image;
-            m_history[m_activeSlot].path         = path;
-            m_history[m_activeSlot].rawPixels    = m_imageRawPixels;
-            m_history[m_activeSlot].minVal       = m_imageMinVal;
-            m_history[m_activeSlot].maxVal       = m_imageMaxVal;
-            m_history[m_activeSlot].pixelSize    = m_pixelSize;
-            m_history[m_activeSlot].occupied     = true;
-        }
+    // Store in the active slot
+    if (!m_image.isNull()) {
+        m_history[m_activeSlot].image        = m_image;
+        m_history[m_activeSlot].path         = path;
+        m_history[m_activeSlot].rawPixels    = m_imageRawPixels;
+        m_history[m_activeSlot].minVal       = m_imageMinVal;
+        m_history[m_activeSlot].maxVal       = m_imageMaxVal;
+        m_history[m_activeSlot].pixelSize    = m_pixelSize;
+        m_history[m_activeSlot].occupied     = true;
+    }
 
 #ifndef __EMSCRIPTEN__
-        QSettings settings("ft", "ft");
-        settings.setValue("lastFile", path);
-        settings.setValue("activeSlot", m_activeSlot);
+    QSettings settings("ft", "ft");
+    settings.setValue("lastFile", path);
+    settings.setValue("activeSlot", m_activeSlot);
 #endif
 
-        m_ftComputed = false;
-        m_modeBtn->setText(modeLabel());
-        m_modeBtn->hide();
-        m_maskBtnVisible = false;
+    m_ftComputed = false;
+    m_modeBtn->setText(modeLabel());
+    m_modeBtn->hide();
+    m_maskBtnVisible = false;
 
-        if (!m_image.isNull()) {
-            m_zoom[0].reset(m_image.width(), m_image.height());
-            computeFFT();
-            // Store power spec thumbnail now that FFT is done
-            m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
+    if (!m_image.isNull()) {
+        // Refuse before the FFT allocates if the heap cannot take it.
+        if (!ensureCalcHeadroom(tr("load this image"))) {
+            discardCurrentImageState();
+            saveHistory();
+            update();
+            return;
         }
-    } catch (const std::bad_alloc &) {
-        discardLoadAfterOutOfMemory(tr("load this image"));
+        m_zoom[0].reset(m_image.width(), m_image.height());
+        computeFFT();
+        // Store power spec thumbnail now that FFT is done
+        m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
     }
 
     saveHistory();
@@ -844,63 +889,66 @@ void FtWindow::loadImageData(const QString &fileName, const QByteArray &fileData
         }
     }
 
-    try {
-        if (fileName.endsWith(".mrc", Qt::CaseInsensitive)) {
-            MrcResult r = loadMrcFromData(fileData);
-            m_image = r.image;
-            m_imageRawPixels = std::move(r.rawPixels);
-            m_imageMinVal = r.minVal;
-            m_imageMaxVal = r.maxVal;
-            m_imageDispMin = r.minVal;
-            m_imageDispMax = r.maxVal;
-            m_pixelSize = r.pixelSize;
+    if (fileName.endsWith(".mrc", Qt::CaseInsensitive)) {
+        MrcResult r = loadMrcFromData(fileData);
+        m_image = r.image;
+        m_imageRawPixels = std::move(r.rawPixels);
+        m_imageMinVal = r.minVal;
+        m_imageMaxVal = r.maxVal;
+        m_imageDispMin = r.minVal;
+        m_imageDispMax = r.maxVal;
+        m_pixelSize = r.pixelSize;
 
-            if (m_image.isNull())
-                qDebug() << "MRC load FAILED – image is null";
-            else {
-                qDebug() << "MRC load OK –" << m_image.width() << "x" << m_image.height();
-                downsampleForMemoryLimit();
-                padImageToSquare();
-            }
+        if (m_image.isNull())
+            qDebug() << "MRC load FAILED – image is null";
+        else {
+            qDebug() << "MRC load OK –" << m_image.width() << "x" << m_image.height();
+            downsampleForMemoryLimit();
+            padImageToSquare();
+        }
+    } else {
+        m_image.loadFromData(fileData);
+        m_pixelSize = 1.0;
+        if (m_image.isNull()) {
+            qDebug() << "Image load FAILED for:" << fileName;
         } else {
-            m_image.loadFromData(fileData);
-            m_pixelSize = 1.0;
-            if (m_image.isNull()) {
-                qDebug() << "Image load FAILED for:" << fileName;
-            } else {
-                qDebug() << "Image loaded:" << m_image.width() << "x" << m_image.height()
-                         << "format:" << m_image.format();
-                downsampleForMemoryLimit();
-                padImageToSquare();
-                extractImageData();
-            }
+            qDebug() << "Image loaded:" << m_image.width() << "x" << m_image.height()
+                     << "format:" << m_image.format();
+            downsampleForMemoryLimit();
+            padImageToSquare();
+            extractImageData();
         }
+    }
 
-        m_imagePath = fileName;
+    m_imagePath = fileName;
 
-        // Store in the active slot
-        if (!m_image.isNull()) {
-            m_history[m_activeSlot].image        = m_image;
-            m_history[m_activeSlot].path         = fileName;
-            m_history[m_activeSlot].rawPixels    = m_imageRawPixels;
-            m_history[m_activeSlot].minVal       = m_imageMinVal;
-            m_history[m_activeSlot].maxVal       = m_imageMaxVal;
-            m_history[m_activeSlot].pixelSize    = m_pixelSize;
-            m_history[m_activeSlot].occupied     = true;
+    // Store in the active slot
+    if (!m_image.isNull()) {
+        m_history[m_activeSlot].image        = m_image;
+        m_history[m_activeSlot].path         = fileName;
+        m_history[m_activeSlot].rawPixels    = m_imageRawPixels;
+        m_history[m_activeSlot].minVal       = m_imageMinVal;
+        m_history[m_activeSlot].maxVal       = m_imageMaxVal;
+        m_history[m_activeSlot].pixelSize    = m_pixelSize;
+        m_history[m_activeSlot].occupied     = true;
+    }
+
+    m_ftComputed = false;
+    m_modeBtn->setText(modeLabel());
+    m_modeBtn->hide();
+    m_maskBtnVisible = false;
+
+    if (!m_image.isNull()) {
+        // Refuse before the FFT allocates if the heap cannot take it.
+        if (!ensureCalcHeadroom(tr("load this image"))) {
+            discardCurrentImageState();
+            saveHistory();
+            update();
+            return;
         }
-
-        m_ftComputed = false;
-        m_modeBtn->setText(modeLabel());
-        m_modeBtn->hide();
-        m_maskBtnVisible = false;
-
-        if (!m_image.isNull()) {
-            m_zoom[0].reset(m_image.width(), m_image.height());
-            computeFFT();
-            m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
-        }
-    } catch (const std::bad_alloc &) {
-        discardLoadAfterOutOfMemory(tr("load this image"));
+        m_zoom[0].reset(m_image.width(), m_image.height());
+        computeFFT();
+        m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
     }
 
     saveHistory();
@@ -1702,18 +1750,18 @@ void FtWindow::trimUndoMemory()
 
 void FtWindow::storeUndoSnapshot()
 {
-    try {
-        m_undoStack.push_back(captureCurrentState());
-    } catch (const std::bad_alloc &) {
-        // Not enough memory to record an undo step. Drop the history rather
-        // than abort: the calculation that requested the snapshot still runs,
-        // it just won't be undoable.
+    // Probe first: if there isn't room to copy the current state, drop the
+    // undo history rather than risk an allocation that would abort the app.
+    // The calculation that requested the snapshot still runs, just without an
+    // undo step.
+    if (!probeAlloc(currentStateBytes())) {
         m_undoStack.clear();
         m_redoStack.clear();
         updateUndoRedoButtons();
-        qWarning() << "Undo history dropped – out of memory capturing snapshot";
+        qWarning() << "Undo history dropped – insufficient memory for snapshot";
         return;
     }
+    m_undoStack.push_back(captureCurrentState());
     if ((int)m_undoStack.size() > MAX_UNDO)
         m_undoStack.pop_front();
     clearRedoStack();
@@ -1739,12 +1787,12 @@ void FtWindow::onUndo()
 {
     if (m_undoStack.empty()) return;
     // Saving the current state for Redo is best-effort: if memory is too tight
-    // to capture it, skip Redo rather than abort the Undo the user asked for.
-    try {
+    // to capture it, skip Redo rather than block the Undo the user asked for.
+    if (probeAlloc(currentStateBytes())) {
         m_redoStack.push_back(captureCurrentState());
         if ((int)m_redoStack.size() > MAX_UNDO)
             m_redoStack.pop_front();
-    } catch (const std::bad_alloc &) {
+    } else {
         m_redoStack.clear();
     }
     applySnapshot(m_undoStack.back(), true);
@@ -1756,11 +1804,11 @@ void FtWindow::onUndo()
 void FtWindow::onRedo()
 {
     if (m_redoStack.empty()) return;
-    try {
+    if (probeAlloc(currentStateBytes())) {
         m_undoStack.push_back(captureCurrentState());
         if ((int)m_undoStack.size() > MAX_UNDO)
             m_undoStack.pop_front();
-    } catch (const std::bad_alloc &) {
+    } else {
         m_undoStack.clear();
     }
     applySnapshot(m_redoStack.back(), true);
@@ -2164,11 +2212,8 @@ void FtWindow::p1BrushApply(QPoint pos)
 
 void FtWindow::onApplyBandpass()
 {
-    try {
-        onApplyBandpassImpl();
-    } catch (const std::bad_alloc &) {
-        rollbackAfterCalcOOM(tr("apply the bandpass filter"));
-    }
+    if (!ensureCalcHeadroom(tr("apply the bandpass filter"))) return;
+    onApplyBandpassImpl();
 }
 
 void FtWindow::onApplyBandpassImpl()
@@ -2242,11 +2287,8 @@ void FtWindow::syncLatticeVectorEdits()
 
 void FtWindow::onApplyLattice()
 {
-    try {
-        onApplyLatticeImpl();
-    } catch (const std::bad_alloc &) {
-        rollbackAfterCalcOOM(tr("apply the lattice filter"));
-    }
+    if (!ensureCalcHeadroom(tr("apply the lattice filter"))) return;
+    onApplyLatticeImpl();
 }
 
 void FtWindow::onApplyLatticeImpl()
@@ -2327,11 +2369,8 @@ void FtWindow::onApplyLatticeImpl()
 
 void FtWindow::onApplyBinning()
 {
-    try {
-        onApplyBinningImpl();
-    } catch (const std::bad_alloc &) {
-        rollbackAfterCalcOOM(tr("bin the image"));
-    }
+    if (!ensureCalcHeadroom(tr("bin the image"))) return;
+    onApplyBinningImpl();
 }
 
 void FtWindow::onApplyBinningImpl()
@@ -2489,11 +2528,8 @@ void FtWindow::chainSteps(std::vector<std::function<void()>> steps)
 
 void FtWindow::onInvertContrast()
 {
-    try {
-        onInvertContrastImpl();
-    } catch (const std::bad_alloc &) {
-        rollbackAfterCalcOOM(tr("invert the contrast"));
-    }
+    if (!ensureCalcHeadroom(tr("invert the contrast"))) return;
+    onInvertContrastImpl();
 }
 
 void FtWindow::onInvertContrastImpl()
@@ -2547,11 +2583,8 @@ void FtWindow::onInvertContrastImpl()
 
 void FtWindow::onApplyEdgeTaper()
 {
-    try {
-        onApplyEdgeTaperImpl();
-    } catch (const std::bad_alloc &) {
-        rollbackAfterCalcOOM(tr("apply the edge taper"));
-    }
+    if (!ensureCalcHeadroom(tr("apply the edge taper"))) return;
+    onApplyEdgeTaperImpl();
 }
 
 void FtWindow::onApplyEdgeTaperImpl()
@@ -2634,11 +2667,8 @@ void FtWindow::onApplyEdgeTaperImpl()
 
 void FtWindow::onApplySymmetry()
 {
-    try {
-        onApplySymmetryImpl();
-    } catch (const std::bad_alloc &) {
-        rollbackAfterCalcOOM(tr("apply the symmetry"));
-    }
+    if (!ensureCalcHeadroom(tr("apply the symmetry"))) return;
+    onApplySymmetryImpl();
 }
 
 void FtWindow::onApplySymmetryImpl()
@@ -2741,11 +2771,8 @@ void FtWindow::onApplySymmetryImpl()
 
 void FtWindow::onApplyFtSymmetry()
 {
-    try {
-        onApplyFtSymmetryImpl();
-    } catch (const std::bad_alloc &) {
-        rollbackAfterCalcOOM(tr("apply the Fourier symmetry"));
-    }
+    if (!ensureCalcHeadroom(tr("apply the Fourier symmetry"))) return;
+    onApplyFtSymmetryImpl();
 }
 
 void FtWindow::onApplyFtSymmetryImpl()
@@ -2847,11 +2874,8 @@ void FtWindow::onGaborCancel()
 
 void FtWindow::onApplyGaborFilter()
 {
-    try {
-        onApplyGaborFilterImpl();
-    } catch (const std::bad_alloc &) {
-        rollbackAfterCalcOOM(tr("apply the Gabor filter"));
-    }
+    if (!ensureCalcHeadroom(tr("apply the Gabor filter"))) return;
+    onApplyGaborFilterImpl();
 }
 
 void FtWindow::onApplyGaborFilterImpl()
@@ -2977,11 +3001,8 @@ void FtWindow::onHessianCancel()
 
 void FtWindow::onApplyHessianFilter()
 {
-    try {
-        onApplyHessianFilterImpl();
-    } catch (const std::bad_alloc &) {
-        rollbackAfterCalcOOM(tr("apply the Hessian filter"));
-    }
+    if (!ensureCalcHeadroom(tr("apply the Hessian filter"))) return;
+    onApplyHessianFilterImpl();
 }
 
 void FtWindow::onApplyHessianFilterImpl()
@@ -3136,11 +3157,8 @@ void FtWindow::onMeasureCancel()
 
 void FtWindow::onApplyFtCrop()
 {
-    try {
-        onApplyFtCropImpl();
-    } catch (const std::bad_alloc &) {
-        rollbackAfterCalcOOM(tr("crop in Fourier space"));
-    }
+    if (!ensureCalcHeadroom(tr("crop in Fourier space"))) return;
+    onApplyFtCropImpl();
 }
 
 void FtWindow::onApplyFtCropImpl()
@@ -3206,11 +3224,8 @@ void FtWindow::onApplyFtCropImpl()
 
 void FtWindow::onApplyFtPad()
 {
-    try {
-        onApplyFtPadImpl();
-    } catch (const std::bad_alloc &) {
-        rollbackAfterCalcOOM(tr("pad in Fourier space"));
-    }
+    if (!ensureCalcHeadroom(tr("pad in Fourier space"))) return;
+    onApplyFtPadImpl();
 }
 
 void FtWindow::onApplyFtPadImpl()
@@ -3271,11 +3286,8 @@ void FtWindow::onApplyFtPadImpl()
 
 void FtWindow::onApplyDirectional()
 {
-    try {
-        onApplyDirectionalImpl();
-    } catch (const std::bad_alloc &) {
-        rollbackAfterCalcOOM(tr("apply the directional filter"));
-    }
+    if (!ensureCalcHeadroom(tr("apply the directional filter"))) return;
+    onApplyDirectionalImpl();
 }
 
 void FtWindow::onApplyDirectionalImpl()
@@ -3359,11 +3371,8 @@ void FtWindow::onApplyDirectionalImpl()
 
 void FtWindow::onApplyLineFilter()
 {
-    try {
-        onApplyLineFilterImpl();
-    } catch (const std::bad_alloc &) {
-        rollbackAfterCalcOOM(tr("apply the line filter"));
-    }
+    if (!ensureCalcHeadroom(tr("apply the line filter"))) return;
+    onApplyLineFilterImpl();
 }
 
 void FtWindow::onApplyLineFilterImpl()
@@ -3434,11 +3443,8 @@ void FtWindow::onFtMathCancel()
 
 void FtWindow::onFtMathCompute()
 {
-    try {
-        onFtMathComputeImpl();
-    } catch (const std::bad_alloc &) {
-        rollbackAfterCalcOOM(tr("compute the Fourier math"));
-    }
+    if (!ensureCalcHeadroom(tr("compute the Fourier math"))) return;
+    onFtMathComputeImpl();
 }
 
 void FtWindow::onFtMathComputeImpl()
@@ -3761,11 +3767,8 @@ void FtWindow::onMathCancel()
 
 void FtWindow::onMathCompute()
 {
-    try {
-        onMathComputeImpl();
-    } catch (const std::bad_alloc &) {
-        rollbackAfterCalcOOM(tr("compute the image math"));
-    }
+    if (!ensureCalcHeadroom(tr("compute the image math"))) return;
+    onMathComputeImpl();
 }
 
 void FtWindow::onMathComputeImpl()
@@ -4202,11 +4205,8 @@ void FtWindow::onExtractCancel()
 
 void FtWindow::onExtractCompute()
 {
-    try {
-        onExtractComputeImpl();
-    } catch (const std::bad_alloc &) {
-        rollbackAfterCalcOOM(tr("extract the particles"));
-    }
+    if (!ensureCalcHeadroom(tr("extract the particles"))) return;
+    onExtractComputeImpl();
 }
 
 void FtWindow::onExtractComputeImpl()
@@ -4402,34 +4402,51 @@ void FtWindow::computeCtfProfile1D()
     double profAngleRad = m_ctfAngleDeg * M_PI / 180.0;
     double dfProf = dfA + astigA * std::cos(2.0 * (profAngleRad - astigAngleRad));
     double alphaRad = openAngleMrad * 1.0e-3;
+    // Beam tilt as a spatial-frequency offset t = τ/λ (1/Å); see onCtfComputeImpl
+    // for the full rationale. The even/odd split of the exact tilted-geometry
+    // aberration gives the (elliptical) ring modulus and the coma phase.
+    double tMag = tiltRad / lambdaA;
+    double tx   = tMag * std::cos(tiltDirRad);
+    double ty   = tMag * std::sin(tiltDirRad);
+    auto chiRound = [&](double kx, double ky) {
+        double k2 = kx * kx + ky * ky;
+        return M_PI * lambdaA * dfA * k2
+             + 0.5 * M_PI * CsA * lambdaA * lambdaA * lambdaA * k2 * k2;
+    };
+    double gcoef = 2.0 * M_PI * lambdaA * dfA
+                 + 2.0 * M_PI * CsA * lambdaA * lambdaA * lambdaA * (tx * tx + ty * ty);
+    auto chiTiltAt = [&](double ux, double uy) {
+        return chiRound(ux + tx, uy + ty) - chiRound(tx, ty)
+             - gcoef * (ux * tx + uy * ty);
+    };
     for (int j = 0; j < nProf; j++) {
         double rPix = (double)j / (nProf - 1) * maxR;
         double q = rPix / (N * dxA);
         double q2 = q * q;
-        double q4 = q2 * q2;
-        double chi = M_PI * lambdaA * dfProf * q2
-                   + 0.5 * M_PI * CsA * lambdaA * lambdaA * lambdaA * q4;
-        // Beam-tilt-induced (coma) phase shift along the profile direction:
-        //   Δχ = 2π·Cs·λ²·q³·τ·cos(θ − τ_dir).
-        chi += 2.0 * M_PI * CsA * lambdaA * lambdaA * q2 * q
-                   * tiltRad * std::cos(profAngleRad - tiltDirRad);
+        double qx = q * std::cos(profAngleRad);
+        double qy = q * std::sin(profAngleRad);
+        double chiP = chiTiltAt(qx, qy);
+        double chiM = chiTiltAt(-qx, -qy);
+        double chiEven = 0.5 * (chiP + chiM)
+                       + M_PI * lambdaA * (dfProf - dfA) * q2;  // + user astig (even)
+        double chiOdd  = 0.5 * (chiP - chiM);                    // coma (odd)
         double tArg = M_PI * lambdaA * defocusSpreadA * q2;
         double envT = std::exp(-0.5 * tArg * tArg);
         // Spatial-coherence envelope from the finite gun opening angle:
         //   E_s(q) = exp(-π² α² q² (Δf + Cs·λ²·q²)²)
         double sArg = dfProf + CsA * lambdaA * lambdaA * q2;
         double envS = std::exp(-(M_PI * M_PI) * alphaRad * alphaRad * q2 * sArg * sArg);
-        m_ctfProfile[j] = envT * envS * (A * std::sin(-chi) + B * std::cos(-chi));
+        // Real part of the complex contrast transfer:
+        //   C₀·cos(χ_odd), C₀ = E·(A·sin(−χ_even)+B·cos(−χ_even)).
+        double base = envT * envS * (A * std::sin(-chiEven) + B * std::cos(-chiEven));
+        m_ctfProfile[j] = base * std::cos(chiOdd);
     }
 }
 
 void FtWindow::onCtfCompute()
 {
-    try {
-        onCtfComputeImpl();
-    } catch (const std::bad_alloc &) {
-        rollbackAfterCalcOOM(tr("compute the CTF"));
-    }
+    if (!ensureCalcHeadroom(tr("compute the CTF"))) return;
+    onCtfComputeImpl();
 }
 
 void FtWindow::onCtfComputeImpl()
@@ -4499,18 +4516,44 @@ void FtWindow::onCtfComputeImpl()
     double tiltDirRad = beamtiltDirDeg * M_PI / 180.0;
 
     double alphaRad = openAngleMrad * 1.0e-3;
-    auto ctfAt = [&](double dfLocalA, double rPix, double thetaRad) -> double {
+    // Beam tilt expressed as a spatial-frequency offset t = τ/λ (1/Å), as a
+    // 2D vector along the tilt azimuth.
+    double tMag = tiltRad / lambdaA;
+    double tx   = tMag * std::cos(tiltDirRad);
+    double ty   = tMag * std::sin(tiltDirRad);
+    // Round-lens (isotropic) wave aberration χ(k) = πλ·Δf·k² + ½πCs·λ³·k⁴,
+    // evaluated for an arbitrary 2D spatial-frequency vector.
+    auto chiRound = [&](double kx, double ky) {
+        double k2 = kx * kx + ky * ky;
+        return M_PI * lambdaA * dfA * k2
+             + 0.5 * M_PI * CsA * lambdaA * lambdaA * lambdaA * k2 * k2;
+    };
+    auto ctfAt = [&](double dfLocalA, double rPix, double thetaRad) -> Complex {
         // Spatial frequency q (1/Å) for this radial pixel distance.
         double q = rPix / (N * dxA);
         double q2 = q * q;
-        double q4 = q2 * q2;
-        double chi = M_PI * lambdaA * dfLocalA * q2
-                   + 0.5 * M_PI * CsA * lambdaA * lambdaA * lambdaA * q4;
-        // Beam-tilt-induced (coma) phase shift. A tilt τ shifts the scattering
-        // angle (k → k + τ/λ); to first order in τ the wave aberration gains
-        //   Δχ = 2π·Cs·λ²·q³·τ·cos(θ − τ_dir).
-        chi += 2.0 * M_PI * CsA * lambdaA * lambdaA * q2 * q
-                   * tiltRad * std::cos(thetaRad - tiltDirRad);
+        double qx = q * std::cos(thetaRad);
+        double qy = q * std::sin(thetaRad);
+        // Beam tilt evaluates the round-lens aberration at the tilted geometry,
+        //   χ_tilt(q) = χ(q+t) − χ(t) − q·∇χ(t),
+        // with the constant and linear (image-shift) terms removed. Evaluate it
+        // at +q and −q so we can split it by parity in q.
+        double gcoef = 2.0 * M_PI * lambdaA * dfA
+                     + 2.0 * M_PI * CsA * lambdaA * lambdaA * lambdaA * (tx * tx + ty * ty);
+        auto chiTiltAt = [&](double ux, double uy) {
+            return chiRound(ux + tx, uy + ty) - chiRound(tx, ty)
+                 - gcoef * (ux * tx + uy * ty);
+        };
+        double chiP = chiTiltAt(qx, qy);
+        double chiM = chiTiltAt(-qx, -qy);
+        // EVEN part (defocus + Cs + 2nd-order tilt defocus/astigmatism): it sets
+        // the oscillating CTF modulus and carries the tilt astigmatism that makes
+        // the Thon rings elliptical. User lens astigmatism (also even) adds here.
+        double chiEven = 0.5 * (chiP + chiM)
+                       + M_PI * lambdaA * (dfLocalA - dfA) * q2;
+        // ODD part (1st-order coma): a pure phase aberration that does not change
+        // the modulus; it makes the transfer function genuinely complex.
+        double chiOdd = 0.5 * (chiP - chiM);
         // Temporal-coherence envelope from defocus spread.
         double tArg = M_PI * lambdaA * defocusSpreadA * q2;
         double envT = std::exp(-0.5 * tArg * tArg);
@@ -4518,14 +4561,20 @@ void FtWindow::onCtfComputeImpl()
         //   E_s(q) = exp(-π² α² q² (Δf + Cs·λ²·q²)²)
         double sArg = dfLocalA + CsA * lambdaA * lambdaA * q2;
         double envS = std::exp(-(M_PI * M_PI) * alphaRad * alphaRad * q2 * sArg * sArg);
-        return envT * envS * (A * std::sin(-chi) + B * std::cos(-chi));
+        // Complex contrast-transfer function: the real, oscillating contrast
+        // transfer C₀ = E·(A·sin(−χ_even)+B·cos(−χ_even)) — whose modulus gives
+        // the (elliptical) Thon rings — times the coma phase factor exp(−iχ_odd).
+        double E = envT * envS;
+        double base = E * (A * std::sin(-chiEven) + B * std::cos(-chiEven));
+        return base * Complex(std::cos(chiOdd), -std::sin(chiOdd));
     };
     // 1D profile: direction-dependent defocus along m_ctfAngleDeg.
     double profAngleRad = m_ctfAngleDeg * M_PI / 180.0;
     double dfProf = dfA + astigA * std::cos(2.0 * (profAngleRad - astigAngleRad));
     for (int j = 0; j < nProf; j++) {
         double rPix = (double)j / (nProf - 1) * maxR;
-        m_ctfProfile[j] = ctfAt(dfProf, rPix, profAngleRad);
+        // 1D curve shows the (real part of the) conventional contrast transfer.
+        m_ctfProfile[j] = ctfAt(dfProf, rPix, profAngleRad).real();
     }
 
     // Fill Fourier transform with a direction-dependent CTF.
@@ -4546,8 +4595,7 @@ void FtWindow::onCtfComputeImpl()
             // Image y axis points downward, so flip it for the math CCW angle.
             double theta = std::atan2(-dy, dx);
             double dfLocal = dfA + astigA * std::cos(2.0 * (theta - astigAngleRad));
-            double v = ctfAt(dfLocal, rPix, theta);
-            m_fftData[y * N + x] = Complex(v, 0.0);
+            m_fftData[y * N + x] = ctfAt(dfLocal, rPix, theta);
         }
     }
 
@@ -4613,11 +4661,8 @@ void FtWindow::onPhaseRampCancel()
 
 void FtWindow::onPhaseRampCompute()
 {
-    try {
-        onPhaseRampComputeImpl();
-    } catch (const std::bad_alloc &) {
-        rollbackAfterCalcOOM(tr("apply the phase ramp"));
-    }
+    if (!ensureCalcHeadroom(tr("apply the phase ramp"))) return;
+    onPhaseRampComputeImpl();
 }
 
 void FtWindow::onPhaseRampComputeImpl()
