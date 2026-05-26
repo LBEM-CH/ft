@@ -64,12 +64,19 @@ Then run on target host:
 
 One-time Apache setup: see ft-apache.conf for the snippet and instructions.
 
-To evaluate website usage, on the target host, run:
+To evaluate website usage, copy ft-report.sh to the target. Run on the local machine:
 
-    sudo bash -c 'zcat -f /var/log/apache2/access.log* | grep " /ft/" | goaccess --log-format=COMBINED -o /home/henning/ft-report.html -'
-    sudo chown henning:henning /home/henning/ft-report.html
+    scp ft-report.sh henning@lbem-status:/home/henning
 
-From your local machine:
+Then run on the target:
+
+    sudo /home/henning/ft-report.sh
+
+It writes a GoAccess HTML report to /home/henning/ft-report.html and prints the
+top countries and cities accessing /ft/ to the terminal.
+(Requires on the target: goaccess, mmdb-bin, and GeoLite2 DBs in /var/lib/GeoIP.)
+
+From your local machine, fetch the HTML report:
     scp henning@lbem-status.epfl.ch:~/ft-report.html .
     open ft-report.html
 
