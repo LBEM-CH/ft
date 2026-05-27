@@ -33,7 +33,7 @@
 #include <cmath>
 #include <algorithm>
 #include <random>
-#ifndef __EMSCRIPTEN__
+#if FT_HAVE_THREADS
 #include <thread>
 #endif
 

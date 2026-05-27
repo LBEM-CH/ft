@@ -1,7 +1,7 @@
 #include "fft.h"
 #include <algorithm>
 #include <cmath>
-#ifndef __EMSCRIPTEN__
+#if FT_HAVE_THREADS
 #include <thread>
 #endif
 
@@ -145,8 +145,8 @@ void fft2d(std::vector<Complex> &data, int N, bool inverse) {
         }
     };
 
-#ifdef __EMSCRIPTEN__
-    // Single-threaded for WASM
+#if !FT_HAVE_THREADS
+    // Single-threaded fallback (WASM built without -pthread)
     doRows(0, N);
     doCols(0, N);
 #else

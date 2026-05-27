@@ -1,5 +1,55 @@
 #include "ftwindow_common.h"
-#include <new>       // std::bad_alloc
+#include <cstdlib>   // std::malloc / std::free (allocation preflight probe)
+
+// Probe whether `bytes` can currently be allocated. The WASM build links with
+// ABORTING_MALLOC=0, so a failed malloc returns null instead of aborting the
+// app, making this a safe test. A single contiguous probe is deliberately
+// conservative: it is stricter than the many smaller allocations the real work
+// performs, so passing it is a strong signal the operation will fit. On desktop
+// memory is effectively unlimited, so the probe is skipped.
+static bool probeAlloc(qint64 bytes)
+{
+#ifdef __EMSCRIPTEN__
+    if (bytes <= 0) return true;
+    void *p = std::malloc(static_cast<size_t>(bytes));
+    if (!p) return false;
+    std::free(p);
+    return true;
+#else
+    Q_UNUSED(bytes);
+    return true;
+#endif
+}
+
+// Run body(i) for i in [begin, end) across the available worker threads (the
+// same pool used by the FFT). Falls back to a serial loop when threads are
+// unavailable or the range is small. body must be safe to call concurrently —
+// callers here only ever write to disjoint indices.
+template <typename F>
+static void parallelFor(int begin, int end, F &&body)
+{
+    int n = end - begin;
+    if (n <= 0) return;
+#if FT_HAVE_THREADS
+    int nThreads = (int)std::thread::hardware_concurrency();
+    if (nThreads < 1) nThreads = 1;
+    if (nThreads > 1 && n >= 4096) {
+        std::vector<std::thread> threads;
+        int per = (n + nThreads - 1) / nThreads;
+        for (int t = 0; t < nThreads; t++) {
+            int a = begin + t * per;
+            int b = std::min(a + per, end);
+            if (a < b)
+                threads.emplace_back([a, b, &body]() {
+                    for (int i = a; i < b; i++) body(i);
+                });
+        }
+        for (auto &th : threads) th.join();
+        return;
+    }
+#endif
+    for (int i = begin; i < end; i++) body(i);
+}
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -249,11 +299,8 @@ void FtWindow::onNewImageCancel()
 
 void FtWindow::onNewImageCreate()
 {
-    try {
-        onNewImageCreateImpl();
-    } catch (const std::bad_alloc &) {
-        rollbackAfterCalcOOM(tr("create the image"));
-    }
+    if (!ensureCalcHeadroom(tr("create the image"))) return;
+    onNewImageCreateImpl();
 }
 
 void FtWindow::onNewImageCreateImpl()
@@ -618,13 +665,61 @@ void FtWindow::reportOutOfMemory(const QString &context)
     msg->open();
 }
 
-void FtWindow::discardLoadAfterOutOfMemory(const QString &context)
+qint64 FtWindow::currentStateBytes() const
 {
-    qWarning() << "Out of memory while loading – rolling back";
+    auto entryBytes = [](const HistoryEntry &e) -> qint64 {
+        return (qint64)e.rawPixels.size() * (qint64)sizeof(double)
+             + (qint64)e.image.sizeInBytes()
+             + (qint64)e.powerSpecImg.sizeInBytes();
+    };
+    qint64 b = 0;
+    for (int i = 0; i < HISTORY_SLOTS; i++)
+        b += entryBytes(m_history[i]);
+    b += (qint64)m_image.sizeInBytes();
+    b += (qint64)m_imageRawPixels.size() * (qint64)sizeof(double);
+    b += (qint64)m_fftData.size() * (qint64)sizeof(Complex);
+    return b;
+}
 
-    // Drop the half-built current image and any FFT working set so the heap
-    // is released, and clear the slot we were loading into (its previous
-    // contents are unrecoverable once the allocation failed).
+qint64 FtWindow::estimatedWorkingBytes() const
+{
+    // Use whichever is larger: the current FFT size or the (possibly new)
+    // image dimension, so the estimate is valid both during a calculation and
+    // when loading a fresh image (where m_fftN still reflects the old image).
+    qint64 N = m_fftN;
+    if (!m_image.isNull())
+        N = std::max<qint64>(N, std::max(m_image.width(), m_image.height()));
+    if (N <= 0) return 64LL * 1024 * 1024;   // generic floor when nothing is loaded
+    // Headroom for one operation: a complex FFT buffer (16 B/px), a working
+    // copy, and a few real-space / display buffers (8 B/px each).
+    return N * N * (qint64)(16 + 16 + 8 + 8 + 8 + 8);
+}
+
+bool FtWindow::ensureCalcHeadroom(const QString &context)
+{
+    trimUndoMemory();
+    if (probeAlloc(currentStateBytes() + estimatedWorkingBytes()))
+        return true;
+
+    // Not enough room while keeping the undo history. Undo is a convenience;
+    // sacrifice it (and redo) to free memory for the operation itself.
+    if (!m_undoStack.empty() || !m_redoStack.empty()) {
+        m_undoStack.clear();
+        m_redoStack.clear();
+        updateUndoRedoButtons();
+        qWarning() << "Undo history cleared to free memory for:" << context;
+    }
+    if (probeAlloc(estimatedWorkingBytes()))
+        return true;
+
+    reportOutOfMemory(context);
+    return false;
+}
+
+void FtWindow::discardCurrentImageState()
+{
+    // Drop the half-built current image and any FFT working set so the heap is
+    // released, and clear the slot we were loading into.
     m_image = QImage();
     m_imageRawPixels.clear();
     m_imageRawPixels.shrink_to_fit();
@@ -634,29 +729,6 @@ void FtWindow::discardLoadAfterOutOfMemory(const QString &context)
 
     if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS)
         m_history[m_activeSlot] = HistoryEntry();
-
-    reportOutOfMemory(context);
-}
-
-void FtWindow::rollbackAfterCalcOOM(const QString &context)
-{
-    qWarning() << "Out of memory during calculation – rolling back";
-
-    // The handler stored the pre-operation state as the newest undo snapshot
-    // before doing any work. Stack unwinding has already freed the failed
-    // operation's transient buffers, so restoring that snapshot returns the
-    // app to a consistent state and discards the partial result.
-    if (!m_undoStack.empty()) {
-        BufferSnapshot pre = std::move(m_undoStack.back());
-        m_undoStack.pop_back();
-        try {
-            applySnapshot(pre, true);
-        } catch (const std::bad_alloc &) {
-            // Extremely tight: leave whatever state we managed to restore.
-        }
-    }
-    updateUndoRedoButtons();
-    reportOutOfMemory(context);
 }
 
 void FtWindow::downsampleForMemoryLimit()
@@ -762,70 +834,73 @@ void FtWindow::loadImageFile(const QString &path)
         }
     }
 
-    try {
-        if (path.endsWith(".mrc", Qt::CaseInsensitive)) {
-            MrcResult r = loadMrc(path);
-            m_image = r.image;
-            m_imageRawPixels = std::move(r.rawPixels);
-            m_imageMinVal = r.minVal;
-            m_imageMaxVal = r.maxVal;
-            m_imageDispMin = r.minVal;
-            m_imageDispMax = r.maxVal;
-            m_pixelSize = r.pixelSize;
+    if (path.endsWith(".mrc", Qt::CaseInsensitive)) {
+        MrcResult r = loadMrc(path);
+        m_image = r.image;
+        m_imageRawPixels = std::move(r.rawPixels);
+        m_imageMinVal = r.minVal;
+        m_imageMaxVal = r.maxVal;
+        m_imageDispMin = r.minVal;
+        m_imageDispMax = r.maxVal;
+        m_pixelSize = r.pixelSize;
 
-            if (m_image.isNull())
-                qDebug() << "MRC load FAILED – image is null";
-            else {
-                qDebug() << "MRC load OK –" << m_image.width() << "x" << m_image.height();
-                downsampleForMemoryLimit();
-                padImageToSquare();
-            }
+        if (m_image.isNull())
+            qDebug() << "MRC load FAILED – image is null";
+        else {
+            qDebug() << "MRC load OK –" << m_image.width() << "x" << m_image.height();
+            downsampleForMemoryLimit();
+            padImageToSquare();
+        }
+    } else {
+        m_image = QImage(path);
+        m_pixelSize = 1.0;
+        if (m_image.isNull()) {
+            qDebug() << "Image load FAILED for:" << path;
         } else {
-            m_image = QImage(path);
-            m_pixelSize = 1.0;
-            if (m_image.isNull()) {
-                qDebug() << "Image load FAILED for:" << path;
-            } else {
-                qDebug() << "Image loaded:" << m_image.width() << "x" << m_image.height()
-                         << "format:" << m_image.format();
-                downsampleForMemoryLimit();
-                padImageToSquare();
-                extractImageData();
-            }
+            qDebug() << "Image loaded:" << m_image.width() << "x" << m_image.height()
+                     << "format:" << m_image.format();
+            downsampleForMemoryLimit();
+            padImageToSquare();
+            extractImageData();
         }
+    }
 
-        m_imagePath = path;
+    m_imagePath = path;
 
-        // Store in the active slot
-        if (!m_image.isNull()) {
-            m_history[m_activeSlot].image        = m_image;
-            m_history[m_activeSlot].path         = path;
-            m_history[m_activeSlot].rawPixels    = m_imageRawPixels;
-            m_history[m_activeSlot].minVal       = m_imageMinVal;
-            m_history[m_activeSlot].maxVal       = m_imageMaxVal;
-            m_history[m_activeSlot].pixelSize    = m_pixelSize;
-            m_history[m_activeSlot].occupied     = true;
-        }
+    // Store in the active slot
+    if (!m_image.isNull()) {
+        m_history[m_activeSlot].image        = m_image;
+        m_history[m_activeSlot].path         = path;
+        m_history[m_activeSlot].rawPixels    = m_imageRawPixels;
+        m_history[m_activeSlot].minVal       = m_imageMinVal;
+        m_history[m_activeSlot].maxVal       = m_imageMaxVal;
+        m_history[m_activeSlot].pixelSize    = m_pixelSize;
+        m_history[m_activeSlot].occupied     = true;
+    }
 
 #ifndef __EMSCRIPTEN__
-        QSettings settings("ft", "ft");
-        settings.setValue("lastFile", path);
-        settings.setValue("activeSlot", m_activeSlot);
+    QSettings settings("ft", "ft");
+    settings.setValue("lastFile", path);
+    settings.setValue("activeSlot", m_activeSlot);
 #endif
 
-        m_ftComputed = false;
-        m_modeBtn->setText(modeLabel());
-        m_modeBtn->hide();
-        m_maskBtnVisible = false;
+    m_ftComputed = false;
+    m_modeBtn->setText(modeLabel());
+    m_modeBtn->hide();
+    m_maskBtnVisible = false;
 
-        if (!m_image.isNull()) {
-            m_zoom[0].reset(m_image.width(), m_image.height());
-            computeFFT();
-            // Store power spec thumbnail now that FFT is done
-            m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
+    if (!m_image.isNull()) {
+        // Refuse before the FFT allocates if the heap cannot take it.
+        if (!ensureCalcHeadroom(tr("load this image"))) {
+            discardCurrentImageState();
+            saveHistory();
+            update();
+            return;
         }
-    } catch (const std::bad_alloc &) {
-        discardLoadAfterOutOfMemory(tr("load this image"));
+        m_zoom[0].reset(m_image.width(), m_image.height());
+        computeFFT();
+        // Store power spec thumbnail now that FFT is done
+        m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
     }
 
     saveHistory();
@@ -844,63 +919,66 @@ void FtWindow::loadImageData(const QString &fileName, const QByteArray &fileData
         }
     }
 
-    try {
-        if (fileName.endsWith(".mrc", Qt::CaseInsensitive)) {
-            MrcResult r = loadMrcFromData(fileData);
-            m_image = r.image;
-            m_imageRawPixels = std::move(r.rawPixels);
-            m_imageMinVal = r.minVal;
-            m_imageMaxVal = r.maxVal;
-            m_imageDispMin = r.minVal;
-            m_imageDispMax = r.maxVal;
-            m_pixelSize = r.pixelSize;
+    if (fileName.endsWith(".mrc", Qt::CaseInsensitive)) {
+        MrcResult r = loadMrcFromData(fileData);
+        m_image = r.image;
+        m_imageRawPixels = std::move(r.rawPixels);
+        m_imageMinVal = r.minVal;
+        m_imageMaxVal = r.maxVal;
+        m_imageDispMin = r.minVal;
+        m_imageDispMax = r.maxVal;
+        m_pixelSize = r.pixelSize;
 
-            if (m_image.isNull())
-                qDebug() << "MRC load FAILED – image is null";
-            else {
-                qDebug() << "MRC load OK –" << m_image.width() << "x" << m_image.height();
-                downsampleForMemoryLimit();
-                padImageToSquare();
-            }
+        if (m_image.isNull())
+            qDebug() << "MRC load FAILED – image is null";
+        else {
+            qDebug() << "MRC load OK –" << m_image.width() << "x" << m_image.height();
+            downsampleForMemoryLimit();
+            padImageToSquare();
+        }
+    } else {
+        m_image.loadFromData(fileData);
+        m_pixelSize = 1.0;
+        if (m_image.isNull()) {
+            qDebug() << "Image load FAILED for:" << fileName;
         } else {
-            m_image.loadFromData(fileData);
-            m_pixelSize = 1.0;
-            if (m_image.isNull()) {
-                qDebug() << "Image load FAILED for:" << fileName;
-            } else {
-                qDebug() << "Image loaded:" << m_image.width() << "x" << m_image.height()
-                         << "format:" << m_image.format();
-                downsampleForMemoryLimit();
-                padImageToSquare();
-                extractImageData();
-            }
+            qDebug() << "Image loaded:" << m_image.width() << "x" << m_image.height()
+                     << "format:" << m_image.format();
+            downsampleForMemoryLimit();
+            padImageToSquare();
+            extractImageData();
         }
+    }
 
-        m_imagePath = fileName;
+    m_imagePath = fileName;
 
-        // Store in the active slot
-        if (!m_image.isNull()) {
-            m_history[m_activeSlot].image        = m_image;
-            m_history[m_activeSlot].path         = fileName;
-            m_history[m_activeSlot].rawPixels    = m_imageRawPixels;
-            m_history[m_activeSlot].minVal       = m_imageMinVal;
-            m_history[m_activeSlot].maxVal       = m_imageMaxVal;
-            m_history[m_activeSlot].pixelSize    = m_pixelSize;
-            m_history[m_activeSlot].occupied     = true;
+    // Store in the active slot
+    if (!m_image.isNull()) {
+        m_history[m_activeSlot].image        = m_image;
+        m_history[m_activeSlot].path         = fileName;
+        m_history[m_activeSlot].rawPixels    = m_imageRawPixels;
+        m_history[m_activeSlot].minVal       = m_imageMinVal;
+        m_history[m_activeSlot].maxVal       = m_imageMaxVal;
+        m_history[m_activeSlot].pixelSize    = m_pixelSize;
+        m_history[m_activeSlot].occupied     = true;
+    }
+
+    m_ftComputed = false;
+    m_modeBtn->setText(modeLabel());
+    m_modeBtn->hide();
+    m_maskBtnVisible = false;
+
+    if (!m_image.isNull()) {
+        // Refuse before the FFT allocates if the heap cannot take it.
+        if (!ensureCalcHeadroom(tr("load this image"))) {
+            discardCurrentImageState();
+            saveHistory();
+            update();
+            return;
         }
-
-        m_ftComputed = false;
-        m_modeBtn->setText(modeLabel());
-        m_modeBtn->hide();
-        m_maskBtnVisible = false;
-
-        if (!m_image.isNull()) {
-            m_zoom[0].reset(m_image.width(), m_image.height());
-            computeFFT();
-            m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
-        }
-    } catch (const std::bad_alloc &) {
-        discardLoadAfterOutOfMemory(tr("load this image"));
+        m_zoom[0].reset(m_image.width(), m_image.height());
+        computeFFT();
+        m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
     }
 
     saveHistory();
@@ -1082,8 +1160,8 @@ void FtWindow::computeFFT(bool keepZoom)
     repaint();
 
     {
-#ifdef __EMSCRIPTEN__
-        // Single-threaded FFT for WASM (no pthreads)
+#if !FT_HAVE_THREADS
+        // Single-threaded FFT fallback (WASM built without -pthread)
         std::vector<Complex> tmp(N);
         for (int y = 0; y < N; y++) {
             for (int x = 0; x < N; x++) tmp[x] = data[y * N + x];
@@ -1192,8 +1270,8 @@ void FtWindow::computeInverseFFT()
     repaint();
 
     {
-#ifdef __EMSCRIPTEN__
-        // Single-threaded inverse FFT for WASM
+#if !FT_HAVE_THREADS
+        // Single-threaded inverse FFT fallback (WASM built without -pthread)
         std::vector<Complex> tmp(N);
         for (int y = 0; y < N; y++) {
             for (int x = 0; x < N; x++) tmp[x] = data[y * N + x];
@@ -1320,6 +1398,200 @@ void FtWindow::computeInverseFFT()
     update();
 }
 
+#if defined(__EMSCRIPTEN__) && FT_HAVE_THREADS
+// Run one FFT pass batch: transform lines [b, bEnd) of `data` (rows when
+// columns==false, columns when columns==true) using the worker-thread pool.
+// Used by the WASM-animated transforms (computeFFTAnimated / *Inverse*).
+static void runFFTBatch(std::vector<Complex> &data, int N, int b, int bEnd,
+                        bool inverse, bool columns)
+{
+    int nThreads = (int)std::thread::hardware_concurrency();
+    if (nThreads < 1) nThreads = 1;
+    std::vector<std::thread> threads;
+    int perThread = ((bEnd - b) + nThreads - 1) / nThreads;
+    for (int t = 0; t < nThreads; t++) {
+        int i0 = b + t * perThread;
+        int i1 = std::min(i0 + perThread, bEnd);
+        if (i0 >= i1) continue;
+        threads.emplace_back([&data, N, i0, i1, inverse, columns]() {
+            std::vector<Complex> line(N);
+            for (int i = i0; i < i1; i++) {
+                if (columns) {
+                    for (int y = 0; y < N; y++) line[y] = data[y * N + i];
+                    fft1d(line, inverse);
+                    for (int y = 0; y < N; y++) data[y * N + i] = line[y];
+                } else {
+                    for (int x = 0; x < N; x++) line[x] = data[i * N + x];
+                    fft1d(line, inverse);
+                    for (int x = 0; x < N; x++) data[i * N + x] = line[x];
+                }
+            }
+        });
+    }
+    for (auto &t : threads) t.join();
+}
+#endif // defined(__EMSCRIPTEN__) && FT_HAVE_THREADS
+
+// ---------------------------------------------------------------------------
+//  Interactive FFT (arrow buttons) — animated in WASM
+// ---------------------------------------------------------------------------
+// In the browser the canvas is only composited when the main thread returns to
+// the event loop, so the blocking loops in computeFFT()/computeInverseFFT()
+// (which rely on QApplication::processEvents()) never show the traversing blue
+// progress fill. These variants run the same transform as a chain of
+// event-loop-yielding steps (via chainSteps), repainting between batches. The
+// setup/finalize blocks intentionally mirror computeFFT()/computeInverseFFT();
+// keep them in sync if those change. On desktop (or a single-threaded WASM
+// build) they fall back to the synchronous version, which already animates.
+void FtWindow::computeFFTAnimated(bool keepZoom)
+{
+#if defined(__EMSCRIPTEN__) && FT_HAVE_THREADS
+    if (m_image.isNull()) return;
+
+    // --- Setup (mirrors computeFFT) ---
+    QImage gray = m_image.convertToFormat(QImage::Format_Grayscale8);
+    int w = gray.width();
+    int h = gray.height();
+    int N = nextGoodFFTSize(std::max(w, h));
+    m_fftN = N;
+    m_origW = w;
+    m_origH = h;
+
+    double sum = 0;
+    for (int y = 0; y < h; y++) {
+        const uchar *row = gray.constScanLine(y);
+        for (int x = 0; x < w; x++) sum += row[x];
+    }
+    double avg = sum / ((double)w * h);
+
+    auto data = std::make_shared<std::vector<Complex>>(N * N, Complex(avg, 0.0));
+    for (int y = 0; y < h; y++) {
+        const uchar *row = gray.constScanLine(y);
+        for (int x = 0; x < w; x++)
+            (*data)[y * N + x] = Complex(row[x], 0.0);
+    }
+    fftShift(*data, N);
+
+    m_fftProgress = 0.02;
+
+    int nThreads = (int)std::thread::hardware_concurrency();
+    if (nThreads < 1) nThreads = 1;
+    int batchSize = nThreads * 16;
+
+    std::vector<std::function<void()>> steps;
+    for (int b = 0; b < N; b += batchSize) {        // row pass
+        int bEnd = std::min(b + batchSize, N);
+        steps.push_back([this, data, N, bEnd, b]() {
+            runFFTBatch(*data, N, b, bEnd, false, false);
+            m_fftProgress = 0.02 + 0.48 * bEnd / N;
+        });
+    }
+    for (int b = 0; b < N; b += batchSize) {        // column pass
+        int bEnd = std::min(b + batchSize, N);
+        steps.push_back([this, data, N, bEnd, b]() {
+            runFFTBatch(*data, N, b, bEnd, false, true);
+            m_fftProgress = 0.5 + 0.48 * bEnd / N;
+        });
+    }
+    steps.push_back([this, data, N, keepZoom]() {   // finalize (mirrors computeFFT)
+        fftShift(*data, N);
+        m_fftData = *data;
+        recomputeDisplayImages();
+        m_fftProgress = -1;
+        m_ftComputed = true;
+        m_modeBtn->show();
+        m_maskBtnVisible = true;
+        if (!keepZoom) {
+            m_zoom[1].reset(N, N);
+            m_zoom[2].reset(N, N);
+        }
+        update();
+    });
+
+    chainSteps(std::move(steps));
+#else
+    computeFFT(keepZoom);
+#endif
+}
+
+void FtWindow::computeInverseFFTAnimated()
+{
+#if defined(__EMSCRIPTEN__) && FT_HAVE_THREADS
+    if (!m_ftComputed || m_fftN == 0) return;
+
+    int N = m_fftN;
+    auto data = std::make_shared<std::vector<Complex>>(m_fftData);
+    fftShift(*data, N);
+
+    m_iftProgress = 0.0;
+
+    int nThreads = (int)std::thread::hardware_concurrency();
+    if (nThreads < 1) nThreads = 1;
+    int batchSize = nThreads * 16;
+
+    std::vector<std::function<void()>> steps;
+    for (int b = 0; b < N; b += batchSize) {        // row pass
+        int bEnd = std::min(b + batchSize, N);
+        steps.push_back([this, data, N, bEnd, b]() {
+            runFFTBatch(*data, N, b, bEnd, true, false);
+            m_iftProgress = 0.5 * bEnd / N;
+        });
+    }
+    for (int b = 0; b < N; b += batchSize) {        // column pass
+        int bEnd = std::min(b + batchSize, N);
+        steps.push_back([this, data, N, bEnd, b]() {
+            runFFTBatch(*data, N, b, bEnd, true, true);
+            m_iftProgress = 0.5 + 0.5 * bEnd / N;
+        });
+    }
+    steps.push_back([this, data, N]() {             // finalize (mirrors computeInverseFFT)
+        m_iftProgress = -1;
+        fftShift(*data, N);
+
+        int outW = (m_origW > 0) ? std::min(m_origW, N) : N;
+        int outH = (m_origH > 0) ? std::min(m_origH, N) : N;
+
+        m_imageRawPixels.resize(outW * outH);
+        for (int y = 0; y < outH; y++)
+            for (int x = 0; x < outW; x++)
+                m_imageRawPixels[y * outW + x] = (*data)[y * N + x].real();
+
+        m_imageMinVal = *std::min_element(m_imageRawPixels.begin(), m_imageRawPixels.end());
+        m_imageMaxVal = *std::max_element(m_imageRawPixels.begin(), m_imageRawPixels.end());
+        if (!m_imageContrastLocked) {
+            m_imageDispMin = m_imageMinVal;
+            m_imageDispMax = m_imageMaxVal;
+        }
+        double dmin = m_imageDispMin, dmax = m_imageDispMax;
+        double range = dmax - dmin;
+        double scale = (range > 0) ? 255.0 / range : 1.0;
+
+        m_image = QImage(outW, outH, QImage::Format_Grayscale8);
+        for (int y = 0; y < outH; y++) {
+            uchar *row = m_image.scanLine(y);
+            for (int x = 0; x < outW; x++)
+                row[x] = static_cast<uchar>(std::clamp(
+                    (m_imageRawPixels[y * outW + x] - dmin) * scale, 0.0, 255.0));
+        }
+
+        if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS) {
+            m_history[m_activeSlot].image     = m_image;
+            m_history[m_activeSlot].rawPixels = m_imageRawPixels;
+            m_history[m_activeSlot].minVal    = m_imageMinVal;
+            m_history[m_activeSlot].maxVal    = m_imageMaxVal;
+            m_history[m_activeSlot].occupied  = true;
+        }
+
+        m_zoom[0].reset(outW, outH);
+        update();
+    });
+
+    chainSteps(std::move(steps));
+#else
+    computeInverseFFT();
+#endif
+}
+
 void FtWindow::recomputeDisplayImages()
 {
     int N = m_fftN;
@@ -1344,7 +1616,7 @@ void FtWindow::recomputeDisplayImages()
     m_phaseVals.resize(total);
     m_powerVals.resize(total);
 
-    for (int i = 0; i < total; i++) {
+    parallelFor(0, total, [&](int i) {
         m_cosVals[i]   = data[i].real();
         m_sinVals[i]   = data[i].imag();
         double amp     = std::abs(data[i]);
@@ -1353,7 +1625,7 @@ void FtWindow::recomputeDisplayImages()
         m_phaseVals[i] = std::round(m_phaseVals[i] * 100.0) / 100.0;
         if (m_phaseVals[i] <= -180.0) m_phaseVals[i] = 180.0;
         m_powerVals[i] = std::log(1.0 + amp * amp);
-    }
+    });
 
     m_cosImg   = floatToImage(m_cosVals,   N);
     m_sinImg   = floatToImage(m_sinVals,   N);
@@ -1398,8 +1670,12 @@ void FtWindow::recomputeDisplayImages()
         double pScale = flatBrightness ? 0.0 : 1.0 / range;
 
         m_complexImg = QImage(N, N, QImage::Format_RGB32);
-        for (int y = 0; y < N; y++) {
-            QRgb *row = reinterpret_cast<QRgb *>(m_complexImg.scanLine(y));
+        // Detach/allocate once on this thread, then address rows by raw offset
+        // so the parallel workers never call scanLine() concurrently.
+        uchar *base = m_complexImg.bits();
+        qsizetype bpl = m_complexImg.bytesPerLine();
+        parallelFor(0, N, [&](int y) {
+            QRgb *row = reinterpret_cast<QRgb *>(base + y * bpl);
             for (int x = 0; x < N; x++) {
                 int idx = y * N + x;
                 double val = flatBrightness
@@ -1409,7 +1685,7 @@ void FtWindow::recomputeDisplayImages()
                 QColor c = QColor::fromHsvF(hue / 360.0, 1.0, val);
                 row[x] = c.rgb();
             }
-        }
+        });
     }
 
     auto mm = [](const std::vector<double> &v) {
@@ -1513,6 +1789,31 @@ QImage FtWindow::computePowerSpecMasked(const QImage &img)
         power[i] = std::log(1.0 + a * a);
     }
 
+    return floatToImage(power, N);
+}
+
+QImage FtWindow::powerSpecFromCurrentFFT() const
+{
+    // m_fftData is already in centred convention (DC at N/2, N/2), exactly
+    // what computePowerSpecMasked produces after its fft2d + fftShift — so the
+    // power spectrum is |m_fftData|^2 with the central 3x3 (DC) suppressed, no
+    // forward transform needed.
+    if (!m_ftComputed || m_fftN == 0 || m_fftData.empty())
+        return {};
+    int N = m_fftN;
+    int total = N * N;
+    std::vector<double> power(total);
+    parallelFor(0, total, [&](int i) {
+        double a = std::abs(m_fftData[i]);
+        power[i] = std::log(1.0 + a * a);
+    });
+    int half = N / 2;
+    for (int dy = -1; dy <= 1; dy++)
+        for (int dx = -1; dx <= 1; dx++) {
+            int x = half + dx, y = half + dy;
+            if (x >= 0 && x < N && y >= 0 && y < N)
+                power[y * N + x] = 0.0;
+        }
     return floatToImage(power, N);
 }
 
@@ -1702,18 +2003,18 @@ void FtWindow::trimUndoMemory()
 
 void FtWindow::storeUndoSnapshot()
 {
-    try {
-        m_undoStack.push_back(captureCurrentState());
-    } catch (const std::bad_alloc &) {
-        // Not enough memory to record an undo step. Drop the history rather
-        // than abort: the calculation that requested the snapshot still runs,
-        // it just won't be undoable.
+    // Probe first: if there isn't room to copy the current state, drop the
+    // undo history rather than risk an allocation that would abort the app.
+    // The calculation that requested the snapshot still runs, just without an
+    // undo step.
+    if (!probeAlloc(currentStateBytes())) {
         m_undoStack.clear();
         m_redoStack.clear();
         updateUndoRedoButtons();
-        qWarning() << "Undo history dropped – out of memory capturing snapshot";
+        qWarning() << "Undo history dropped – insufficient memory for snapshot";
         return;
     }
+    m_undoStack.push_back(captureCurrentState());
     if ((int)m_undoStack.size() > MAX_UNDO)
         m_undoStack.pop_front();
     clearRedoStack();
@@ -1739,12 +2040,12 @@ void FtWindow::onUndo()
 {
     if (m_undoStack.empty()) return;
     // Saving the current state for Redo is best-effort: if memory is too tight
-    // to capture it, skip Redo rather than abort the Undo the user asked for.
-    try {
+    // to capture it, skip Redo rather than block the Undo the user asked for.
+    if (probeAlloc(currentStateBytes())) {
         m_redoStack.push_back(captureCurrentState());
         if ((int)m_redoStack.size() > MAX_UNDO)
             m_redoStack.pop_front();
-    } catch (const std::bad_alloc &) {
+    } else {
         m_redoStack.clear();
     }
     applySnapshot(m_undoStack.back(), true);
@@ -1756,11 +2057,11 @@ void FtWindow::onUndo()
 void FtWindow::onRedo()
 {
     if (m_redoStack.empty()) return;
-    try {
+    if (probeAlloc(currentStateBytes())) {
         m_undoStack.push_back(captureCurrentState());
         if ((int)m_undoStack.size() > MAX_UNDO)
             m_undoStack.pop_front();
-    } catch (const std::bad_alloc &) {
+    } else {
         m_undoStack.clear();
     }
     applySnapshot(m_redoStack.back(), true);
@@ -2164,11 +2465,8 @@ void FtWindow::p1BrushApply(QPoint pos)
 
 void FtWindow::onApplyBandpass()
 {
-    try {
-        onApplyBandpassImpl();
-    } catch (const std::bad_alloc &) {
-        rollbackAfterCalcOOM(tr("apply the bandpass filter"));
-    }
+    if (!ensureCalcHeadroom(tr("apply the bandpass filter"))) return;
+    onApplyBandpassImpl();
 }
 
 void FtWindow::onApplyBandpassImpl()
@@ -2242,11 +2540,8 @@ void FtWindow::syncLatticeVectorEdits()
 
 void FtWindow::onApplyLattice()
 {
-    try {
-        onApplyLatticeImpl();
-    } catch (const std::bad_alloc &) {
-        rollbackAfterCalcOOM(tr("apply the lattice filter"));
-    }
+    if (!ensureCalcHeadroom(tr("apply the lattice filter"))) return;
+    onApplyLatticeImpl();
 }
 
 void FtWindow::onApplyLatticeImpl()
@@ -2327,11 +2622,8 @@ void FtWindow::onApplyLatticeImpl()
 
 void FtWindow::onApplyBinning()
 {
-    try {
-        onApplyBinningImpl();
-    } catch (const std::bad_alloc &) {
-        rollbackAfterCalcOOM(tr("bin the image"));
-    }
+    if (!ensureCalcHeadroom(tr("bin the image"))) return;
+    onApplyBinningImpl();
 }
 
 void FtWindow::onApplyBinningImpl()
@@ -2489,11 +2781,8 @@ void FtWindow::chainSteps(std::vector<std::function<void()>> steps)
 
 void FtWindow::onInvertContrast()
 {
-    try {
-        onInvertContrastImpl();
-    } catch (const std::bad_alloc &) {
-        rollbackAfterCalcOOM(tr("invert the contrast"));
-    }
+    if (!ensureCalcHeadroom(tr("invert the contrast"))) return;
+    onInvertContrastImpl();
 }
 
 void FtWindow::onInvertContrastImpl()
@@ -2547,11 +2836,8 @@ void FtWindow::onInvertContrastImpl()
 
 void FtWindow::onApplyEdgeTaper()
 {
-    try {
-        onApplyEdgeTaperImpl();
-    } catch (const std::bad_alloc &) {
-        rollbackAfterCalcOOM(tr("apply the edge taper"));
-    }
+    if (!ensureCalcHeadroom(tr("apply the edge taper"))) return;
+    onApplyEdgeTaperImpl();
 }
 
 void FtWindow::onApplyEdgeTaperImpl()
@@ -2634,11 +2920,8 @@ void FtWindow::onApplyEdgeTaperImpl()
 
 void FtWindow::onApplySymmetry()
 {
-    try {
-        onApplySymmetryImpl();
-    } catch (const std::bad_alloc &) {
-        rollbackAfterCalcOOM(tr("apply the symmetry"));
-    }
+    if (!ensureCalcHeadroom(tr("apply the symmetry"))) return;
+    onApplySymmetryImpl();
 }
 
 void FtWindow::onApplySymmetryImpl()
@@ -2741,11 +3024,8 @@ void FtWindow::onApplySymmetryImpl()
 
 void FtWindow::onApplyFtSymmetry()
 {
-    try {
-        onApplyFtSymmetryImpl();
-    } catch (const std::bad_alloc &) {
-        rollbackAfterCalcOOM(tr("apply the Fourier symmetry"));
-    }
+    if (!ensureCalcHeadroom(tr("apply the Fourier symmetry"))) return;
+    onApplyFtSymmetryImpl();
 }
 
 void FtWindow::onApplyFtSymmetryImpl()
@@ -2847,11 +3127,8 @@ void FtWindow::onGaborCancel()
 
 void FtWindow::onApplyGaborFilter()
 {
-    try {
-        onApplyGaborFilterImpl();
-    } catch (const std::bad_alloc &) {
-        rollbackAfterCalcOOM(tr("apply the Gabor filter"));
-    }
+    if (!ensureCalcHeadroom(tr("apply the Gabor filter"))) return;
+    onApplyGaborFilterImpl();
 }
 
 void FtWindow::onApplyGaborFilterImpl()
@@ -2977,11 +3254,8 @@ void FtWindow::onHessianCancel()
 
 void FtWindow::onApplyHessianFilter()
 {
-    try {
-        onApplyHessianFilterImpl();
-    } catch (const std::bad_alloc &) {
-        rollbackAfterCalcOOM(tr("apply the Hessian filter"));
-    }
+    if (!ensureCalcHeadroom(tr("apply the Hessian filter"))) return;
+    onApplyHessianFilterImpl();
 }
 
 void FtWindow::onApplyHessianFilterImpl()
@@ -3136,11 +3410,8 @@ void FtWindow::onMeasureCancel()
 
 void FtWindow::onApplyFtCrop()
 {
-    try {
-        onApplyFtCropImpl();
-    } catch (const std::bad_alloc &) {
-        rollbackAfterCalcOOM(tr("crop in Fourier space"));
-    }
+    if (!ensureCalcHeadroom(tr("crop in Fourier space"))) return;
+    onApplyFtCropImpl();
 }
 
 void FtWindow::onApplyFtCropImpl()
@@ -3206,11 +3477,8 @@ void FtWindow::onApplyFtCropImpl()
 
 void FtWindow::onApplyFtPad()
 {
-    try {
-        onApplyFtPadImpl();
-    } catch (const std::bad_alloc &) {
-        rollbackAfterCalcOOM(tr("pad in Fourier space"));
-    }
+    if (!ensureCalcHeadroom(tr("pad in Fourier space"))) return;
+    onApplyFtPadImpl();
 }
 
 void FtWindow::onApplyFtPadImpl()
@@ -3271,11 +3539,8 @@ void FtWindow::onApplyFtPadImpl()
 
 void FtWindow::onApplyDirectional()
 {
-    try {
-        onApplyDirectionalImpl();
-    } catch (const std::bad_alloc &) {
-        rollbackAfterCalcOOM(tr("apply the directional filter"));
-    }
+    if (!ensureCalcHeadroom(tr("apply the directional filter"))) return;
+    onApplyDirectionalImpl();
 }
 
 void FtWindow::onApplyDirectionalImpl()
@@ -3359,11 +3624,8 @@ void FtWindow::onApplyDirectionalImpl()
 
 void FtWindow::onApplyLineFilter()
 {
-    try {
-        onApplyLineFilterImpl();
-    } catch (const std::bad_alloc &) {
-        rollbackAfterCalcOOM(tr("apply the line filter"));
-    }
+    if (!ensureCalcHeadroom(tr("apply the line filter"))) return;
+    onApplyLineFilterImpl();
 }
 
 void FtWindow::onApplyLineFilterImpl()
@@ -3434,11 +3696,8 @@ void FtWindow::onFtMathCancel()
 
 void FtWindow::onFtMathCompute()
 {
-    try {
-        onFtMathComputeImpl();
-    } catch (const std::bad_alloc &) {
-        rollbackAfterCalcOOM(tr("compute the Fourier math"));
-    }
+    if (!ensureCalcHeadroom(tr("compute the Fourier math"))) return;
+    onFtMathComputeImpl();
 }
 
 void FtWindow::onFtMathComputeImpl()
@@ -3761,11 +4020,8 @@ void FtWindow::onMathCancel()
 
 void FtWindow::onMathCompute()
 {
-    try {
-        onMathComputeImpl();
-    } catch (const std::bad_alloc &) {
-        rollbackAfterCalcOOM(tr("compute the image math"));
-    }
+    if (!ensureCalcHeadroom(tr("compute the image math"))) return;
+    onMathComputeImpl();
 }
 
 void FtWindow::onMathComputeImpl()
@@ -4202,11 +4458,8 @@ void FtWindow::onExtractCancel()
 
 void FtWindow::onExtractCompute()
 {
-    try {
-        onExtractComputeImpl();
-    } catch (const std::bad_alloc &) {
-        rollbackAfterCalcOOM(tr("extract the particles"));
-    }
+    if (!ensureCalcHeadroom(tr("extract the particles"))) return;
+    onExtractComputeImpl();
 }
 
 void FtWindow::onExtractComputeImpl()
@@ -4218,6 +4471,13 @@ void FtWindow::onExtractComputeImpl()
     if (srcIdx < 0 || srcIdx >= HISTORY_SLOTS || !m_history[srcIdx].occupied) return;
     if (tgtIdx < 0 || tgtIdx >= HISTORY_SLOTS) return;
 
+    // Left-to-right blue progress bar in the parameter-window background.
+    m_toolProgress = 0.1;
+    update();
+
+    chainSteps({
+        // --- Step 1: extract the boxed particles into the target slot ---
+        [this, srcIdx, tgtIdx]() {
     int boxSize = m_extractSizeCombo->currentData().toInt();
     int tilesPerRow = 1024 / boxSize;   // 16 for 64, 8 for 128
     int maxParticles = tilesPerRow * tilesPerRow;  // 256 for 64, 64 for 128
@@ -4314,7 +4574,10 @@ void FtWindow::onExtractComputeImpl()
     m_pixelSize      = m_history[tgtIdx].pixelSize;
     m_zoom[0].reset(outSize, outSize);
     m_ftComputed = false;
-
+            m_toolProgress = 0.5;
+        },
+        // --- Step 2: persist history and remember the chosen options ---
+        [this]() {
     saveHistory();
 #ifndef __EMSCRIPTEN__
     {
@@ -4324,13 +4587,16 @@ void FtWindow::onExtractComputeImpl()
         settings.setValue("extractSizeIdx", m_extractSizeCombo->currentIndex());
     }
 #endif
-    update();
+            m_toolProgress = -1;
+        }
+    });
 }
 
 void FtWindow::onCtfCancel()
 {
     m_ctfActive = false;
     m_ctfProfile.clear();
+    m_ctfPhaseProfile.clear();
     m_ctfVoltageEdit->hide();
     m_ctfEnergySpreadEdit->hide();
     m_ctfDefocusSpreadEdit->hide();
@@ -4390,6 +4656,7 @@ void FtWindow::computeCtfProfile1D()
     double maxR = (N / 2.0) * std::sqrt(2.0);
     int nProf = std::max(64, (int)std::ceil(maxR) + 1);
     m_ctfProfile.assign(nProf, 0.0);
+    m_ctfPhaseProfile.assign(nProf, 0.0);
     // Amplitude contrast B (from user, in %) and phase contrast A = √(1−B²).
     double B = ampContrastPct / 100.0;
     B = std::max(0.0, std::min(1.0, B));
@@ -4402,34 +4669,55 @@ void FtWindow::computeCtfProfile1D()
     double profAngleRad = m_ctfAngleDeg * M_PI / 180.0;
     double dfProf = dfA + astigA * std::cos(2.0 * (profAngleRad - astigAngleRad));
     double alphaRad = openAngleMrad * 1.0e-3;
+    // Beam tilt as a spatial-frequency offset t = τ/λ (1/Å); see onCtfComputeImpl
+    // for the full rationale. The even/odd split of the exact tilted-geometry
+    // aberration gives the (elliptical) ring modulus and the coma phase.
+    double tMag = tiltRad / lambdaA;
+    double tx   = tMag * std::cos(tiltDirRad);
+    double ty   = tMag * std::sin(tiltDirRad);
+    auto chiRound = [&](double kx, double ky) {
+        double k2 = kx * kx + ky * ky;
+        return M_PI * lambdaA * dfA * k2
+             + 0.5 * M_PI * CsA * lambdaA * lambdaA * lambdaA * k2 * k2;
+    };
+    double gcoef = 2.0 * M_PI * lambdaA * dfA
+                 + 2.0 * M_PI * CsA * lambdaA * lambdaA * lambdaA * (tx * tx + ty * ty);
+    auto chiTiltAt = [&](double ux, double uy) {
+        return chiRound(ux + tx, uy + ty) - chiRound(tx, ty)
+             - gcoef * (ux * tx + uy * ty);
+    };
     for (int j = 0; j < nProf; j++) {
         double rPix = (double)j / (nProf - 1) * maxR;
         double q = rPix / (N * dxA);
         double q2 = q * q;
-        double q4 = q2 * q2;
-        double chi = M_PI * lambdaA * dfProf * q2
-                   + 0.5 * M_PI * CsA * lambdaA * lambdaA * lambdaA * q4;
-        // Beam-tilt-induced (coma) phase shift along the profile direction:
-        //   Δχ = 2π·Cs·λ²·q³·τ·cos(θ − τ_dir).
-        chi += 2.0 * M_PI * CsA * lambdaA * lambdaA * q2 * q
-                   * tiltRad * std::cos(profAngleRad - tiltDirRad);
+        double qx = q * std::cos(profAngleRad);
+        double qy = q * std::sin(profAngleRad);
+        double chiP = chiTiltAt(qx, qy);
+        double chiM = chiTiltAt(-qx, -qy);
+        double chiEven = 0.5 * (chiP + chiM)
+                       + M_PI * lambdaA * (dfProf - dfA) * q2;  // + user astig (even)
+        double chiOdd  = 0.5 * (chiP - chiM);                    // coma (odd)
         double tArg = M_PI * lambdaA * defocusSpreadA * q2;
         double envT = std::exp(-0.5 * tArg * tArg);
         // Spatial-coherence envelope from the finite gun opening angle:
         //   E_s(q) = exp(-π² α² q² (Δf + Cs·λ²·q²)²)
         double sArg = dfProf + CsA * lambdaA * lambdaA * q2;
         double envS = std::exp(-(M_PI * M_PI) * alphaRad * alphaRad * q2 * sArg * sArg);
-        m_ctfProfile[j] = envT * envS * (A * std::sin(-chi) + B * std::cos(-chi));
+        // Complex contrast transfer C = C₀·exp(−iχ_odd), with the real, oscillating
+        //   C₀ = E·(A·sin(−χ_even)+B·cos(−χ_even)).
+        // Panel 4 plots the amplitude |C| = |C₀| (the coma factor has unit modulus);
+        // panel 3 plots the phase arg(C) ∈ [−π,π].
+        double base = envT * envS * (A * std::sin(-chiEven) + B * std::cos(-chiEven));
+        Complex c = base * Complex(std::cos(chiOdd), -std::sin(chiOdd));
+        m_ctfProfile[j]      = std::abs(c);
+        m_ctfPhaseProfile[j] = std::arg(c);
     }
 }
 
 void FtWindow::onCtfCompute()
 {
-    try {
-        onCtfComputeImpl();
-    } catch (const std::bad_alloc &) {
-        rollbackAfterCalcOOM(tr("compute the CTF"));
-    }
+    if (!ensureCalcHeadroom(tr("compute the CTF"))) return;
+    onCtfComputeImpl();
 }
 
 void FtWindow::onCtfComputeImpl()
@@ -4488,6 +4776,7 @@ void FtWindow::onCtfComputeImpl()
     double maxR = (N / 2.0) * std::sqrt(2.0);
     int nProf = std::max(64, (int)std::ceil(maxR) + 1);
     m_ctfProfile.assign(nProf, 0.0);
+    m_ctfPhaseProfile.assign(nProf, 0.0);
     // Amplitude contrast B (from user, in %) and phase contrast A = √(1−B²),
     // so that A² + B² = 1.
     double B = ampContrastPct / 100.0;
@@ -4499,18 +4788,56 @@ void FtWindow::onCtfComputeImpl()
     double tiltDirRad = beamtiltDirDeg * M_PI / 180.0;
 
     double alphaRad = openAngleMrad * 1.0e-3;
-    auto ctfAt = [&](double dfLocalA, double rPix, double thetaRad) -> double {
+    // Beam tilt expressed as a spatial-frequency offset t = τ/λ (1/Å), as a
+    // 2D vector along the tilt azimuth.
+    double tMag = tiltRad / lambdaA;
+    double tx   = tMag * std::cos(tiltDirRad);
+    double ty   = tMag * std::sin(tiltDirRad);
+
+    // Show a left-to-right blue progress bar in the parameter-window
+    // background while the (1024x1024) transfer function is being built,
+    // matching Amyloid Filament and the other long-running tools.
+    m_toolProgress = 0.1;
+    update();
+
+    // chiRound/ctfAt capture their inputs by value so they stay valid when the
+    // chunked fill steps below run on later event-loop turns (on the web build
+    // this function has already returned by then).
+    // Round-lens (isotropic) wave aberration χ(k) = πλ·Δf·k² + ½πCs·λ³·k⁴,
+    // evaluated for an arbitrary 2D spatial-frequency vector.
+    auto chiRound = [lambdaA, dfA, CsA](double kx, double ky) {
+        double k2 = kx * kx + ky * ky;
+        return M_PI * lambdaA * dfA * k2
+             + 0.5 * M_PI * CsA * lambdaA * lambdaA * lambdaA * k2 * k2;
+    };
+    auto ctfAt = [N, dxA, lambdaA, dfA, CsA, defocusSpreadA, alphaRad,
+                  A, B, tx, ty, chiRound](double dfLocalA, double rPix,
+                                          double thetaRad) -> Complex {
         // Spatial frequency q (1/Å) for this radial pixel distance.
         double q = rPix / (N * dxA);
         double q2 = q * q;
-        double q4 = q2 * q2;
-        double chi = M_PI * lambdaA * dfLocalA * q2
-                   + 0.5 * M_PI * CsA * lambdaA * lambdaA * lambdaA * q4;
-        // Beam-tilt-induced (coma) phase shift. A tilt τ shifts the scattering
-        // angle (k → k + τ/λ); to first order in τ the wave aberration gains
-        //   Δχ = 2π·Cs·λ²·q³·τ·cos(θ − τ_dir).
-        chi += 2.0 * M_PI * CsA * lambdaA * lambdaA * q2 * q
-                   * tiltRad * std::cos(thetaRad - tiltDirRad);
+        double qx = q * std::cos(thetaRad);
+        double qy = q * std::sin(thetaRad);
+        // Beam tilt evaluates the round-lens aberration at the tilted geometry,
+        //   χ_tilt(q) = χ(q+t) − χ(t) − q·∇χ(t),
+        // with the constant and linear (image-shift) terms removed. Evaluate it
+        // at +q and −q so we can split it by parity in q.
+        double gcoef = 2.0 * M_PI * lambdaA * dfA
+                     + 2.0 * M_PI * CsA * lambdaA * lambdaA * lambdaA * (tx * tx + ty * ty);
+        auto chiTiltAt = [&](double ux, double uy) {
+            return chiRound(ux + tx, uy + ty) - chiRound(tx, ty)
+                 - gcoef * (ux * tx + uy * ty);
+        };
+        double chiP = chiTiltAt(qx, qy);
+        double chiM = chiTiltAt(-qx, -qy);
+        // EVEN part (defocus + Cs + 2nd-order tilt defocus/astigmatism): it sets
+        // the oscillating CTF modulus and carries the tilt astigmatism that makes
+        // the Thon rings elliptical. User lens astigmatism (also even) adds here.
+        double chiEven = 0.5 * (chiP + chiM)
+                       + M_PI * lambdaA * (dfLocalA - dfA) * q2;
+        // ODD part (1st-order coma): a pure phase aberration that does not change
+        // the modulus; it makes the transfer function genuinely complex.
+        double chiOdd = 0.5 * (chiP - chiM);
         // Temporal-coherence envelope from defocus spread.
         double tArg = M_PI * lambdaA * defocusSpreadA * q2;
         double envT = std::exp(-0.5 * tArg * tArg);
@@ -4518,39 +4845,64 @@ void FtWindow::onCtfComputeImpl()
         //   E_s(q) = exp(-π² α² q² (Δf + Cs·λ²·q²)²)
         double sArg = dfLocalA + CsA * lambdaA * lambdaA * q2;
         double envS = std::exp(-(M_PI * M_PI) * alphaRad * alphaRad * q2 * sArg * sArg);
-        return envT * envS * (A * std::sin(-chi) + B * std::cos(-chi));
+        // Complex contrast-transfer function: the real, oscillating contrast
+        // transfer C₀ = E·(A·sin(−χ_even)+B·cos(−χ_even)) — whose modulus gives
+        // the (elliptical) Thon rings — times the coma phase factor exp(−iχ_odd).
+        double E = envT * envS;
+        double base = E * (A * std::sin(-chiEven) + B * std::cos(-chiEven));
+        return base * Complex(std::cos(chiOdd), -std::sin(chiOdd));
     };
-    // 1D profile: direction-dependent defocus along m_ctfAngleDeg.
-    double profAngleRad = m_ctfAngleDeg * M_PI / 180.0;
-    double dfProf = dfA + astigA * std::cos(2.0 * (profAngleRad - astigAngleRad));
-    for (int j = 0; j < nProf; j++) {
-        double rPix = (double)j / (nProf - 1) * maxR;
-        m_ctfProfile[j] = ctfAt(dfProf, rPix, profAngleRad);
-    }
+    std::vector<std::function<void()>> steps;
 
-    // Fill Fourier transform with a direction-dependent CTF.
-    // Defocus varies azimuthally as
-    //     Δf(θ) = Δf_avg + Δf_A · cos(2·(θ − α))
-    // where θ is the Fourier-space azimuth, measured counter-clockwise from
-    // the horizontal axis (standard EM convention), and α is the astigmatism
-    // direction. The average defocus is recovered at θ = α ± 45°.
-    m_fftN = N;
-    int total = N * N;
-    m_fftData.assign(total, Complex(0.0, 0.0));
-    double half = N / 2.0;
-    for (int y = 0; y < N; y++) {
-        double dy = y - half;
-        for (int x = 0; x < N; x++) {
-            double dx = x - half;
-            double rPix = std::sqrt(dx * dx + dy * dy);
-            // Image y axis points downward, so flip it for the math CCW angle.
-            double theta = std::atan2(-dy, dx);
-            double dfLocal = dfA + astigA * std::cos(2.0 * (theta - astigAngleRad));
-            double v = ctfAt(dfLocal, rPix, theta);
-            m_fftData[y * N + x] = Complex(v, 0.0);
+    // Step: 1D profile (direction-dependent defocus along m_ctfAngleDeg) and
+    // allocation of the Fourier buffer. Panel-4 shows the CTF amplitude |C|
+    // (the coma phase factor has unit modulus, so |C| is the rectified
+    // envelope of the oscillating contrast transfer); panel-3 shows the
+    // complementary phase arg(C) ∈ [−π,π].
+    steps.push_back([this, ctfAt, nProf, maxR, dfA, astigA, astigAngleRad, N]() {
+        double profAngleRad = m_ctfAngleDeg * M_PI / 180.0;
+        double dfProf = dfA + astigA * std::cos(2.0 * (profAngleRad - astigAngleRad));
+        for (int j = 0; j < nProf; j++) {
+            double rPix = (double)j / (nProf - 1) * maxR;
+            Complex c = ctfAt(dfProf, rPix, profAngleRad);
+            m_ctfProfile[j]      = std::abs(c);
+            m_ctfPhaseProfile[j] = std::arg(c);
         }
+        m_fftN = N;
+        m_fftData.assign((size_t)N * N, Complex(0.0, 0.0));
+        m_toolProgress = 0.10;
+    });
+
+    // Steps: fill the direction-dependent Fourier transform in horizontal
+    // bands so the blue bar advances smoothly through the (1024×1024)
+    // transcendental evaluation instead of stalling on one monolithic loop.
+    // Defocus varies azimuthally as Δf(θ) = Δf_avg + Δf_A·cos(2·(θ−α)), θ
+    // measured CCW from the horizontal axis (standard EM convention); the
+    // average defocus is recovered at θ = α ± 45°.
+    const int nBands = 32;
+    for (int b = 0; b < nBands; b++) {
+        int y0 = (int)((long long)b       * N / nBands);
+        int y1 = (int)((long long)(b + 1) * N / nBands);
+        double prog = 0.10 + 0.80 * (double)(b + 1) / nBands;
+        steps.push_back([this, ctfAt, N, dfA, astigA, astigAngleRad, y0, y1, prog]() {
+            double half = N / 2.0;
+            for (int y = y0; y < y1; y++) {
+                double dy = y - half;
+                for (int x = 0; x < N; x++) {
+                    double dx = x - half;
+                    double rPix = std::sqrt(dx * dx + dy * dy);
+                    // Image y axis points downward, so flip it for the CCW angle.
+                    double theta = std::atan2(-dy, dx);
+                    double dfLocal = dfA + astigA * std::cos(2.0 * (theta - astigAngleRad));
+                    m_fftData[y * N + x] = ctfAt(dfLocal, rPix, theta);
+                }
+            }
+            m_toolProgress = prog;
+        });
     }
 
+    // Step: build the panel-2 display images.
+    steps.push_back([this, N]() {
     m_ftComputed = true;
     if (m_origW <= 0 || m_origH <= 0) {
         m_origW = N;
@@ -4571,6 +4923,11 @@ void FtWindow::onCtfComputeImpl()
     // after a round trip. This is expected (a log-scale regime difference), not
     // a wrong-display-mode bug.
     recomputeDisplayImages();
+        m_toolProgress = 0.92;
+    });
+
+    // Step: inverse transform to real space for panel 1.
+    steps.push_back([this, N]() {
 
     // Inverse-transform to real space for panel 1. The CTF is built in the
     // centred Fourier convention (zero frequency at (N/2, N/2), real-valued and
@@ -4582,6 +4939,11 @@ void FtWindow::onCtfComputeImpl()
     m_origW = N;
     m_origH = N;
     computeInverseFFT();
+        m_toolProgress = 0.97;
+    });
+
+    // Step: store the result in the active history slot.
+    steps.push_back([this, voltageKV, defocusNM, csMM]() {
 
     if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS) {
         m_imagePath = QString("ctf: %1kV df=%2nm Cs=%3mm")
@@ -4597,7 +4959,10 @@ void FtWindow::onCtfComputeImpl()
     }
 
     saveHistory();
-    update();
+        m_toolProgress = -1;
+    });
+
+    chainSteps(std::move(steps));
 }
 
 void FtWindow::onPhaseRampCancel()
@@ -4613,11 +4978,8 @@ void FtWindow::onPhaseRampCancel()
 
 void FtWindow::onPhaseRampCompute()
 {
-    try {
-        onPhaseRampComputeImpl();
-    } catch (const std::bad_alloc &) {
-        rollbackAfterCalcOOM(tr("apply the phase ramp"));
-    }
+    if (!ensureCalcHeadroom(tr("apply the phase ramp"))) return;
+    onPhaseRampComputeImpl();
 }
 
 void FtWindow::onPhaseRampComputeImpl()
@@ -4652,6 +5014,13 @@ void FtWindow::onPhaseRampComputeImpl()
     double cd = std::cos(dirRad);
     double sd = std::sin(dirRad);
 
+    // Left-to-right blue progress bar in the parameter-window background.
+    m_toolProgress = 0.1;
+    update();
+
+    chainSteps({
+        // --- Step 1: fill Fourier space with the phase ramp ---
+        [this, N, stepRad, cd, sd]() {
     m_fftN = N;
     m_fftData.assign((size_t)N * N, Complex(0.0, 0.0));
     double half = N / 2.0;
@@ -4665,7 +5034,10 @@ void FtWindow::onPhaseRampComputeImpl()
             m_fftData[y * N + x] = Complex(std::cos(phase), std::sin(phase));
         }
     }
-
+            m_toolProgress = 0.5;
+        },
+        // --- Step 2: build the panel-2 display images ---
+        [this, N]() {
     m_ftComputed = true;
     m_origW = N;
     m_origH = N;
@@ -4675,12 +5047,20 @@ void FtWindow::onPhaseRampComputeImpl()
     m_zoom[1].reset(N, N);
     m_zoom[2].reset(N, N);
     recomputeDisplayImages();
+            m_toolProgress = 0.7;
+        },
+        // --- Step 3: inverse transform to real space for panel 1 ---
+        [this]() {
 
     // Inverse-transform to real space for panel 1. computeInverseFFT now
     // produces the result in centered real-space form, so the delta of a
     // phase ramp already lands at (N/2, N/2) plus the shift implied by the
     // ramp — no extra quadrant swap needed.
     computeInverseFFT();
+            m_toolProgress = 0.9;
+        },
+        // --- Step 4: store the result in the active history slot ---
+        [this, N, dirDeg, stepDeg]() {
 
     if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS) {
         m_imagePath = QString("phase ramp: N=%1 dir=%2° step=%3°")
@@ -4696,5 +5076,7 @@ void FtWindow::onPhaseRampComputeImpl()
     }
 
     saveHistory();
-    update();
+            m_toolProgress = -1;
+        }
+    });
 }
