@@ -1398,6 +1398,200 @@ void FtWindow::computeInverseFFT()
     update();
 }
 
+#if defined(__EMSCRIPTEN__) && FT_HAVE_THREADS
+// Run one FFT pass batch: transform lines [b, bEnd) of `data` (rows when
+// columns==false, columns when columns==true) using the worker-thread pool.
+// Used by the WASM-animated transforms (computeFFTAnimated / *Inverse*).
+static void runFFTBatch(std::vector<Complex> &data, int N, int b, int bEnd,
+                        bool inverse, bool columns)
+{
+    int nThreads = (int)std::thread::hardware_concurrency();
+    if (nThreads < 1) nThreads = 1;
+    std::vector<std::thread> threads;
+    int perThread = ((bEnd - b) + nThreads - 1) / nThreads;
+    for (int t = 0; t < nThreads; t++) {
+        int i0 = b + t * perThread;
+        int i1 = std::min(i0 + perThread, bEnd);
+        if (i0 >= i1) continue;
+        threads.emplace_back([&data, N, i0, i1, inverse, columns]() {
+            std::vector<Complex> line(N);
+            for (int i = i0; i < i1; i++) {
+                if (columns) {
+                    for (int y = 0; y < N; y++) line[y] = data[y * N + i];
+                    fft1d(line, inverse);
+                    for (int y = 0; y < N; y++) data[y * N + i] = line[y];
+                } else {
+                    for (int x = 0; x < N; x++) line[x] = data[i * N + x];
+                    fft1d(line, inverse);
+                    for (int x = 0; x < N; x++) data[i * N + x] = line[x];
+                }
+            }
+        });
+    }
+    for (auto &t : threads) t.join();
+}
+#endif // defined(__EMSCRIPTEN__) && FT_HAVE_THREADS
+
+// ---------------------------------------------------------------------------
+//  Interactive FFT (arrow buttons) — animated in WASM
+// ---------------------------------------------------------------------------
+// In the browser the canvas is only composited when the main thread returns to
+// the event loop, so the blocking loops in computeFFT()/computeInverseFFT()
+// (which rely on QApplication::processEvents()) never show the traversing blue
+// progress fill. These variants run the same transform as a chain of
+// event-loop-yielding steps (via chainSteps), repainting between batches. The
+// setup/finalize blocks intentionally mirror computeFFT()/computeInverseFFT();
+// keep them in sync if those change. On desktop (or a single-threaded WASM
+// build) they fall back to the synchronous version, which already animates.
+void FtWindow::computeFFTAnimated(bool keepZoom)
+{
+#if defined(__EMSCRIPTEN__) && FT_HAVE_THREADS
+    if (m_image.isNull()) return;
+
+    // --- Setup (mirrors computeFFT) ---
+    QImage gray = m_image.convertToFormat(QImage::Format_Grayscale8);
+    int w = gray.width();
+    int h = gray.height();
+    int N = nextGoodFFTSize(std::max(w, h));
+    m_fftN = N;
+    m_origW = w;
+    m_origH = h;
+
+    double sum = 0;
+    for (int y = 0; y < h; y++) {
+        const uchar *row = gray.constScanLine(y);
+        for (int x = 0; x < w; x++) sum += row[x];
+    }
+    double avg = sum / ((double)w * h);
+
+    auto data = std::make_shared<std::vector<Complex>>(N * N, Complex(avg, 0.0));
+    for (int y = 0; y < h; y++) {
+        const uchar *row = gray.constScanLine(y);
+        for (int x = 0; x < w; x++)
+            (*data)[y * N + x] = Complex(row[x], 0.0);
+    }
+    fftShift(*data, N);
+
+    m_fftProgress = 0.02;
+
+    int nThreads = (int)std::thread::hardware_concurrency();
+    if (nThreads < 1) nThreads = 1;
+    int batchSize = nThreads * 16;
+
+    std::vector<std::function<void()>> steps;
+    for (int b = 0; b < N; b += batchSize) {        // row pass
+        int bEnd = std::min(b + batchSize, N);
+        steps.push_back([this, data, N, bEnd, b]() {
+            runFFTBatch(*data, N, b, bEnd, false, false);
+            m_fftProgress = 0.02 + 0.48 * bEnd / N;
+        });
+    }
+    for (int b = 0; b < N; b += batchSize) {        // column pass
+        int bEnd = std::min(b + batchSize, N);
+        steps.push_back([this, data, N, bEnd, b]() {
+            runFFTBatch(*data, N, b, bEnd, false, true);
+            m_fftProgress = 0.5 + 0.48 * bEnd / N;
+        });
+    }
+    steps.push_back([this, data, N, keepZoom]() {   // finalize (mirrors computeFFT)
+        fftShift(*data, N);
+        m_fftData = *data;
+        recomputeDisplayImages();
+        m_fftProgress = -1;
+        m_ftComputed = true;
+        m_modeBtn->show();
+        m_maskBtnVisible = true;
+        if (!keepZoom) {
+            m_zoom[1].reset(N, N);
+            m_zoom[2].reset(N, N);
+        }
+        update();
+    });
+
+    chainSteps(std::move(steps));
+#else
+    computeFFT(keepZoom);
+#endif
+}
+
+void FtWindow::computeInverseFFTAnimated()
+{
+#if defined(__EMSCRIPTEN__) && FT_HAVE_THREADS
+    if (!m_ftComputed || m_fftN == 0) return;
+
+    int N = m_fftN;
+    auto data = std::make_shared<std::vector<Complex>>(m_fftData);
+    fftShift(*data, N);
+
+    m_iftProgress = 0.0;
+
+    int nThreads = (int)std::thread::hardware_concurrency();
+    if (nThreads < 1) nThreads = 1;
+    int batchSize = nThreads * 16;
+
+    std::vector<std::function<void()>> steps;
+    for (int b = 0; b < N; b += batchSize) {        // row pass
+        int bEnd = std::min(b + batchSize, N);
+        steps.push_back([this, data, N, bEnd, b]() {
+            runFFTBatch(*data, N, b, bEnd, true, false);
+            m_iftProgress = 0.5 * bEnd / N;
+        });
+    }
+    for (int b = 0; b < N; b += batchSize) {        // column pass
+        int bEnd = std::min(b + batchSize, N);
+        steps.push_back([this, data, N, bEnd, b]() {
+            runFFTBatch(*data, N, b, bEnd, true, true);
+            m_iftProgress = 0.5 + 0.5 * bEnd / N;
+        });
+    }
+    steps.push_back([this, data, N]() {             // finalize (mirrors computeInverseFFT)
+        m_iftProgress = -1;
+        fftShift(*data, N);
+
+        int outW = (m_origW > 0) ? std::min(m_origW, N) : N;
+        int outH = (m_origH > 0) ? std::min(m_origH, N) : N;
+
+        m_imageRawPixels.resize(outW * outH);
+        for (int y = 0; y < outH; y++)
+            for (int x = 0; x < outW; x++)
+                m_imageRawPixels[y * outW + x] = (*data)[y * N + x].real();
+
+        m_imageMinVal = *std::min_element(m_imageRawPixels.begin(), m_imageRawPixels.end());
+        m_imageMaxVal = *std::max_element(m_imageRawPixels.begin(), m_imageRawPixels.end());
+        if (!m_imageContrastLocked) {
+            m_imageDispMin = m_imageMinVal;
+            m_imageDispMax = m_imageMaxVal;
+        }
+        double dmin = m_imageDispMin, dmax = m_imageDispMax;
+        double range = dmax - dmin;
+        double scale = (range > 0) ? 255.0 / range : 1.0;
+
+        m_image = QImage(outW, outH, QImage::Format_Grayscale8);
+        for (int y = 0; y < outH; y++) {
+            uchar *row = m_image.scanLine(y);
+            for (int x = 0; x < outW; x++)
+                row[x] = static_cast<uchar>(std::clamp(
+                    (m_imageRawPixels[y * outW + x] - dmin) * scale, 0.0, 255.0));
+        }
+
+        if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS) {
+            m_history[m_activeSlot].image     = m_image;
+            m_history[m_activeSlot].rawPixels = m_imageRawPixels;
+            m_history[m_activeSlot].minVal    = m_imageMinVal;
+            m_history[m_activeSlot].maxVal    = m_imageMaxVal;
+            m_history[m_activeSlot].occupied  = true;
+        }
+
+        m_zoom[0].reset(outW, outH);
+        update();
+    });
+
+    chainSteps(std::move(steps));
+#else
+    computeInverseFFT();
+#endif
+}
+
 void FtWindow::recomputeDisplayImages()
 {
     int N = m_fftN;

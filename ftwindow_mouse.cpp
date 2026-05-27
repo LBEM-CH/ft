@@ -903,21 +903,26 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         }
     }
 
+    // FT / FT⁻¹ arrows. Ignore clicks while a transform is still animating
+    // (the WASM-animated variants run asynchronously, so a second click could
+    // otherwise race the in-flight one).
+    bool transformBusy = (m_fftProgress >= 0.0) || (m_iftProgress >= 0.0);
+
     // FT arrow
-    if (!m_image.isNull()) {
+    if (!m_image.isNull() && !transformBusy) {
         QRect arrowRect = upperArrowBounds();
         if (arrowRect.contains(event->pos())) {
-            computeFFT();
+            computeFFTAnimated();
             update();
             return;
         }
     }
 
     // FT⁻¹ arrow
-    if (m_ftComputed) {
+    if (m_ftComputed && !transformBusy) {
         QRect iftRect = lowerArrowBounds();
         if (iftRect.contains(event->pos())) {
-            computeInverseFFT();
+            computeInverseFFTAnimated();
             update();
             return;
         }

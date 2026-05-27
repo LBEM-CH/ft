@@ -185,6 +185,12 @@ private:
     void extractImageData();
     void computeFFT(bool keepZoom = false);
     void computeInverseFFT();
+    // Interactive (FT / FT⁻¹ arrow) variants. On desktop these just call the
+    // synchronous versions above; in the WASM build they run the transform in
+    // event-loop-yielding chunks so the blue progress fill actually animates
+    // across the arrow (a blocking loop never repaints the browser canvas).
+    void computeFFTAnimated(bool keepZoom = false);
+    void computeInverseFFTAnimated();
     void recomputeDisplayImages();
     void chainSteps(std::vector<std::function<void()>> steps);
     void rebuildImageWithLUT();      // rebuild m_image using display min/max
