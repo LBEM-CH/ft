@@ -4436,10 +4436,12 @@ void FtWindow::computeCtfProfile1D()
         //   E_s(q) = exp(-π² α² q² (Δf + Cs·λ²·q²)²)
         double sArg = dfProf + CsA * lambdaA * lambdaA * q2;
         double envS = std::exp(-(M_PI * M_PI) * alphaRad * alphaRad * q2 * sArg * sArg);
-        // Real part of the complex contrast transfer:
-        //   C₀·cos(χ_odd), C₀ = E·(A·sin(−χ_even)+B·cos(−χ_even)).
+        // CTF amplitude (modulus), ignoring all phase. The coma phase factor
+        // exp(−iχ_odd) has unit modulus, so |C| = |C₀| with
+        //   C₀ = E·(A·sin(−χ_even)+B·cos(−χ_even)).
+        (void)chiOdd;
         double base = envT * envS * (A * std::sin(-chiEven) + B * std::cos(-chiEven));
-        m_ctfProfile[j] = base * std::cos(chiOdd);
+        m_ctfProfile[j] = std::abs(base);
     }
 }
 
@@ -4521,6 +4523,17 @@ void FtWindow::onCtfComputeImpl()
     double tMag = tiltRad / lambdaA;
     double tx   = tMag * std::cos(tiltDirRad);
     double ty   = tMag * std::sin(tiltDirRad);
+
+    // Show a left-to-right blue progress bar in the parameter-window
+    // background while the (1024x1024) transfer function is being built,
+    // matching Amyloid Filament and the other long-running tools.
+    m_toolProgress = 0.1;
+    update();
+
+    chainSteps({
+        // --- Step 1: build the 1D profile and fill Fourier space ---
+        [this, N, dxA, lambdaA, dfA, CsA, astigA, astigAngleRad,
+         defocusSpreadA, B, A, tx, ty, alphaRad, nProf, maxR]() {
     // Round-lens (isotropic) wave aberration χ(k) = πλ·Δf·k² + ½πCs·λ³·k⁴,
     // evaluated for an arbitrary 2D spatial-frequency vector.
     auto chiRound = [&](double kx, double ky) {
@@ -4573,8 +4586,10 @@ void FtWindow::onCtfComputeImpl()
     double dfProf = dfA + astigA * std::cos(2.0 * (profAngleRad - astigAngleRad));
     for (int j = 0; j < nProf; j++) {
         double rPix = (double)j / (nProf - 1) * maxR;
-        // 1D curve shows the (real part of the) conventional contrast transfer.
-        m_ctfProfile[j] = ctfAt(dfProf, rPix, profAngleRad).real();
+        // 1D curve shows the CTF amplitude (modulus), ignoring all phase: the
+        // coma phase factor exp(−iχ_odd) has unit modulus, so |C| reduces to the
+        // rectified envelope of the oscillating contrast transfer.
+        m_ctfProfile[j] = std::abs(ctfAt(dfProf, rPix, profAngleRad));
     }
 
     // Fill Fourier transform with a direction-dependent CTF.
@@ -4598,7 +4613,10 @@ void FtWindow::onCtfComputeImpl()
             m_fftData[y * N + x] = ctfAt(dfLocal, rPix, theta);
         }
     }
-
+            m_toolProgress = 0.5;
+        },
+        // --- Step 2: build the panel-2 display images ---
+        [this, N]() {
     m_ftComputed = true;
     if (m_origW <= 0 || m_origH <= 0) {
         m_origW = N;
@@ -4619,6 +4637,10 @@ void FtWindow::onCtfComputeImpl()
     // after a round trip. This is expected (a log-scale regime difference), not
     // a wrong-display-mode bug.
     recomputeDisplayImages();
+            m_toolProgress = 0.7;
+        },
+        // --- Step 3: inverse transform to real space for panel 1 ---
+        [this, N]() {
 
     // Inverse-transform to real space for panel 1. The CTF is built in the
     // centred Fourier convention (zero frequency at (N/2, N/2), real-valued and
@@ -4630,6 +4652,10 @@ void FtWindow::onCtfComputeImpl()
     m_origW = N;
     m_origH = N;
     computeInverseFFT();
+            m_toolProgress = 0.9;
+        },
+        // --- Step 4: store the result in the active history slot ---
+        [this, voltageKV, defocusNM, csMM]() {
 
     if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS) {
         m_imagePath = QString("ctf: %1kV df=%2nm Cs=%3mm")
@@ -4645,7 +4671,9 @@ void FtWindow::onCtfComputeImpl()
     }
 
     saveHistory();
-    update();
+            m_toolProgress = -1;
+        }
+    });
 }
 
 void FtWindow::onPhaseRampCancel()

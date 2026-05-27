@@ -3364,28 +3364,41 @@ void FtWindow::paintEvent(QPaintEvent *)
             p.setBrush(QColor(245, 245, 245));
             p.drawRect(plotX, plotY, plotW, plotH);
 
-            // Grid lines at -1, -0.5, 0, 0.5, 1 (profile range is [-1,1])
+            // Grid lines at 0.25, 0.5, 0.75 (amplitude range is [0,1])
             p.setPen(QPen(QColor(210, 210, 210), 1));
             for (int g = 1; g < 4; g++) {
                 int gy = plotY + g * plotH / 4;
                 p.drawLine(plotX, gy, plotX + plotW, gy);
             }
 
-            // Zero line
-            int zeroY = plotY + plotH / 2;
-            p.setPen(QPen(QColor(160, 160, 160), 1));
-            p.drawLine(plotX, zeroY, plotX + plotW, zeroY);
+            // The profile runs from q = 0 to the diagonal (corner) frequency, but
+            // along the red-line direction θ the CTF in panel 2 only exists out to
+            // where the ray leaves the square grid, at radial distance
+            //   r_edge(θ) = (N/2) / max(|cosθ|, |sinθ|).
+            // As a fraction of the full diagonal r_max = (N/2)·√2 this is
+            //   frac = 1 / (√2 · max(|cosθ|, |sinθ|)),
+            // = 1/√2 ≈ 0.707 along the axes (q up to Nyquist) and 1 along the
+            // diagonal. Plot the curve only up to that point; leave the rest empty.
+            double thetaRad = m_ctfAngleDeg * M_PI / 180.0;
+            double mAxis = std::max(std::abs(std::cos(thetaRad)),
+                                    std::abs(std::sin(thetaRad)));
+            double validFrac = (mAxis > 1e-9)
+                                 ? std::min(1.0, 1.0 / (std::sqrt(2.0) * mAxis))
+                                 : 1.0;
 
-            // Profile curve
+            // Profile curve (amplitude, [0,1]; 0 at the bottom axis, 1 at the top)
             p.setRenderHint(QPainter::Antialiasing, true);
             p.setPen(QPen(QColor(40, 100, 220), 2));
             p.setBrush(Qt::NoBrush);
             QPainterPath curve;
+            bool started = false;
             for (int j = 0; j < nPts; j++) {
-                double xp = plotX + (double)j / (nPts - 1) * plotW;
-                double v = std::clamp(m_ctfProfile[j], -1.0, 1.0);
-                double yp = plotY + plotH / 2.0 - v * (plotH / 2.0);
-                if (j == 0) curve.moveTo(xp, yp);
+                double frac = (double)j / (nPts - 1);
+                if (frac > validFrac) break;
+                double xp = plotX + frac * plotW;
+                double v = std::clamp(m_ctfProfile[j], 0.0, 1.0);
+                double yp = plotY + plotH - v * plotH;
+                if (!started) { curve.moveTo(xp, yp); started = true; }
                 else curve.lineTo(xp, yp);
             }
             p.drawPath(curve);
@@ -3396,16 +3409,17 @@ void FtWindow::paintEvent(QPaintEvent *)
             p.drawLine(plotX, plotY + plotH, plotX + plotW, plotY + plotH);
             p.drawLine(plotX, plotY, plotX, plotY + plotH);
 
-            // Y axis labels
+            // Y axis labels (amplitude range [0,1])
             {
                 QFont af; af.setPixelSize(10); p.setFont(af);
                 QFontMetrics afm(af);
                 p.setPen(QColor(60, 60, 60));
                 QString yMax = "1";
-                QString yMid = "0";
-                QString yMin = "-1";
+                QString yMid = "0.5";
+                QString yMin = "0";
+                int midY = plotY + plotH / 2;
                 p.drawText(plotX - afm.horizontalAdvance(yMax) - 4, plotY + afm.ascent(), yMax);
-                p.drawText(plotX - afm.horizontalAdvance(yMid) - 4, zeroY + afm.ascent() / 2, yMid);
+                p.drawText(plotX - afm.horizontalAdvance(yMid) - 4, midY + afm.ascent() / 2, yMid);
                 p.drawText(plotX - afm.horizontalAdvance(yMin) - 4, plotY + plotH, yMin);
             }
 
@@ -3450,7 +3464,7 @@ void FtWindow::paintEvent(QPaintEvent *)
             {
                 QFont tf; tf.setBold(true); tf.setPixelSize(12); p.setFont(tf);
                 p.setPen(QColor(40, 40, 40));
-                p.drawText(rx + 8, ry + 16, "CTF profile");
+                p.drawText(rx + 8, ry + 16, "CTF Amplitude Profile");
             }
 
             // Direction + defocus annotation in the top-right corner
