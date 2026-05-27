@@ -8,11 +8,12 @@
 #        cd emsdk && ./emsdk install latest && ./emsdk activate latest
 #
 #   2. Install Qt 6.5+ with the WebAssembly component via the Qt installer
-#      (select "WebAssembly (single-threaded)" under your Qt version)
+#      (select "WebAssembly (multi-threaded)" under your Qt version — the
+#      multithreaded FFT requires this kit, NOT "wasm_singlethread")
 #
 #   3. Set these environment variables (or edit paths below):
 #        QT_VERSION    – Qt version to use for default paths, e.g. 6.8.3
-#        QT_WASM_PATH  – path to the Qt WASM kit, e.g. ~/Qt/$QT_VERSION/wasm_singlethread
+#        QT_WASM_PATH  – path to the Qt WASM kit, e.g. ~/Qt/$QT_VERSION/wasm_multithread
 #        EMSDK         – path to your emsdk directory
 #
 # Usage:
@@ -26,7 +27,7 @@ set -e
 
 # ---- Configure paths (edit if needed) ----
 QT_VERSION="${QT_VERSION:-6.8.3}"
-QT_WASM_PATH="${QT_WASM_PATH:-$HOME/Qt/$QT_VERSION/wasm_singlethread}"
+QT_WASM_PATH="${QT_WASM_PATH:-$HOME/Qt/$QT_VERSION/wasm_multithread}"
 EMSDK="${EMSDK:-$HOME/Projects/emsdk}"
 
 # Host Qt kit (needed for cross-compilation). Pick per OS.
@@ -115,11 +116,14 @@ echo ""
 echo "=== Build complete ==="
 echo "Output files in: $BUILD_DIR"
 echo ""
-echo "To serve locally:"
-echo "  cd $BUILD_DIR && python3 -m http.server 8080"
+echo "To serve locally (multithreading needs the COOP/COEP headers, which the"
+echo "stock 'python3 -m http.server' does NOT send — use the bundled server):"
+echo "  cd $BUILD_DIR && python3 $SCRIPT_DIR/serve_wasm.py 8080"
 echo ""
-echo "Then open http://localhost:8080/ft.html in your browser."
+echo "Then open http://localhost:8080/ft.html in your browser. Confirm threads"
+echo "are active in the JS console: typeof SharedArrayBuffer !== 'undefined'."
 echo ""
-echo "For production deployment, serve with these HTTP headers:"
+echo "For production deployment, serve with these HTTP headers (required for"
+echo "SharedArrayBuffer / pthreads):"
 echo "  Cross-Origin-Opener-Policy: same-origin"
 echo "  Cross-Origin-Embedder-Policy: require-corp"

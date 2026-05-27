@@ -307,6 +307,14 @@ private:
         double  minVal = 0, maxVal = 0;
         double  pixelSize = 1.0;
         bool    occupied = false;
+        // Cached forward FFT of this slot's image, so re-activating a slot
+        // restores it instead of recomputing (the expensive part of a buffer
+        // switch). Saved on leaving a slot and restored on entering one; empty
+        // fftData / ftComputed == false means "not cached, must recompute".
+        std::vector<Complex> fftData;
+        int  fftN = 0;
+        int  fftOrigW = 0, fftOrigH = 0;
+        bool ftComputed = false;
     };
     HistoryEntry m_history[HISTORY_SLOTS];
     QRect        m_historyRects[HISTORY_SLOTS];    // panel 3 screen rects
@@ -334,6 +342,10 @@ private:
     std::deque<BufferSnapshot> m_redoStack;
 
     static QImage computePowerSpecMasked(const QImage &img);
+    // Build the masked power-spectrum thumbnail directly from the current
+    // m_fftData (already centred), avoiding a fresh forward FFT. Equivalent to
+    // computePowerSpecMasked(m_image) whenever m_ftComputed is true.
+    QImage powerSpecFromCurrentFFT() const;
     void saveHistory();
     void restoreHistory();
     BufferSnapshot captureCurrentState() const;
@@ -644,7 +656,8 @@ private:
     QLineEdit  *m_ctfBeamtiltDirEdit  = nullptr;
     QPushButton *m_ctfCancelBtn       = nullptr;
     QPushButton *m_ctfComputeBtn      = nullptr;
-    std::vector<double> m_ctfProfile;      // 1D CTF profile from center to corner
+    std::vector<double> m_ctfProfile;      // 1D CTF amplitude profile (|C|, center->corner)
+    std::vector<double> m_ctfPhaseProfile; // 1D CTF phase profile (arg C, rad), same sampling
     double      m_ctfAngleDeg = 0.0;       // profile direction (deg, CCW from +x)
     bool        m_ctfDragging = false;
     void onCtfCompute();

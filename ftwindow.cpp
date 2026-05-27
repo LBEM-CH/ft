@@ -67,6 +67,7 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     // Mode cycle button
     m_modeBtn = new QPushButton(modeLabel(), this);
     m_modeBtn->setFixedSize(180, 30);
+    m_modeBtn->setToolTip("Switch between display modes for the Fourier space");
     connect(m_modeBtn, &QPushButton::clicked, this, &FtWindow::onCycleMode);
     m_modeBtn->hide();
 

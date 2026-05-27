@@ -59,16 +59,30 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         {
             if (i == m_activeSlot) return;   // already active
 
-            // Save current active image back to its slot
+            // Save current active image back to its slot, caching its forward
+            // FFT so returning here won't recompute it. The power-spectrum
+            // thumbnail is derived from that cached FFT (no extra transform).
             if (m_activeSlot >= 0 && !m_image.isNull()) {
-                m_history[m_activeSlot].image        = m_image;
-                m_history[m_activeSlot].path         = m_imagePath;
-                m_history[m_activeSlot].rawPixels    = m_imageRawPixels;
-                m_history[m_activeSlot].minVal       = m_imageMinVal;
-                m_history[m_activeSlot].maxVal       = m_imageMaxVal;
-                m_history[m_activeSlot].pixelSize    = m_pixelSize;
-                m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
-                m_history[m_activeSlot].occupied     = true;
+                HistoryEntry &cur = m_history[m_activeSlot];
+                cur.image        = m_image;
+                cur.path         = m_imagePath;
+                cur.rawPixels    = m_imageRawPixels;
+                cur.minVal       = m_imageMinVal;
+                cur.maxVal       = m_imageMaxVal;
+                cur.pixelSize    = m_pixelSize;
+                cur.ftComputed   = m_ftComputed;
+                if (m_ftComputed) {
+                    cur.fftData      = m_fftData;
+                    cur.fftN         = m_fftN;
+                    cur.fftOrigW     = m_origW;
+                    cur.fftOrigH     = m_origH;
+                    cur.powerSpecImg = powerSpecFromCurrentFFT();
+                } else {
+                    cur.fftData.clear();
+                    cur.fftData.shrink_to_fit();
+                    cur.powerSpecImg = computePowerSpecMasked(m_image);
+                }
+                cur.occupied     = true;
             }
 
             // Activate the clicked slot
@@ -96,13 +110,27 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
                 m_pixelSize      = 1.0;
             }
 
-            m_ftComputed = false;
             m_modeBtn->setText(modeLabel());
-            m_modeBtn->hide();
-            m_maskBtnVisible = false;
 
-            if (!m_image.isNull())
-                computeFFT(true);
+            if (m_history[i].occupied && m_history[i].ftComputed
+                && !m_history[i].fftData.empty()) {
+                // Cached FFT: restore it and rebuild only the display images
+                // (parallelized) instead of recomputing the forward transform.
+                m_fftData    = m_history[i].fftData;
+                m_fftN       = m_history[i].fftN;
+                m_origW      = m_history[i].fftOrigW;
+                m_origH      = m_history[i].fftOrigH;
+                m_ftComputed = true;
+                recomputeDisplayImages();
+                m_modeBtn->show();
+                m_maskBtnVisible = true;
+            } else {
+                m_ftComputed = false;
+                m_modeBtn->hide();
+                m_maskBtnVisible = false;
+                if (!m_image.isNull())
+                    computeFFT(true);
+            }
 
             saveHistory();
 #ifndef __EMSCRIPTEN__
@@ -649,6 +677,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         bool was = m_ctfActive; deactivateAllTools();
         m_ctfActive = !was;
         m_ctfProfile.clear();
+        m_ctfPhaseProfile.clear();
         showToolWidgets(); update(); return;
     }
     if (m_toolBtnRects[12].contains(event->pos())) {
@@ -1229,6 +1258,10 @@ void FtWindow::mouseMoveEvent(QMouseEvent *event)
         else if (overRect(m_maskBtnRect, true))
             setToolTip("Mask out the central pixels of the Fourier transform display so\n"
                        "the bright DC component does not dominate the contrast.");
+        else if (!m_image.isNull() && upperArrowBounds().contains(event->pos()))
+            setToolTip("Compute Fourier Transform");
+        else if (m_ftComputed && lowerArrowBounds().contains(event->pos()))
+            setToolTip("Compute Inverse Fourier Transform");
         else if (!paramTip.isEmpty())
             setToolTip(paramTip);
         else if (!m_histDragging)

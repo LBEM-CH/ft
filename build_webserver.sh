@@ -28,7 +28,9 @@ TARBALL="ft-wasm.tar.gz"
 REMOTE="${1:-}"
 REMOTE_DIR="${2:-/srv/ft}"
 
-ARTIFACTS=(ft.html ft.js ft.wasm qtloader.js qtlogo.svg images
+# ft.worker.js is the pthread worker bootstrap emitted by the multithreaded
+# (-pthread) build; it is required at runtime or the worker pool fails to load.
+ARTIFACTS=(ft.html ft.js ft.wasm ft.worker.js qtloader.js qtlogo.svg images
            manual.html manual_panel1.html manual_panel2.html manual_exercises.html)
 
 if [[ ! -d "$BUILD_DIR" ]]; then
@@ -57,7 +59,13 @@ To deploy manually, copy $TARBALL to the target:
 
 Then run on target host:
 
-    sudo \rm -rf /srv/ft 
+    sudo \rm -rf /srv/ft2 
+    sudo mkdir -p /srv/ft2
+    sudo tar xzf $TARBALL -C /srv/ft2
+    sudo systemctl reload apache2
+
+or: 
+    sudo \rm -rf /srv/ft
     sudo mkdir -p /srv/ft
     sudo tar xzf $TARBALL -C /srv/ft
     sudo systemctl reload apache2
@@ -93,7 +101,7 @@ ssh -tt "$REMOTE" bash -s <<EOF
 set -euo pipefail
 sudo mkdir -p "$REMOTE_DIR"
 # Wipe only the app artifacts, not the whole directory, in case it holds other files.
-sudo rm -rf "$REMOTE_DIR"/{ft.html,ft.js,ft.wasm,qtloader.js,qtlogo.svg,images,manual.html,manual_panel1.html,manual_panel2.html,manual_exercises.html}
+sudo rm -rf "$REMOTE_DIR"/{ft.html,ft.js,ft.wasm,ft.worker.js,qtloader.js,qtlogo.svg,images,manual.html,manual_panel1.html,manual_panel2.html,manual_exercises.html}
 sudo tar xzf ~/$TARBALL -C "$REMOTE_DIR"
 sudo chown -R root:root "$REMOTE_DIR"
 rm ~/$TARBALL
@@ -105,7 +113,8 @@ else
 fi
 EOF
 
-# Extract hostname from user@host for the URL hint.
+# Extract hostname from user@host for the URL hint. The public path is the
+# basename of the deploy dir (matches the Alias: /srv/ft -> /ft, /srv/ft2 -> /ft2).
 REMOTE_HOST="${REMOTE#*@}"
 echo "Deployed to $REMOTE:$REMOTE_DIR"
-echo "Open: https://$REMOTE_HOST/ft/"
+echo "Open: https://$REMOTE_HOST/$(basename "$REMOTE_DIR")/"

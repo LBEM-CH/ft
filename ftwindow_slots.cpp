@@ -21,6 +21,36 @@ static bool probeAlloc(qint64 bytes)
 #endif
 }
 
+// Run body(i) for i in [begin, end) across the available worker threads (the
+// same pool used by the FFT). Falls back to a serial loop when threads are
+// unavailable or the range is small. body must be safe to call concurrently —
+// callers here only ever write to disjoint indices.
+template <typename F>
+static void parallelFor(int begin, int end, F &&body)
+{
+    int n = end - begin;
+    if (n <= 0) return;
+#if FT_HAVE_THREADS
+    int nThreads = (int)std::thread::hardware_concurrency();
+    if (nThreads < 1) nThreads = 1;
+    if (nThreads > 1 && n >= 4096) {
+        std::vector<std::thread> threads;
+        int per = (n + nThreads - 1) / nThreads;
+        for (int t = 0; t < nThreads; t++) {
+            int a = begin + t * per;
+            int b = std::min(a + per, end);
+            if (a < b)
+                threads.emplace_back([a, b, &body]() {
+                    for (int i = a; i < b; i++) body(i);
+                });
+        }
+        for (auto &th : threads) th.join();
+        return;
+    }
+#endif
+    for (int i = begin; i < end; i++) body(i);
+}
+
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 static FtWindow *g_fsWindow = nullptr;
@@ -1130,8 +1160,8 @@ void FtWindow::computeFFT(bool keepZoom)
     repaint();
 
     {
-#ifdef __EMSCRIPTEN__
-        // Single-threaded FFT for WASM (no pthreads)
+#if !FT_HAVE_THREADS
+        // Single-threaded FFT fallback (WASM built without -pthread)
         std::vector<Complex> tmp(N);
         for (int y = 0; y < N; y++) {
             for (int x = 0; x < N; x++) tmp[x] = data[y * N + x];
@@ -1240,8 +1270,8 @@ void FtWindow::computeInverseFFT()
     repaint();
 
     {
-#ifdef __EMSCRIPTEN__
-        // Single-threaded inverse FFT for WASM
+#if !FT_HAVE_THREADS
+        // Single-threaded inverse FFT fallback (WASM built without -pthread)
         std::vector<Complex> tmp(N);
         for (int y = 0; y < N; y++) {
             for (int x = 0; x < N; x++) tmp[x] = data[y * N + x];
@@ -1392,7 +1422,7 @@ void FtWindow::recomputeDisplayImages()
     m_phaseVals.resize(total);
     m_powerVals.resize(total);
 
-    for (int i = 0; i < total; i++) {
+    parallelFor(0, total, [&](int i) {
         m_cosVals[i]   = data[i].real();
         m_sinVals[i]   = data[i].imag();
         double amp     = std::abs(data[i]);
@@ -1401,7 +1431,7 @@ void FtWindow::recomputeDisplayImages()
         m_phaseVals[i] = std::round(m_phaseVals[i] * 100.0) / 100.0;
         if (m_phaseVals[i] <= -180.0) m_phaseVals[i] = 180.0;
         m_powerVals[i] = std::log(1.0 + amp * amp);
-    }
+    });
 
     m_cosImg   = floatToImage(m_cosVals,   N);
     m_sinImg   = floatToImage(m_sinVals,   N);
@@ -1446,8 +1476,12 @@ void FtWindow::recomputeDisplayImages()
         double pScale = flatBrightness ? 0.0 : 1.0 / range;
 
         m_complexImg = QImage(N, N, QImage::Format_RGB32);
-        for (int y = 0; y < N; y++) {
-            QRgb *row = reinterpret_cast<QRgb *>(m_complexImg.scanLine(y));
+        // Detach/allocate once on this thread, then address rows by raw offset
+        // so the parallel workers never call scanLine() concurrently.
+        uchar *base = m_complexImg.bits();
+        qsizetype bpl = m_complexImg.bytesPerLine();
+        parallelFor(0, N, [&](int y) {
+            QRgb *row = reinterpret_cast<QRgb *>(base + y * bpl);
             for (int x = 0; x < N; x++) {
                 int idx = y * N + x;
                 double val = flatBrightness
@@ -1457,7 +1491,7 @@ void FtWindow::recomputeDisplayImages()
                 QColor c = QColor::fromHsvF(hue / 360.0, 1.0, val);
                 row[x] = c.rgb();
             }
-        }
+        });
     }
 
     auto mm = [](const std::vector<double> &v) {
@@ -1561,6 +1595,31 @@ QImage FtWindow::computePowerSpecMasked(const QImage &img)
         power[i] = std::log(1.0 + a * a);
     }
 
+    return floatToImage(power, N);
+}
+
+QImage FtWindow::powerSpecFromCurrentFFT() const
+{
+    // m_fftData is already in centred convention (DC at N/2, N/2), exactly
+    // what computePowerSpecMasked produces after its fft2d + fftShift — so the
+    // power spectrum is |m_fftData|^2 with the central 3x3 (DC) suppressed, no
+    // forward transform needed.
+    if (!m_ftComputed || m_fftN == 0 || m_fftData.empty())
+        return {};
+    int N = m_fftN;
+    int total = N * N;
+    std::vector<double> power(total);
+    parallelFor(0, total, [&](int i) {
+        double a = std::abs(m_fftData[i]);
+        power[i] = std::log(1.0 + a * a);
+    });
+    int half = N / 2;
+    for (int dy = -1; dy <= 1; dy++)
+        for (int dx = -1; dx <= 1; dx++) {
+            int x = half + dx, y = half + dy;
+            if (x >= 0 && x < N && y >= 0 && y < N)
+                power[y * N + x] = 0.0;
+        }
     return floatToImage(power, N);
 }
 
@@ -4218,6 +4277,13 @@ void FtWindow::onExtractComputeImpl()
     if (srcIdx < 0 || srcIdx >= HISTORY_SLOTS || !m_history[srcIdx].occupied) return;
     if (tgtIdx < 0 || tgtIdx >= HISTORY_SLOTS) return;
 
+    // Left-to-right blue progress bar in the parameter-window background.
+    m_toolProgress = 0.1;
+    update();
+
+    chainSteps({
+        // --- Step 1: extract the boxed particles into the target slot ---
+        [this, srcIdx, tgtIdx]() {
     int boxSize = m_extractSizeCombo->currentData().toInt();
     int tilesPerRow = 1024 / boxSize;   // 16 for 64, 8 for 128
     int maxParticles = tilesPerRow * tilesPerRow;  // 256 for 64, 64 for 128
@@ -4314,7 +4380,10 @@ void FtWindow::onExtractComputeImpl()
     m_pixelSize      = m_history[tgtIdx].pixelSize;
     m_zoom[0].reset(outSize, outSize);
     m_ftComputed = false;
-
+            m_toolProgress = 0.5;
+        },
+        // --- Step 2: persist history and remember the chosen options ---
+        [this]() {
     saveHistory();
 #ifndef __EMSCRIPTEN__
     {
@@ -4324,13 +4393,16 @@ void FtWindow::onExtractComputeImpl()
         settings.setValue("extractSizeIdx", m_extractSizeCombo->currentIndex());
     }
 #endif
-    update();
+            m_toolProgress = -1;
+        }
+    });
 }
 
 void FtWindow::onCtfCancel()
 {
     m_ctfActive = false;
     m_ctfProfile.clear();
+    m_ctfPhaseProfile.clear();
     m_ctfVoltageEdit->hide();
     m_ctfEnergySpreadEdit->hide();
     m_ctfDefocusSpreadEdit->hide();
@@ -4390,6 +4462,7 @@ void FtWindow::computeCtfProfile1D()
     double maxR = (N / 2.0) * std::sqrt(2.0);
     int nProf = std::max(64, (int)std::ceil(maxR) + 1);
     m_ctfProfile.assign(nProf, 0.0);
+    m_ctfPhaseProfile.assign(nProf, 0.0);
     // Amplitude contrast B (from user, in %) and phase contrast A = √(1−B²).
     double B = ampContrastPct / 100.0;
     B = std::max(0.0, std::min(1.0, B));
@@ -4436,12 +4509,14 @@ void FtWindow::computeCtfProfile1D()
         //   E_s(q) = exp(-π² α² q² (Δf + Cs·λ²·q²)²)
         double sArg = dfProf + CsA * lambdaA * lambdaA * q2;
         double envS = std::exp(-(M_PI * M_PI) * alphaRad * alphaRad * q2 * sArg * sArg);
-        // CTF amplitude (modulus), ignoring all phase. The coma phase factor
-        // exp(−iχ_odd) has unit modulus, so |C| = |C₀| with
+        // Complex contrast transfer C = C₀·exp(−iχ_odd), with the real, oscillating
         //   C₀ = E·(A·sin(−χ_even)+B·cos(−χ_even)).
-        (void)chiOdd;
+        // Panel 4 plots the amplitude |C| = |C₀| (the coma factor has unit modulus);
+        // panel 3 plots the phase arg(C) ∈ [−π,π].
         double base = envT * envS * (A * std::sin(-chiEven) + B * std::cos(-chiEven));
-        m_ctfProfile[j] = std::abs(base);
+        Complex c = base * Complex(std::cos(chiOdd), -std::sin(chiOdd));
+        m_ctfProfile[j]      = std::abs(c);
+        m_ctfPhaseProfile[j] = std::arg(c);
     }
 }
 
@@ -4507,6 +4582,7 @@ void FtWindow::onCtfComputeImpl()
     double maxR = (N / 2.0) * std::sqrt(2.0);
     int nProf = std::max(64, (int)std::ceil(maxR) + 1);
     m_ctfProfile.assign(nProf, 0.0);
+    m_ctfPhaseProfile.assign(nProf, 0.0);
     // Amplitude contrast B (from user, in %) and phase contrast A = √(1−B²),
     // so that A² + B² = 1.
     double B = ampContrastPct / 100.0;
@@ -4530,18 +4606,19 @@ void FtWindow::onCtfComputeImpl()
     m_toolProgress = 0.1;
     update();
 
-    chainSteps({
-        // --- Step 1: build the 1D profile and fill Fourier space ---
-        [this, N, dxA, lambdaA, dfA, CsA, astigA, astigAngleRad,
-         defocusSpreadA, B, A, tx, ty, alphaRad, nProf, maxR]() {
+    // chiRound/ctfAt capture their inputs by value so they stay valid when the
+    // chunked fill steps below run on later event-loop turns (on the web build
+    // this function has already returned by then).
     // Round-lens (isotropic) wave aberration χ(k) = πλ·Δf·k² + ½πCs·λ³·k⁴,
     // evaluated for an arbitrary 2D spatial-frequency vector.
-    auto chiRound = [&](double kx, double ky) {
+    auto chiRound = [lambdaA, dfA, CsA](double kx, double ky) {
         double k2 = kx * kx + ky * ky;
         return M_PI * lambdaA * dfA * k2
              + 0.5 * M_PI * CsA * lambdaA * lambdaA * lambdaA * k2 * k2;
     };
-    auto ctfAt = [&](double dfLocalA, double rPix, double thetaRad) -> Complex {
+    auto ctfAt = [N, dxA, lambdaA, dfA, CsA, defocusSpreadA, alphaRad,
+                  A, B, tx, ty, chiRound](double dfLocalA, double rPix,
+                                          double thetaRad) -> Complex {
         // Spatial frequency q (1/Å) for this radial pixel distance.
         double q = rPix / (N * dxA);
         double q2 = q * q;
@@ -4581,42 +4658,57 @@ void FtWindow::onCtfComputeImpl()
         double base = E * (A * std::sin(-chiEven) + B * std::cos(-chiEven));
         return base * Complex(std::cos(chiOdd), -std::sin(chiOdd));
     };
-    // 1D profile: direction-dependent defocus along m_ctfAngleDeg.
-    double profAngleRad = m_ctfAngleDeg * M_PI / 180.0;
-    double dfProf = dfA + astigA * std::cos(2.0 * (profAngleRad - astigAngleRad));
-    for (int j = 0; j < nProf; j++) {
-        double rPix = (double)j / (nProf - 1) * maxR;
-        // 1D curve shows the CTF amplitude (modulus), ignoring all phase: the
-        // coma phase factor exp(−iχ_odd) has unit modulus, so |C| reduces to the
-        // rectified envelope of the oscillating contrast transfer.
-        m_ctfProfile[j] = std::abs(ctfAt(dfProf, rPix, profAngleRad));
+    std::vector<std::function<void()>> steps;
+
+    // Step: 1D profile (direction-dependent defocus along m_ctfAngleDeg) and
+    // allocation of the Fourier buffer. Panel-4 shows the CTF amplitude |C|
+    // (the coma phase factor has unit modulus, so |C| is the rectified
+    // envelope of the oscillating contrast transfer); panel-3 shows the
+    // complementary phase arg(C) ∈ [−π,π].
+    steps.push_back([this, ctfAt, nProf, maxR, dfA, astigA, astigAngleRad, N]() {
+        double profAngleRad = m_ctfAngleDeg * M_PI / 180.0;
+        double dfProf = dfA + astigA * std::cos(2.0 * (profAngleRad - astigAngleRad));
+        for (int j = 0; j < nProf; j++) {
+            double rPix = (double)j / (nProf - 1) * maxR;
+            Complex c = ctfAt(dfProf, rPix, profAngleRad);
+            m_ctfProfile[j]      = std::abs(c);
+            m_ctfPhaseProfile[j] = std::arg(c);
+        }
+        m_fftN = N;
+        m_fftData.assign((size_t)N * N, Complex(0.0, 0.0));
+        m_toolProgress = 0.10;
+    });
+
+    // Steps: fill the direction-dependent Fourier transform in horizontal
+    // bands so the blue bar advances smoothly through the (1024×1024)
+    // transcendental evaluation instead of stalling on one monolithic loop.
+    // Defocus varies azimuthally as Δf(θ) = Δf_avg + Δf_A·cos(2·(θ−α)), θ
+    // measured CCW from the horizontal axis (standard EM convention); the
+    // average defocus is recovered at θ = α ± 45°.
+    const int nBands = 32;
+    for (int b = 0; b < nBands; b++) {
+        int y0 = (int)((long long)b       * N / nBands);
+        int y1 = (int)((long long)(b + 1) * N / nBands);
+        double prog = 0.10 + 0.80 * (double)(b + 1) / nBands;
+        steps.push_back([this, ctfAt, N, dfA, astigA, astigAngleRad, y0, y1, prog]() {
+            double half = N / 2.0;
+            for (int y = y0; y < y1; y++) {
+                double dy = y - half;
+                for (int x = 0; x < N; x++) {
+                    double dx = x - half;
+                    double rPix = std::sqrt(dx * dx + dy * dy);
+                    // Image y axis points downward, so flip it for the CCW angle.
+                    double theta = std::atan2(-dy, dx);
+                    double dfLocal = dfA + astigA * std::cos(2.0 * (theta - astigAngleRad));
+                    m_fftData[y * N + x] = ctfAt(dfLocal, rPix, theta);
+                }
+            }
+            m_toolProgress = prog;
+        });
     }
 
-    // Fill Fourier transform with a direction-dependent CTF.
-    // Defocus varies azimuthally as
-    //     Δf(θ) = Δf_avg + Δf_A · cos(2·(θ − α))
-    // where θ is the Fourier-space azimuth, measured counter-clockwise from
-    // the horizontal axis (standard EM convention), and α is the astigmatism
-    // direction. The average defocus is recovered at θ = α ± 45°.
-    m_fftN = N;
-    int total = N * N;
-    m_fftData.assign(total, Complex(0.0, 0.0));
-    double half = N / 2.0;
-    for (int y = 0; y < N; y++) {
-        double dy = y - half;
-        for (int x = 0; x < N; x++) {
-            double dx = x - half;
-            double rPix = std::sqrt(dx * dx + dy * dy);
-            // Image y axis points downward, so flip it for the math CCW angle.
-            double theta = std::atan2(-dy, dx);
-            double dfLocal = dfA + astigA * std::cos(2.0 * (theta - astigAngleRad));
-            m_fftData[y * N + x] = ctfAt(dfLocal, rPix, theta);
-        }
-    }
-            m_toolProgress = 0.5;
-        },
-        // --- Step 2: build the panel-2 display images ---
-        [this, N]() {
+    // Step: build the panel-2 display images.
+    steps.push_back([this, N]() {
     m_ftComputed = true;
     if (m_origW <= 0 || m_origH <= 0) {
         m_origW = N;
@@ -4637,10 +4729,11 @@ void FtWindow::onCtfComputeImpl()
     // after a round trip. This is expected (a log-scale regime difference), not
     // a wrong-display-mode bug.
     recomputeDisplayImages();
-            m_toolProgress = 0.7;
-        },
-        // --- Step 3: inverse transform to real space for panel 1 ---
-        [this, N]() {
+        m_toolProgress = 0.92;
+    });
+
+    // Step: inverse transform to real space for panel 1.
+    steps.push_back([this, N]() {
 
     // Inverse-transform to real space for panel 1. The CTF is built in the
     // centred Fourier convention (zero frequency at (N/2, N/2), real-valued and
@@ -4652,10 +4745,11 @@ void FtWindow::onCtfComputeImpl()
     m_origW = N;
     m_origH = N;
     computeInverseFFT();
-            m_toolProgress = 0.9;
-        },
-        // --- Step 4: store the result in the active history slot ---
-        [this, voltageKV, defocusNM, csMM]() {
+        m_toolProgress = 0.97;
+    });
+
+    // Step: store the result in the active history slot.
+    steps.push_back([this, voltageKV, defocusNM, csMM]() {
 
     if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS) {
         m_imagePath = QString("ctf: %1kV df=%2nm Cs=%3mm")
@@ -4671,9 +4765,10 @@ void FtWindow::onCtfComputeImpl()
     }
 
     saveHistory();
-            m_toolProgress = -1;
-        }
+        m_toolProgress = -1;
     });
+
+    chainSteps(std::move(steps));
 }
 
 void FtWindow::onPhaseRampCancel()
@@ -4725,6 +4820,13 @@ void FtWindow::onPhaseRampComputeImpl()
     double cd = std::cos(dirRad);
     double sd = std::sin(dirRad);
 
+    // Left-to-right blue progress bar in the parameter-window background.
+    m_toolProgress = 0.1;
+    update();
+
+    chainSteps({
+        // --- Step 1: fill Fourier space with the phase ramp ---
+        [this, N, stepRad, cd, sd]() {
     m_fftN = N;
     m_fftData.assign((size_t)N * N, Complex(0.0, 0.0));
     double half = N / 2.0;
@@ -4738,7 +4840,10 @@ void FtWindow::onPhaseRampComputeImpl()
             m_fftData[y * N + x] = Complex(std::cos(phase), std::sin(phase));
         }
     }
-
+            m_toolProgress = 0.5;
+        },
+        // --- Step 2: build the panel-2 display images ---
+        [this, N]() {
     m_ftComputed = true;
     m_origW = N;
     m_origH = N;
@@ -4748,12 +4853,20 @@ void FtWindow::onPhaseRampComputeImpl()
     m_zoom[1].reset(N, N);
     m_zoom[2].reset(N, N);
     recomputeDisplayImages();
+            m_toolProgress = 0.7;
+        },
+        // --- Step 3: inverse transform to real space for panel 1 ---
+        [this]() {
 
     // Inverse-transform to real space for panel 1. computeInverseFFT now
     // produces the result in centered real-space form, so the delta of a
     // phase ramp already lands at (N/2, N/2) plus the shift implied by the
     // ramp — no extra quadrant swap needed.
     computeInverseFFT();
+            m_toolProgress = 0.9;
+        },
+        // --- Step 4: store the result in the active history slot ---
+        [this, N, dirDeg, stepDeg]() {
 
     if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS) {
         m_imagePath = QString("phase ramp: N=%1 dir=%2° step=%3°")
@@ -4769,5 +4882,7 @@ void FtWindow::onPhaseRampComputeImpl()
     }
 
     saveHistory();
-    update();
+            m_toolProgress = -1;
+        }
+    });
 }
