@@ -250,6 +250,27 @@ of a real fibril image, especially concerning the reflection line at 4.75 Å?
 </p>
 </details>
 
+<details>
+<summary>Exercise 11 — CTF generation with amplitude contrast and beam tilt</summary>
+<p>
+Choose an empty image buffer. <BR>
+Use the CTF generation tool in panel 2 to create a CTF with different defocus settings.  How does the defocus affect the CTF in Fourier space and the PSF in real space? 
+Then, try to generate CTFs with different values of energy spread (try 3eV for LaB6, 0.7 for FEG, 0.3 for coldFEG, 0.1 for monochromator electron sources). Try different opening angles (0.1 mrad, 0.5 mrad, 1 mrad), which correspond to how parallel the beam is in illuminating the sample.
+How do the energy spread and opening angle affect the CTF in Fourier space and the PSF in real space? How do these parameters affect the Thon rings in Fourier space, or the coherence of the PSF in real space?
+<BR><BR>
+
+Finally, try different values of amplitude contrast and beam tilt. Inspect the resulting CTF in Fourier space, and in real space. How do the amplitude contrast and beam tilt affect the CTF? 
+The real-space correspondent of the CTF is a point spread function (PSF). How do the amplitude contrast and beam tilt affect the PSF?
+</p>
+<p>
+ Try to generate a CTF with these parameters: 300 kV, 500 nm underfocus, 67 nm astigmatism, 5 mrad beam tilt. 
+ You will see a CTF with near perfect Thon rings, but the real-space PSF will be very anisotropic. This anisotropy in real space is called the "coma" and is a direct consequence of the beam tilt.
+ If you have beam tilt in your microscope and correct it by setting (wrong) astigmatism parameters in the CTF, you will see that the Thon rings become round but now your microscope is misaligned and the PSF becomes distorted. 
+In such cases, the correct solution is a Zemlin Tableaux acquisition and correction of the beam tilt, not a CTF astigmatism correction. 
+</p>
+
+</details>
+
 <footer>
   Fourier Analyzer · <a href="https://lbem.ch">Stahlberg Lab</a>, EPFL & UNIL ·
   <a href="manual.html">← Back to manual</a> ·

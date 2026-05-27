@@ -136,21 +136,28 @@ private:
     // cannot consume an outsized share of the WASM heap. No-op on desktop and
     // for images already within the size cap.
     void downsampleForMemoryLimit();
-    // Show the out-of-memory dialog (used by the load-time bad_alloc handlers).
+    // Show the out-of-memory dialog. `context` is a verb phrase such as
+    // "apply the bandpass filter".
     void reportOutOfMemory(const QString &context);
-    // Roll back the partially-loaded current image / active slot after an
-    // allocation failure, then show the out-of-memory dialog.
-    void discardLoadAfterOutOfMemory(const QString &context);
-    // Roll a calculation back to the pre-operation state (restored from the
-    // undo snapshot the handler stored before running) after an allocation
-    // failure, then show the out-of-memory dialog. `context` is a verb phrase
-    // such as "apply the bandpass filter".
-    void rollbackAfterCalcOOM(const QString &context);
+    // Approximate heap footprint of the current live state (history buffers +
+    // active image + raw pixels + FFT), used to size preflight probes.
+    qint64 currentStateBytes() const;
+    // Rough peak working-set a single calculation needs on the current image.
+    qint64 estimatedWorkingBytes() const;
+    // Preflight before a calculation: ensure there is room for both an undo
+    // snapshot and the operation's working buffers. Trims, then if needed
+    // sacrifices, the undo history to make room; returns false (after showing
+    // the dialog) only when even the bare operation will not fit. Always true
+    // on desktop.
+    bool ensureCalcHeadroom(const QString &context);
+    // Drop the partially-loaded current image and clear the active slot after
+    // a load is refused for lack of memory.
+    void discardCurrentImageState();
 
     // Implementations of the calculation handlers. The public slots above are
-    // thin wrappers that call these inside a try/catch so an out-of-memory
-    // failure mid-calculation rolls back (rollbackAfterCalcOOM) instead of
-    // aborting the WASM module.
+    // thin wrappers that run a memory preflight (ensureCalcHeadroom) and only
+    // then call these, so an out-of-memory situation refuses the operation
+    // cleanly instead of aborting the WASM module.
     void onNewImageCreateImpl();
     void onApplyBandpassImpl();
     void onApplyLatticeImpl();
@@ -178,6 +185,12 @@ private:
     void extractImageData();
     void computeFFT(bool keepZoom = false);
     void computeInverseFFT();
+    // Interactive (FT / FT⁻¹ arrow) variants. On desktop these just call the
+    // synchronous versions above; in the WASM build they run the transform in
+    // event-loop-yielding chunks so the blue progress fill actually animates
+    // across the arrow (a blocking loop never repaints the browser canvas).
+    void computeFFTAnimated(bool keepZoom = false);
+    void computeInverseFFTAnimated();
     void recomputeDisplayImages();
     void chainSteps(std::vector<std::function<void()>> steps);
     void rebuildImageWithLUT();      // rebuild m_image using display min/max
@@ -300,6 +313,14 @@ private:
         double  minVal = 0, maxVal = 0;
         double  pixelSize = 1.0;
         bool    occupied = false;
+        // Cached forward FFT of this slot's image, so re-activating a slot
+        // restores it instead of recomputing (the expensive part of a buffer
+        // switch). Saved on leaving a slot and restored on entering one; empty
+        // fftData / ftComputed == false means "not cached, must recompute".
+        std::vector<Complex> fftData;
+        int  fftN = 0;
+        int  fftOrigW = 0, fftOrigH = 0;
+        bool ftComputed = false;
     };
     HistoryEntry m_history[HISTORY_SLOTS];
     QRect        m_historyRects[HISTORY_SLOTS];    // panel 3 screen rects
@@ -327,6 +348,10 @@ private:
     std::deque<BufferSnapshot> m_redoStack;
 
     static QImage computePowerSpecMasked(const QImage &img);
+    // Build the masked power-spectrum thumbnail directly from the current
+    // m_fftData (already centred), avoiding a fresh forward FFT. Equivalent to
+    // computePowerSpecMasked(m_image) whenever m_ftComputed is true.
+    QImage powerSpecFromCurrentFFT() const;
     void saveHistory();
     void restoreHistory();
     BufferSnapshot captureCurrentState() const;
@@ -637,7 +662,8 @@ private:
     QLineEdit  *m_ctfBeamtiltDirEdit  = nullptr;
     QPushButton *m_ctfCancelBtn       = nullptr;
     QPushButton *m_ctfComputeBtn      = nullptr;
-    std::vector<double> m_ctfProfile;      // 1D CTF profile from center to corner
+    std::vector<double> m_ctfProfile;      // 1D CTF amplitude profile (|C|, center->corner)
+    std::vector<double> m_ctfPhaseProfile; // 1D CTF phase profile (arg C, rad), same sampling
     double      m_ctfAngleDeg = 0.0;       // profile direction (deg, CCW from +x)
     bool        m_ctfDragging = false;
     void onCtfCompute();

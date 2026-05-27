@@ -3364,28 +3364,41 @@ void FtWindow::paintEvent(QPaintEvent *)
             p.setBrush(QColor(245, 245, 245));
             p.drawRect(plotX, plotY, plotW, plotH);
 
-            // Grid lines at -1, -0.5, 0, 0.5, 1 (profile range is [-1,1])
+            // Grid lines at 0.25, 0.5, 0.75 (amplitude range is [0,1])
             p.setPen(QPen(QColor(210, 210, 210), 1));
             for (int g = 1; g < 4; g++) {
                 int gy = plotY + g * plotH / 4;
                 p.drawLine(plotX, gy, plotX + plotW, gy);
             }
 
-            // Zero line
-            int zeroY = plotY + plotH / 2;
-            p.setPen(QPen(QColor(160, 160, 160), 1));
-            p.drawLine(plotX, zeroY, plotX + plotW, zeroY);
+            // The profile runs from q = 0 to the diagonal (corner) frequency, but
+            // along the red-line direction θ the CTF in panel 2 only exists out to
+            // where the ray leaves the square grid, at radial distance
+            //   r_edge(θ) = (N/2) / max(|cosθ|, |sinθ|).
+            // As a fraction of the full diagonal r_max = (N/2)·√2 this is
+            //   frac = 1 / (√2 · max(|cosθ|, |sinθ|)),
+            // = 1/√2 ≈ 0.707 along the axes (q up to Nyquist) and 1 along the
+            // diagonal. Plot the curve only up to that point; leave the rest empty.
+            double thetaRad = m_ctfAngleDeg * M_PI / 180.0;
+            double mAxis = std::max(std::abs(std::cos(thetaRad)),
+                                    std::abs(std::sin(thetaRad)));
+            double validFrac = (mAxis > 1e-9)
+                                 ? std::min(1.0, 1.0 / (std::sqrt(2.0) * mAxis))
+                                 : 1.0;
 
-            // Profile curve
+            // Profile curve (amplitude, [0,1]; 0 at the bottom axis, 1 at the top)
             p.setRenderHint(QPainter::Antialiasing, true);
             p.setPen(QPen(QColor(40, 100, 220), 2));
             p.setBrush(Qt::NoBrush);
             QPainterPath curve;
+            bool started = false;
             for (int j = 0; j < nPts; j++) {
-                double xp = plotX + (double)j / (nPts - 1) * plotW;
-                double v = std::clamp(m_ctfProfile[j], -1.0, 1.0);
-                double yp = plotY + plotH / 2.0 - v * (plotH / 2.0);
-                if (j == 0) curve.moveTo(xp, yp);
+                double frac = (double)j / (nPts - 1);
+                if (frac > validFrac) break;
+                double xp = plotX + frac * plotW;
+                double v = std::clamp(m_ctfProfile[j], 0.0, 1.0);
+                double yp = plotY + plotH - v * plotH;
+                if (!started) { curve.moveTo(xp, yp); started = true; }
                 else curve.lineTo(xp, yp);
             }
             p.drawPath(curve);
@@ -3396,16 +3409,17 @@ void FtWindow::paintEvent(QPaintEvent *)
             p.drawLine(plotX, plotY + plotH, plotX + plotW, plotY + plotH);
             p.drawLine(plotX, plotY, plotX, plotY + plotH);
 
-            // Y axis labels
+            // Y axis labels (amplitude range [0,1])
             {
                 QFont af; af.setPixelSize(10); p.setFont(af);
                 QFontMetrics afm(af);
                 p.setPen(QColor(60, 60, 60));
                 QString yMax = "1";
-                QString yMid = "0";
-                QString yMin = "-1";
+                QString yMid = "0.5";
+                QString yMin = "0";
+                int midY = plotY + plotH / 2;
                 p.drawText(plotX - afm.horizontalAdvance(yMax) - 4, plotY + afm.ascent(), yMax);
-                p.drawText(plotX - afm.horizontalAdvance(yMid) - 4, zeroY + afm.ascent() / 2, yMid);
+                p.drawText(plotX - afm.horizontalAdvance(yMid) - 4, midY + afm.ascent() / 2, yMid);
                 p.drawText(plotX - afm.horizontalAdvance(yMin) - 4, plotY + plotH, yMin);
             }
 
@@ -3450,7 +3464,7 @@ void FtWindow::paintEvent(QPaintEvent *)
             {
                 QFont tf; tf.setBold(true); tf.setPixelSize(12); p.setFont(tf);
                 p.setPen(QColor(40, 40, 40));
-                p.drawText(rx + 8, ry + 16, "CTF profile");
+                p.drawText(rx + 8, ry + 16, "CTF Amplitude Profile");
             }
 
             // Direction + defocus annotation in the top-right corner
@@ -3472,6 +3486,166 @@ void FtWindow::paintEvent(QPaintEvent *)
                 double dfLocalNM = defocusNM + astigNM * std::cos(2.0 * (profRad - astigRad));
 
                 QString dirStr = QString("Direction: %1\u00B0   Defocus: %2 nm")
+                                     .arg(m_ctfAngleDeg, 0, 'f', 1)
+                                     .arg(dfLocalNM, 0, 'f', 1);
+                p.setPen(QColor(220, 50, 50));
+                p.drawText(rx + rw - dfm.horizontalAdvance(dirStr) - 8,
+                           ry + 16, dirStr);
+            }
+        }
+    }
+
+    // ---- CTF 1D phase profile overlay in panel 3 --------------------------------
+    if (m_ctfActive && !m_ctfPhaseProfile.empty()) {
+        int p3x = 0;
+        int p3y = hy + 2;
+        int p3w = cx - 1;
+        int p3h = height() - p3y;
+
+        int rw = static_cast<int>(p3w * 0.80);
+        int rh = static_cast<int>(p3h * 0.80);
+        int rx = p3x + (p3w - rw) / 2;
+        int ry = p3y + (p3h - rh) / 2;
+        QRect profileRect(rx, ry, rw, rh);
+        drawShadowRect(p, profileRect);
+
+        int plotMarginL = 50, plotMarginR = 15, plotMarginT = 25, plotMarginB = 35;
+        int plotX = rx + plotMarginL;
+        int plotY = ry + plotMarginT;
+        int plotW = rw - plotMarginL - plotMarginR;
+        int plotH = rh - plotMarginT - plotMarginB;
+
+        if (plotW > 10 && plotH > 10 && m_ctfPhaseProfile.size() > 1) {
+            int nPts = (int)m_ctfPhaseProfile.size();
+
+            // Plot background
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(245, 245, 245));
+            p.drawRect(plotX, plotY, plotW, plotH);
+
+            // Grid lines at ±π/2 (phase range is [−π,π])
+            p.setPen(QPen(QColor(210, 210, 210), 1));
+            for (int g = 1; g < 4; g++) {
+                int gy = plotY + g * plotH / 4;
+                p.drawLine(plotX, gy, plotX + plotW, gy);
+            }
+
+            // Zero line (phase = 0) through the middle.
+            int zeroY = plotY + plotH / 2;
+            p.setPen(QPen(QColor(160, 160, 160), 1));
+            p.drawLine(plotX, zeroY, plotX + plotW, zeroY);
+
+            // Same valid-frequency cutoff as the amplitude profile: along the
+            // red-line direction θ the CTF in panel 2 only exists out to where the
+            // ray leaves the square grid, i.e. a fraction
+            //   frac = 1 / (√2 · max(|cosθ|, |sinθ|))
+            // of the full diagonal. Plot the curve only that far; rest stays empty.
+            double thetaRad = m_ctfAngleDeg * M_PI / 180.0;
+            double mAxis = std::max(std::abs(std::cos(thetaRad)),
+                                    std::abs(std::sin(thetaRad)));
+            double validFrac = (mAxis > 1e-9)
+                                 ? std::min(1.0, 1.0 / (std::sqrt(2.0) * mAxis))
+                                 : 1.0;
+
+            // Phase curve (arg C ∈ [−π,π]; 0 at the middle, +π top, −π bottom).
+            // The curve is drawn continuously: where the phase wraps at ±π the
+            // pen stays down, so the wrap shows up as a (near-)vertical connector.
+            p.setRenderHint(QPainter::Antialiasing, true);
+            p.setPen(QPen(QColor(150, 40, 200), 2));
+            p.setBrush(Qt::NoBrush);
+            QPainterPath curve;
+            bool started = false;
+            for (int j = 0; j < nPts; j++) {
+                double frac = (double)j / (nPts - 1);
+                if (frac > validFrac) break;
+                double xp = plotX + frac * plotW;
+                double v = std::clamp(m_ctfPhaseProfile[j], -M_PI, M_PI);
+                double yp = zeroY - (v / M_PI) * (plotH / 2.0);
+                if (!started) { curve.moveTo(xp, yp); started = true; }
+                else curve.lineTo(xp, yp);
+            }
+            p.drawPath(curve);
+            p.setRenderHint(QPainter::Antialiasing, false);
+
+            // Axes
+            p.setPen(QPen(QColor(60, 60, 60), 1));
+            p.drawLine(plotX, plotY + plotH, plotX + plotW, plotY + plotH);
+            p.drawLine(plotX, plotY, plotX, plotY + plotH);
+
+            // Y axis labels (phase range [−π,π])
+            {
+                QFont af; af.setPixelSize(10); p.setFont(af);
+                QFontMetrics afm(af);
+                p.setPen(QColor(60, 60, 60));
+                QString yMax = "π";        // pi
+                QString yMid = "0";
+                QString yMin = "-π";       // -pi
+                p.drawText(plotX - afm.horizontalAdvance(yMax) - 4, plotY + afm.ascent(), yMax);
+                p.drawText(plotX - afm.horizontalAdvance(yMid) - 4, zeroY + afm.ascent() / 2, yMid);
+                p.drawText(plotX - afm.horizontalAdvance(yMin) - 4, plotY + plotH, yMin);
+            }
+
+            // X axis label: spatial frequency range in 1/Å
+            {
+                QFont af; af.setPixelSize(10); p.setFont(af);
+                QFontMetrics afm(af);
+                double maxQ = (m_fftN > 0 && m_pixelSize > 0)
+                                ? std::sqrt(2.0) / (2.0 * m_pixelSize) : 0.0;
+
+                // Dotted vertical line at q = 0.5 (1/Å)
+                if (maxQ > 0.5) {
+                    double xp = plotX + (0.5 / maxQ) * plotW;
+                    p.setPen(QPen(QColor(120, 120, 120), 1, Qt::DotLine));
+                    p.drawLine((int)xp, plotY, (int)xp, plotY + plotH);
+                }
+
+                p.setPen(QColor(60, 60, 60));
+                QString lbl0 = "0";
+                QString lbl1 = QString::number(maxQ, 'f', 3);
+                p.drawText(plotX, plotY + plotH + afm.ascent() + 3, lbl0);
+                p.drawText(plotX + plotW - afm.horizontalAdvance(lbl1),
+                           plotY + plotH + afm.ascent() + 3, lbl1);
+
+                // Tick labels at 0.25 and 0.5 (1/Å)
+                double ticks[2] = { 0.25, 0.5 };
+                for (double t : ticks) {
+                    if (maxQ <= t) continue;
+                    double xp = plotX + (t / maxQ) * plotW;
+                    QString lbl = QString::number(t, 'f', 2);
+                    p.drawLine((int)xp, plotY + plotH, (int)xp, plotY + plotH + 3);
+                    p.drawText((int)xp - afm.horizontalAdvance(lbl) / 2,
+                               plotY + plotH + afm.ascent() + 3, lbl);
+                }
+
+                QString xTitle = "spatial frequency (1/Å)";
+                p.drawText(plotX + (plotW - afm.horizontalAdvance(xTitle)) / 2,
+                           plotY + plotH + afm.ascent() + 15, xTitle);
+            }
+
+            // Title
+            {
+                QFont tf; tf.setBold(true); tf.setPixelSize(12); p.setFont(tf);
+                p.setPen(QColor(40, 40, 40));
+                p.drawText(rx + 8, ry + 16, "CTF Phase Profile");
+            }
+
+            // Direction + defocus annotation in the top-right corner
+            {
+                QFont df; df.setBold(true); df.setPixelSize(12); p.setFont(df);
+                QFontMetrics dfm(df);
+
+                bool okD = false, okA = false, okAA = false;
+                double defocusNM     = m_ctfDefocusEdit->text().toDouble(&okD);
+                double astigNM       = m_ctfAstigEdit->text().toDouble(&okA);
+                double astigAngleDeg = m_ctfAstigAngleEdit->text().toDouble(&okAA);
+                if (!okD)  defocusNM = 1000.0;
+                if (!okA)  astigNM   = 0.0;
+                if (!okAA) astigAngleDeg = 0.0;
+                double profRad = m_ctfAngleDeg * M_PI / 180.0;
+                double astigRad = astigAngleDeg * M_PI / 180.0;
+                double dfLocalNM = defocusNM + astigNM * std::cos(2.0 * (profRad - astigRad));
+
+                QString dirStr = QString("Direction: %1°   Defocus: %2 nm")
                                      .arg(m_ctfAngleDeg, 0, 'f', 1)
                                      .arg(dfLocalNM, 0, 'f', 1);
                 p.setPen(QColor(220, 50, 50));

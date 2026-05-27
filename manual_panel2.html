@@ -405,8 +405,8 @@ position, illustrating the shift theorem.
 <p>
 Synthesise a 2D contrast transfer function for an electron microscope
 with the chosen optical parameters, including astigmatism, defocus
-spread, and the spatial-coherence envelope from a finite gun-opening
-angle.
+spread, amplitude contrast, beam tilt, and the spatial-coherence
+envelope from a finite gun-opening angle.
 </p>
 <div class="controls">
   <strong>Acceleration voltage:</strong> in kV. <br>
@@ -418,20 +418,58 @@ angle.
   <strong>Astigmatism:</strong> defocus deviation along the
   astigmatism axis, in nm. <br>
   <strong>Astigmatism direction:</strong> in degrees, CCW from +x. <br>
+  <strong>Amplitude contrast:</strong> in percent (used as the
+  amplitude-contrast term <em>B</em>). <br>
+  <strong>Beamtilt:</strong> beam-tilt magnitude in mrad. <br>
+  <strong>Direction:</strong> beam-tilt direction in degrees, CCW from +x. <br>
   <strong>Cancel / Compute:</strong> as for the phase ramp.
 </div>
 <BR>
 <div class="note">
 The CTF is built on a fixed 1024×1024 grid using the slot's pixel size
-to map Fourier pixels to spatial frequencies. A 1D radial profile is
-also computed and overlaid in panel 2.<BR><BR>
-  The CTF calculation here includes 7% amplitude contrast, which is a typical 
-  value for thin biological cryo-EM samples. This means that the CTF is not purely a sinusoid, 
+to map Fourier pixels to spatial frequencies. While the tool is active a
+red direction line is drawn across panel 2; drag it to choose the
+azimuth along which the 1D profiles (below) are taken.<BR><BR>
+  The amplitude contrast defaults to 7%, a typical value for thin
+  biological cryo-EM samples. This means that the CTF is not purely a sinusoid,
   but it has a small constant offset that makes it non-zero at low spatial frequencies.
+  The amplitude contrast you enter is used directly as the amplitude-contrast
+  term <em>B</em> (in fractional units, so 7% &rarr; B = 0.07), and the
+  phase-contrast term is derived from it as <em>A</em> = &radic;(1 &minus; B&sup2;),
+  so that A&sup2; + B&sup2; = 1. The CTF is then
+  A&middot;sin(&minus;&chi;) + B&middot;cos(&minus;&chi;), where &chi; is the
+  wave-aberration (phase) function.
 </div>
 <BR>
 <p>
-Note that the CTF is computed in Fourier-space with values between -1 and 1. 
+ <strong>1D profile plots (panels 3 &amp; 4).</strong> While the CTF tool is
+ active, the two bottom panels show 1D cuts of the complex transfer function
+ <em>C</em> taken along the red direction line in panel 2. You can change the 
+ direction of the line by dragging it with the mouse and watch the profiles update live. 
+ The two plots show the amplitude and phase of the CTF, respectively.:
+</p>
+<ul>
+  <li><strong>Panel 4 — CTF Amplitude Profile.</strong> The modulus
+      |<em>C</em>|, i.e. amplitude only, ignoring phase. The vertical axis
+      runs from 0 to 1.</li>
+  <li><strong>Panel 3 — CTF Phase Profile.</strong> The phase
+      arg(<em>C</em>) in radians, from &minus;&pi; to +&pi;, drawn as a
+      continuous curve (a jump at the &plusmn;&pi; wrap appears as a vertical
+      connector). With no beam tilt the CTF is real, so its phase is simply
+      0 or &plusmn;&pi; — i.e. the sign of the contrast transfer; beam tilt
+      adds the odd coma phase and tilts this curve.</li>
+</ul>
+<p>
+ The horizontal axis of both plots is spatial frequency in 1/Å. The curves
+ are drawn only up to the highest frequency that actually exists in panel 2
+ along the chosen direction: a ray leaves the square Fourier grid at
+ <em>q</em> = Nyquist when the red line is horizontal or vertical (so the
+ plot stops at ~0.5 cycles/pixel and the rest is left empty), and out to the
+ corner frequency (~0.707) when the line points along a diagonal.
+</p>
+<BR>
+<p>
+Note that the CTF is computed in Fourier-space with values between -1 and 1.
 When you back-transform it to real space, the result is the Point Spread Function (PSF) that corresponds to that CTF. 
 The PSF is the impulse response of the imaging system. It shows you, how a single atom would be 
 imaged by the microscope with the given parameters.  The PSF has very small values.
@@ -439,10 +477,31 @@ imaged by the microscope with the given parameters.  The PSF has very small valu
  If you forward Fourier transform the PSF from real space back to Fourier space, you will get back the original CTF. 
  However, now the values in Fourier space are numerically higher than before, because the Fourier transform 
  is not normalised.
- As a result, the display of the Powerspectrum as log(1 + amp*amp) will show the CTF differently than before. 
- The different appearance of the back-transformed and again forward-transformed CTF is due to the 
- non-linear scaling for the Powerspectrum display. 
+ As a result, the display of the Powerspectrum as log(1 + amp*amp) will show the CTF differently than before.
+ The different appearance of the back-transformed and again forward-transformed CTF is due to the
+ non-linear scaling for the Powerspectrum display.
  </p>
+<p>
+ <strong>Beam tilt.</strong> When the illuminating beam is not exactly
+ parallel to the optical axis but tilted by a small angle &tau;, the
+ scattering angle is shifted (the spatial frequency is effectively
+ displaced, <em>k</em> &rarr; <em>k</em> + &tau;/&lambda;). To first order
+ in the tilt this adds a coma-like term to the wave-aberration function:
+ <br><br>
+ &nbsp;&nbsp;&Delta;&chi; = 2&pi;&middot;C<sub>s</sub>&middot;&lambda;&sup2;&middot;q&sup3;&middot;&tau;&middot;cos(&theta; &minus; &tau;<sub>dir</sub>),
+ <br><br>
+ where <em>q</em> is the spatial frequency, &theta; its azimuth in Fourier
+ space, &lambda; the electron wavelength, C<sub>s</sub> the spherical
+ aberration, &tau; the tilt magnitude (in radians; entered in mrad), and
+ &tau;<sub>dir</sub> the tilt direction (CCW from +x, the same convention as
+ the astigmatism direction). Because this extra phase scales with
+ C<sub>s</sub>&middot;q&sup3; and is <em>odd</em> in &theta; (the cos(&theta; &minus; &tau;<sub>dir</sub>)
+ factor changes sign across the origin), beam tilt breaks the
+ point-symmetry of the CTF: the Thon rings shift outward on one side and
+ inward on the opposite side along the tilt direction, while remaining
+ unchanged perpendicular to it. Setting the beam tilt to 0 mrad recovers
+ the usual centrosymmetric CTF.
+</p>
 </details>
 
 <details>

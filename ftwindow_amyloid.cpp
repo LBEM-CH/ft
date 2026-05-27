@@ -26,11 +26,8 @@ void FtWindow::onAmyloidCancel()
 
 void FtWindow::onAmyloidCompute()
 {
-    try {
-        onAmyloidComputeImpl();
-    } catch (const std::bad_alloc &) {
-        rollbackAfterCalcOOM(tr("render the amyloid filaments"));
-    }
+    if (!ensureCalcHeadroom(tr("render the amyloid filaments"))) return;
+    onAmyloidComputeImpl();
 }
 
 void FtWindow::onAmyloidComputeImpl()

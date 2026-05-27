@@ -3,7 +3,7 @@ How to build and run the WASM server
 
 Prerequisites:
   - Emscripten SDK at ~/Projects/emsdk (version 3.1.56, required by Qt 6.8)
-  - Qt 6.8.3 WASM kit at ~/Qt/6.8.3/wasm_singlethread/
+  - Qt 6.8.3 WASM kit at ~/Qt/6.8.3/wasm_multithread/
   - Qt 6.8.3 host kit (Linux: ~/Qt/6.8.3/gcc_64/, macOS: ~/Qt/6.8.3/macos/)
   - cmake (Linux: apt install cmake, macOS: brew install cmake)
   - python3 (for aqtinstall and the dev server)
@@ -26,7 +26,7 @@ Prerequisites:
       pip3 install aqtinstall
 
       # WASM kit (same on all platforms)
-      aqt install-qt all_os wasm 6.8.3 wasm_singlethread --outputdir ~/Qt
+      aqt install-qt all_os wasm 6.8.3 wasm_multithread --outputdir ~/Qt
 
       # Host kit (must match your OS — required for cross-compilation)
       # Linux:
@@ -34,13 +34,13 @@ Prerequisites:
       # macOS:
       # aqt install-qt mac desktop 6.8.3 --outputdir ~/Qt
 
-      # This installs the WASM kit to ~/Qt/6.8.3/wasm_singlethread/
+      # This installs the WASM kit to ~/Qt/6.8.3/wasm_multithread/
       # and the host Qt to ~/Qt/6.8.3/gcc_64/ (Linux)
       # or ~/Qt/6.8.3/macos/ (macOS).
 
       # Fix execute permissions (aqtinstall does not set them — required,
       # otherwise qt-cmake fails with "Permission denied"):
-      chmod +x ~/Qt/6.8.3/wasm_singlethread/bin/*
+      chmod +x ~/Qt/6.8.3/wasm_multithread/bin/*
       # Linux host kit:
       chmod +x ~/Qt/6.8.3/gcc_64/bin/*
       # macOS host kit:
@@ -53,20 +53,20 @@ Prerequisites:
    rm -rf build_wasm
    mkdir build_wasm && cd build_wasm
    # Linux:
-   ~/Qt/6.8.3/wasm_singlethread/bin/qt-cmake \
+   ~/Qt/6.8.3/wasm_multithread/bin/qt-cmake \
        -DQT_HOST_PATH=$HOME/Qt/6.8.3/gcc_64 \
        -DQT_HOST_PATH_CMAKE_DIR=$HOME/Qt/6.8.3/gcc_64/lib/cmake ..
    # macOS (replace gcc_64 with macos):
-   # ~/Qt/6.8.3/wasm_singlethread/bin/qt-cmake \
+   # ~/Qt/6.8.3/wasm_multithread/bin/qt-cmake \
    #     -DQT_HOST_PATH=$HOME/Qt/6.8.3/macos \
    #     -DQT_HOST_PATH_CMAKE_DIR=$HOME/Qt/6.8.3/macos/lib/cmake ..
    cmake --build .
-   cp ~/Qt/6.8.3/wasm_singlethread/plugins/platforms/qtloader.js .
-   cp ~/Qt/6.8.3/wasm_singlethread/plugins/platforms/qtlogo.svg .
+   cp ~/Qt/6.8.3/wasm_multithread/plugins/platforms/qtloader.js .
+   cp ~/Qt/6.8.3/wasm_multithread/plugins/platforms/qtlogo.svg .
    sed -e 's/@APPNAME@/ft/g' \
        -e 's/@APPEXPORTNAME@/createQtAppInstance/g' \
        -e 's/@PRELOAD@//g' \
-       ~/Qt/6.8.3/wasm_singlethread/plugins/platforms/wasm_shell.html > ft.html
+       ~/Qt/6.8.3/wasm_multithread/plugins/platforms/wasm_shell.html > ft.html
    ln -sfn ~/Projects/ft/EXAMPLE_IMAGES images
 
 2. Start the server:
@@ -80,12 +80,19 @@ Prerequisites:
    # access from other machines on your network:
    # sudo ufw allow 8080/tcp
 
-   python3 -m http.server 8080
+   # The multithreaded build needs SharedArrayBuffer, which the browser only
+   # exposes on a cross-origin-isolated page (COOP/COEP headers). The stock
+   # "python3 -m http.server" does NOT send them — use the bundled server:
+   python3 ~/Projects/ft/serve_wasm.py 8080
 
 3. Open in browser:
 
    Local:   http://localhost:8080/ft.html
    Network: http://<your-ip>:8080/ft.html
+
+   Verify threads are active in the JS console:
+     crossOriginIsolated         -> true
+     typeof SharedArrayBuffer    -> "object"
 
 4. Stop the server:
 

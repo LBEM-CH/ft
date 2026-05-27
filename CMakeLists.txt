@@ -26,16 +26,18 @@ set(FT_CORE_SOURCES
 add_library(ft_core STATIC ${FT_CORE_SOURCES})
 target_include_directories(ft_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(ft_core PUBLIC Qt6::Widgets)
-if(EMSCRIPTEN)
-    # Enable C++ exceptions so a failed allocation (with ABORTING_MALLOC=0,
-    # see below) surfaces as std::bad_alloc that the load code can catch and
-    # report, instead of throwing through code that cannot unwind. PUBLIC so
-    # the flag propagates to the ft executable that links this library.
-    target_compile_options(ft_core PUBLIC -fexceptions)
-endif()
 if(NOT EMSCRIPTEN)
     find_package(Threads REQUIRED)
     target_link_libraries(ft_core PUBLIC Threads::Threads)
+else()
+    # WebAssembly multithreading. Compiling the core with -pthread makes
+    # std::thread available and causes Emscripten to define
+    # __EMSCRIPTEN_PTHREADS__, which FT_HAVE_THREADS (fft.h) keys on so the FFT
+    # paths run multithreaded in the browser. This REQUIRES the Qt
+    # "wasm_multithread" kit and COOP/COEP headers on the server (see
+    # build_wasm.sh and ft-apache.conf). PUBLIC so the flag propagates to the
+    # ft executable's own translation units.
+    target_compile_options(ft_core PUBLIC -pthread)
 endif()
 
 if(NOT FT_EMBEDDED)
@@ -48,24 +50,33 @@ if(NOT FT_EMBEDDED)
     if(EMSCRIPTEN)
         # ---- WebAssembly build ----
         target_link_options(ft PRIVATE
-            -fexceptions
             -sALLOW_MEMORY_GROWTH=1
             -sINITIAL_MEMORY=256MB
             # 32-bit WASM can address up to 4 GB; raise the ceiling from the
             # previous 2 GB so more / larger images fit before the heap is
             # exhausted.
             -sMAXIMUM_MEMORY=4GB
-            # Do not hard-abort ("Application Exit") when an allocation fails.
-            # malloc returns null and operator new throws std::bad_alloc, which
-            # the load code catches to show a graceful out-of-memory message.
+            # Make a failed malloc return null instead of hard-aborting
+            # ("Application Exit"). The code probes allocations with malloc()
+            # before large operations and refuses gracefully when memory is
+            # short. (C++ exceptions are intentionally NOT enabled: this Qt
+            # WASM kit has wasm-exceptions disabled, so -fexceptions would fall
+            # back to slow JS-based exception handling across the whole app.)
             -sABORTING_MALLOC=0
             -sMODULARIZE=1
             -sEXPORT_NAME=createQtAppInstance
             "-sEXPORTED_RUNTIME_METHODS=UTF16ToString,stringToUTF16,JSEvents,specialHTMLTargets,FS,callMain,ccall,cwrap"
             -lembind
+            # ---- Multithreading ----
+            -pthread
+            # Pre-warm a worker pool sized to the machine's logical CPUs. The
+            # FFT spawns std::thread::hardware_concurrency() workers and joins
+            # them immediately; if the (busy) main thread had to create those
+            # workers on demand it would deadlock, so the pool must be at least
+            # as large as the peak number of simultaneous threads. Browsers
+            # report the same count via navigator.hardwareConcurrency, so this
+            # matches hardware_concurrency() exactly.
+            -sPTHREAD_POOL_SIZE=navigator.hardwareConcurrency
         )
-        # Optionally enable pthreads (requires COOP/COEP headers on the server):
-        # target_compile_options(ft PRIVATE -pthread)
-        # target_link_options(ft PRIVATE -pthread -sPTHREAD_POOL_SIZE=4)
     endif()
 endif()
