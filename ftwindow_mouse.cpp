@@ -1,5 +1,17 @@
 #include "ftwindow_common.h"
 
+// QImage::mirrored() was deprecated in Qt 6.9 in favour of flipped(). The
+// native desktop kit is newer, but the WebAssembly kit is still on Qt 6.8
+// (which has no flipped()), so wrap both behind a version check.
+static QImage flipImage(const QImage &img, Qt::Orientations dir)
+{
+#if QT_VERSION >= QT_VERSION_CHECK(6, 9, 0)
+    return img.flipped(dir);
+#else
+    return img.mirrored(dir.testFlag(Qt::Horizontal), dir.testFlag(Qt::Vertical));
+#endif
+}
+
 // ---------------------------------------------------------------------------
 //  Mouse
 // ---------------------------------------------------------------------------
@@ -186,6 +198,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         m_shiftActive = false; m_rotateActive = false;
         m_p1TaperActive = false; m_p1SymmetrizeActive = false;
         m_binActive = false; m_mathActive = false;
+        m_cropActive = false; m_cropDragging = false; m_cropMoving = false; m_cropHasSelection = false;
         m_peakPickActive = false; m_extractActive = false;
         m_gaborActive = false; m_hessianActive = false;
         m_amyloidActive = false; m_amyloidPlacing = 0;
@@ -203,6 +216,12 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         m_binCombo->setVisible(m_binActive);
         m_binKeepSizeBtn->setVisible(m_binActive);
         m_applyBinBtn->setVisible(m_binActive);
+        m_cropTLxEdit->setVisible(m_cropActive);
+        m_cropTLyEdit->setVisible(m_cropActive);
+        m_cropBRxEdit->setVisible(m_cropActive);
+        m_cropBRyEdit->setVisible(m_cropActive);
+        m_cropCancelBtn->setVisible(m_cropActive);
+        m_applyCropBtn->setVisible(m_cropActive);
         m_mathOutCombo->setVisible(m_mathActive);
         m_mathEqualsLabel->setVisible(m_mathActive);
         m_mathIn1Combo->setVisible(m_mathActive);
@@ -270,7 +289,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
     if (m_p1BtnRects[3].contains(event->pos()) && !m_image.isNull()) {
         deactivateAllP1Tools(); showP1ToolWidgets();
         storeUndoSnapshot();
-        m_image = m_image.mirrored(true, false);
+        m_image = flipImage(m_image, Qt::Horizontal);
         extractImageData();
         if (m_ftComputed) computeFFT();
         update();
@@ -279,7 +298,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
     if (m_p1BtnRects[4].contains(event->pos()) && !m_image.isNull()) {
         deactivateAllP1Tools(); showP1ToolWidgets();
         storeUndoSnapshot();
-        m_image = m_image.mirrored(false, true);
+        m_image = flipImage(m_image, Qt::Vertical);
         extractImageData();
         if (m_ftComputed) computeFFT();
         update();
@@ -311,14 +330,25 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         m_binActive = !was; showP1ToolWidgets(); update(); return;
     }
     if (m_p1BtnRects[11].contains(event->pos())) {
+        bool was = m_cropActive; deactivateAllP1Tools();
+        m_cropActive = !was;
+        if (m_cropActive) {
+            // Start with no selection; the user drags or types to define one.
+            m_cropRect = QRect();
+            m_cropHasSelection = false;
+            syncCropEdits();
+        }
+        showP1ToolWidgets(); update(); return;
+    }
+    if (m_p1BtnRects[12].contains(event->pos())) {
         bool was = m_gaborActive; deactivateAllP1Tools();
         m_gaborActive = !was; showP1ToolWidgets(); update(); return;
     }
-    if (m_p1BtnRects[12].contains(event->pos())) {
+    if (m_p1BtnRects[13].contains(event->pos())) {
         bool was = m_hessianActive; deactivateAllP1Tools();
         m_hessianActive = !was; showP1ToolWidgets(); update(); return;
     }
-    if (m_p1BtnRects[13].contains(event->pos())) {
+    if (m_p1BtnRects[14].contains(event->pos())) {
         bool was = m_amyloidActive; deactivateAllP1Tools();
         m_amyloidActive = !was;
         if (!m_amyloidActive) { m_amyloidPlacing = 0; }
@@ -329,11 +359,11 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         }
         showP1ToolWidgets(); update(); return;
     }
-    if (m_p1BtnRects[14].contains(event->pos())) {
+    if (m_p1BtnRects[15].contains(event->pos())) {
         bool was = m_mathActive; deactivateAllP1Tools();
         m_mathActive = !was; showP1ToolWidgets(); update(); return;
     }
-    if (m_p1BtnRects[15].contains(event->pos())) {
+    if (m_p1BtnRects[16].contains(event->pos())) {
         bool was = m_peakPickActive; deactivateAllP1Tools();
         m_peakPickActive = !was;
         if (m_peakPickActive) {
@@ -343,7 +373,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         }
         showP1ToolWidgets(); update(); return;
     }
-    if (m_p1BtnRects[16].contains(event->pos())) {
+    if (m_p1BtnRects[17].contains(event->pos())) {
         bool was = m_extractActive; deactivateAllP1Tools();
         m_extractActive = !was;
         if (m_extractActive && m_activeSlot >= 0)
@@ -499,6 +529,46 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         }
     }
 
+    // Crop: click-drag a square selection on panel 1 image
+    if (m_cropActive && !m_image.isNull()) {
+        for (int i = 0; i < m_numDispItems; i++) {
+            const DisplayItem &di = m_dispItems[i];
+            if (di.valid && di.zoomIdx == 0 && di.screenRect.contains(event->pos())) {
+                if (event->button() == Qt::RightButton) {
+                    m_cropDragging = false;
+                    m_cropHasSelection = false;
+                    update();
+                    return;
+                }
+                QRect target = di.screenRect.adjusted(2, 2, -2, -2);
+                QRectF src = m_zoom[0].visibleRect(m_image.width(), m_image.height());
+                double imgX = src.x() + (event->pos().x() - target.x()) * src.width()  / target.width();
+                double imgY = src.y() + (event->pos().y() - target.y()) * src.height() / target.height();
+                imgX = std::clamp(imgX, 0.0, (double)m_image.width());
+                imgY = std::clamp(imgY, 0.0, (double)m_image.height());
+
+                // Click inside an existing square grabs it for repositioning;
+                // otherwise begin a fresh square selection.
+                bool insideSel = m_cropHasSelection &&
+                    imgX >= m_cropRect.left() && imgX <= m_cropRect.left() + m_cropRect.width() &&
+                    imgY >= m_cropRect.top()  && imgY <= m_cropRect.top()  + m_cropRect.height();
+                if (insideSel) {
+                    m_cropGrabOffset = QPointF(imgX - m_cropRect.left(), imgY - m_cropRect.top());
+                    m_cropMoving = true;
+                    return;
+                }
+
+                m_cropAnchor = QPointF(imgX, imgY);
+                m_cropRect = QRect((int)std::lround(imgX), (int)std::lround(imgY), 0, 0);
+                m_cropDragging = true;
+                m_cropHasSelection = true;
+                syncCropEdits();
+                update();
+                return;
+            }
+        }
+    }
+
     // Panel 1 eraser/brush: start drag on panel 1 image
     if ((m_p1EraserActive || m_p1BrushActive) && !m_image.isNull()) {
         for (int i = 0; i < m_numDispItems; i++) {
@@ -579,6 +649,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         m_latticeEraseOutside->setVisible(m_latticeActive);
         m_latticeApplyBtn->setVisible(m_latticeActive);
 
+        m_crossSectionDirEdit->setVisible(m_crossSectionActive);
         m_crossSectionWidthEdit->setVisible(m_crossSectionActive);
 
         m_p2SymmetryEdit->setVisible(m_p2SymmetrizeActive);
@@ -655,9 +726,11 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         bool was = m_crossSectionActive; deactivateAllTools();
         m_crossSectionActive = !was;
         if (m_crossSectionActive && m_ftComputed) {
+            syncCrossSectionDirEdit();
             computeCrossSectionProfile();
         } else {
             m_crossSectionProfile.clear();
+            m_crossSectionPhaseProfile.clear();
         }
         showToolWidgets(); update(); return;
     }
@@ -801,6 +874,8 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
                 double ccy = di.screenRect.center().y();
                 m_crossSectionAngle = std::atan2(event->pos().y() - ccy,
                                                   event->pos().x() - ccx) * 180.0 / M_PI;
+                syncCrossSectionDirEdit();
+                computeCrossSectionProfile();
                 update();
                 return;
             }
@@ -970,8 +1045,14 @@ void FtWindow::mouseReleaseEvent(QMouseEvent *event)
                     rebuildImageWithLUT();
                     break;
                 case HIST_POWER:
-                    m_powerDispMin = newMin; m_powerDispMax = newMax;
-                    rebuildFTImageWithLUT(HIST_POWER);
+                    if (m_displayMode == 2) {
+                        m_complexDispMin = newMin; m_complexDispMax = newMax;
+                        m_complexRangeCustom = true;
+                        buildComplexImage();
+                    } else {
+                        m_powerDispMin = newMin; m_powerDispMax = newMax;
+                        rebuildFTImageWithLUT(HIST_POWER);
+                    }
                     break;
                 case HIST_FT_LEFT:
                     if (m_displayMode == 0) { m_cosDispMin = newMin; m_cosDispMax = newMax; }
@@ -993,9 +1074,14 @@ void FtWindow::mouseReleaseEvent(QMouseEvent *event)
                     rebuildImageWithLUT();
                     break;
                 case HIST_POWER:
-                    m_powerDispMin = m_powerMin;
-                    m_powerDispMax = m_powerMax;
-                    rebuildFTImageWithLUT(HIST_POWER);
+                    if (m_displayMode == 2) {
+                        resetComplexDisplayRange();
+                        buildComplexImage();
+                    } else {
+                        m_powerDispMin = m_powerMin;
+                        m_powerDispMax = m_powerMax;
+                        rebuildFTImageWithLUT(HIST_POWER);
+                    }
                     break;
                 case HIST_FT_LEFT:
                     if (m_displayMode == 0) { m_cosDispMin = m_cosMin; m_cosDispMax = m_cosMax; }
@@ -1017,6 +1103,15 @@ void FtWindow::mouseReleaseEvent(QMouseEvent *event)
     if (m_amyloidDragFil >= 0) {
         m_amyloidDragFil = -1;
         m_amyloidDragPt = -1;
+        update();
+    }
+
+    if (m_cropDragging || m_cropMoving) {
+        m_cropDragging = false;
+        m_cropMoving = false;
+        if (m_cropRect.width() < 2 || m_cropRect.height() < 2)
+            m_cropHasSelection = false;
+        syncCropEdits();
         update();
     }
 
@@ -1296,6 +1391,57 @@ void FtWindow::mouseMoveEvent(QMouseEvent *event)
         }
     }
 
+    // Crop selection move: drag an existing square to a new position
+    if (m_cropMoving && !m_image.isNull()) {
+        for (int i = 0; i < m_numDispItems; i++) {
+            const DisplayItem &di = m_dispItems[i];
+            if (!di.valid || di.zoomIdx != 0) continue;
+            QRect target = di.screenRect.adjusted(2, 2, -2, -2);
+            QRectF src = m_zoom[0].visibleRect(m_image.width(), m_image.height());
+            double curX = src.x() + (event->pos().x() - target.x()) * src.width()  / target.width();
+            double curY = src.y() + (event->pos().y() - target.y()) * src.height() / target.height();
+            int side = m_cropRect.width();
+            int W = m_image.width(), H = m_image.height();
+            int left = (int)std::lround(curX - m_cropGrabOffset.x());
+            int top  = (int)std::lround(curY - m_cropGrabOffset.y());
+            left = std::clamp(left, 0, std::max(0, W - side));
+            top  = std::clamp(top,  0, std::max(0, H - side));
+            m_cropRect = QRect(left, top, side, side);
+            syncCropEdits();
+            update();
+            return;
+        }
+    }
+
+    // Crop selection drag: keep the region square and inside the image
+    if (m_cropDragging && !m_image.isNull()) {
+        for (int i = 0; i < m_numDispItems; i++) {
+            const DisplayItem &di = m_dispItems[i];
+            if (!di.valid || di.zoomIdx != 0) continue;
+            QRect target = di.screenRect.adjusted(2, 2, -2, -2);
+            QRectF src = m_zoom[0].visibleRect(m_image.width(), m_image.height());
+            double curX = src.x() + (event->pos().x() - target.x()) * src.width()  / target.width();
+            double curY = src.y() + (event->pos().y() - target.y()) * src.height() / target.height();
+            double W = m_image.width(), H = m_image.height();
+            double x0 = m_cropAnchor.x(), y0 = m_cropAnchor.y();
+            double dx = curX - x0, dy = curY - y0;
+            double signX = (dx < 0) ? -1.0 : 1.0;
+            double signY = (dy < 0) ? -1.0 : 1.0;
+            double side = std::max(std::abs(dx), std::abs(dy));
+            double maxSideX = (signX > 0) ? (W - x0) : x0;
+            double maxSideY = (signY > 0) ? (H - y0) : y0;
+            side = std::min({side, maxSideX, maxSideY});
+            double left = (signX > 0) ? x0 : x0 - side;
+            double top  = (signY > 0) ? y0 : y0 - side;
+            m_cropRect = QRect((int)std::lround(left), (int)std::lround(top),
+                               (int)std::lround(side), (int)std::lround(side));
+            m_cropHasSelection = true;
+            syncCropEdits();
+            update();
+            return;
+        }
+    }
+
     if (m_p1ToolDragging && !m_image.isNull()) {
         if (m_p1EraserActive) p1EraserApply(event->pos());
         else if (m_p1BrushActive) p1BrushApply(event->pos());
@@ -1468,6 +1614,8 @@ void FtWindow::mouseMoveEvent(QMouseEvent *event)
                 double ccy = di.screenRect.center().y();
                 m_crossSectionAngle = std::atan2(event->pos().y() - ccy,
                                                   event->pos().x() - ccx) * 180.0 / M_PI;
+                syncCrossSectionDirEdit();
+                if (m_ftComputed) computeCrossSectionProfile();
                 update();
                 break;
             }
@@ -1509,9 +1657,14 @@ void FtWindow::mouseDoubleClickEvent(QMouseEvent *event)
                 rebuildImageWithLUT();
                 break;
             case HIST_POWER:
-                m_powerDispMin = m_powerMin;
-                m_powerDispMax = m_powerMax;
-                rebuildFTImageWithLUT(HIST_POWER);
+                if (m_displayMode == 2) {
+                    resetComplexDisplayRange();
+                    buildComplexImage();
+                } else {
+                    m_powerDispMin = m_powerMin;
+                    m_powerDispMax = m_powerMax;
+                    rebuildFTImageWithLUT(HIST_POWER);
+                }
                 break;
             case HIST_FT_LEFT:
                 if (m_displayMode == 0) { m_cosDispMin = m_cosMin; m_cosDispMax = m_cosMax; }
@@ -1677,11 +1830,23 @@ bool FtWindow::event(QEvent *event)
     } else if (event->type() == QEvent::Gesture) {
         auto *ge = static_cast<QGestureEvent *>(event);
         if (auto *pinch = static_cast<QPinchGesture *>(ge->gesture(Qt::PinchGesture))) {
+            // Only zoom while the pinch is actively updating. On some backends
+            // (notably the WebAssembly one) the finishing/cancel event reports
+            // a collapsed scale factor, which would otherwise multiply the zoom
+            // back down to its lowest level when the user lifts their fingers.
+            Qt::GestureState st = pinch->state();
+            if (st == Qt::GestureFinished || st == Qt::GestureCanceled) {
+                event->accept();
+                return true;
+            }
             if (pinch->changeFlags() & QPinchGesture::ScaleFactorChanged) {
-                QPoint pos = mapFromGlobal(pinch->centerPoint().toPoint());
-                if (applyPinchZoom(pos, pinch->scaleFactor())) {
-                    event->accept();
-                    return true;
+                double step = pinch->scaleFactor();
+                if (step > 0.0 && std::isfinite(step)) {
+                    QPoint pos = mapFromGlobal(pinch->centerPoint().toPoint());
+                    if (applyPinchZoom(pos, step)) {
+                        event->accept();
+                        return true;
+                    }
                 }
             }
         }
