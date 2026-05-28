@@ -431,16 +431,39 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     connect(m_applyFtPadBtn, &QPushButton::clicked, this, &FtWindow::onApplyFtPad);
     m_applyFtPadBtn->hide();
 
-    // Cross-section profile width widget
-    m_crossSectionWidthEdit = new QLineEdit("1.0", this);
-    m_crossSectionWidthEdit->setFixedSize(40, 22);
+    // Cross-section evaluation-line direction widget (degrees)
+    m_crossSectionDirEdit = new QLineEdit("0", this);
+    m_crossSectionDirEdit->setFixedSize(50, 22);
+    m_crossSectionDirEdit->setStyleSheet("background:#222; color:white; border:1px solid #888;");
+    m_crossSectionDirEdit->setToolTip(
+        "Direction of the evaluation line through the Fourier-transform\n"
+        "center, in degrees (counter-clockwise from the horizontal axis).\n"
+        "Type a value to rotate the red lines, or drag them in panel 2 to\n"
+        "set the direction; the field and profiles update live.");
+    connect(m_crossSectionDirEdit, &QLineEdit::textChanged, this, [this]() {
+        if (m_crossSectionActive && m_ftComputed) {
+            bool ok = false;
+            double deg = m_crossSectionDirEdit->text().toDouble(&ok);
+            if (ok) {
+                m_crossSectionAngle = -deg;   // math (y-up) -> screen (y-down)
+                computeCrossSectionProfile();
+                update();
+            }
+        }
+    });
+    m_crossSectionDirEdit->hide();
+
+    // Cross-section integration-width widget (reciprocal pixels, minimum 1)
+    m_crossSectionWidthEdit = new QLineEdit("5", this);
+    m_crossSectionWidthEdit->setFixedSize(50, 22);
     m_crossSectionWidthEdit->setStyleSheet("background:#222; color:white; border:1px solid #888;");
+    m_crossSectionWidthEdit->setValidator(new QDoubleValidator(1.0, 1.0e6, 2, m_crossSectionWidthEdit));
     m_crossSectionWidthEdit->setToolTip(
-        "Width of the integration band used for the 1D cross-section\n"
-        "profile, in Fourier pixels. Pixels within this perpendicular\n"
-        "distance from the line are averaged into the profile.\n"
-        "Increase to reduce noise, decrease for higher angular\n"
-        "resolution. The profile updates live as you type.");
+        "Width of the integration band used for the 1D profiles, in\n"
+        "reciprocal (Fourier) pixels. Pixels within this band around the\n"
+        "line are integrated into the amplitude and phase profiles.\n"
+        "Minimum 1. Increase to reduce noise, decrease for higher angular\n"
+        "resolution. The profiles update live as you type.");
     connect(m_crossSectionWidthEdit, &QLineEdit::textChanged, this, [this]() {
         if (m_crossSectionActive && m_ftComputed) {
             computeCrossSectionProfile();
@@ -1423,8 +1446,10 @@ void FtWindow::resizeEvent(QResizeEvent *)
     m_latticeApplyBtn->setFixedSize(static_cast<int>(100 * sc), btnH);
     m_latticeApplyBtn->setStyleSheet(btnSS);
 
-    // Cross-section profile width widget (sizes only)
-    m_crossSectionWidthEdit->setFixedSize(static_cast<int>(40 * sc), editH);
+    // Cross-section direction + integration-width widgets (sizes only)
+    m_crossSectionDirEdit->setFixedSize(static_cast<int>(50 * sc), editH);
+    m_crossSectionDirEdit->setStyleSheet(editSS);
+    m_crossSectionWidthEdit->setFixedSize(static_cast<int>(50 * sc), editH);
     m_crossSectionWidthEdit->setStyleSheet(editSS);
     m_p2SymmetryEdit->setFixedSize(static_cast<int>(50 * sc), editH);
     m_p2SymmetryEdit->setStyleSheet(editSS);

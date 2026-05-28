@@ -27,6 +27,8 @@
 #include <QPinchGesture>
 #include <QFont>
 #include <QFontMetrics>
+#include <QDoubleValidator>
+#include <QSignalBlocker>
 #include <QShortcut>
 #include <QTimer>
 #include <QDebug>

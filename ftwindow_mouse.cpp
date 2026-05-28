@@ -1,5 +1,17 @@
 #include "ftwindow_common.h"
 
+// QImage::mirrored() was deprecated in Qt 6.9 in favour of flipped(). The
+// native desktop kit is newer, but the WebAssembly kit is still on Qt 6.8
+// (which has no flipped()), so wrap both behind a version check.
+static QImage flipImage(const QImage &img, Qt::Orientations dir)
+{
+#if QT_VERSION >= QT_VERSION_CHECK(6, 9, 0)
+    return img.flipped(dir);
+#else
+    return img.mirrored(dir.testFlag(Qt::Horizontal), dir.testFlag(Qt::Vertical));
+#endif
+}
+
 // ---------------------------------------------------------------------------
 //  Mouse
 // ---------------------------------------------------------------------------
@@ -270,7 +282,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
     if (m_p1BtnRects[3].contains(event->pos()) && !m_image.isNull()) {
         deactivateAllP1Tools(); showP1ToolWidgets();
         storeUndoSnapshot();
-        m_image = m_image.mirrored(true, false);
+        m_image = flipImage(m_image, Qt::Horizontal);
         extractImageData();
         if (m_ftComputed) computeFFT();
         update();
@@ -279,7 +291,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
     if (m_p1BtnRects[4].contains(event->pos()) && !m_image.isNull()) {
         deactivateAllP1Tools(); showP1ToolWidgets();
         storeUndoSnapshot();
-        m_image = m_image.mirrored(false, true);
+        m_image = flipImage(m_image, Qt::Vertical);
         extractImageData();
         if (m_ftComputed) computeFFT();
         update();
@@ -579,6 +591,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         m_latticeEraseOutside->setVisible(m_latticeActive);
         m_latticeApplyBtn->setVisible(m_latticeActive);
 
+        m_crossSectionDirEdit->setVisible(m_crossSectionActive);
         m_crossSectionWidthEdit->setVisible(m_crossSectionActive);
 
         m_p2SymmetryEdit->setVisible(m_p2SymmetrizeActive);
@@ -655,9 +668,11 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         bool was = m_crossSectionActive; deactivateAllTools();
         m_crossSectionActive = !was;
         if (m_crossSectionActive && m_ftComputed) {
+            syncCrossSectionDirEdit();
             computeCrossSectionProfile();
         } else {
             m_crossSectionProfile.clear();
+            m_crossSectionPhaseProfile.clear();
         }
         showToolWidgets(); update(); return;
     }
@@ -801,6 +816,8 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
                 double ccy = di.screenRect.center().y();
                 m_crossSectionAngle = std::atan2(event->pos().y() - ccy,
                                                   event->pos().x() - ccx) * 180.0 / M_PI;
+                syncCrossSectionDirEdit();
+                computeCrossSectionProfile();
                 update();
                 return;
             }
@@ -970,8 +987,14 @@ void FtWindow::mouseReleaseEvent(QMouseEvent *event)
                     rebuildImageWithLUT();
                     break;
                 case HIST_POWER:
-                    m_powerDispMin = newMin; m_powerDispMax = newMax;
-                    rebuildFTImageWithLUT(HIST_POWER);
+                    if (m_displayMode == 2) {
+                        m_complexDispMin = newMin; m_complexDispMax = newMax;
+                        m_complexRangeCustom = true;
+                        buildComplexImage();
+                    } else {
+                        m_powerDispMin = newMin; m_powerDispMax = newMax;
+                        rebuildFTImageWithLUT(HIST_POWER);
+                    }
                     break;
                 case HIST_FT_LEFT:
                     if (m_displayMode == 0) { m_cosDispMin = newMin; m_cosDispMax = newMax; }
@@ -993,9 +1016,14 @@ void FtWindow::mouseReleaseEvent(QMouseEvent *event)
                     rebuildImageWithLUT();
                     break;
                 case HIST_POWER:
-                    m_powerDispMin = m_powerMin;
-                    m_powerDispMax = m_powerMax;
-                    rebuildFTImageWithLUT(HIST_POWER);
+                    if (m_displayMode == 2) {
+                        resetComplexDisplayRange();
+                        buildComplexImage();
+                    } else {
+                        m_powerDispMin = m_powerMin;
+                        m_powerDispMax = m_powerMax;
+                        rebuildFTImageWithLUT(HIST_POWER);
+                    }
                     break;
                 case HIST_FT_LEFT:
                     if (m_displayMode == 0) { m_cosDispMin = m_cosMin; m_cosDispMax = m_cosMax; }
@@ -1468,6 +1496,8 @@ void FtWindow::mouseMoveEvent(QMouseEvent *event)
                 double ccy = di.screenRect.center().y();
                 m_crossSectionAngle = std::atan2(event->pos().y() - ccy,
                                                   event->pos().x() - ccx) * 180.0 / M_PI;
+                syncCrossSectionDirEdit();
+                if (m_ftComputed) computeCrossSectionProfile();
                 update();
                 break;
             }
@@ -1509,9 +1539,14 @@ void FtWindow::mouseDoubleClickEvent(QMouseEvent *event)
                 rebuildImageWithLUT();
                 break;
             case HIST_POWER:
-                m_powerDispMin = m_powerMin;
-                m_powerDispMax = m_powerMax;
-                rebuildFTImageWithLUT(HIST_POWER);
+                if (m_displayMode == 2) {
+                    resetComplexDisplayRange();
+                    buildComplexImage();
+                } else {
+                    m_powerDispMin = m_powerMin;
+                    m_powerDispMax = m_powerMax;
+                    rebuildFTImageWithLUT(HIST_POWER);
+                }
                 break;
             case HIST_FT_LEFT:
                 if (m_displayMode == 0) { m_cosDispMin = m_cosMin; m_cosDispMax = m_cosMax; }
@@ -1677,11 +1712,23 @@ bool FtWindow::event(QEvent *event)
     } else if (event->type() == QEvent::Gesture) {
         auto *ge = static_cast<QGestureEvent *>(event);
         if (auto *pinch = static_cast<QPinchGesture *>(ge->gesture(Qt::PinchGesture))) {
+            // Only zoom while the pinch is actively updating. On some backends
+            // (notably the WebAssembly one) the finishing/cancel event reports
+            // a collapsed scale factor, which would otherwise multiply the zoom
+            // back down to its lowest level when the user lifts their fingers.
+            Qt::GestureState st = pinch->state();
+            if (st == Qt::GestureFinished || st == Qt::GestureCanceled) {
+                event->accept();
+                return true;
+            }
             if (pinch->changeFlags() & QPinchGesture::ScaleFactorChanged) {
-                QPoint pos = mapFromGlobal(pinch->centerPoint().toPoint());
-                if (applyPinchZoom(pos, pinch->scaleFactor())) {
-                    event->accept();
-                    return true;
+                double step = pinch->scaleFactor();
+                if (step > 0.0 && std::isfinite(step)) {
+                    QPoint pos = mapFromGlobal(pinch->centerPoint().toPoint());
+                    if (applyPinchZoom(pos, step)) {
+                        event->accept();
+                        return true;
+                    }
                 }
             }
         }

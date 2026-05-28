@@ -1256,6 +1256,11 @@ void FtWindow::computeFFT(bool keepZoom)
         m_zoom[1].reset(N, N);
         m_zoom[2].reset(N, N);
     }
+
+    // Keep the active line-profile (cross-section) overlays in sync with the
+    // newly computed FT, e.g. after a panel-1 edit auto-recomputes the FFT.
+    if (m_crossSectionActive)
+        computeCrossSectionProfile();
 }
 
 void FtWindow::computeInverseFFT()
@@ -1505,6 +1510,10 @@ void FtWindow::computeFFTAnimated(bool keepZoom)
             m_zoom[1].reset(N, N);
             m_zoom[2].reset(N, N);
         }
+        // Keep the active line-profile (cross-section) overlays in sync with
+        // the newly computed FT.
+        if (m_crossSectionActive)
+            computeCrossSectionProfile();
         update();
     });
 
@@ -1633,60 +1642,12 @@ void FtWindow::recomputeDisplayImages()
     m_phaseImg = floatToImage(m_phaseVals, N);
     m_powerImg = floatToImage(m_powerVals, N);
 
-    // Complex FT image: brightness = power, hue = phase.
-    //
-    // Two pitfalls handled here:
-    //   (1) A huge DC peak (typical real image) crushes the dynamic range,
-    //       so pMax is taken while excluding the central 3x3 pixels.
-    //   (2) A uniformly-amplitude FT (e.g. a phase ramp, where every
-    //       pixel has amplitude exactly 1 in math) has a range of just
-    //       floating-point round-off (~1e-15). Without guarding, pScale
-    //       = 1/range ≈ 1e15 magnifies that noise into the full 0..1
-    //       brightness range and the display becomes a "starfield" of
-    //       scattered black/dim dots. We detect that case and treat the
-    //       FT as uniformly bright so the pure hue shows.
-    {
-        int half = N / 2;
-        double pMin = std::numeric_limits<double>::infinity();
-        double pMax = -std::numeric_limits<double>::infinity();
-        double pMaxAll = pMax;
-        for (int y = 0; y < N; y++) {
-            for (int x = 0; x < N; x++) {
-                double v = m_powerVals[y * N + x];
-                if (v < pMin) pMin = v;
-                if (v > pMaxAll) pMaxAll = v;
-                bool nearCenter = std::abs(x - half) <= 1 && std::abs(y - half) <= 1;
-                if (!nearCenter && v > pMax) pMax = v;
-            }
-        }
-        if (pMax <= pMin) pMax = pMaxAll;
-
-        // If the dynamic range is at the noise floor of doubles (relative
-        // to the magnitudes involved), the image is effectively flat —
-        // treat all pixels as full brightness so the pure hue is visible.
-        double range = pMax - pMin;
-        double mag = std::max({std::abs(pMax), std::abs(pMin), 1.0});
-        bool flatBrightness = range <= 1e-9 * mag;
-        double pScale = flatBrightness ? 0.0 : 1.0 / range;
-
-        m_complexImg = QImage(N, N, QImage::Format_RGB32);
-        // Detach/allocate once on this thread, then address rows by raw offset
-        // so the parallel workers never call scanLine() concurrently.
-        uchar *base = m_complexImg.bits();
-        qsizetype bpl = m_complexImg.bytesPerLine();
-        parallelFor(0, N, [&](int y) {
-            QRgb *row = reinterpret_cast<QRgb *>(base + y * bpl);
-            for (int x = 0; x < N; x++) {
-                int idx = y * N + x;
-                double val = flatBrightness
-                    ? 1.0
-                    : std::clamp((m_powerVals[idx] - pMin) * pScale, 0.0, 1.0);
-                double hue = m_phaseVals[idx] + 180.0;
-                QColor c = QColor::fromHsvF(hue / 360.0, 1.0, val);
-                row[x] = c.rgb();
-            }
-        });
-    }
+    // Complex FT image: brightness from the power spectrum, hue from phase.
+    // Use the auto brightness range as default, but keep any range the user
+    // has set via the histogram when the FT contrast is locked.
+    if (!m_ftContrastLocked)
+        resetComplexDisplayRange();
+    buildComplexImage();
 
     auto mm = [](const std::vector<double> &v) {
         return std::make_pair(*std::min_element(v.begin(), v.end()),
@@ -2316,6 +2277,75 @@ void FtWindow::rebuildFTImageWithLUT(int which)
             rebuild(m_phaseVals, m_phaseImg, m_phaseDispMin, m_phaseDispMax);
         break;
     }
+}
+
+// ---------------------------------------------------------------------------
+//  Reset the complex-FT brightness range to its automatic default: from the
+//  global minimum power up to the maximum power excluding the central 3x3
+//  pixels, so the huge DC peak does not crush the displayed dynamic range.
+// ---------------------------------------------------------------------------
+void FtWindow::resetComplexDisplayRange()
+{
+    int N = m_fftN;
+    if (N == 0 || (int)m_powerVals.size() != N * N) return;
+
+    int half = N / 2;
+    double pMin = std::numeric_limits<double>::infinity();
+    double pMax = -std::numeric_limits<double>::infinity();
+    double pMaxAll = pMax;
+    for (int y = 0; y < N; y++) {
+        for (int x = 0; x < N; x++) {
+            double v = m_powerVals[y * N + x];
+            if (v < pMin) pMin = v;
+            if (v > pMaxAll) pMaxAll = v;
+            bool nearCenter = std::abs(x - half) <= 1 && std::abs(y - half) <= 1;
+            if (!nearCenter && v > pMax) pMax = v;
+        }
+    }
+    if (pMax <= pMin) pMax = pMaxAll;
+
+    m_complexDispMin = pMin;
+    m_complexDispMax = pMax;
+    m_complexRangeCustom = false;
+}
+
+// ---------------------------------------------------------------------------
+//  (Re)build the coloured complex-FT image: brightness from the power
+//  spectrum mapped through [m_complexDispMin, m_complexDispMax], hue from the
+//  phase. A near-zero range (e.g. a uniformly-bright FT such as a phase ramp,
+//  whose power varies only by floating-point round-off) is treated as flat so
+//  the pure hue shows instead of amplified noise.
+// ---------------------------------------------------------------------------
+void FtWindow::buildComplexImage()
+{
+    int N = m_fftN;
+    if (N == 0 || (int)m_powerVals.size() != N * N
+        || (int)m_phaseVals.size() != N * N) return;
+
+    double pMin = m_complexDispMin;
+    double pMax = m_complexDispMax;
+    double range = pMax - pMin;
+    double mag = std::max({std::abs(pMax), std::abs(pMin), 1.0});
+    bool flatBrightness = range <= 1e-9 * mag;
+    double pScale = flatBrightness ? 0.0 : 1.0 / range;
+
+    m_complexImg = QImage(N, N, QImage::Format_RGB32);
+    // Detach/allocate once on this thread, then address rows by raw offset
+    // so the parallel workers never call scanLine() concurrently.
+    uchar *base = m_complexImg.bits();
+    qsizetype bpl = m_complexImg.bytesPerLine();
+    parallelFor(0, N, [&](int y) {
+        QRgb *row = reinterpret_cast<QRgb *>(base + y * bpl);
+        for (int x = 0; x < N; x++) {
+            int idx = y * N + x;
+            double val = flatBrightness
+                ? 1.0
+                : std::clamp((m_powerVals[idx] - pMin) * pScale, 0.0, 1.0);
+            double hue = m_phaseVals[idx] + 180.0;
+            QColor c = QColor::fromHsvF(hue / 360.0, 1.0, val);
+            row[x] = c.rgb();
+        }
+    });
 }
 
 void FtWindow::p1EraserApply(QPoint pos)
