@@ -195,6 +195,8 @@ private:
     void chainSteps(std::vector<std::function<void()>> steps);
     void rebuildImageWithLUT();      // rebuild m_image using display min/max
     void rebuildFTImageWithLUT(int which); // rebuild FT display image for given mode
+    void buildComplexImage();        // (re)build m_complexImg from m_complexDispMin/Max
+    void resetComplexDisplayRange(); // reset m_complexDispMin/Max to the auto range
 
     // painting helpers
     QRect  upperArrowBounds() const;
@@ -277,6 +279,14 @@ private:
     double m_ampDispMin = 0, m_ampDispMax = 0;
     double m_phaseDispMin = 0, m_phaseDispMax = 0;
     double m_powerDispMin = 0, m_powerDispMax = 0;
+    // Brightness range (in power-value units) for the coloured complex-FT
+    // display. Adjusted via the histogram below the FT in complex mode.
+    double m_complexDispMin = 0, m_complexDispMax = 0;
+    // True once the user has dragged a sub-range in complex mode. The default
+    // range excludes the DC peak, so it differs from the global power range;
+    // this flag lets the histogram skip the grey overlay until a real
+    // selection is made.
+    bool   m_complexRangeCustom = false;
 
     // ---- histogram interaction ----
     static constexpr int HIST_P1 = 0;
@@ -379,7 +389,7 @@ private:
     QRect       m_manualRect;       // "Manual" click region below title
 
     // ---- tool buttons ----
-    static constexpr int P1_TOOL_BUTTONS = 17;
+    static constexpr int P1_TOOL_BUTTONS = 18;
     static constexpr int P2_TOOL_BUTTONS = 13;
     QRect       m_p1BtnRects[P1_TOOL_BUTTONS];       // panel 1 left edge
     QRect       m_toolBtnRects[P2_TOOL_BUTTONS];     // panel 2 right edge
@@ -536,6 +546,24 @@ private:
     QPushButton *m_applyBinBtn = nullptr;
     QCheckBox  *m_binKeepSizeBtn = nullptr;
 
+    // Crop UI
+    bool        m_cropActive = false;
+    QLineEdit  *m_cropTLxEdit = nullptr;   // top-left X (image pixels)
+    QLineEdit  *m_cropTLyEdit = nullptr;   // top-left Y
+    QLineEdit  *m_cropBRxEdit = nullptr;   // bottom-right X (exclusive)
+    QLineEdit  *m_cropBRyEdit = nullptr;   // bottom-right Y (exclusive)
+    QPushButton *m_cropCancelBtn = nullptr;
+    QPushButton *m_applyCropBtn  = nullptr;
+    bool        m_cropHasSelection = false;
+    bool        m_cropDragging = false;
+    bool        m_cropMoving = false;      // dragging an existing square to a new position
+    QPointF     m_cropAnchor;              // image coords of the drag-start corner
+    QPointF     m_cropGrabOffset;          // image-coord offset from square top-left to grab point
+    QRect       m_cropRect;                // selection in image coords (always square)
+    void onApplyCrop();
+    void onCropCancel();
+    void syncCropEdits();                  // refresh the 4 edits from m_cropRect
+
     // Brush/eraser parameter widgets
     QLineEdit  *m_brushValueEdit    = nullptr;
     QLineEdit  *m_brushDiameterEdit = nullptr;
@@ -581,9 +609,11 @@ private:
     // ---- cross-section profile ----
     bool        m_crossSectionActive = false;
     bool        m_crossSectionDragging = false;
-    double      m_crossSectionAngle = 0.0;    // angle in degrees
-    QLineEdit  *m_crossSectionWidthEdit = nullptr;
-    std::vector<double> m_crossSectionProfile;  // 1D integrated profile
+    double      m_crossSectionAngle = 0.0;    // internal angle (deg, screen convention: CW, y-down)
+    QLineEdit  *m_crossSectionWidthEdit = nullptr;  // integration width in reciprocal pixels
+    QLineEdit  *m_crossSectionDirEdit = nullptr;    // evaluation-line direction in degrees (math convention)
+    std::vector<double> m_crossSectionProfile;       // 1D integrated amplitude profile
+    std::vector<double> m_crossSectionPhaseProfile;  // 1D phase profile (rad), same sampling
     std::vector<bool>   m_crossSectionValid;    // true where data exists
     int         m_crossSectionCenter = 0;       // center index in profile
     double      m_crossSectionProjMin = 0;      // min projection distance (pixels from center)
@@ -592,6 +622,7 @@ private:
     void drawCrossSectionLines(QPainter &p, const QRect &screenRect,
                                const ZoomState &zoom, int imgW, int imgH);
     void computeCrossSectionProfile();
+    void syncCrossSectionDirEdit();   // refresh the direction edit from m_crossSectionAngle
 
     // ---- Fourier-space symmetrize ----
     bool        m_p2SymmetrizeActive = false;

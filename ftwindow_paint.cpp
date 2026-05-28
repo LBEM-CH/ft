@@ -132,10 +132,10 @@ void FtWindow::paintEvent(QPaintEvent *)
                 (i == 2 && m_measureActive) ||
                 (i == 5 && m_shiftActive) || (i == 6 && m_rotateActive) ||
                 (i == 8 && m_p1TaperActive) || (i == 9 && m_p1SymmetrizeActive) ||
-                (i == 10 && m_binActive) ||
-                (i == 11 && m_gaborActive) || (i == 12 && m_hessianActive) ||
-                (i == 13 && m_amyloidActive) || (i == 14 && m_mathActive) ||
-                (i == 15 && m_peakPickActive) || (i == 16 && m_extractActive))
+                (i == 10 && m_binActive) || (i == 11 && m_cropActive) ||
+                (i == 12 && m_gaborActive) || (i == 13 && m_hessianActive) ||
+                (i == 14 && m_amyloidActive) || (i == 15 && m_mathActive) ||
+                (i == 16 && m_peakPickActive) || (i == 17 && m_extractActive))
                 p.setBrush(QColor(60, 60, 60));
             else
                 p.setBrush(QColor(0, 0, 0));
@@ -618,8 +618,38 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Math calculations icon (button 14): Sigma/Sum sign
-            if (i == 14) {
+            // Crop image icon (button 11): thin white square outline over the
+            // lower-right third of an otherwise black field
+            if (i == 11) {
+                if (m_cropActive) {
+                    p.setPen(QPen(Qt::white, 1));
+                    p.setBrush(QColor(60, 60, 60));
+                    p.drawRect(r);
+                }
+
+                QColor col = m_cropActive ? QColor(180, 180, 255) : Qt::white;
+                int m = std::max(2, btnSide / 6);
+                int sq = std::max(2, (r.width() - 2 * m) * 3 / 5);
+                QRect cropSquare(r.right() - m - sq, r.bottom() - m - sq, sq, sq);
+                p.setPen(QPen(col, 1));   // thin white line
+                p.setBrush(Qt::NoBrush);
+                p.drawRect(cropSquare);
+
+                if (r.contains(m_mousePos)) {
+                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                    QFontMetrics ttfm(ttf);
+                    QString tip = "Crop image";
+                    int ttw = ttfm.horizontalAdvance(tip) + 8;
+                    int tth = ttfm.height() + 4;
+                    int ttx = r.right() + 4;
+                    int tty = r.center().y() - tth / 2;
+                    pendingTipRect = QRect(ttx, tty, ttw, tth);
+                    pendingTipText = tip;
+                }
+            }
+
+            // Math calculations icon (button 15): Sigma/Sum sign
+            if (i == 15) {
                 if (m_mathActive) {
                     p.setPen(QPen(Qt::white, 1));
                     p.setBrush(QColor(60, 60, 60));
@@ -665,8 +695,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Particle picking icon (button 15): four green plus signs in 2x2 grid
-            if (i == 15) {
+            // Particle picking icon (button 16): four green plus signs in 2x2 grid
+            if (i == 16) {
                 if (m_peakPickActive) {
                     p.setPen(QPen(Qt::white, 1));
                     p.setBrush(QColor(60, 60, 60));
@@ -729,8 +759,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Extract particles icon (button 16): white smiley face
-            if (i == 16) {
+            // Extract particles icon (button 17): white smiley face
+            if (i == 17) {
                 if (m_extractActive) {
                     p.setPen(QPen(Qt::white, 1));
                     p.setBrush(QColor(60, 60, 60));
@@ -779,8 +809,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Hessian filter icon (button 12): letter "H"
-            if (i == 12) {
+            // Hessian filter icon (button 13): letter "H"
+            if (i == 13) {
                 p.setRenderHint(QPainter::Antialiasing, true);
                 QFont gf;
                 gf.setBold(true);
@@ -804,8 +834,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Amyloid filament icon (button 13): letter "A"
-            if (i == 13) {
+            // Amyloid filament icon (button 14): letter "A"
+            if (i == 14) {
                 if (m_amyloidActive) {
                     p.setPen(QPen(Qt::white, 1));
                     p.setBrush(QColor(60, 60, 60));
@@ -834,8 +864,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Gabor filter icon (button 11): letter "G"
-            if (i == 11) {
+            // Gabor filter icon (button 12): letter "G"
+            if (i == 12) {
                 p.setRenderHint(QPainter::Antialiasing, true);
                 QFont gf;
                 gf.setBold(true);
@@ -1525,6 +1555,27 @@ void FtWindow::paintEvent(QPaintEvent *)
             p.restore();
         }
 
+        // Draw crop selection overlay (50% transparent white fill, white border)
+        if (m_cropActive && m_cropHasSelection) {
+            QRect target = frame.adjusted(2, 2, -2, -2);
+            QRectF src = m_zoom[0].visibleRect(imgW, imgH);
+            p.save();
+            p.setClipRect(target);
+            auto imgToScreen = [&](double ix, double iy) -> QPointF {
+                double sx = target.x() + (ix - src.x()) / src.width()  * target.width();
+                double sy = target.y() + (iy - src.y()) / src.height() * target.height();
+                return QPointF(sx, sy);
+            };
+            QPointF tl = imgToScreen(m_cropRect.left(), m_cropRect.top());
+            QPointF br = imgToScreen(m_cropRect.left() + m_cropRect.width(),
+                                     m_cropRect.top()  + m_cropRect.height());
+            QRectF sr(tl, br);
+            p.setBrush(QColor(255, 255, 255, 128));
+            p.setPen(QPen(Qt::white, 1));
+            p.drawRect(sr);
+            p.restore();
+        }
+
         // Draw amyloid filament overlays (control polylines + draggable points)
         if (m_amyloidActive && (!m_amyloidFilaments.empty() || m_amyloidPlacing == 1)) {
             QRect target = frame.adjusted(2, 2, -2, -2);
@@ -2039,8 +2090,21 @@ void FtWindow::paintEvent(QPaintEvent *)
                 drawMinMax(p, frame, m_powerMin, m_powerMax, curVal, hasCur, mouseText);
             }
 
+            // In complex mode the histogram controls the brightness range of
+            // the coloured display, so show that range; otherwise it controls
+            // the power-spectrum image. Until the user actually selects a
+            // sub-range in complex mode, pass an empty range so no grey
+            // overlay is drawn (the auto default excludes the DC peak and so
+            // would otherwise look like a custom selection).
+            double powHistDispMin, powHistDispMax;
+            if (m_displayMode == 2) {
+                if (m_complexRangeCustom) { powHistDispMin = m_complexDispMin; powHistDispMax = m_complexDispMax; }
+                else                      { powHistDispMin = powHistDispMax = m_powerMin; }
+            } else {
+                powHistDispMin = m_powerDispMin; powHistDispMax = m_powerDispMax;
+            }
             drawHistogram(p, frame, m_powerVals, m_powerMin, m_powerMax, hy - frame.bottom(),
-                          HIST_POWER, m_powerDispMin, m_powerDispMax);
+                          HIST_POWER, powHistDispMin, powHistDispMax);
 
             // Custom-paint the FT contrast lock and mask-center toggles
             // stacked to the right of the histogram, both same size. They are
@@ -2569,8 +2633,10 @@ void FtWindow::paintEvent(QPaintEvent *)
                 int r5 = m_latticeApplyBtn->width();
                 textW = std::max({r1, r2, r3, r4, r5});
             } else if (m_crossSectionActive) {
-                nRows = 1;
-                textW = fm.horizontalAdvance("Integration width in % of image size: ") + m_crossSectionWidthEdit->width();
+                nRows = 2;
+                int r1 = fm.horizontalAdvance("Direction of evaluation line [°]: ") + m_crossSectionDirEdit->width();
+                int r2 = fm.horizontalAdvance("Integration width [reciprocal pixels]: ") + m_crossSectionWidthEdit->width();
+                textW = std::max(r1, r2);
             } else if (m_p2SymmetrizeActive) {
                 nRows = 2;
                 int r1 = fm.horizontalAdvance("Symmetry to apply: ") + m_p2SymmetryEdit->width();
@@ -2718,9 +2784,12 @@ void FtWindow::paintEvent(QPaintEvent *)
 
                 m_latticeApplyBtn->move(tx, ty + lh * 4);
             } else if (m_crossSectionActive) {
-                drawParamLabel(p, fm, tx, ty, "Integration width in % of image size:",
+                drawParamLabel(p, fm, tx, ty, "Direction of evaluation line [°]:",
+                               m_crossSectionDirEdit->toolTip());
+                m_crossSectionDirEdit->move(tx + fm.horizontalAdvance("Direction of evaluation line [°]: "), ty);
+                drawParamLabel(p, fm, tx, ty + lh, "Integration width [reciprocal pixels]:",
                                m_crossSectionWidthEdit->toolTip());
-                m_crossSectionWidthEdit->move(tx + fm.horizontalAdvance("Integration width in % of image size: "), ty);
+                m_crossSectionWidthEdit->move(tx + fm.horizontalAdvance("Integration width [reciprocal pixels]: "), ty + lh);
             } else if (m_p2SymmetrizeActive) {
                 drawParamLabel(p, fm, tx, ty, "Symmetry to apply:", m_p2SymmetryEdit->toolTip());
                 m_p2SymmetryEdit->move(tx + fm.horizontalAdvance("Symmetry to apply: "), ty);
@@ -2788,7 +2857,7 @@ void FtWindow::paintEvent(QPaintEvent *)
         }
 
         // Panel 1 tool option rectangles (bottom-left of panel 1)
-        bool p1Tool = m_p1EraserActive || m_p1BrushActive || m_p1TaperActive || m_p1SymmetrizeActive || m_binActive || m_peakPickActive || m_extractActive || m_gaborActive || m_hessianActive || m_amyloidActive || m_measureActive;
+        bool p1Tool = m_p1EraserActive || m_p1BrushActive || m_p1TaperActive || m_p1SymmetrizeActive || m_binActive || m_cropActive || m_peakPickActive || m_extractActive || m_gaborActive || m_hessianActive || m_amyloidActive || m_measureActive;
         if (p1Tool) {
             int nRows = 0;
             int textW = 0;
@@ -2817,6 +2886,14 @@ void FtWindow::paintEvent(QPaintEvent *)
                 int r2 = fm.horizontalAdvance("Keep original image size");
                 int r3 = m_applyBinBtn->width();
                 textW = std::max({r1, r2, r3});
+            } else if (m_cropActive) {
+                nRows = 3;
+                int labW = std::max(fm.horizontalAdvance("Top left:  "),
+                                    fm.horizontalAdvance("Bottom right:  "));
+                int r0 = labW + m_cropTLxEdit->width() + 8 + m_cropTLyEdit->width();
+                int r1 = labW + m_cropBRxEdit->width() + 8 + m_cropBRyEdit->width();
+                int r2 = m_cropCancelBtn->width() + 8 + m_applyCropBtn->width();
+                textW = std::max({r0, r1, r2});
             } else if (m_peakPickActive) {
                 nRows = 5;
                 // Determine threshold range from selected source buffer
@@ -2940,6 +3017,17 @@ void FtWindow::paintEvent(QPaintEvent *)
                 m_binCombo->move(tx, ty);
                 m_binKeepSizeBtn->move(tx, ty + lh);
                 m_applyBinBtn->move(tx, ty + lh * 2);
+            } else if (m_cropActive) {
+                int labW = std::max(fm.horizontalAdvance("Top left:  "),
+                                    fm.horizontalAdvance("Bottom right:  "));
+                drawParamLabel(p, fm, tx, ty, "Top left:", m_cropTLxEdit->toolTip());
+                m_cropTLxEdit->move(tx + labW, ty);
+                m_cropTLyEdit->move(tx + labW + m_cropTLxEdit->width() + 8, ty);
+                drawParamLabel(p, fm, tx, ty + lh, "Bottom right:", m_cropBRxEdit->toolTip());
+                m_cropBRxEdit->move(tx + labW, ty + lh);
+                m_cropBRyEdit->move(tx + labW + m_cropBRxEdit->width() + 8, ty + lh);
+                m_cropCancelBtn->move(tx, ty + lh * 2);
+                m_applyCropBtn->move(rx + rw - margin - m_applyCropBtn->width(), ty + lh * 2);
             } else if (m_peakPickActive) {
                 // Row 0: source map combo + show/hide button top-right
                 drawParamLabel(p, fm, tx, ty, "Picking source map:", m_peakSourceCombo->toolTip(),
@@ -3230,31 +3318,26 @@ void FtWindow::paintEvent(QPaintEvent *)
                 p.drawLine(plotX, gy, plotX + plotW, gy);
             }
 
-            // Draw profile curve – only where data is valid, breaking at gaps
+            // Draw profile curve as one continuous line: skip invalid bins
+            // (e.g. with a very narrow integration width) but keep the pen
+            // down so gaps are bridged by a straight line.
             p.setRenderHint(QPainter::Antialiasing, true);
             p.setPen(QPen(QColor(40, 100, 220), 2));
             p.setBrush(Qt::NoBrush);
-            bool inSegment = false;
+            bool started = false;
             QPainterPath curve;
             for (int j = 0; j < nPts; j++) {
-                if (!m_crossSectionValid[j]) {
-                    if (inSegment) {
-                        p.drawPath(curve);
-                        curve = QPainterPath();
-                        inSegment = false;
-                    }
-                    continue;
-                }
+                if (!m_crossSectionValid[j]) continue;
                 double xp = plotX + (double)j / (nPts - 1) * plotW;
                 double yp = plotY + plotH - (m_crossSectionProfile[j] - profMin) / (profMax - profMin) * plotH;
-                if (!inSegment) {
+                if (!started) {
                     curve.moveTo(xp, yp);
-                    inSegment = true;
+                    started = true;
                 } else {
                     curve.lineTo(xp, yp);
                 }
             }
-            if (inSegment) p.drawPath(curve);
+            if (started) p.drawPath(curve);
             p.setRenderHint(QPainter::Antialiasing, false);
 
             // Mark center of Fourier transform
@@ -3331,7 +3414,177 @@ void FtWindow::paintEvent(QPaintEvent *)
             {
                 QFont tf; tf.setBold(true); tf.setPixelSize(12); p.setFont(tf);
                 p.setPen(QColor(40, 40, 40));
-                p.drawText(rx + 8, ry + 16, "Cross-section profile");
+                p.drawText(rx + 8, ry + 16, "Amplitude profile");
+            }
+
+            // Direction annotation in the top-right corner
+            {
+                QFont df; df.setBold(true); df.setPixelSize(12); p.setFont(df);
+                QFontMetrics dfm(df);
+                double dispDeg = -m_crossSectionAngle;
+                while (dispDeg <= -180.0) dispDeg += 360.0;
+                while (dispDeg > 180.0)   dispDeg -= 360.0;
+                QString dirStr = QString("Direction: %1°").arg(dispDeg, 0, 'f', 1);
+                p.setPen(QColor(220, 50, 50));
+                p.drawText(rx + rw - dfm.horizontalAdvance(dirStr) - 8, ry + 16, dirStr);
+            }
+        }
+    }
+
+    // ---- Cross-section phase profile overlay in panel 3 -------------------------
+    if (m_crossSectionActive && m_ftComputed && !m_crossSectionPhaseProfile.empty()
+        && m_crossSectionValid.size() == m_crossSectionPhaseProfile.size()) {
+        int p3x = 0;
+        int p3y = hy + 2;
+        int p3w = cx - 1;
+        int p3h = height() - p3y;
+
+        int rw = static_cast<int>(p3w * 0.80);
+        int rh = static_cast<int>(p3h * 0.80);
+        int rx = p3x + (p3w - rw) / 2;
+        int ry = p3y + (p3h - rh) / 2;
+        QRect profileRect(rx, ry, rw, rh);
+        drawShadowRect(p, profileRect);
+
+        int plotMarginL = 50, plotMarginR = 15, plotMarginT = 25, plotMarginB = 35;
+        int plotX = rx + plotMarginL;
+        int plotY = ry + plotMarginT;
+        int plotW = rw - plotMarginL - plotMarginR;
+        int plotH = rh - plotMarginT - plotMarginB;
+
+        if (plotW > 10 && plotH > 10 && m_crossSectionPhaseProfile.size() > 1) {
+            int nPts = (int)m_crossSectionPhaseProfile.size();
+
+            // Plot background
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(245, 245, 245));
+            p.drawRect(plotX, plotY, plotW, plotH);
+
+            // Grid lines at ±π/2 (phase range [−π,π])
+            p.setPen(QPen(QColor(210, 210, 210), 1));
+            for (int g = 1; g < 4; g++) {
+                int gy = plotY + g * plotH / 4;
+                p.drawLine(plotX, gy, plotX + plotW, gy);
+            }
+
+            // Zero line (phase = 0) through the middle.
+            int zeroY = plotY + plotH / 2;
+            p.setPen(QPen(QColor(160, 160, 160), 1));
+            p.drawLine(plotX, zeroY, plotX + plotW, zeroY);
+
+            // Phase curve (arg ∈ [−π,π]; 0 at the middle, +π top, −π bottom),
+            // drawn as one continuous line: skip invalid bins (e.g. with a
+            // very narrow integration width) but keep the pen down so gaps are
+            // bridged by a straight line.
+            p.setRenderHint(QPainter::Antialiasing, true);
+            p.setPen(QPen(QColor(150, 40, 200), 2));
+            p.setBrush(Qt::NoBrush);
+            bool started = false;
+            QPainterPath curve;
+            for (int j = 0; j < nPts; j++) {
+                if (!m_crossSectionValid[j]) continue;
+                double xp = plotX + (double)j / (nPts - 1) * plotW;
+                double v = std::clamp(m_crossSectionPhaseProfile[j], -M_PI, M_PI);
+                double yp = zeroY - (v / M_PI) * (plotH / 2.0);
+                if (!started) { curve.moveTo(xp, yp); started = true; }
+                else curve.lineTo(xp, yp);
+            }
+            if (started) p.drawPath(curve);
+            p.setRenderHint(QPainter::Antialiasing, false);
+
+            // Mark center of Fourier transform
+            if (m_crossSectionCenter >= 0 && m_crossSectionCenter < nPts) {
+                double centerXp = plotX + (double)m_crossSectionCenter / (nPts - 1) * plotW;
+                p.setPen(QPen(QColor(200, 60, 60), 1, Qt::DashLine));
+                p.drawLine((int)centerXp, plotY, (int)centerXp, plotY + plotH);
+                QFont cf; cf.setPixelSize(9); p.setFont(cf);
+                p.setPen(QColor(200, 60, 60));
+                p.drawText((int)centerXp + 3, plotY + 10, "center");
+            }
+
+            // Dotted vertical lines at ±0.5 reciprocal pixels
+            {
+                double halfN = m_fftN / 2.0;
+                double maxProj = halfN * std::sqrt(2.0);
+                double projMin = -maxProj;
+                double freqs[2] = { -0.5, 0.5 };
+                p.setPen(QPen(QColor(120, 120, 120), 1, Qt::DotLine));
+                for (double freq : freqs) {
+                    double projDist = freq * m_fftN;
+                    int idx = (int)std::round(projDist - projMin);
+                    if (idx >= 0 && idx < nPts) {
+                        double xp = plotX + (double)idx / (nPts - 1) * plotW;
+                        p.drawLine((int)xp, plotY, (int)xp, plotY + plotH);
+                    }
+                }
+            }
+
+            // Axes
+            p.setPen(QPen(QColor(60, 60, 60), 1));
+            p.drawLine(plotX, plotY + plotH, plotX + plotW, plotY + plotH);
+            p.drawLine(plotX, plotY, plotX, plotY + plotH);
+
+            // Y axis labels (phase range [−180°,180°])
+            {
+                QFont af; af.setPixelSize(10); p.setFont(af);
+                QFontMetrics afm(af);
+                p.setPen(QColor(60, 60, 60));
+                QString l180  = "180°";
+                QString l90   = "90°";
+                QString l0    = "0°";
+                QString lm90  = "-90°";
+                QString lm180 = "-180°";
+                int q1 = plotY + plotH / 4;
+                int q3 = plotY + 3 * plotH / 4;
+                p.drawText(plotX - afm.horizontalAdvance(l180)  - 4, plotY + afm.ascent(),    l180);
+                p.drawText(plotX - afm.horizontalAdvance(l90)   - 4, q1 + afm.ascent() / 2,   l90);
+                p.drawText(plotX - afm.horizontalAdvance(l0)    - 4, zeroY + afm.ascent() / 2, l0);
+                p.drawText(plotX - afm.horizontalAdvance(lm90)  - 4, q3 + afm.ascent() / 2,   lm90);
+                p.drawText(plotX - afm.horizontalAdvance(lm180) - 4, plotY + plotH,           lm180);
+            }
+
+            // X axis labels – always ±sqrt(2)/2 ≈ ±0.707 reciprocal pixels
+            {
+                QFont af; af.setPixelSize(10); p.setFont(af);
+                QFontMetrics afm(af);
+                p.setPen(QColor(60, 60, 60));
+
+                double dispFreq = std::sqrt(2.0) / 2.0;
+                QString lbl0 = QString::number(-dispFreq, 'f', 3);
+                QString lblM = "0";
+                QString lbl1 = QString::number(dispFreq, 'f', 3);
+
+                p.drawText(plotX, plotY + plotH + afm.ascent() + 3, lbl0);
+                if (m_crossSectionCenter >= 0 && m_crossSectionCenter < nPts) {
+                    double centerXp = plotX + (double)m_crossSectionCenter / (nPts - 1) * plotW;
+                    p.drawText((int)centerXp - afm.horizontalAdvance(lblM) / 2,
+                               plotY + plotH + afm.ascent() + 3, lblM);
+                }
+                p.drawText(plotX + plotW - afm.horizontalAdvance(lbl1),
+                           plotY + plotH + afm.ascent() + 3, lbl1);
+
+                QString xTitle = "reciprocal pixels";
+                p.drawText(plotX + (plotW - afm.horizontalAdvance(xTitle)) / 2,
+                           plotY + plotH + afm.ascent() + 15, xTitle);
+            }
+
+            // Title
+            {
+                QFont tf; tf.setBold(true); tf.setPixelSize(12); p.setFont(tf);
+                p.setPen(QColor(40, 40, 40));
+                p.drawText(rx + 8, ry + 16, "Phase profile");
+            }
+
+            // Direction annotation in the top-right corner
+            {
+                QFont df; df.setBold(true); df.setPixelSize(12); p.setFont(df);
+                QFontMetrics dfm(df);
+                double dispDeg = -m_crossSectionAngle;
+                while (dispDeg <= -180.0) dispDeg += 360.0;
+                while (dispDeg > 180.0)   dispDeg -= 360.0;
+                QString dirStr = QString("Direction: %1°").arg(dispDeg, 0, 'f', 1);
+                p.setPen(QColor(220, 50, 50));
+                p.drawText(rx + rw - dfm.horizontalAdvance(dirStr) - 8, ry + 16, dirStr);
             }
         }
     }
@@ -3572,17 +3825,23 @@ void FtWindow::paintEvent(QPaintEvent *)
             p.drawLine(plotX, plotY + plotH, plotX + plotW, plotY + plotH);
             p.drawLine(plotX, plotY, plotX, plotY + plotH);
 
-            // Y axis labels (phase range [−π,π])
+            // Y axis labels (phase range [−180°,180°])
             {
                 QFont af; af.setPixelSize(10); p.setFont(af);
                 QFontMetrics afm(af);
                 p.setPen(QColor(60, 60, 60));
-                QString yMax = "π";        // pi
-                QString yMid = "0";
-                QString yMin = "-π";       // -pi
-                p.drawText(plotX - afm.horizontalAdvance(yMax) - 4, plotY + afm.ascent(), yMax);
-                p.drawText(plotX - afm.horizontalAdvance(yMid) - 4, zeroY + afm.ascent() / 2, yMid);
-                p.drawText(plotX - afm.horizontalAdvance(yMin) - 4, plotY + plotH, yMin);
+                QString l180  = "180°";
+                QString l90   = "90°";
+                QString l0    = "0°";
+                QString lm90  = "-90°";
+                QString lm180 = "-180°";
+                int q1 = plotY + plotH / 4;
+                int q3 = plotY + 3 * plotH / 4;
+                p.drawText(plotX - afm.horizontalAdvance(l180)  - 4, plotY + afm.ascent(),    l180);
+                p.drawText(plotX - afm.horizontalAdvance(l90)   - 4, q1 + afm.ascent() / 2,   l90);
+                p.drawText(plotX - afm.horizontalAdvance(l0)    - 4, zeroY + afm.ascent() / 2, l0);
+                p.drawText(plotX - afm.horizontalAdvance(lm90)  - 4, q3 + afm.ascent() / 2,   lm90);
+                p.drawText(plotX - afm.horizontalAdvance(lm180) - 4, plotY + plotH,           lm180);
             }
 
             // X axis label: spatial frequency range in 1/Å
@@ -3952,9 +4211,9 @@ void FtWindow::drawCrossSectionLines(QPainter &p, const QRect &screenRect,
     double normY =  std::cos(angle);
 
     bool okW = false;
-    double widthPct = m_crossSectionWidthEdit->text().toDouble(&okW);
-    if (!okW || widthPct <= 0.0) widthPct = 1.0;
-    double separation = N * widthPct / 200.0;  // half-width in image pixels
+    double widthRecip = m_crossSectionWidthEdit->text().toDouble(&okW);
+    if (!okW || widthRecip < 1.0) widthRecip = 1.0;   // minimum 1 reciprocal pixel
+    double separation = widthRecip / 2.0;  // half-width of the band in reciprocal pixels
     double widthPx1 = separation * scaleX;
     double widthPx2 = separation * scaleY;
     double widthPx = std::min(widthPx1, widthPx2);
@@ -4004,6 +4263,7 @@ void FtWindow::computeCrossSectionProfile()
 {
     if (!m_ftComputed || m_powerVals.empty() || m_fftN == 0) {
         m_crossSectionProfile.clear();
+        m_crossSectionPhaseProfile.clear();
         m_crossSectionValid.clear();
         return;
     }
@@ -4017,9 +4277,9 @@ void FtWindow::computeCrossSectionProfile()
     double normX = -std::sin(angle);
     double normY =  std::cos(angle);
     bool okW = false;
-    double widthPct = m_crossSectionWidthEdit->text().toDouble(&okW);
-    if (!okW || widthPct <= 0.0) widthPct = 1.0;
-    double separation = N * widthPct / 200.0;  // half-width in image pixels
+    double widthRecip = m_crossSectionWidthEdit->text().toDouble(&okW);
+    if (!okW || widthRecip < 1.0) widthRecip = 1.0;   // minimum 1 reciprocal pixel
+    double separation = widthRecip / 2.0;  // half-width of the band in reciprocal pixels
 
     // Always use the maximum diagonal extent: halfN * sqrt(2)
     double maxProj = halfN * std::sqrt(2.0);
@@ -4031,12 +4291,17 @@ void FtWindow::computeCrossSectionProfile()
     if (profileLen < 2) profileLen = 2;
 
     std::vector<double> profile(profileLen, 0.0);
+    std::vector<double> sumRe(profileLen, 0.0);   // complex accumulator for phase
+    std::vector<double> sumIm(profileLen, 0.0);
     std::vector<int> counts(profileLen, 0);
 
     // Center index maps to projection distance 0
     int centerIdx = (int)std::round(-projMin);
     if (centerIdx < 0) centerIdx = 0;
     if (centerIdx >= profileLen) centerIdx = profileLen - 1;
+
+    bool haveComplex = (m_cosVals.size() == (size_t)N * N
+                        && m_sinVals.size() == (size_t)N * N);
 
     for (int y = 0; y < N; y++) {
         for (int x = 0; x < N; x++) {
@@ -4055,24 +4320,47 @@ void FtWindow::computeCrossSectionProfile()
             if (idx < 0 || idx >= profileLen) continue;
 
             profile[idx] += m_powerVals[y * N + x];
+            if (haveComplex) {
+                sumRe[idx] += m_cosVals[y * N + x];   // real part of FT
+                sumIm[idx] += m_sinVals[y * N + x];   // imag part of FT
+            }
             counts[idx]++;
         }
     }
 
-    // Average where we have counts; mark validity
+    // Average amplitude where we have counts; phase = arg of complex sum.
+    std::vector<double> phase(profileLen, 0.0);
     std::vector<bool> valid(profileLen, false);
     for (int i = 0; i < profileLen; i++) {
         if (counts[i] > 0) {
             profile[i] /= counts[i];
+            if (haveComplex) phase[i] = std::atan2(sumIm[i], sumRe[i]);
             valid[i] = true;
         }
     }
 
     m_crossSectionProfile = std::move(profile);
+    m_crossSectionPhaseProfile = std::move(phase);
     m_crossSectionValid = std::move(valid);
     m_crossSectionCenter = centerIdx;
     m_crossSectionProjMin = projMin;
     m_crossSectionProjMax = projMax;
+}
+
+// ---------------------------------------------------------------------------
+//  Refresh the direction edit from the internal (screen-convention) angle.
+//  The displayed value uses the math convention (CCW from +x, y-up), so it is
+//  the negation of m_crossSectionAngle. Signals are blocked to avoid feeding
+//  the textChanged handler back into a recompute.
+// ---------------------------------------------------------------------------
+void FtWindow::syncCrossSectionDirEdit()
+{
+    if (!m_crossSectionDirEdit) return;
+    double disp = -m_crossSectionAngle;
+    while (disp <= -180.0) disp += 360.0;
+    while (disp > 180.0)   disp -= 360.0;
+    QSignalBlocker block(m_crossSectionDirEdit);
+    m_crossSectionDirEdit->setText(QString::number(disp, 'f', 1));
 }
 
 // ---------------------------------------------------------------------------
