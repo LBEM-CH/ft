@@ -288,20 +288,22 @@ acts as a low-pass filter followed by downsampling.
 <summary>Crop image<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><rect x="10.4" y="10.4" width="9.6" height="9.6" fill="none" stroke="#fff" stroke-width="1.2"/></svg></span></summary>
 <p>
 Cut a square region out of the image and replace the slot with it.
-Drag a square selection directly on the image: a 50&nbsp;% transparent
-white box with a white border follows the cursor. The selection is
-always kept square (1:1 aspect ratio) and is clamped to the image
-bounds. Right-click clears the current selection. When the tool is
-activated it starts with the largest centred square already selected.
+When the tool is activated no region is selected yet. Drag on the image
+to open a square selection: a 50&nbsp;% transparent white box with a
+white border follows the cursor. The selection is always kept square
+(1:1 aspect ratio) and is clamped to the image bounds. To reposition an
+existing square, click <em>inside</em> it and drag &mdash; the box keeps
+its size and follows the cursor. Dragging outside the current square
+starts a new selection. Right-click clears the current selection.
 </p>
 <div class="controls">
   <strong>Top left coordinate:</strong> X / Y of the upper-left corner,
   in image pixels (origin at the top-left). <br>
   <strong>Bottom right coordinate:</strong> X / Y of the lower-right
   corner. <br>
-  Both corners can be typed for an exact selection; if a non-square box
-  is entered it is reduced to the largest square that fits inside it.
-  The selection also updates live while you drag.
+  Both corners can be typed for an exact selection; the field you edit
+  sets the side length and the opposite corner follows so the box stays
+  square. The fields update live while you drag or move the square.
 </div>
 <p>
 Press <strong>Crop image</strong> to replace the current slot with the
