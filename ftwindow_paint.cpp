@@ -132,10 +132,10 @@ void FtWindow::paintEvent(QPaintEvent *)
                 (i == 2 && m_measureActive) ||
                 (i == 5 && m_shiftActive) || (i == 6 && m_rotateActive) ||
                 (i == 8 && m_p1TaperActive) || (i == 9 && m_p1SymmetrizeActive) ||
-                (i == 10 && m_binActive) ||
-                (i == 11 && m_gaborActive) || (i == 12 && m_hessianActive) ||
-                (i == 13 && m_amyloidActive) || (i == 14 && m_mathActive) ||
-                (i == 15 && m_peakPickActive) || (i == 16 && m_extractActive))
+                (i == 10 && m_binActive) || (i == 11 && m_cropActive) ||
+                (i == 12 && m_gaborActive) || (i == 13 && m_hessianActive) ||
+                (i == 14 && m_amyloidActive) || (i == 15 && m_mathActive) ||
+                (i == 16 && m_peakPickActive) || (i == 17 && m_extractActive))
                 p.setBrush(QColor(60, 60, 60));
             else
                 p.setBrush(QColor(0, 0, 0));
@@ -618,8 +618,38 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Math calculations icon (button 14): Sigma/Sum sign
-            if (i == 14) {
+            // Crop image icon (button 11): thin white square outline over the
+            // lower-right third of an otherwise black field
+            if (i == 11) {
+                if (m_cropActive) {
+                    p.setPen(QPen(Qt::white, 1));
+                    p.setBrush(QColor(60, 60, 60));
+                    p.drawRect(r);
+                }
+
+                QColor col = m_cropActive ? QColor(180, 180, 255) : Qt::white;
+                int m = std::max(2, btnSide / 6);
+                int sq = std::max(2, (r.width() - 2 * m) * 3 / 5);
+                QRect cropSquare(r.right() - m - sq, r.bottom() - m - sq, sq, sq);
+                p.setPen(QPen(col, 1));   // thin white line
+                p.setBrush(Qt::NoBrush);
+                p.drawRect(cropSquare);
+
+                if (r.contains(m_mousePos)) {
+                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                    QFontMetrics ttfm(ttf);
+                    QString tip = "Crop image";
+                    int ttw = ttfm.horizontalAdvance(tip) + 8;
+                    int tth = ttfm.height() + 4;
+                    int ttx = r.right() + 4;
+                    int tty = r.center().y() - tth / 2;
+                    pendingTipRect = QRect(ttx, tty, ttw, tth);
+                    pendingTipText = tip;
+                }
+            }
+
+            // Math calculations icon (button 15): Sigma/Sum sign
+            if (i == 15) {
                 if (m_mathActive) {
                     p.setPen(QPen(Qt::white, 1));
                     p.setBrush(QColor(60, 60, 60));
@@ -665,8 +695,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Particle picking icon (button 15): four green plus signs in 2x2 grid
-            if (i == 15) {
+            // Particle picking icon (button 16): four green plus signs in 2x2 grid
+            if (i == 16) {
                 if (m_peakPickActive) {
                     p.setPen(QPen(Qt::white, 1));
                     p.setBrush(QColor(60, 60, 60));
@@ -729,8 +759,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Extract particles icon (button 16): white smiley face
-            if (i == 16) {
+            // Extract particles icon (button 17): white smiley face
+            if (i == 17) {
                 if (m_extractActive) {
                     p.setPen(QPen(Qt::white, 1));
                     p.setBrush(QColor(60, 60, 60));
@@ -779,8 +809,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Hessian filter icon (button 12): letter "H"
-            if (i == 12) {
+            // Hessian filter icon (button 13): letter "H"
+            if (i == 13) {
                 p.setRenderHint(QPainter::Antialiasing, true);
                 QFont gf;
                 gf.setBold(true);
@@ -804,8 +834,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Amyloid filament icon (button 13): letter "A"
-            if (i == 13) {
+            // Amyloid filament icon (button 14): letter "A"
+            if (i == 14) {
                 if (m_amyloidActive) {
                     p.setPen(QPen(Qt::white, 1));
                     p.setBrush(QColor(60, 60, 60));
@@ -834,8 +864,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Gabor filter icon (button 11): letter "G"
-            if (i == 11) {
+            // Gabor filter icon (button 12): letter "G"
+            if (i == 12) {
                 p.setRenderHint(QPainter::Antialiasing, true);
                 QFont gf;
                 gf.setBold(true);
@@ -1522,6 +1552,27 @@ void FtWindow::paintEvent(QPaintEvent *)
                     p.drawLine(sp0, QPointF(m_mousePos));
                 }
             }
+            p.restore();
+        }
+
+        // Draw crop selection overlay (50% transparent white fill, white border)
+        if (m_cropActive && m_cropHasSelection) {
+            QRect target = frame.adjusted(2, 2, -2, -2);
+            QRectF src = m_zoom[0].visibleRect(imgW, imgH);
+            p.save();
+            p.setClipRect(target);
+            auto imgToScreen = [&](double ix, double iy) -> QPointF {
+                double sx = target.x() + (ix - src.x()) / src.width()  * target.width();
+                double sy = target.y() + (iy - src.y()) / src.height() * target.height();
+                return QPointF(sx, sy);
+            };
+            QPointF tl = imgToScreen(m_cropRect.left(), m_cropRect.top());
+            QPointF br = imgToScreen(m_cropRect.left() + m_cropRect.width(),
+                                     m_cropRect.top()  + m_cropRect.height());
+            QRectF sr(tl, br);
+            p.setBrush(QColor(255, 255, 255, 128));
+            p.setPen(QPen(Qt::white, 1));
+            p.drawRect(sr);
             p.restore();
         }
 
@@ -2806,7 +2857,7 @@ void FtWindow::paintEvent(QPaintEvent *)
         }
 
         // Panel 1 tool option rectangles (bottom-left of panel 1)
-        bool p1Tool = m_p1EraserActive || m_p1BrushActive || m_p1TaperActive || m_p1SymmetrizeActive || m_binActive || m_peakPickActive || m_extractActive || m_gaborActive || m_hessianActive || m_amyloidActive || m_measureActive;
+        bool p1Tool = m_p1EraserActive || m_p1BrushActive || m_p1TaperActive || m_p1SymmetrizeActive || m_binActive || m_cropActive || m_peakPickActive || m_extractActive || m_gaborActive || m_hessianActive || m_amyloidActive || m_measureActive;
         if (p1Tool) {
             int nRows = 0;
             int textW = 0;
@@ -2835,6 +2886,14 @@ void FtWindow::paintEvent(QPaintEvent *)
                 int r2 = fm.horizontalAdvance("Keep original image size");
                 int r3 = m_applyBinBtn->width();
                 textW = std::max({r1, r2, r3});
+            } else if (m_cropActive) {
+                nRows = 3;
+                int labW = std::max(fm.horizontalAdvance("Top left:  "),
+                                    fm.horizontalAdvance("Bottom right:  "));
+                int r0 = labW + m_cropTLxEdit->width() + 8 + m_cropTLyEdit->width();
+                int r1 = labW + m_cropBRxEdit->width() + 8 + m_cropBRyEdit->width();
+                int r2 = m_cropCancelBtn->width() + 8 + m_applyCropBtn->width();
+                textW = std::max({r0, r1, r2});
             } else if (m_peakPickActive) {
                 nRows = 5;
                 // Determine threshold range from selected source buffer
@@ -2958,6 +3017,17 @@ void FtWindow::paintEvent(QPaintEvent *)
                 m_binCombo->move(tx, ty);
                 m_binKeepSizeBtn->move(tx, ty + lh);
                 m_applyBinBtn->move(tx, ty + lh * 2);
+            } else if (m_cropActive) {
+                int labW = std::max(fm.horizontalAdvance("Top left:  "),
+                                    fm.horizontalAdvance("Bottom right:  "));
+                drawParamLabel(p, fm, tx, ty, "Top left:", m_cropTLxEdit->toolTip());
+                m_cropTLxEdit->move(tx + labW, ty);
+                m_cropTLyEdit->move(tx + labW + m_cropTLxEdit->width() + 8, ty);
+                drawParamLabel(p, fm, tx, ty + lh, "Bottom right:", m_cropBRxEdit->toolTip());
+                m_cropBRxEdit->move(tx + labW, ty + lh);
+                m_cropBRyEdit->move(tx + labW + m_cropBRxEdit->width() + 8, ty + lh);
+                m_cropCancelBtn->move(tx, ty + lh * 2);
+                m_applyCropBtn->move(rx + rw - margin - m_applyCropBtn->width(), ty + lh * 2);
             } else if (m_peakPickActive) {
                 // Row 0: source map combo + show/hide button top-right
                 drawParamLabel(p, fm, tx, ty, "Picking source map:", m_peakSourceCombo->toolTip(),

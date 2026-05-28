@@ -28,6 +28,7 @@
 #include <QFont>
 #include <QFontMetrics>
 #include <QDoubleValidator>
+#include <QIntValidator>
 #include <QSignalBlocker>
 #include <QShortcut>
 #include <QTimer>

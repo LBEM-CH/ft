@@ -389,7 +389,7 @@ private:
     QRect       m_manualRect;       // "Manual" click region below title
 
     // ---- tool buttons ----
-    static constexpr int P1_TOOL_BUTTONS = 17;
+    static constexpr int P1_TOOL_BUTTONS = 18;
     static constexpr int P2_TOOL_BUTTONS = 13;
     QRect       m_p1BtnRects[P1_TOOL_BUTTONS];       // panel 1 left edge
     QRect       m_toolBtnRects[P2_TOOL_BUTTONS];     // panel 2 right edge
@@ -545,6 +545,24 @@ private:
     QComboBox  *m_binCombo  = nullptr;
     QPushButton *m_applyBinBtn = nullptr;
     QCheckBox  *m_binKeepSizeBtn = nullptr;
+
+    // Crop UI
+    bool        m_cropActive = false;
+    QLineEdit  *m_cropTLxEdit = nullptr;   // top-left X (image pixels)
+    QLineEdit  *m_cropTLyEdit = nullptr;   // top-left Y
+    QLineEdit  *m_cropBRxEdit = nullptr;   // bottom-right X (exclusive)
+    QLineEdit  *m_cropBRyEdit = nullptr;   // bottom-right Y (exclusive)
+    QPushButton *m_cropCancelBtn = nullptr;
+    QPushButton *m_applyCropBtn  = nullptr;
+    bool        m_cropHasSelection = false;
+    bool        m_cropDragging = false;
+    bool        m_cropMoving = false;      // dragging an existing square to a new position
+    QPointF     m_cropAnchor;              // image coords of the drag-start corner
+    QPointF     m_cropGrabOffset;          // image-coord offset from square top-left to grab point
+    QRect       m_cropRect;                // selection in image coords (always square)
+    void onApplyCrop();
+    void onCropCancel();
+    void syncCropEdits();                  // refresh the 4 edits from m_cropRect
 
     // Brush/eraser parameter widgets
     QLineEdit  *m_brushValueEdit    = nullptr;

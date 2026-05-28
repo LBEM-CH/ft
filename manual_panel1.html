@@ -285,6 +285,34 @@ acts as a low-pass filter followed by downsampling.
 </details>
 
 <details>
+<summary>Crop image<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><rect x="10.4" y="10.4" width="9.6" height="9.6" fill="none" stroke="#fff" stroke-width="1.2"/></svg></span></summary>
+<p>
+Cut a square region out of the image and replace the slot with it.
+Drag a square selection directly on the image: a 50&nbsp;% transparent
+white box with a white border follows the cursor. The selection is
+always kept square (1:1 aspect ratio) and is clamped to the image
+bounds. Right-click clears the current selection. When the tool is
+activated it starts with the largest centred square already selected.
+</p>
+<div class="controls">
+  <strong>Top left coordinate:</strong> X / Y of the upper-left corner,
+  in image pixels (origin at the top-left). <br>
+  <strong>Bottom right coordinate:</strong> X / Y of the lower-right
+  corner. <br>
+  Both corners can be typed for an exact selection; if a non-square box
+  is entered it is reduced to the largest square that fits inside it.
+  The selection also updates live while you drag.
+</div>
+<p>
+Press <strong>Crop image</strong> to replace the current slot with the
+selected region (the original is kept on the undo stack), or
+<strong>Cancel</strong> to dismiss the tool. Cropping does not change
+the pixel size; only the image dimensions change.
+</p>
+<BR>
+</details>
+
+<details>
 <summary>Gabor filter<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><text x="12" y="12" font-family="sans-serif" font-weight="bold" font-size="15" fill="#fff" text-anchor="middle" dominant-baseline="central">G</text></svg></span></summary>
 <p>
 Apply a Gabor (oriented sinusoidal) filter to the image. The filter

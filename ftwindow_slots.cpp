@@ -2785,6 +2785,77 @@ void FtWindow::onApplyBinningImpl()
     });
 }
 
+void FtWindow::syncCropEdits()
+{
+    if (!m_cropTLxEdit) return;
+    QSignalBlocker b1(m_cropTLxEdit), b2(m_cropTLyEdit),
+                   b3(m_cropBRxEdit), b4(m_cropBRyEdit);
+    m_cropTLxEdit->setText(QString::number(m_cropRect.left()));
+    m_cropTLyEdit->setText(QString::number(m_cropRect.top()));
+    m_cropBRxEdit->setText(QString::number(m_cropRect.left() + m_cropRect.width()));
+    m_cropBRyEdit->setText(QString::number(m_cropRect.top()  + m_cropRect.height()));
+}
+
+void FtWindow::onCropCancel()
+{
+    m_cropActive = false;
+    m_cropDragging = false;
+    m_cropHasSelection = false;
+    m_cropTLxEdit->hide();
+    m_cropTLyEdit->hide();
+    m_cropBRxEdit->hide();
+    m_cropBRyEdit->hide();
+    m_cropCancelBtn->hide();
+    m_applyCropBtn->hide();
+    update();
+}
+
+void FtWindow::onApplyCrop()
+{
+    if (m_image.isNull() || !m_cropHasSelection) return;
+
+    int W = m_image.width(), H = m_image.height();
+    int x0 = std::clamp(m_cropRect.left(), 0, W);
+    int y0 = std::clamp(m_cropRect.top(),  0, H);
+    int side = m_cropRect.width();
+    side = std::min({side, W - x0, H - y0});
+    if (side < 1) return;
+
+    std::vector<double> &pix = m_imageRawPixels;
+    if ((int)pix.size() != W * H) return;
+
+    storeUndoSnapshot();
+
+    int newW = side, newH = side;
+    std::vector<double> newPix((size_t)newW * newH);
+    for (int y = 0; y < newH; y++)
+        for (int x = 0; x < newW; x++)
+            newPix[(size_t)y * newW + x] = pix[(size_t)(y0 + y) * W + (x0 + x)];
+
+    m_imageRawPixels = std::move(newPix);
+    m_imageMinVal = *std::min_element(m_imageRawPixels.begin(), m_imageRawPixels.end());
+    m_imageMaxVal = *std::max_element(m_imageRawPixels.begin(), m_imageRawPixels.end());
+    if (!m_imageContrastLocked) {
+        m_imageDispMin = m_imageMinVal;
+        m_imageDispMax = m_imageMaxVal;
+    }
+    double range = m_imageMaxVal - m_imageMinVal;
+    double scale = (range > 0) ? 255.0 / range : 1.0;
+    m_image = QImage(newW, newH, QImage::Format_Grayscale8);
+    for (int y = 0; y < newH; y++) {
+        uchar *row = m_image.scanLine(y);
+        for (int x = 0; x < newW; x++)
+            row[x] = static_cast<uchar>(std::clamp(
+                (m_imageRawPixels[(size_t)y * newW + x] - m_imageMinVal) * scale, 0.0, 255.0));
+    }
+    m_zoom[0].reset(newW, newH);
+    // Cropping does not change the sampling, so m_pixelSize is unchanged.
+
+    m_cropHasSelection = false;
+    if (m_ftComputed) computeFFT();
+    update();
+}
+
 void FtWindow::chainSteps(std::vector<std::function<void()>> steps)
 {
 #ifdef __EMSCRIPTEN__

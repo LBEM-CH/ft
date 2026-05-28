@@ -1109,6 +1109,66 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     connect(m_applyBinBtn, &QPushButton::clicked, this, &FtWindow::onApplyBinning);
     m_applyBinBtn->hide();
 
+    // Crop widgets (hidden until crop mode active)
+    auto makeCropEdit = [this](const QString &tip) {
+        auto *e = new QLineEdit("0", this);
+        e->setFixedSize(60, 22);
+        e->setStyleSheet("background:#222; color:white; border:1px solid #888;");
+        e->setValidator(new QIntValidator(0, 1000000, e));
+        e->setToolTip(tip);
+        e->hide();
+        return e;
+    };
+    QString cropTip =
+        "Selection corner in image pixels (origin = top-left). Drag a\n"
+        "square on the image to set the region, or type exact values.\n"
+        "The selection is always kept square (1:1); if you type a\n"
+        "non-square box it is reduced to the largest enclosed square.";
+    m_cropTLxEdit = makeCropEdit(cropTip);
+    m_cropTLyEdit = makeCropEdit(cropTip);
+    m_cropBRxEdit = makeCropEdit(cropTip);
+    m_cropBRyEdit = makeCropEdit(cropTip);
+    // Re-evaluate the selection when a coordinate field is committed. The axis
+    // of the edited field (driver: 0=TLx, 1=TLy, 2=BRx, 3=BRy) sets the square's
+    // side length and the perpendicular corner follows, so the user can both
+    // grow and shrink the box while it stays square.
+    auto applyCropEdits = [this](int driver) {
+        if (m_image.isNull()) return;
+        int W = m_image.width(), H = m_image.height();
+        bool ok = false;
+        int tlx = m_cropTLxEdit->text().toInt(&ok); if (!ok) tlx = m_cropRect.left();
+        int tly = m_cropTLyEdit->text().toInt(&ok); if (!ok) tly = m_cropRect.top();
+        int brx = m_cropBRxEdit->text().toInt(&ok); if (!ok) brx = m_cropRect.left() + m_cropRect.width();
+        int bry = m_cropBRyEdit->text().toInt(&ok); if (!ok) bry = m_cropRect.top()  + m_cropRect.height();
+        tlx = std::clamp(tlx, 0, W); tly = std::clamp(tly, 0, H);
+        brx = std::clamp(brx, 0, W); bry = std::clamp(bry, 0, H);
+        if (brx < tlx) std::swap(tlx, brx);
+        if (bry < tly) std::swap(tly, bry);
+        int side = (driver == 0 || driver == 2) ? (brx - tlx) : (bry - tly);
+        side = std::max(0, side);
+        side = std::min({side, W - tlx, H - tly});
+        m_cropRect = QRect(tlx, tly, side, side);
+        m_cropHasSelection = (side >= 2);
+        syncCropEdits();
+        update();
+    };
+    connect(m_cropTLxEdit, &QLineEdit::editingFinished, this, [applyCropEdits]() { applyCropEdits(0); });
+    connect(m_cropTLyEdit, &QLineEdit::editingFinished, this, [applyCropEdits]() { applyCropEdits(1); });
+    connect(m_cropBRxEdit, &QLineEdit::editingFinished, this, [applyCropEdits]() { applyCropEdits(2); });
+    connect(m_cropBRyEdit, &QLineEdit::editingFinished, this, [applyCropEdits]() { applyCropEdits(3); });
+
+    m_cropCancelBtn = new QPushButton("Cancel", this);
+    m_cropCancelBtn->setFixedSize(80, 26);
+    m_cropCancelBtn->setStyleSheet(
+        "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }");
+    connect(m_cropCancelBtn, &QPushButton::clicked, this, &FtWindow::onCropCancel);
+    m_cropCancelBtn->hide();
+
+    m_applyCropBtn = new QPushButton("Crop image", this);
+    m_applyCropBtn->setFixedSize(110, 26);
+    connect(m_applyCropBtn, &QPushButton::clicked, this, &FtWindow::onApplyCrop);
+    m_applyCropBtn->hide();
+
     // Particle picking widgets
     m_peakSourceCombo = new QComboBox(this);
     for (int i = 0; i < HISTORY_SLOTS; i++)
@@ -1614,6 +1674,16 @@ void FtWindow::resizeEvent(QResizeEvent *)
     m_binKeepSizeBtn->setStyleSheet(cbSS);
     m_applyBinBtn->setFixedSize(static_cast<int>(110 * sc), btnH);
     m_applyBinBtn->setStyleSheet(btnSS);
+
+    // Crop widgets (sizes only)
+    for (QLineEdit *e : {m_cropTLxEdit, m_cropTLyEdit, m_cropBRxEdit, m_cropBRyEdit}) {
+        e->setFixedSize(static_cast<int>(60 * sc), editH);
+        e->setStyleSheet(editSS);
+    }
+    m_cropCancelBtn->setFixedSize(static_cast<int>(80 * sc), btnH);
+    m_cropCancelBtn->setStyleSheet(btnSS);
+    m_applyCropBtn->setFixedSize(static_cast<int>(110 * sc), btnH);
+    m_applyCropBtn->setStyleSheet(btnSS);
 
     // Amyloid filament widgets (sizes only)
     QString amyloidComboSS = QString(
