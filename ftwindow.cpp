@@ -1371,6 +1371,12 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
             }
         }
     }
+
+    // First-time launch (nothing restored, no occupied slot): default to
+    // buffer a so a slot is always selected. The empty-slot case is handled
+    // exactly like clicking an empty history slot in mousePressEvent.
+    if (m_activeSlot < 0)
+        m_activeSlot = 0;
 }
 
 // ---------------------------------------------------------------------------
