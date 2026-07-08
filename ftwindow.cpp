@@ -5,6 +5,40 @@
 // ---------------------------------------------------------------------------
 static QString g_exampleImagesDir;
 
+// ---------------------------------------------------------------------------
+//  Checkbox styling
+//
+//  A bare "color: white" stylesheet leaves the checkbox *indicator* to the
+//  native platform style. On Windows (including the WASM build) that indicator
+//  renders as a black box with no visible checkmark against our dark panels,
+//  so the user cannot tell whether the box is checked. Styling the indicator
+//  explicitly (with an embedded SVG checkmark, so no external file is needed)
+//  makes it render identically on every platform, including WASM.
+// ---------------------------------------------------------------------------
+static QString checkBoxStyle(const QString &textColor)
+{
+    // White check mark on a green fill; empty white box when unchecked.
+    static const QString kCheckSvg =
+        "data:image/svg+xml;base64,"
+        "PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPScxNCcg"
+        "aGVpZ2h0PScxNCcgdmlld0JveD0nMCAwIDE0IDE0Jz48cGF0aCBkPSdNMi41IDcuNSBM"
+        "NiAxMSBMMTEuNSAzLjUnIHN0cm9rZT0nd2hpdGUnIHN0cm9rZS13aWR0aD0nMi4yJyBm"
+        "aWxsPSdub25lJyBzdHJva2UtbGluZWNhcD0ncm91bmQnIHN0cm9rZS1saW5lam9pbj0n"
+        "cm91bmQnLz48L3N2Zz4=";
+    return QStringLiteral(
+               "QCheckBox { color: %1; }"
+               "QCheckBox::indicator {"
+               "  width: 16px; height: 16px;"
+               "  border: 1px solid #888; border-radius: 3px;"
+               "  background: white;"
+               "}"
+               "QCheckBox::indicator:checked {"
+               "  background: #2d9d2d; border: 1px solid #1c6b1c;"
+               "  image: url(\"%2\");"
+               "}")
+        .arg(textColor, kCheckSvg);
+}
+
 void FtWindow::setExampleImagesDir(const QString &dir)
 {
     g_exampleImagesDir = dir;
@@ -95,7 +129,7 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_smoothEdit->hide();
 
     m_bandEraseOutside = new QCheckBox("Erase pixels outside of band", this);
-    m_bandEraseOutside->setStyleSheet("color: white;");
+    m_bandEraseOutside->setStyleSheet(checkBoxStyle("white"));
     m_bandEraseOutside->setChecked(true);
     m_bandEraseOutside->setToolTip(
         "Checked: keep only Fourier pixels inside the ring (band-pass);\n"
@@ -157,7 +191,7 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     });
 
     m_lineEraseOutsideBtn = new QCheckBox("Erase pixels outside of line", this);
-    m_lineEraseOutsideBtn->setStyleSheet("color: white;");
+    m_lineEraseOutsideBtn->setStyleSheet(checkBoxStyle("white"));
     m_lineEraseOutsideBtn->setChecked(true);
     m_lineEraseOutsideBtn->setToolTip(
         "Checked: keep only the line/stripe and zero everything else\n"
@@ -240,7 +274,7 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_latticeDotDiamEdit->hide();
 
     m_latticeEraseOutside = new QCheckBox("Erase pixels outside of lattice", this);
-    m_latticeEraseOutside->setStyleSheet("color: white;");
+    m_latticeEraseOutside->setStyleSheet(checkBoxStyle("white"));
     m_latticeEraseOutside->setChecked(true);
     m_latticeEraseOutside->setToolTip(
         "Checked: keep only the lattice spots and zero everything else\n"
@@ -405,7 +439,7 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_ftCropCombo->hide();
 
     m_ftCropKeepSizeBtn = new QCheckBox("Keep original size", this);
-    m_ftCropKeepSizeBtn->setStyleSheet("color: white;");
+    m_ftCropKeepSizeBtn->setStyleSheet(checkBoxStyle("white"));
     m_ftCropKeepSizeBtn->setChecked(true);
     m_ftCropKeepSizeBtn->setToolTip(
         "Checked: the FFT array stays at its original dimensions and\n"
@@ -856,7 +890,7 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
         "buffer is empty or the Amyloid tool needs a fresh canvas.");
     m_amyloidSizeCombo->hide();
     m_amyloidNoiseBtn = new QCheckBox("Add gray noise", this);
-    m_amyloidNoiseBtn->setStyleSheet("color: #333;");
+    m_amyloidNoiseBtn->setStyleSheet(checkBoxStyle("#333"));
     m_amyloidNoiseBtn->setChecked(true);
     m_amyloidNoiseBtn->setToolTip(
         "Add Gaussian noise to the entire image after rendering the\n"
@@ -1093,7 +1127,7 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_binCombo->hide();
 
     m_binKeepSizeBtn = new QCheckBox("Keep original image size", this);
-    m_binKeepSizeBtn->setStyleSheet("color: white;");
+    m_binKeepSizeBtn->setStyleSheet(checkBoxStyle("white"));
     m_binKeepSizeBtn->setChecked(true);
     m_binKeepSizeBtn->setToolTip(
         "Checked: after binning, the image is resampled back to its\n"
