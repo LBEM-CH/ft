@@ -5287,10 +5287,8 @@ void FtWindow::onCtfFitExecuteImpl()
     for (int iR = 0; iR < nR; iR++) Amp[iR] = std::sqrt(ampSm[iR]);
 
     std::vector<double> &W = Pdata;          // whiten the 2D data in place
-    std::vector<double> Wr(nR, 0.0);         // whitened 1D radial profile
     for (int iR = 0; iR < nR; iR++) {
         double inv = (Amp[iR] > 1e-20) ? 1.0 / Amp[iR] : 0.0;
-        Wr[iR] = (Prad[iR] - Bg[iR]) * inv;
         for (int iT = 0; iT < nT; iT++)
             W[iR * nT + iT] = (W[iR * nT + iT] - Bg[iR]) * inv;
     }
@@ -5299,32 +5297,12 @@ void FtWindow::onCtfFitExecuteImpl()
     double wMean = 0.0; for (double v : W) wMean += v; wMean /= nCells;
     double wVar  = 0.0; for (double v : W) { double d = v - wMean; wVar += d * d; }
     if (wVar <= 0.0) wVar = 1.0;
-    double wrMean = 0.0; for (double v : Wr) wrMean += v; wrMean /= nR;
-    double wrVar  = 0.0; for (double v : Wr) { double d = v - wrMean; wrVar += d * d; }
-    if (wrVar <= 0.0) wrVar = 1.0;
 
     // Envelope-free model ring intensity o(χ) = (A·sin(−χ)+B·cos(−χ))², so the
     // (whitened) high-frequency rings keep full weight in the correlation.
     auto oIso = [A, B](double chi) {
         double s = A * std::sin(-chi) + B * std::cos(-chi);
         return s * s;
-    };
-
-    // 1D score: Pearson CC between the whitened radial profile and the
-    // isotropic model at a given mean defocus.
-    std::vector<double> mr(nR);
-    auto score1D = [&](double dfMeanA) -> double {
-        double mMean = 0.0;
-        for (int iR = 0; iR < nR; iR++) { mr[iR] = oIso(C1[iR] * dfMeanA + C2[iR]); mMean += mr[iR]; }
-        mMean /= nR;
-        double num = 0.0, mVar = 0.0;
-        for (int iR = 0; iR < nR; iR++) {
-            double dm = mr[iR] - mMean;
-            num  += (Wr[iR] - wrMean) * dm;
-            mVar += dm * dm;
-        }
-        if (mVar <= 0.0) return -2.0;
-        return num / std::sqrt(wrVar * mVar);
     };
 
     // 2D score: Pearson CC between the whitened spectrum and the astigmatic
@@ -5349,35 +5327,27 @@ void FtWindow::onCtfFitExecuteImpl()
         return num / std::sqrt(wVar * mVar);
     };
 
-    // Pass 1: coarse 1D mean-defocus scan with a fine step (the CC peak in
-    // defocus is sharp and must not be skipped), ~200 nm … ~6 µm underfocus.
-    double bestDf = -10000.0, bestAst = 0.0, bestAng = 0.0;
-    {
-        double bestCC1 = -2.0;
-        for (double df = -2000.0; df >= -60000.0; df -= 50.0) {
-            double cc = score1D(df);
-            if (cc > bestCC1) { bestCC1 = cc; bestDf = df; }
-        }
-    }
+    // Pass 1: full-range 2D coarse grid over mean defocus, astigmatism
+    // magnitude and angle. A 1D (rotational-average) prescan is NOT used: a
+    // large astigmatism smears the rotational average and would mislead it, so
+    // the coarse defocus is searched jointly with astigmatism instead. The
+    // ranges span ~200 nm … ~10 µm defocus and up to ~1.8 µm astigmatism
+    // amplitude, covering the extremes of typical cryo-EM data.
+    const double kAstigMaxA = 18000.0;    // astigmatism amplitude search cap (Å)
+    double bestDf = -10000.0, bestAst = 0.0, bestAng = 0.0, bestCC = -2.0;
+    for (double df = -2000.0; df >= -100000.0; df -= 800.0)
+        for (double ast = 0.0; ast <= kAstigMaxA; ast += 1500.0)
+            for (int ai = 0; ai < 12; ai++) {
+                double al = M_PI * ai / 12.0;
+                double cc = score2D(df, ast, std::cos(2.0 * al), std::sin(2.0 * al));
+                if (cc > bestCC) { bestCC = cc; bestDf = df; bestAst = ast; bestAng = al; }
+            }
 
-    // Pass 2: 2D grid over mean defocus, astigmatism magnitude and angle.
-    double bestCC = -2.0;
-    {
-        double d0 = bestDf;
-        for (double df = d0 - 1500.0; df <= d0 + 1500.0; df += 200.0)
-            for (double ast = 0.0; ast <= 5000.0; ast += 250.0)
-                for (int ai = 0; ai < 24; ai++) {
-                    double al = M_PI * ai / 24.0;
-                    double cc = score2D(df, ast, std::cos(2.0 * al), std::sin(2.0 * al));
-                    if (cc > bestCC) { bestCC = cc; bestDf = df; bestAst = ast; bestAng = al; }
-                }
-    }
-
-    // Pass 3: GCtfFind-style iterative univariate refinement with ranges that
+    // Pass 2: GCtfFind-style iterative univariate refinement with ranges that
     // shrink by half each iteration (mean defocus, astig magnitude, angle).
     {
-        double dfR = 800.0, astR = 500.0, angR = M_PI / 12.0;
-        for (int it = 0; it < 12; it++) {
+        double dfR = 800.0, astR = 1500.0, angR = M_PI / 12.0;
+        for (int it = 0; it < 14; it++) {
             double c = std::cos(2.0 * bestAng), s = std::sin(2.0 * bestAng);
             for (double df = bestDf - dfR; df <= bestDf + dfR; df += dfR / 5.0) {
                 double cc = score2D(df, bestAst, c, s);
@@ -5411,17 +5381,23 @@ void FtWindow::onCtfFitExecuteImpl()
     double astigAmpNM  =  astigA / 10.0;         // amplitude (for the CTF SIM field)
     double astigFullNM =  2.0 * astigA / 10.0;   // df1−df2 (conventional, reported)
     double astigAngDeg =  astigAngleRad * 180.0 / M_PI;
-    double df1NM       = -(dfA - astigA) / 10.0;
-    double df2NM       = -(dfA + astigA) / 10.0;
+    // The fit's azimuth is measured in image coordinates (y flipped), so it is
+    // mirrored relative to the standard EM convention (CCW from +x). Report the
+    // mirrored angle (validated against the Exercise_11 ground truth).
+    double astigAngStdDeg = std::fmod(180.0 - astigAngDeg, 180.0);
+    if (astigAngStdDeg < 0.0) astigAngStdDeg += 180.0;
+    // CTF SIM negates the astigmatism term internally, so reproducing the fitted
+    // ellipse from its fields needs the azimuth rotated by 90°.
+    double astigAngSimDeg = std::fmod(astigAngDeg + 90.0, 180.0);
 
     // Echo the fitted values into the CTF SIM parameter fields so the user can
-    // inspect and re-simulate them. CTF SIM's astigmatism field is defined as the
-    // amplitude, so echo the amplitude (not the peak-to-peak difference).
+    // inspect and re-simulate them. CTF SIM's astigmatism field is the amplitude
+    // (half the peak-to-peak difference) and uses its own azimuth convention.
     if (m_ctfVoltageEdit)   m_ctfVoltageEdit->setText(QString::number(voltageKV, 'f', 0));
     if (m_ctfCsEdit)        m_ctfCsEdit->setText(QString::number(csMM, 'f', 2));
     if (m_ctfDefocusEdit)   m_ctfDefocusEdit->setText(QString::number(defocusNM, 'f', 1));
     if (m_ctfAstigEdit)     m_ctfAstigEdit->setText(QString::number(astigAmpNM, 'f', 1));
-    if (m_ctfAstigAngleEdit)m_ctfAstigAngleEdit->setText(QString::number(astigAngDeg, 'f', 1));
+    if (m_ctfAstigAngleEdit)m_ctfAstigAngleEdit->setText(QString::number(astigAngSimDeg, 'f', 1));
 
     // Isotropic (Cs) transfer function, evaluated per pixel; astigmatism enters
     // through the azimuthal local defocus computed in the fill loop below.
@@ -5633,13 +5609,13 @@ void FtWindow::onCtfFitExecuteImpl()
         m_toolProgress = 0.93;
     });
 
-    steps.push_back([this, outIdx, defocusNM, astigFullNM, df1NM, df2NM, astigAngDeg]() {
+    steps.push_back([this, outIdx, defocusNM, astigFullNM, astigAngStdDeg]() {
         // Store into the selected output slot. Real space keeps the input image;
         // the Fourier side (cached transform + thumbnail) is the fit composite.
-        m_imagePath = QString("ctffit: df1=%1nm df2=%2nm ang=%3°")
-                          .arg(df1NM, 0, 'f', 1)
-                          .arg(df2NM, 0, 'f', 1)
-                          .arg(astigAngDeg, 0, 'f', 1);
+        m_imagePath = QString("ctffit: def=%1nm astig=%2nm ang=%3°")
+                          .arg(defocusNM, 0, 'f', 1)
+                          .arg(astigFullNM, 0, 'f', 1)
+                          .arg(astigAngStdDeg, 0, 'f', 1);
         m_history[outIdx].image        = m_image;
         m_history[outIdx].path         = m_imagePath;
         m_history[outIdx].rawPixels    = m_imageRawPixels;
@@ -5659,7 +5635,7 @@ void FtWindow::onCtfFitExecuteImpl()
         // are shown; the tool stays active for another fit.
         m_ctfFitResDefocusNM = defocusNM;
         m_ctfFitResAstigNM   = astigFullNM;
-        m_ctfFitResAngleDeg  = astigAngDeg;
+        m_ctfFitResAngleDeg  = astigAngStdDeg;
         m_ctfFitHasResult    = true;
         m_toolProgress = -1;
         update();
