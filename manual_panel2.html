@@ -401,12 +401,16 @@ position, illustrating the shift theorem.
 </details>
 
 <details>
-<summary>CTF (contrast transfer function)<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><text x="12" y="12" font-family="sans-serif" font-weight="bold" font-size="8" fill="#fff" text-anchor="middle" dominant-baseline="central">CTF</text></svg></span></summary>
+<summary>CTF SIM (simulate a contrast transfer function)<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><text x="12" y="8" font-family="sans-serif" font-weight="bold" font-size="7" fill="#fff" text-anchor="middle" dominant-baseline="central">CTF</text><text x="12" y="16.5" font-family="sans-serif" font-weight="bold" font-size="7" fill="#fff" text-anchor="middle" dominant-baseline="central">SIM</text></svg></span></summary>
 <p>
-Synthesise a 2D contrast transfer function for an electron microscope
-with the chosen optical parameters, including astigmatism, defocus
-spread, amplitude contrast, beam tilt, and the spatial-coherence
-envelope from a finite gun-opening angle.
+<strong>CTF SIM</strong> synthesises a 2D contrast transfer function for an
+electron microscope with the chosen optical parameters, including
+astigmatism, defocus spread, amplitude contrast, beam tilt, and the
+spatial-coherence envelope from a finite gun-opening angle. The result is
+written to the Fourier side of the currently selected buffer, and its
+real-space point spread function (PSF) to panel&nbsp;1. To fit a CTF to an
+existing image instead of simulating one, use <strong>CTF FIT</strong>
+(below).
 </p>
 <div class="controls">
   <strong>Acceleration voltage:</strong> in kV. <br>
@@ -442,7 +446,7 @@ azimuth along which the 1D profiles (below) are taken.<BR><BR>
 </div>
 <BR>
 <p>
- <strong>1D profile plots (panels 3 &amp; 4).</strong> While the CTF tool is
+ <strong>1D profile plots (panels 3 &amp; 4).</strong> While the CTF SIM tool is
  active, the two bottom panels show 1D cuts of the complex transfer function
  <em>C</em> taken along the red direction line in panel 2. You can change the 
  direction of the line by dragging it with the mouse and watch the profiles update live. 
@@ -501,6 +505,72 @@ imaged by the microscope with the given parameters.  The PSF has very small valu
  inward on the opposite side along the tilt direction, while remaining
  unchanged perpendicular to it. Setting the beam tilt to 0 mrad recovers
  the usual centrosymmetric CTF.
+</p>
+</details>
+
+<details>
+<summary>CTF FIT (fit a contrast transfer function)<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><text x="12" y="8" font-family="sans-serif" font-weight="bold" font-size="7" fill="#fff" text-anchor="middle" dominant-baseline="central">CTF</text><text x="12" y="16.5" font-family="sans-serif" font-weight="bold" font-size="7" fill="#fff" text-anchor="middle" dominant-baseline="central">FIT</text></svg></span></summary>
+<p>
+<strong>CTF FIT</strong> estimates the defocus and astigmatism of a real
+micrograph by fitting a theoretical contrast transfer function to the Thon
+rings in its power spectrum, in the style of
+<a href="https://github.com/czimaginginstitute/GCtfFind">GCtfFind</a> /
+CTFFIND. You supply only the microscope voltage and C<sub>s</sub>; the
+defocus, astigmatism and its angle are recovered automatically.
+</p>
+<div class="controls">
+  <strong>Acceleration voltage:</strong> in kV. <br>
+  <strong>Spherical aberration Cs:</strong> in mm. <br>
+  <strong>Input buffer:</strong> the buffer (A…P) whose Fourier transform is
+  fitted. Defaults to the currently selected buffer. <br>
+  <strong>Upper resolution limit:</strong> the finest resolution (smallest
+  Å, highest frequency) included in the fit. <br>
+  <strong>Lower resolution limit:</strong> the coarsest resolution (largest
+  Å, lowest frequency) included in the fit. <br>
+  <strong>Cancel / Execute:</strong> Execute runs the fit; the window stays
+  open and shows the result.
+</div>
+<BR>
+<div class="note">
+The correct <strong>pixel size</strong> of the input image is essential —
+it sets the spatial-frequency scale, so a wrong pixel size gives a wrong
+defocus. Check the value shown under panel&nbsp;1 (double-click it to edit)
+before fitting. Choose the resolution band to bracket the visible Thon
+rings: exclude the very low frequencies (dominated by the background) and
+the high frequencies where the rings fade into noise. A typical band is
+about 30&nbsp;Å (lower limit) to 3–5&nbsp;Å (upper limit).
+</div>
+<BR>
+<p>
+<strong>How it works.</strong> The power spectrum of the input buffer is
+sampled, a smooth radial background is subtracted (preserving the Thon
+rings), and the residual is whitened so weak high-frequency rings count as
+much as strong low-frequency ones. A theoretical |CTF|&sup2; is then matched
+to it by a normalised cross-correlation over the chosen resolution band —
+first a coarse 1D scan for the mean defocus, then a 2D search over defocus,
+astigmatism magnitude and angle, followed by iterative refinement.
+</p>
+<p>
+<strong>Output.</strong> The fitted CTF is written to the Fourier side of
+the currently selected buffer as a composite diagnostic: the
+<em>right half</em> shows the synthesised (fitted) CTF, the
+<em>top-left quarter</em> the original Fourier transform of the input image,
+and the <em>bottom-left quarter</em> its elliptically (astigmatism-aware)
+radially averaged transform. The left half is scaled so it reads at a
+similar brightness to the fitted model on the right, and because the power
+spectrum is centrosymmetric the experimental and model rings join
+continuously across the vertical midline — so a good fit shows rings that
+line up across the whole image.
+</p>
+<p>
+<strong>Reported values.</strong> After Execute the parameter window stays
+open and reports the fitted <em>defocus</em> (nm) and <em>astigmatism</em>
+(nm). The astigmatism is reported as the full peak-to-peak difference
+df<sub>1</sub>&nbsp;&minus;&nbsp;df<sub>2</sub> (the CTFFIND / GCtfFind
+convention), together with its angle. The same values are also copied into
+the CTF SIM fields so you can re-simulate or tweak them — note that CTF SIM's
+astigmatism field is the <em>amplitude</em> (half of the peak-to-peak
+difference), matching its own definition.
 </p>
 </details>
 

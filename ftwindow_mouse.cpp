@@ -619,6 +619,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         m_p2SymmetrizeActive = false;
         m_ftCropActive = false; m_ftMathActive = false;
         m_ctfActive = false;
+        m_ctfFitActive = false;
         m_phaseRampActive = false;
     };
     auto showToolWidgets = [&]() {
@@ -682,6 +683,14 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         m_ctfBeamtiltDirEdit->setVisible(m_ctfActive);
         m_ctfCancelBtn->setVisible(m_ctfActive);
         m_ctfComputeBtn->setVisible(m_ctfActive);
+
+        m_ctfFitVoltageEdit->setVisible(m_ctfFitActive);
+        m_ctfFitCsEdit->setVisible(m_ctfFitActive);
+        m_ctfFitInputCombo->setVisible(m_ctfFitActive);
+        m_ctfFitResHiEdit->setVisible(m_ctfFitActive);
+        m_ctfFitResLoEdit->setVisible(m_ctfFitActive);
+        m_ctfFitCancelBtn->setVisible(m_ctfFitActive);
+        m_ctfFitExecuteBtn->setVisible(m_ctfFitActive);
 
         m_phaseRampSizeCombo->setVisible(m_phaseRampActive);
         m_phaseRampDirEdit->setVisible(m_phaseRampActive);
@@ -754,6 +763,17 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         showToolWidgets(); update(); return;
     }
     if (m_toolBtnRects[12].contains(event->pos())) {
+        bool was = m_ctfFitActive; deactivateAllTools();
+        m_ctfFitActive = !was;
+        if (m_ctfFitActive) {
+            m_ctfFitHasResult = false;   // clear any stale fitted values
+            // Default the input buffer to the currently active slot.
+            if (m_activeSlot >= 0 && m_ctfFitInputCombo)
+                m_ctfFitInputCombo->setCurrentIndex(m_activeSlot);
+        }
+        showToolWidgets(); update(); return;
+    }
+    if (m_toolBtnRects[13].contains(event->pos())) {
         bool was = m_ftMathActive; deactivateAllTools();
         m_ftMathActive = !was; showToolWidgets(); update(); return;
     }
@@ -1353,6 +1373,8 @@ void FtWindow::mouseMoveEvent(QMouseEvent *event)
             setToolTip(lockTipImg);
         else if (overRect(m_markImageCenterRect, false))
             setToolTip("Mark the geometric center of the loaded image with a red cross.");
+        else if (overRect(m_pixelSizeInfoRect, false))
+            setToolTip("Double-click here to edit the pixel size");
         else if (overRect(m_ftHistLockRect, true))
             setToolTip(lockTipFt);
         else if (overRect(m_maskBtnRect, true))
@@ -1648,6 +1670,13 @@ void FtWindow::mouseMoveEvent(QMouseEvent *event)
 // ---------------------------------------------------------------------------
 void FtWindow::mouseDoubleClickEvent(QMouseEvent *event)
 {
+    // Double-click the panel-1 size / pixel-size info to edit the pixel size.
+    if (!m_pixelSizeInfoRect.isNull() && m_pixelSizeInfoRect.contains(event->pos())
+        && !m_image.isNull()) {
+        onEditPixelSize();
+        return;
+    }
+
     for (int h = 0; h < NUM_HISTS; h++) {
         if (!m_histRects[h].isNull() && m_histRects[h].contains(event->pos())) {
             switch (h) {

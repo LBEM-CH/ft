@@ -176,6 +176,7 @@ private:
     void onMathComputeImpl();
     void onExtractComputeImpl();
     void onCtfComputeImpl();
+    void onCtfFitExecuteImpl();
     void onPhaseRampComputeImpl();
     void onAmyloidComputeImpl();
 #ifdef __EMSCRIPTEN__
@@ -312,6 +313,10 @@ private:
     QRect       m_markImageCenterRect;
     bool         m_imageCenterMarked = false;
 
+    // ---- panel-1 image size / pixel size info (double-click to edit) ----
+    QRect       m_pixelSizeInfoRect;   // clickable region under panel 1
+    void onEditPixelSize();
+
     // ---- image history (panel 3) ----
     static constexpr int HISTORY_SLOTS = 16;
     int m_activeSlot = -1;     // which slot (0..9) is shown in panel 1, -1 = none
@@ -390,7 +395,7 @@ private:
 
     // ---- tool buttons ----
     static constexpr int P1_TOOL_BUTTONS = 18;
-    static constexpr int P2_TOOL_BUTTONS = 13;
+    static constexpr int P2_TOOL_BUTTONS = 14;
     QRect       m_p1BtnRects[P1_TOOL_BUTTONS];       // panel 1 left edge
     QRect       m_toolBtnRects[P2_TOOL_BUTTONS];     // panel 2 right edge
 
@@ -702,6 +707,27 @@ private:
     void computeCtfProfile1D();
     void drawCtfDirectionLine(QPainter &p, const QRect &screenRect,
                               const ZoomState &zoom, int imgW, int imgH);
+
+    // ---- CTF FIT ----
+    // Fits a CTF (defocus + astigmatism) to the Fourier transform of the
+    // current image, GCTFFIND-style, and displays the fitted model on the
+    // Fourier side of a user-chosen target buffer. Only kV and Cs are entered;
+    // defocus, astigmatism and its angle are recovered by the fit.
+    bool        m_ctfFitActive = false;
+    QLineEdit  *m_ctfFitVoltageEdit = nullptr;
+    QLineEdit  *m_ctfFitCsEdit      = nullptr;
+    QComboBox  *m_ctfFitInputCombo  = nullptr;   // buffer to fit the CTF against
+    QLineEdit  *m_ctfFitResHiEdit    = nullptr;  // upper resolution limit (Å, fine)
+    QLineEdit  *m_ctfFitResLoEdit    = nullptr;  // lower resolution limit (Å, coarse)
+    QPushButton *m_ctfFitCancelBtn  = nullptr;
+    QPushButton *m_ctfFitExecuteBtn = nullptr;
+    // Fitted results shown in the parameter window after Execute.
+    bool        m_ctfFitHasResult   = false;
+    double      m_ctfFitResDefocusNM = 0.0;
+    double      m_ctfFitResAstigNM   = 0.0;
+    double      m_ctfFitResAngleDeg  = 0.0;
+    void onCtfFitExecute();
+    void onCtfFitCancel();
 
     // ---- directional filter ----
     bool        m_directionalActive = false;

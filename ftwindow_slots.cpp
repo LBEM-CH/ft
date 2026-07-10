@@ -154,7 +154,19 @@ void FtWindow::onLoadImage()
           << "Exercise_10-Fibrils/aSyn_cryoEM_image_1024mask.png"
           << "Exercise_10-Fibrils/aSyn_cryoEM_image_2048.mrc"
           << "Exercise_10-Fibrils/aSyn_dragon_c1_BGzero_1024.mrc"
-          << "Exercise_10-Fibrils/aSyn_dragon_c2_BGzero_1024.mrc";
+          << "Exercise_10-Fibrils/aSyn_dragon_c2_BGzero_1024.mrc"
+          << "Exercise_11-CTF/Example_200nm_0nm.mrc"
+          << "Exercise_11-CTF/Example_325nm_50nm.mrc"
+          << "Exercise_11-CTF/Example_400nm_0nm.mrc"
+          << "Exercise_11-CTF/Example_300nm_200nm.mrc"
+          << "Exercise_11-CTF/Example_975nm_50nm.mrc"
+          << "Exercise_11-CTF/Example_1500nm_200nm.mrc"
+          << "Exercise_11-CTF/Example_5000nm_0nm.mrc"
+          << "Exercise_11-CTF/Example_4150nm_1700nm.mrc"
+          << "Exercise_11-CTF/Example_0nm_1000nm.mrc"
+          << "Exercise_11-CTF/Example_50nm_500nm.mrc"
+          << "Exercise_11-CTF/Example_550nm_500nm.mrc"
+          << "Exercise_11-CTF/Example_8500nm_3000nm.mrc";
 
     // Use a QListWidget inside a QDialog so the list scrolls within the
     // dialog instead of spilling off the page like a combo-box popup.
@@ -5064,6 +5076,643 @@ void FtWindow::onCtfComputeImpl()
     });
 
     chainSteps(std::move(steps));
+}
+
+void FtWindow::onCtfFitCancel()
+{
+    m_ctfFitActive = false;
+    m_ctfFitHasResult = false;
+    m_ctfFitVoltageEdit->hide();
+    m_ctfFitCsEdit->hide();
+    m_ctfFitInputCombo->hide();
+    m_ctfFitResHiEdit->hide();
+    m_ctfFitResLoEdit->hide();
+    m_ctfFitCancelBtn->hide();
+    m_ctfFitExecuteBtn->hide();
+    update();
+}
+
+void FtWindow::onCtfFitExecute()
+{
+    if (!ensureCalcHeadroom(tr("fit the CTF"))) return;
+    onCtfFitExecuteImpl();
+}
+
+// Fit a CTF (defocus + astigmatism) to the power spectrum |FFT|² of the current
+// image, GCTFFIND-style, then synthesise the fitted transfer function into a
+// user-chosen target buffer and show it on the Fourier side.
+//
+// The fit works on a background-subtracted, per-radius whitened polar sampling
+// of the power spectrum, and maximises the normalised cross-correlation between
+// that data and the theoretical Thon-ring intensity |CTF|². Search proceeds in
+// three passes: a 1D coarse defocus scan, a 2D scan over defocus/astigmatism/
+// astigmatism-angle, and a local refinement.
+void FtWindow::onCtfFitExecuteImpl()
+{
+    // ---- parameters ----
+    bool okV = false, okC = false, okRHi = false, okRLo = false;
+    double voltageKV = m_ctfFitVoltageEdit->text().toDouble(&okV);
+    double csMM      = m_ctfFitCsEdit->text().toDouble(&okC);
+    double resHiA    = m_ctfFitResHiEdit->text().toDouble(&okRHi);  // upper limit (fine, small Å)
+    double resLoA    = m_ctfFitResLoEdit->text().toDouble(&okRLo);  // lower limit (coarse, large Å)
+    if (!okV || voltageKV <= 0) voltageKV = 300.0;
+    if (!okC)                   csMM      = 2.7;
+    if (!okRHi || resHiA <= 0)  resHiA    = 3.0;
+    if (!okRLo || resLoA <= 0)  resLoA    = 30.0;
+    if (resHiA > resLoA) std::swap(resHiA, resLoA);   // finer value = high-freq edge
+
+    int inputIdx = m_ctfFitInputCombo->currentIndex();
+    if (inputIdx < 0 || inputIdx >= HISTORY_SLOTS)
+        inputIdx = (m_activeSlot >= 0) ? m_activeSlot : 0;
+    // The fitted composite is written into the currently selected buffer.
+    int outIdx = (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS) ? m_activeSlot : inputIdx;
+
+    // Relativistic electron wavelength (Å) and Cs (Å).
+    double V = voltageKV * 1000.0;
+    double lambdaA = 12.2639 / std::sqrt(V * (1.0 + V * 0.978466e-6));
+    double CsA = csMM * 1.0e7;
+
+    // Fixed defaults for the quantities not exposed by the fit UI.
+    const double B = 0.07;                       // amplitude contrast (7%)
+    const double A = std::sqrt(1.0 - B * B);     // phase contrast
+    const double alphaRad = 0.1e-3;              // gun opening half-angle
+    double dzUserA  = 5.0 * 10.0;                // 5 nm defocus spread
+    double dzChromA = CsA * (0.7 / V);           // chromatic term (energy 0.7 eV)
+    double defocusSpreadA = std::sqrt(dzChromA * dzChromA + dzUserA * dzUserA);
+
+    // ---- obtain the Fourier transform of the INPUT buffer ----
+    // Prefer a cached transform; otherwise compute it from the buffer's image
+    // (centered convention, matching computeFFT).
+    auto computeCenteredFFT = [](const QImage &img, int &Nout) -> std::vector<Complex> {
+        QImage gray = img.convertToFormat(QImage::Format_Grayscale8);
+        int w = gray.width(), h = gray.height();
+        int N = nextGoodFFTSize(std::max(w, h));
+        Nout = N;
+        double sum = 0.0;
+        for (int y = 0; y < h; y++) {
+            const uchar *row = gray.constScanLine(y);
+            for (int x = 0; x < w; x++) sum += row[x];
+        }
+        double avg = (w > 0 && h > 0) ? sum / ((double)w * h) : 0.0;
+        std::vector<Complex> data((size_t)N * N, Complex(avg, 0.0));
+        for (int y = 0; y < h; y++) {
+            const uchar *row = gray.constScanLine(y);
+            for (int x = 0; x < w; x++) data[(size_t)y * N + x] = Complex(row[x], 0.0);
+        }
+        fftShift(data, N);
+        fft2d(data, N, false);
+        fftShift(data, N);
+        return data;
+    };
+
+    std::vector<Complex> srcFFT;
+    int    N   = 0;
+    double dxA = 1.0;
+    QImage inImage;
+    std::vector<double> inRaw;
+    double inMin = 0.0, inMax = 0.0;
+    if (inputIdx == m_activeSlot && m_ftComputed && !m_fftData.empty()) {
+        srcFFT = m_fftData; N = m_fftN; dxA = (m_pixelSize > 0) ? m_pixelSize : 1.0;
+        inImage = m_image; inRaw = m_imageRawPixels; inMin = m_imageMinVal; inMax = m_imageMaxVal;
+    } else if (inputIdx == m_activeSlot && !m_image.isNull()) {
+        srcFFT = computeCenteredFFT(m_image, N); dxA = (m_pixelSize > 0) ? m_pixelSize : 1.0;
+        inImage = m_image; inRaw = m_imageRawPixels; inMin = m_imageMinVal; inMax = m_imageMaxVal;
+    } else if (inputIdx >= 0 && inputIdx < HISTORY_SLOTS && m_history[inputIdx].occupied) {
+        HistoryEntry &e = m_history[inputIdx];
+        dxA = (e.pixelSize > 0) ? e.pixelSize : 1.0;
+        inImage = e.image; inRaw = e.rawPixels; inMin = e.minVal; inMax = e.maxVal;
+        if (e.ftComputed && !e.fftData.empty()) { srcFFT = e.fftData; N = e.fftN; }
+        else if (!e.image.isNull())             { srcFFT = computeCenteredFFT(e.image, N); }
+    }
+    if (srcFFT.empty() || N <= 0) {
+        QMessageBox::warning(this, tr("CTF Fit"),
+            tr("The selected input buffer has no image to fit."));
+        return;
+    }
+
+    storeUndoSnapshot();
+
+    double cx  = N / 2.0, cy = N / 2.0;
+
+    // ---- polar sampling of the power spectrum |FFT|² ----
+    // theta spans [0,pi): the power spectrum is centrosymmetric and the
+    // astigmatism has period pi, so a half turn is sufficient. The fit is
+    // restricted to the requested resolution band: the Fourier radius for a
+    // resolution d (Å) is r = N·dxA / d, clamped below the Nyquist corner.
+    const int nR = 96, nT = 120;
+    const int nCells = nR * nT;
+    double rMax = std::min(N * 0.49, N * dxA / resHiA);
+    double rMin = std::max(2.0,      N * dxA / resLoA);
+    if (rMax <= rMin) { rMin = N * 0.03; rMax = N * 0.48; }
+
+    std::vector<double> C1(nR), C2(nR), rPixArr(nR);
+    for (int iR = 0; iR < nR; iR++) {
+        double rPix = rMin + (rMax - rMin) * iR / (nR - 1);
+        rPixArr[iR] = rPix;
+        double q = rPix / (N * dxA);
+        double q2 = q * q;
+        C1[iR] = M_PI * lambdaA * q2;                                   // ·Δf
+        C2[iR] = 0.5 * M_PI * CsA * lambdaA * lambdaA * lambdaA * q2 * q2;
+    }
+    std::vector<double> cos2(nT), sin2(nT), cth(nT), sth(nT);
+    for (int iT = 0; iT < nT; iT++) {
+        double theta = M_PI * iT / nT;
+        cth[iT] = std::cos(theta);
+        sth[iT] = std::sin(theta);
+        cos2[iT] = std::cos(2.0 * theta);
+        sin2[iT] = std::sin(2.0 * theta);
+    }
+
+    auto sampleP = [&](double fx, double fy) -> double {
+        int x0 = (int)std::floor(fx), y0 = (int)std::floor(fy);
+        if (x0 < 0 || y0 < 0 || x0 + 1 >= N || y0 + 1 >= N) return 0.0;
+        double tx = fx - x0, ty = fy - y0;
+        auto P = [&](int xx, int yy) { return std::norm(srcFFT[(size_t)yy * N + xx]); };
+        double v00 = P(x0, y0), v10 = P(x0 + 1, y0);
+        double v01 = P(x0, y0 + 1), v11 = P(x0 + 1, y0 + 1);
+        double vx0 = v00 * (1.0 - tx) + v10 * tx;
+        double vx1 = v01 * (1.0 - tx) + v11 * tx;
+        return vx0 * (1.0 - ty) + vx1 * ty;
+    };
+
+    std::vector<double> Pdata(nCells);
+    for (int iR = 0; iR < nR; iR++) {
+        double rPix = rPixArr[iR];
+        for (int iT = 0; iT < nT; iT++) {
+            // Image y axis points down, so flip it (matches the synthesis).
+            double fx = cx + rPix * cth[iT];
+            double fy = cy - rPix * sth[iT];
+            Pdata[iR * nT + iT] = sampleP(fx, fy);
+        }
+    }
+    // ---- background subtraction that PRESERVES the isotropic Thon rings ----
+    // Subtracting the exact azimuthal mean at each radius would erase the
+    // isotropic rings (for a non-astigmatic image nothing would be left to
+    // fit). Instead estimate a SMOOTH radial background from the rotational
+    // average and subtract that; a smooth radial amplitude envelope then
+    // whitens the residual so weak high-frequency rings weigh as much as strong
+    // low-frequency ones. This mirrors the CTFFIND/GCtfFind preprocessing.
+    auto movAvg = [](const std::vector<double> &in, int win) {
+        int n = (int)in.size();
+        std::vector<double> out(n, 0.0);
+        if (win < 1) win = 1;
+        for (int i = 0; i < n; i++) {
+            int a = std::max(0, i - win), b = std::min(n - 1, i + win);
+            double s = 0.0;
+            for (int j = a; j <= b; j++) s += in[j];
+            out[i] = s / (b - a + 1);
+        }
+        return out;
+    };
+
+    std::vector<double> Prad(nR, 0.0);
+    for (int iR = 0; iR < nR; iR++) {
+        double s = 0.0;
+        for (int iT = 0; iT < nT; iT++) s += Pdata[iR * nT + iT];
+        Prad[iR] = s / nT;
+    }
+    std::vector<double> Bg = movAvg(Prad, std::max(3, nR / 8));   // smooth envelope
+
+    std::vector<double> res2(nR, 0.0);
+    for (int iR = 0; iR < nR; iR++) {
+        double s = 0.0;
+        for (int iT = 0; iT < nT; iT++) {
+            double d = Pdata[iR * nT + iT] - Bg[iR];
+            s += d * d;
+        }
+        res2[iR] = s / nT;
+    }
+    std::vector<double> ampSm = movAvg(res2, std::max(3, nR / 6));
+    std::vector<double> Amp(nR);
+    for (int iR = 0; iR < nR; iR++) Amp[iR] = std::sqrt(ampSm[iR]);
+
+    std::vector<double> &W = Pdata;          // whiten the 2D data in place
+    std::vector<double> Wr(nR, 0.0);         // whitened 1D radial profile
+    for (int iR = 0; iR < nR; iR++) {
+        double inv = (Amp[iR] > 1e-20) ? 1.0 / Amp[iR] : 0.0;
+        Wr[iR] = (Prad[iR] - Bg[iR]) * inv;
+        for (int iT = 0; iT < nT; iT++)
+            W[iR * nT + iT] = (W[iR * nT + iT] - Bg[iR]) * inv;
+    }
+
+    // Pearson-correlation precomputations for the whitened data.
+    double wMean = 0.0; for (double v : W) wMean += v; wMean /= nCells;
+    double wVar  = 0.0; for (double v : W) { double d = v - wMean; wVar += d * d; }
+    if (wVar <= 0.0) wVar = 1.0;
+    double wrMean = 0.0; for (double v : Wr) wrMean += v; wrMean /= nR;
+    double wrVar  = 0.0; for (double v : Wr) { double d = v - wrMean; wrVar += d * d; }
+    if (wrVar <= 0.0) wrVar = 1.0;
+
+    // Envelope-free model ring intensity o(χ) = (A·sin(−χ)+B·cos(−χ))², so the
+    // (whitened) high-frequency rings keep full weight in the correlation.
+    auto oIso = [A, B](double chi) {
+        double s = A * std::sin(-chi) + B * std::cos(-chi);
+        return s * s;
+    };
+
+    // 1D score: Pearson CC between the whitened radial profile and the
+    // isotropic model at a given mean defocus.
+    std::vector<double> mr(nR);
+    auto score1D = [&](double dfMeanA) -> double {
+        double mMean = 0.0;
+        for (int iR = 0; iR < nR; iR++) { mr[iR] = oIso(C1[iR] * dfMeanA + C2[iR]); mMean += mr[iR]; }
+        mMean /= nR;
+        double num = 0.0, mVar = 0.0;
+        for (int iR = 0; iR < nR; iR++) {
+            double dm = mr[iR] - mMean;
+            num  += (Wr[iR] - wrMean) * dm;
+            mVar += dm * dm;
+        }
+        if (mVar <= 0.0) return -2.0;
+        return num / std::sqrt(wrVar * mVar);
+    };
+
+    // 2D score: Pearson CC between the whitened spectrum and the astigmatic
+    // model, over the resolution band.
+    auto score2D = [&](double dfMeanA, double astigAmpA, double ca, double sa) -> double {
+        double sumWM = 0.0, sumM = 0.0, sumM2 = 0.0;
+        for (int iR = 0; iR < nR; iR++) {
+            double c1 = C1[iR], c2 = C2[iR];
+            const double *Wrow = &W[iR * nT];
+            for (int iT = 0; iT < nT; iT++) {
+                double cos2d = cos2[iT] * ca + sin2[iT] * sa;       // cos(2(θ-α))
+                double dfLocal = dfMeanA + astigAmpA * cos2d;
+                double M = oIso(c1 * dfLocal + c2);
+                sumWM += Wrow[iT] * M;
+                sumM  += M;
+                sumM2 += M * M;
+            }
+        }
+        double mVar = sumM2 - sumM * sumM / nCells;
+        double num  = sumWM - wMean * sumM;                         // Σ(W−wMean)·M
+        if (mVar <= 0.0) return -2.0;
+        return num / std::sqrt(wVar * mVar);
+    };
+
+    // Pass 1: coarse 1D mean-defocus scan with a fine step (the CC peak in
+    // defocus is sharp and must not be skipped), ~200 nm … ~6 µm underfocus.
+    double bestDf = -10000.0, bestAst = 0.0, bestAng = 0.0;
+    {
+        double bestCC1 = -2.0;
+        for (double df = -2000.0; df >= -60000.0; df -= 50.0) {
+            double cc = score1D(df);
+            if (cc > bestCC1) { bestCC1 = cc; bestDf = df; }
+        }
+    }
+
+    // Pass 2: 2D grid over mean defocus, astigmatism magnitude and angle.
+    double bestCC = -2.0;
+    {
+        double d0 = bestDf;
+        for (double df = d0 - 1500.0; df <= d0 + 1500.0; df += 200.0)
+            for (double ast = 0.0; ast <= 5000.0; ast += 250.0)
+                for (int ai = 0; ai < 24; ai++) {
+                    double al = M_PI * ai / 24.0;
+                    double cc = score2D(df, ast, std::cos(2.0 * al), std::sin(2.0 * al));
+                    if (cc > bestCC) { bestCC = cc; bestDf = df; bestAst = ast; bestAng = al; }
+                }
+    }
+
+    // Pass 3: GCtfFind-style iterative univariate refinement with ranges that
+    // shrink by half each iteration (mean defocus, astig magnitude, angle).
+    {
+        double dfR = 800.0, astR = 500.0, angR = M_PI / 12.0;
+        for (int it = 0; it < 12; it++) {
+            double c = std::cos(2.0 * bestAng), s = std::sin(2.0 * bestAng);
+            for (double df = bestDf - dfR; df <= bestDf + dfR; df += dfR / 5.0) {
+                double cc = score2D(df, bestAst, c, s);
+                if (cc > bestCC) { bestCC = cc; bestDf = df; }
+            }
+            for (double ast = std::max(0.0, bestAst - astR); ast <= bestAst + astR; ast += astR / 5.0) {
+                double cc = score2D(bestDf, ast, c, s);
+                if (cc > bestCC) { bestCC = cc; bestAst = ast; }
+            }
+            for (double al = bestAng - angR; al <= bestAng + angR; al += angR / 5.0) {
+                double cc = score2D(bestDf, bestAst, std::cos(2.0 * al), std::sin(2.0 * al));
+                if (cc > bestCC) { bestCC = cc; bestAng = al; }
+            }
+            dfR *= 0.5; astR *= 0.5; angR *= 0.5;
+        }
+    }
+
+    // Fitted parameters (Å / rad) in the code's sign convention.
+    double dfA           = bestDf;
+    double astigA        = bestAst;
+    double astigAngleRad = bestAng;
+    while (astigAngleRad < 0)       astigAngleRad += M_PI;
+    while (astigAngleRad >= M_PI)   astigAngleRad -= M_PI;
+
+    // Physical values for reporting (nm / degrees). Positive defocus = underfocus.
+    // The fit's `astigA` is the astigmatism AMPLITUDE (the defocus deviation from
+    // the mean, i.e. (df1−df2)/2). The conventional astigmatism reported by
+    // CTFFIND/GCtfFind — and the ground-truth used here — is the full peak-to-peak
+    // difference df1−df2, which is twice the amplitude.
+    double defocusNM   = -dfA / 10.0;
+    double astigAmpNM  =  astigA / 10.0;         // amplitude (for the CTF SIM field)
+    double astigFullNM =  2.0 * astigA / 10.0;   // df1−df2 (conventional, reported)
+    double astigAngDeg =  astigAngleRad * 180.0 / M_PI;
+    double df1NM       = -(dfA - astigA) / 10.0;
+    double df2NM       = -(dfA + astigA) / 10.0;
+
+    // Echo the fitted values into the CTF SIM parameter fields so the user can
+    // inspect and re-simulate them. CTF SIM's astigmatism field is defined as the
+    // amplitude, so echo the amplitude (not the peak-to-peak difference).
+    if (m_ctfVoltageEdit)   m_ctfVoltageEdit->setText(QString::number(voltageKV, 'f', 0));
+    if (m_ctfCsEdit)        m_ctfCsEdit->setText(QString::number(csMM, 'f', 2));
+    if (m_ctfDefocusEdit)   m_ctfDefocusEdit->setText(QString::number(defocusNM, 'f', 1));
+    if (m_ctfAstigEdit)     m_ctfAstigEdit->setText(QString::number(astigAmpNM, 'f', 1));
+    if (m_ctfAstigAngleEdit)m_ctfAstigAngleEdit->setText(QString::number(astigAngDeg, 'f', 1));
+
+    // Isotropic (Cs) transfer function, evaluated per pixel; astigmatism enters
+    // through the azimuthal local defocus computed in the fill loop below.
+    auto ctfAt = [N, dxA, lambdaA, CsA, defocusSpreadA, alphaRad, A, B]
+                 (double dfLocalA, double rPix) -> Complex {
+        double q = rPix / (N * dxA);
+        double q2 = q * q;
+        double chiEven = M_PI * lambdaA * dfLocalA * q2
+                       + 0.5 * M_PI * CsA * lambdaA * lambdaA * lambdaA * q2 * q2;
+        double tArg = M_PI * lambdaA * defocusSpreadA * q2;
+        double envT = std::exp(-0.5 * tArg * tArg);
+        double sArg = dfLocalA + CsA * lambdaA * lambdaA * q2;
+        double envS = std::exp(-(M_PI * M_PI) * alphaRad * alphaRad * q2 * sArg * sArg);
+        double base = envT * envS * (A * std::sin(-chiEven) + B * std::cos(-chiEven));
+        return Complex(base, 0.0);
+    };
+
+    // Effective (isotropic) radius that maps an astigmatic Thon-ring ellipse to a
+    // circle: the mean-defocus radius r_eff at which the fitted CTF has the same
+    // phase (chi) as this pixel. Averaging power over bins of r_eff therefore
+    // pools pixels along the true elliptical Thon rings (defocus + astigmatism),
+    // and reusing r_eff when filling the display makes the averaged rings
+    // elliptical again, aligned with the original transform and the model.
+    double aQ4  = 0.5 * M_PI * CsA * lambdaA * lambdaA * lambdaA;  // q^4 coeff of chi
+    double bQ2  = M_PI * lambdaA * dfA;                            // q^2 coeff (mean df)
+    double NdxA = N * dxA;
+    auto effRadius = [aQ4, bQ2, NdxA, dfA, astigA, astigAngleRad, lambdaA]
+                     (double dx, double dy) -> double {
+        double rr = std::sqrt(dx * dx + dy * dy);
+        if (rr < 1e-9) return 0.0;
+        double theta = std::atan2(-dy, dx);
+        double q = rr / NdxA;
+        double dfLocal = dfA + astigA * std::cos(2.0 * (theta - astigAngleRad));
+        double chi = M_PI * lambdaA * dfLocal * q * q + aQ4 * q * q * q * q;
+        double u;
+        if (std::fabs(aQ4) < 1e-30) {
+            u = (std::fabs(bQ2) > 1e-30) ? chi / bQ2 : q * q;
+        } else {
+            double disc = bQ2 * bQ2 + 4.0 * aQ4 * chi;
+            double qc2  = -bQ2 / (2.0 * aQ4);       // chi extremum (defocus/Cs crossover)
+            if (disc < 0.0 || q * q > qc2) return rr;   // past crossover: geometric radius
+            u = (-bQ2 - std::sqrt(disc)) / (2.0 * aQ4);
+        }
+        if (u <= 0.0) return rr;
+        return std::sqrt(u) * NdxA;
+    };
+
+    // Build the experimental (left) half of the composite from the source FFT.
+    // The left half keeps its native amplitudes (so it renders with the same
+    // contrast the original transform would); the fitted model on the right is
+    // instead scaled so its mean displayed grey matches the left half's.
+    struct CtfFitComposite {
+        std::vector<Complex> src;         // original transform (top-left)
+        std::vector<double>  radAmp;      // elliptical radial average, indexed by r_eff
+        double               modelScale = 1.0;
+    };
+    auto comp = std::make_shared<CtfFitComposite>();
+    {
+        int rMaxInt = (int)std::ceil((N / 2.0) * std::sqrt(2.0)) + 2;
+        std::vector<double> radSum(rMaxInt, 0.0), radCnt(rMaxInt, 0.0);
+        double half = N / 2.0;
+        int halfN = N / 2;
+
+        // Pass 1: elliptical radial average of the power |src|^2 over r_eff bins.
+        for (int y = 0; y < N; y++) {
+            double dy = y - half;
+            for (int x = 0; x < N; x++) {
+                double dx = x - half;
+                double p = std::norm(srcFFT[(size_t)y * N + x]);
+                int ri = (int)(effRadius(dx, dy) + 0.5);
+                if (ri >= 0 && ri < rMaxInt) { radSum[ri] += p; radCnt[ri] += 1.0; }
+            }
+        }
+        std::vector<double> radAmp(rMaxInt);
+        for (int r = 0; r < rMaxInt; r++)
+            radAmp[r] = (radCnt[r] > 0) ? std::sqrt(radSum[r] / radCnt[r]) : 0.0;
+
+        // Mean displayed grey (log power) of the left half, as it will appear.
+        double sumLogLeft = 0.0; long long cntLeft = 0;
+        for (int y = 0; y < N; y++) {
+            double dy = y - half;
+            for (int x = 0; x < halfN; x++) {
+                double dx = x - half;
+                double val;
+                if (y < halfN) {
+                    val = std::norm(srcFFT[(size_t)y * N + x]);          // top-left
+                } else {
+                    int ri = (int)(effRadius(dx, dy) + 0.5);             // bottom-left
+                    double amp = (ri >= 0 && ri < rMaxInt) ? radAmp[ri] : 0.0;
+                    val = amp * amp;
+                }
+                sumLogLeft += std::log(1.0 + val);
+                cntLeft++;
+            }
+        }
+        double meanLogLeft = (cntLeft > 0) ? sumLogLeft / cntLeft : 0.0;
+
+        // Histogram the model intensity base^2 over the right half so we can find
+        // the amplitude gain g that lifts its mean log power to the left's.
+        const int HB = 1000;
+        std::vector<double> hist(HB, 0.0); long long cntRight = 0;
+        for (int y = 0; y < N; y++) {
+            double dy = y - half;
+            for (int x = halfN; x < N; x++) {
+                double dx = x - half;
+                double rr = std::sqrt(dx * dx + dy * dy);
+                double theta = std::atan2(-dy, dx);
+                double dfLocal = dfA + astigA * std::cos(2.0 * (theta - astigAngleRad));
+                double base = ctfAt(dfLocal, rr).real();
+                double b2 = std::min(1.0, base * base);
+                int k = (int)(b2 * (HB - 1));
+                if (k < 0) k = 0; if (k >= HB) k = HB - 1;
+                hist[k] += 1.0; cntRight++;
+            }
+        }
+        auto meanLogModel = [&](double g) {
+            double gg = g * g, s = 0.0;
+            for (int k = 0; k < HB; k++)
+                if (hist[k] > 0.0)
+                    s += hist[k] * std::log(1.0 + gg * ((k + 0.5) / HB));
+            return (cntRight > 0) ? s / cntRight : 0.0;
+        };
+        double glo = 1e-6, ghi = 1e12, g = 1.0;
+        if (meanLogModel(ghi) <= meanLogLeft)      g = ghi;
+        else if (meanLogModel(glo) >= meanLogLeft) g = glo;
+        else for (int it = 0; it < 60; it++) {     // geometric bisection (g spans decades)
+            g = std::sqrt(glo * ghi);
+            if (meanLogModel(g) < meanLogLeft) glo = g; else ghi = g;
+        }
+
+        comp->modelScale = g;
+        comp->radAmp = std::move(radAmp);
+        comp->src = std::move(srcFFT);      // take the input FFT
+    }
+
+    // The output composite is placed into the currently selected buffer, whose
+    // real-space side becomes the input image that was fitted.
+    m_activeSlot     = outIdx;
+    m_image          = inImage;
+    m_imageRawPixels = inRaw;
+    m_imageMinVal    = inMin;
+    m_imageMaxVal    = inMax;
+    m_imageDispMin   = inMin;
+    m_imageDispMax   = inMax;
+    m_pixelSize      = dxA;                 // sampled like the input image
+    m_origW          = inImage.width();
+    m_origH          = inImage.height();
+    m_zoom[0].reset(inImage.width(), inImage.height());
+
+    m_toolProgress = 0.1;
+    update();
+
+    std::vector<std::function<void()>> steps;
+
+    steps.push_back([this, N]() {
+        m_fftN = N;
+        m_fftData.assign((size_t)N * N, Complex(0.0, 0.0));
+        m_toolProgress = 0.12;
+    });
+
+    // Fill the composite Fourier display in horizontal bands:
+    //   right half          -> the newly fitted, synthesised CTF (scaled to match
+    //                          the left half's mean grey)
+    //   top-left quarter    -> the original Fourier transform of the input image
+    //   bottom-left quarter -> the elliptically radially averaged Fourier transform
+    const int nBands = 32;
+    for (int b = 0; b < nBands; b++) {
+        int y0 = (int)((long long)b       * N / nBands);
+        int y1 = (int)((long long)(b + 1) * N / nBands);
+        double prog = 0.12 + 0.78 * (double)(b + 1) / nBands;
+        steps.push_back([this, comp, ctfAt, effRadius, N, dfA, astigA, astigAngleRad, y0, y1, prog]() {
+            double half = N / 2.0;
+            int halfN = N / 2;
+            int rMaxInt = (int)comp->radAmp.size();
+            double g = comp->modelScale;
+            for (int y = y0; y < y1; y++) {
+                double dy = y - half;
+                for (int x = 0; x < N; x++) {
+                    double dx = x - half;
+                    size_t idx = (size_t)y * N + x;
+                    if (x >= halfN) {
+                        // Right half: fitted CTF, scaled to match the left's grey.
+                        double rPix = std::sqrt(dx * dx + dy * dy);
+                        double theta = std::atan2(-dy, dx);
+                        double dfLocal = dfA + astigA * std::cos(2.0 * (theta - astigAngleRad));
+                        m_fftData[idx] = g * ctfAt(dfLocal, rPix);
+                    } else if (y < halfN) {
+                        // Top-left quarter: original Fourier transform (unscaled).
+                        m_fftData[idx] = comp->src[idx];
+                    } else {
+                        // Bottom-left quarter: elliptical radial average (unscaled).
+                        int ri = (int)(effRadius(dx, dy) + 0.5);
+                        double amp = (ri >= 0 && ri < rMaxInt) ? comp->radAmp[ri] : 0.0;
+                        m_fftData[idx] = Complex(amp, 0.0);
+                    }
+                }
+            }
+            m_toolProgress = prog;
+        });
+    }
+
+    steps.push_back([this, N]() {
+        m_ftComputed = true;
+        m_modeBtn->show();
+        m_maskBtnVisible = true;
+        m_zoom[1].reset(N, N);
+        m_zoom[2].reset(N, N);
+        recomputeDisplayImages();
+        m_toolProgress = 0.93;
+    });
+
+    steps.push_back([this, outIdx, defocusNM, astigFullNM, df1NM, df2NM, astigAngDeg]() {
+        // Store into the selected output slot. Real space keeps the input image;
+        // the Fourier side (cached transform + thumbnail) is the fit composite.
+        m_imagePath = QString("ctffit: df1=%1nm df2=%2nm ang=%3°")
+                          .arg(df1NM, 0, 'f', 1)
+                          .arg(df2NM, 0, 'f', 1)
+                          .arg(astigAngDeg, 0, 'f', 1);
+        m_history[outIdx].image        = m_image;
+        m_history[outIdx].path         = m_imagePath;
+        m_history[outIdx].rawPixels    = m_imageRawPixels;
+        m_history[outIdx].minVal       = m_imageMinVal;
+        m_history[outIdx].maxVal       = m_imageMaxVal;
+        m_history[outIdx].pixelSize    = m_pixelSize;
+        m_history[outIdx].fftData      = m_fftData;
+        m_history[outIdx].fftN         = m_fftN;
+        m_history[outIdx].fftOrigW     = m_origW;
+        m_history[outIdx].fftOrigH     = m_origH;
+        m_history[outIdx].ftComputed   = true;
+        m_history[outIdx].powerSpecImg = powerSpecFromCurrentFFT();
+        m_history[outIdx].occupied     = true;
+        saveHistory();
+
+        // Record the fitted values and keep the parameter window open so they
+        // are shown; the tool stays active for another fit.
+        m_ctfFitResDefocusNM = defocusNM;
+        m_ctfFitResAstigNM   = astigFullNM;
+        m_ctfFitResAngleDeg  = astigAngDeg;
+        m_ctfFitHasResult    = true;
+        m_toolProgress = -1;
+        update();
+    });
+
+    chainSteps(std::move(steps));
+}
+
+void FtWindow::onEditPixelSize()
+{
+    if (m_image.isNull()) return;
+
+    // A small popup styled like the in-panel parameter windows (dark field,
+    // outset buttons). Units are always Ångström.
+    auto *dlg = new QDialog(this);
+    dlg->setAttribute(Qt::WA_DeleteOnClose);
+    dlg->setModal(true);
+    dlg->setWindowTitle(tr("Edit pixel size"));
+    dlg->setStyleSheet("QDialog { background:#333; }");
+
+    auto *layout = new QVBoxLayout(dlg);
+    auto *label = new QLabel(QString::fromUtf8("Pixel size (Å):"), dlg);
+    label->setStyleSheet("color:#eee;");
+    layout->addWidget(label);
+
+    auto *edit = new QLineEdit(QString::number(m_pixelSize, 'g', 6), dlg);
+    edit->setStyleSheet("background:#222; color:white; border:1px solid #888; padding:2px;");
+    layout->addWidget(edit);
+    edit->selectAll();
+    edit->setFocus();
+
+    auto *buttons = new QDialogButtonBox(
+        QDialogButtonBox::Ok | QDialogButtonBox::Cancel, dlg);
+    buttons->setStyleSheet(
+        "QPushButton { background-color:#888; border:2px outset #aaa; color:#eee; padding:2px 12px; }");
+    layout->addWidget(buttons);
+    connect(buttons, &QDialogButtonBox::accepted, dlg, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, dlg, &QDialog::reject);
+    connect(edit, &QLineEdit::returnPressed, dlg, &QDialog::accept);
+
+    connect(dlg, &QDialog::accepted, this, [this, edit]() {
+        bool ok = false;
+        double v = edit->text().toDouble(&ok);
+        if (ok && v > 0.0) {
+            m_pixelSize = v;
+            if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS)
+                m_history[m_activeSlot].pixelSize = v;
+            saveHistory();
+            update();
+        }
+    });
+
+    dlg->show();
 }
 
 void FtWindow::onPhaseRampCancel()

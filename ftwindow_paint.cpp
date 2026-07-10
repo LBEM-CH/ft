@@ -33,6 +33,7 @@ void FtWindow::paintEvent(QPaintEvent *)
     m_p2ToolRect = QRect();   // cleared each frame, set when a p2 tool dialog draws
     m_imageHistLockRect = QRect();
     m_markImageCenterRect = QRect();
+    m_pixelSizeInfoRect = QRect();
     m_ftHistLockRect = QRect();
     m_maskBtnRect = QRect();
 
@@ -903,7 +904,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 (i == 6 && m_ftRotateActive) || (i == 7 && m_crossSectionActive) ||
                 (i == 8 && m_p2SymmetrizeActive) ||
                 (i == 9 && m_ftCropActive) || (i == 10 && m_phaseRampActive) ||
-                (i == 11 && m_ctfActive) || (i == 12 && m_ftMathActive))
+                (i == 11 && m_ctfActive) || (i == 12 && m_ctfFitActive) ||
+                (i == 13 && m_ftMathActive))
                 p.setBrush(QColor(60, 60, 60));
             else
                 p.setBrush(QColor(0, 0, 0));
@@ -1347,8 +1349,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Fourier math icon (button 12): Sigma/Sum sign
-            if (i == 12) {
+            // Fourier math icon (button 13): Sigma/Sum sign
+            if (i == 13) {
                 p.setRenderHint(QPainter::Antialiasing, true);
                 int inset = std::max(3, btnSide / 4);
                 QRect ir = r.adjusted(inset, inset, -inset, -inset);
@@ -1384,22 +1386,55 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // CTF icon (button 11): black background with white "CTF" text
+            // CTF SIM icon (button 11): black background with white "CTF"
+            // on the first line and "SIM" on the second line
             if (i == 11) {
                 p.setRenderHint(QPainter::Antialiasing, true);
                 QFont cf;
                 cf.setBold(true);
-                cf.setPixelSize(std::max(8, (int)(btnSide * 0.38)));
+                cf.setPixelSize(std::max(8, (int)(btnSide * 0.36)));
                 p.setFont(cf);
                 p.setPen(QPen(Qt::white, 1));
                 p.setBrush(Qt::NoBrush);
-                p.drawText(r, Qt::AlignCenter, "CTF");
+                QRect topHalf(r.left(), r.top(), r.width(), r.height() / 2);
+                QRect botHalf(r.left(), r.top() + r.height() / 2, r.width(), r.height() - r.height() / 2);
+                p.drawText(topHalf, Qt::AlignHCenter | Qt::AlignBottom, "CTF");
+                p.drawText(botHalf, Qt::AlignHCenter | Qt::AlignTop, "SIM");
                 p.setRenderHint(QPainter::Antialiasing, false);
 
                 if (r.contains(m_mousePos)) {
                     QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
                     QFontMetrics ttfm(ttf);
-                    QString tip = "CTF (contrast transfer function)";
+                    QString tip = "CTF SIM (contrast transfer function simulation)";
+                    int ttw = ttfm.horizontalAdvance(tip) + 8;
+                    int tth = ttfm.height() + 4;
+                    int ttx = r.left() - ttw - 4;
+                    int tty = r.center().y() - tth / 2;
+                    pendingTipRect = QRect(ttx, tty, ttw, tth);
+                    pendingTipText = tip;
+                }
+            }
+
+            // CTF FIT icon (button 12): black background with white "CTF"
+            // on the first line and "FIT" on the second line
+            if (i == 12) {
+                p.setRenderHint(QPainter::Antialiasing, true);
+                QFont cf;
+                cf.setBold(true);
+                cf.setPixelSize(std::max(8, (int)(btnSide * 0.36)));
+                p.setFont(cf);
+                p.setPen(QPen(Qt::white, 1));
+                p.setBrush(Qt::NoBrush);
+                QRect topHalf(r.left(), r.top(), r.width(), r.height() / 2);
+                QRect botHalf(r.left(), r.top() + r.height() / 2, r.width(), r.height() - r.height() / 2);
+                p.drawText(topHalf, Qt::AlignHCenter | Qt::AlignBottom, "CTF");
+                p.drawText(botHalf, Qt::AlignHCenter | Qt::AlignTop, "FIT");
+                p.setRenderHint(QPainter::Antialiasing, false);
+
+                if (r.contains(m_mousePos)) {
+                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                    QFontMetrics ttfm(ttf);
+                    QString tip = "CTF FIT (fit contrast transfer function to the transform)";
                     int ttw = ttfm.horizontalAdvance(tip) + 8;
                     int tth = ttfm.height() + 4;
                     int ttx = r.left() - ttw - 4;
@@ -1700,13 +1735,23 @@ void FtWindow::paintEvent(QPaintEvent *)
 
             // Resolution and pixel-size info below the bottom-right corner of panel 1
             int infoX = panel1W - 4;
-            int infoY = frame.bottom() + 4 + 3 * (pfm.height() + 1);
+            int infoTop = frame.bottom() + 4 + 3 * (pfm.height() + 1);
+            int infoY = infoTop;
 
             QString resLabel = QString("%1 x %2 pixels").arg(imgW).arg(imgH);
             p.drawText(infoX - pfm.horizontalAdvance(resLabel), infoY + pfm.ascent(), resLabel);
 
             infoY += pfm.height() + 1;
             p.drawText(infoX - pfm.horizontalAdvance(psLabel), infoY + pfm.ascent(), psLabel);
+
+            // The size + pixel-size lines are a double-click target for editing
+            // the pixel size (see mouseDoubleClickEvent / onEditPixelSize).
+            int infoBlockW = std::max(pfm.horizontalAdvance(resLabel),
+                                      pfm.horizontalAdvance(psLabel));
+            m_pixelSizeInfoRect = QRect(infoX - infoBlockW, infoTop,
+                                        infoBlockW,
+                                        (infoY + pfm.height()) - infoTop)
+                                      .adjusted(-2, -2, 2, 2);
 
             if (!m_imagePath.isEmpty()) {
                 infoY += pfm.height() + 1;
@@ -2577,7 +2622,7 @@ void FtWindow::paintEvent(QPaintEvent *)
         // Panel 2 tool option rectangles (bottom-right of panel 2)
         bool p2Tool = m_bandpassActive || m_directionalActive || m_lineFilterActive || m_brushActive
                       || m_eraserActive || m_latticeActive || m_ftCropActive || m_crossSectionActive
-                      || m_ctfActive || m_phaseRampActive || m_p2SymmetrizeActive;
+                      || m_ctfActive || m_ctfFitActive || m_phaseRampActive || m_p2SymmetrizeActive;
         if (p2Tool) {
             int nRows = 0;
             int textW = 0;
@@ -2668,6 +2713,23 @@ void FtWindow::paintEvent(QPaintEvent *)
                          + m_ctfBeamtiltDirEdit->width();
                 int r6 = m_ctfCancelBtn->width() + 8 + m_ctfComputeBtn->width();
                 textW = std::max({r0, r1, r2, r3, r4, r5, r6});
+            } else if (m_ctfFitActive) {
+                nRows = m_ctfFitHasResult ? 8 : 6;
+                int r0 = fm.horizontalAdvance("Acceleration Voltage (kV): ") + m_ctfFitVoltageEdit->width();
+                int r1 = fm.horizontalAdvance("Spherical aberration Cs (mm): ") + m_ctfFitCsEdit->width();
+                int r2 = fm.horizontalAdvance("Input buffer: ") + m_ctfFitInputCombo->width();
+                int r3 = fm.horizontalAdvance("Upper resolution limit (Å): ") + m_ctfFitResHiEdit->width();
+                int r4 = fm.horizontalAdvance("Lower resolution limit (Å): ") + m_ctfFitResLoEdit->width();
+                int r5 = m_ctfFitCancelBtn->width() + 8 + m_ctfFitExecuteBtn->width();
+                int r6 = 0, r7 = 0;
+                if (m_ctfFitHasResult) {
+                    r6 = fm.horizontalAdvance(QString("Fitted defocus: %1 nm")
+                             .arg(m_ctfFitResDefocusNM, 0, 'f', 1));
+                    r7 = fm.horizontalAdvance(QString("Fitted astigmatism: %1 nm at %2°")
+                             .arg(m_ctfFitResAstigNM, 0, 'f', 1)
+                             .arg(m_ctfFitResAngleDeg, 0, 'f', 1));
+                }
+                textW = std::max({r0, r1, r2, r3, r4, r5, r6, r7});
             } else if (m_phaseRampActive) {
                 nRows = 4;
                 int r0 = fm.horizontalAdvance("Size of FFT to be created: ") + m_phaseRampSizeCombo->width();
@@ -2844,6 +2906,36 @@ void FtWindow::paintEvent(QPaintEvent *)
                 // Row 6: Cancel / Compute
                 m_ctfCancelBtn->move(tx, ty + lh * 6);
                 m_ctfComputeBtn->move(rx + rw - margin - m_ctfComputeBtn->width(), ty + lh * 6);
+            } else if (m_ctfFitActive) {
+                // Row 0: Acceleration voltage
+                drawParamLabel(p, fm, tx, ty, "Acceleration Voltage (kV):", m_ctfFitVoltageEdit->toolTip());
+                m_ctfFitVoltageEdit->move(tx + fm.horizontalAdvance("Acceleration Voltage (kV): "), ty);
+                // Row 1: Spherical aberration Cs
+                drawParamLabel(p, fm, tx, ty + lh, "Spherical aberration Cs (mm):", m_ctfFitCsEdit->toolTip());
+                m_ctfFitCsEdit->move(tx + fm.horizontalAdvance("Spherical aberration Cs (mm): "), ty + lh);
+                // Row 2: Input buffer
+                drawParamLabel(p, fm, tx, ty + lh * 2, "Input buffer:", m_ctfFitInputCombo->toolTip());
+                m_ctfFitInputCombo->move(tx + fm.horizontalAdvance("Input buffer: "), ty + lh * 2);
+                // Row 3: Upper resolution limit
+                drawParamLabel(p, fm, tx, ty + lh * 3, "Upper resolution limit (Å):", m_ctfFitResHiEdit->toolTip());
+                m_ctfFitResHiEdit->move(tx + fm.horizontalAdvance("Upper resolution limit (Å): "), ty + lh * 3);
+                // Row 4: Lower resolution limit
+                drawParamLabel(p, fm, tx, ty + lh * 4, "Lower resolution limit (Å):", m_ctfFitResLoEdit->toolTip());
+                m_ctfFitResLoEdit->move(tx + fm.horizontalAdvance("Lower resolution limit (Å): "), ty + lh * 4);
+                // Row 5: Cancel / Execute
+                m_ctfFitCancelBtn->move(tx, ty + lh * 5);
+                m_ctfFitExecuteBtn->move(rx + rw - margin - m_ctfFitExecuteBtn->width(), ty + lh * 5);
+                // Rows 6-7: fitted results (after a successful Execute)
+                if (m_ctfFitHasResult) {
+                    drawParamLabel(p, fm, tx, ty + lh * 6,
+                        QString("Fitted defocus: %1 nm").arg(m_ctfFitResDefocusNM, 0, 'f', 1),
+                        QString());
+                    drawParamLabel(p, fm, tx, ty + lh * 7,
+                        QString("Fitted astigmatism: %1 nm at %2°")
+                            .arg(m_ctfFitResAstigNM, 0, 'f', 1)
+                            .arg(m_ctfFitResAngleDeg, 0, 'f', 1),
+                        QString());
+                }
             } else if (m_phaseRampActive) {
                 drawParamLabel(p, fm, tx, ty, "Size of FFT to be created:", m_phaseRampSizeCombo->toolTip());
                 m_phaseRampSizeCombo->move(tx + fm.horizontalAdvance("Size of FFT to be created: "), ty);

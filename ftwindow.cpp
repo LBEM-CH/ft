@@ -639,6 +639,51 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
                           m_ctfBeamtiltDirEdit })
         connect(e, &QLineEdit::returnPressed, this, &FtWindow::onCtfCompute);
 
+    // CTF FIT parameter widgets (only kV, Cs and a target buffer; the defocus,
+    // astigmatism and astigmatism angle are recovered by the fit itself).
+    m_ctfFitVoltageEdit = makeCtfEdit("300");
+    m_ctfFitVoltageEdit->setToolTip(
+        "Acceleration voltage of the microscope in kV. Determines the\n"
+        "relativistic electron wavelength used in the CTF fit.");
+    m_ctfFitCsEdit = makeCtfEdit("2.7");
+    m_ctfFitCsEdit->setToolTip(
+        "Spherical aberration constant Cs of the objective lens in mm.");
+    m_ctfFitInputCombo = new QComboBox(this);
+    for (int i = 0; i < HISTORY_SLOTS; i++)
+        m_ctfFitInputCombo->addItem(QString(QChar('A' + i)));
+    m_ctfFitInputCombo->setFixedSize(60, 22);
+    m_ctfFitInputCombo->setStyleSheet("background:#222; color:white; border:1px solid #888;");
+    m_ctfFitInputCombo->setToolTip(
+        "Input buffer (A…P) whose Fourier transform the CTF is fitted to.\n"
+        "The fitted CTF composite is written into the currently selected\n"
+        "buffer.");
+    m_ctfFitInputCombo->hide();
+    m_ctfFitResHiEdit = makeCtfEdit("3");
+    m_ctfFitResHiEdit->setToolTip(
+        "Upper resolution limit in Ångström (the finest, i.e. smallest\n"
+        "d-spacing) that is included in the CTF fit. Frequencies beyond\n"
+        "this (finer than the Nyquist limit) are ignored.");
+    m_ctfFitResLoEdit = makeCtfEdit("30");
+    m_ctfFitResLoEdit->setToolTip(
+        "Lower resolution limit in Ångström (the coarsest, i.e. largest\n"
+        "d-spacing) that is included in the CTF fit. Very low frequencies\n"
+        "below this are ignored.");
+    m_ctfFitCancelBtn = new QPushButton("Cancel", this);
+    m_ctfFitCancelBtn->setFixedSize(80, 26);
+    m_ctfFitCancelBtn->setStyleSheet(
+        "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }");
+    connect(m_ctfFitCancelBtn, &QPushButton::clicked, this, &FtWindow::onCtfFitCancel);
+    m_ctfFitCancelBtn->hide();
+    m_ctfFitExecuteBtn = new QPushButton("Execute", this);
+    m_ctfFitExecuteBtn->setFixedSize(80, 26);
+    m_ctfFitExecuteBtn->setStyleSheet(
+        "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }");
+    connect(m_ctfFitExecuteBtn, &QPushButton::clicked, this, &FtWindow::onCtfFitExecute);
+    m_ctfFitExecuteBtn->hide();
+    for (QLineEdit *e : { m_ctfFitVoltageEdit, m_ctfFitCsEdit,
+                          m_ctfFitResHiEdit, m_ctfFitResLoEdit })
+        connect(e, &QLineEdit::returnPressed, this, &FtWindow::onCtfFitExecute);
+
     // Phase ramp parameter widgets
     m_phaseRampSizeCombo = new QComboBox(this);
     for (int sz : {512, 1024, 2048, 4096})
