@@ -11,6 +11,8 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QFileDialog>
+#include <QDir>
+#include <QFile>
 #include <QInputDialog>
 #include <QDialog>
 #include <QListWidget>

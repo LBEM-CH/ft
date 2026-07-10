@@ -12,31 +12,63 @@ static QString g_exampleImagesDir;
 //  native platform style. On Windows (including the WASM build) that indicator
 //  renders as a black box with no visible checkmark against our dark panels,
 //  so the user cannot tell whether the box is checked. Styling the indicator
-//  explicitly (with an embedded SVG checkmark, so no external file is needed)
-//  makes it render identically on every platform, including WASM.
+//  explicitly makes it render identically on every platform, including WASM:
+//  the box stays white in both states, and when checked a black checkmark is
+//  overlaid on it.
+//
+//  The checkmark is supplied via "image: url(<path>)". Qt's stylesheet url()
+//  loads a file that QPixmap can open — it does NOT accept "data:" URIs (an
+//  inline data URI silently renders nothing on every platform). So we decode
+//  an embedded PNG to a temp file once and point the stylesheet at that path;
+//  this needs no .qrc/resource and works on native and WASM (MEMFS) alike.
 // ---------------------------------------------------------------------------
-static QString checkBoxStyle(const QString &textColor)
+static QString checkMarkPngPath()
 {
-    // White check mark on a green fill; empty white box when unchecked.
-    static const QString kCheckSvg =
-        "data:image/svg+xml;base64,"
-        "PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPScxNCcg"
-        "aGVpZ2h0PScxNCcgdmlld0JveD0nMCAwIDE0IDE0Jz48cGF0aCBkPSdNMi41IDcuNSBM"
-        "NiAxMSBMMTEuNSAzLjUnIHN0cm9rZT0nd2hpdGUnIHN0cm9rZS13aWR0aD0nMi4yJyBm"
-        "aWxsPSdub25lJyBzdHJva2UtbGluZWNhcD0ncm91bmQnIHN0cm9rZS1saW5lam9pbj0n"
-        "cm91bmQnLz48L3N2Zz4=";
+    // 16x16 black checkmark on a transparent background.
+    static const char kCheckPngB64[] =
+        "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAA4ElEQVR4nL3S"
+        "O04DMRAG4C/ZSDTQIE5ADwVSKLlETpBzpMoJaGhRCmrECWgpkXKGtEAD7ZIU"
+        "mUHGbFaAECNZtmc8/8M2/xwDDP8CqPkN8wCHOC9y345RzAu0mEfui51kKiPl"
+        "TrGOsYhzn6x0SUqGU7xG80MXWS72oylvu4nxGM3POFa9RiIdYYmbyO/FfBnN"
+        "LSaVrY9Ng/vC43XUJkXuKnIjVaTkCzzhPRpusYr1EgdB1Pl86WeMlwJkjTec"
+        "VOc6I6WNbS8rAaa7pPeBnOEOs9j/6OvWMnu/7K7isKi1fQAbxB0n6vwBzzMA"
+        "AAAASUVORK5CYII=";
+    static QString path;
+    if (!path.isEmpty())
+        return path;
+    const QByteArray png = QByteArray::fromBase64(QByteArray(kCheckPngB64));
+    const QString p = QDir::tempPath() + "/ft_checkmark.png";
+    QFile f(p);
+    if (f.open(QIODevice::WriteOnly)) {
+        f.write(png);
+        f.close();
+        path = p;
+    }
+    return path;
+}
+
+//  Pass fontPx > 0 to also pin the label font size (used from resizeEvent,
+//  which re-applies checkbox styles on every resize — WASM fires one at
+//  startup — and must keep the indicator rules, or the box falls back to the
+//  invisible native rendering).
+static QString checkBoxStyle(const QString &textColor, int fontPx = -1)
+{
+    const QString check = checkMarkPngPath();
+    const QString font = fontPx > 0
+        ? QStringLiteral("font-size: %1px;").arg(fontPx)
+        : QString();
     return QStringLiteral(
-               "QCheckBox { color: %1; }"
+               "QCheckBox { color: %1; %3 }"
                "QCheckBox::indicator {"
                "  width: 16px; height: 16px;"
                "  border: 1px solid #888; border-radius: 3px;"
                "  background: white;"
                "}"
                "QCheckBox::indicator:checked {"
-               "  background: #2d9d2d; border: 1px solid #1c6b1c;"
+               "  background: white; border: 1px solid #888;"
                "  image: url(\"%2\");"
                "}")
-        .arg(textColor, kCheckSvg);
+        .arg(textColor, check, font);
 }
 
 void FtWindow::setExampleImagesDir(const QString &dir)
@@ -1502,7 +1534,10 @@ void FtWindow::resizeEvent(QResizeEvent *)
 
     // Styles for widgets on white rectangle background
     QString editSS  = QString("background:white; color:black; border:1px solid #888; font-size: %1px;").arg(fontSize);
-    QString cbSS    = QString("color: #333; font-size: %1px;").arg(fontSize);
+    // Keep the full indicator styling (white box + black checkmark) here, not
+    // just text color — otherwise the resize clobbers checkBoxStyle() from the
+    // constructor and the box reverts to the invisible native indicator.
+    QString cbSS    = checkBoxStyle("#333", fontSize);
     QString btnSS   = QString("QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; font-size: %1px; }").arg(fontSize);
 
     // Bandpass widgets (sizes only; positions set in paintEvent)
