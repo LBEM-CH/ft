@@ -115,18 +115,28 @@ void FtWindow::paintEvent(QPaintEvent *)
 
     // ---- Tool button columns ----------------------------------
     {
-        int btnSide = std::max(width() * 5 / 400, 20);
-        int gap = 2;
-        int totalH = P1_TOOL_BUTTONS * btnSide + (P1_TOOL_BUTTONS - 1) * gap;
-        int startY = (hy - totalH) / 2;
+        // Group/slot geometry is computed in layoutToolSlots() (shared with the
+        // mouse handler). Each visible tool id draws into the slot it currently
+        // occupies: a group face when collapsed, or a popup cell when its group
+        // is open. Invisible ids (non-face members of a collapsed group) skip.
+        layoutToolSlots();
+        int btnSide = m_toolBtnSide;
 
-        int offset = btnSide / 2;
+        // Floating popup panel background, under the member cells drawn below.
+        if (m_openMenuPanel == 1 && !m_p1PopupRect.isNull()) {
+            p.setPen(QPen(QColor(200, 200, 200), 1));
+            p.setBrush(QColor(30, 30, 30));
+            p.drawRect(m_p1PopupRect);
+        } else if (m_openMenuPanel == 2 && !m_p2PopupRect.isNull()) {
+            p.setPen(QPen(QColor(200, 200, 200), 1));
+            p.setBrush(QColor(30, 30, 30));
+            p.drawRect(m_p2PopupRect);
+        }
 
         // Panel 1: left edge
         for (int i = 0; i < P1_TOOL_BUTTONS; i++) {
-            int by = startY + i * (btnSide + gap);
-            QRect r(offset, by, btnSide, btnSide);
-            m_p1BtnRects[i] = r;
+            if (!m_p1SlotVisible[i]) continue;
+            QRect r = m_p1BtnRects[i];
 
             p.setPen(QPen(Qt::white, 1));
             if ((i == 0 && m_p1EraserActive) || (i == 1 && m_p1BrushActive) ||
@@ -893,9 +903,8 @@ void FtWindow::paintEvent(QPaintEvent *)
 
         // Panel 2: right edge
         for (int i = 0; i < P2_TOOL_BUTTONS; i++) {
-            int by = startY + i * (btnSide + gap);
-            QRect r(width() - btnSide - offset, by, btnSide, btnSide);
-            m_toolBtnRects[i] = r;
+            if (!m_p2SlotVisible[i]) continue;
+            QRect r = m_toolBtnRects[i];
 
             p.setPen(QPen(Qt::white, 1));
             if ((i == 0 && m_eraserActive) || (i == 1 && m_brushActive) ||
@@ -1443,6 +1452,82 @@ void FtWindow::paintEvent(QPaintEvent *)
                     pendingTipText = tip;
                 }
             }
+        }
+
+        // ---- group extras: submenu markers, open-menu anchor, group tips ----
+        auto drawGroupExtras = [&](int panel) {
+            const QVector<ToolGroup> &groups = (panel == 1) ? m_p1Groups : m_p2Groups;
+            const QRect *groupRects = (panel == 1) ? m_p1GroupRects : m_p2GroupRects;
+            for (int g = 0; g < groups.size(); g++) {
+                const QRect &G = groupRects[g];
+                bool multi = groups[g].members.size() > 1;
+                bool open  = (m_openMenuPanel == panel && m_openMenuGroup == g);
+
+                // Collapsed group with a custom text face (e.g. "CTF"): a plain
+                // black square with the text, in place of the first member icon.
+                if (!open && !groups[g].faceText.isEmpty()) {
+                    p.setRenderHint(QPainter::Antialiasing, true);
+                    p.setPen(QPen(Qt::white, 1));
+                    p.setBrush(QColor(0, 0, 0));
+                    p.drawRect(G);
+                    QFont cf;
+                    cf.setBold(true);
+                    cf.setPixelSize(std::max(8, (int)(G.width() * 0.42)));
+                    p.setFont(cf);
+                    p.setPen(QPen(Qt::white, 1));
+                    p.drawText(G, Qt::AlignCenter, groups[g].faceText);
+                    p.setRenderHint(QPainter::Antialiasing, false);
+                }
+
+                // When a multi-member group is open its face is empty (the
+                // representative moved into the popup), so draw a highlighted
+                // anchor placeholder in its place.
+                if (open && multi) {
+                    p.setPen(QPen(Qt::white, 1));
+                    p.setBrush(QColor(70, 70, 70));
+                    p.drawRect(G);
+                }
+
+                // A small corner triangle marks every group that expands.
+                if (multi) {
+                    p.setRenderHint(QPainter::Antialiasing, false);
+                    p.setPen(Qt::NoPen);
+                    p.setBrush(QColor(120, 180, 255));
+                    int t = std::max(4, G.width() / 4);
+                    QPainterPath tri;
+                    tri.moveTo(G.right(), G.bottom() - t);
+                    tri.lineTo(G.right(), G.bottom());
+                    tri.lineTo(G.right() - t, G.bottom());
+                    tri.closeSubpath();
+                    p.drawPath(tri);
+                }
+
+                // Hovering a group face shows the group name (overriding any
+                // per-icon tip the representative may have set).
+                if (G.contains(m_mousePos)) {
+                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                    QFontMetrics ttfm(ttf);
+                    QString tip = groups[g].name;
+                    int ttw = ttfm.horizontalAdvance(tip) + 8;
+                    int tth = ttfm.height() + 4;
+                    int ttx = (panel == 1) ? (G.right() + 4) : (G.left() - ttw - 4);
+                    int tty = G.center().y() - tth / 2;
+                    pendingTipRect = QRect(ttx, tty, ttw, tth);
+                    pendingTipText = tip;
+                }
+            }
+        };
+        drawGroupExtras(1);
+        drawGroupExtras(2);
+
+        // While a sub-panel (popup) is open, suppress the mouse-over text on the
+        // top-level group squares — it would otherwise overlap and obscure the
+        // sub-panel. Tooltips for the popup's own member cells (mouse inside the
+        // popup) are kept.
+        if (m_openMenuPanel != 0) {
+            const QRect &popup = (m_openMenuPanel == 1) ? m_p1PopupRect : m_p2PopupRect;
+            if (!popup.contains(m_mousePos))
+                pendingTipText.clear();
         }
     }
 

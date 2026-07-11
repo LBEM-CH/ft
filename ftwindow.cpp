@@ -91,6 +91,8 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     setMouseTracking(true);
     grabGesture(Qt::PinchGesture);
 
+    buildToolGroups();
+
     QScreen *screen = QApplication::primaryScreen();
     QRect available = screen->availableGeometry();
     setGeometry(available);

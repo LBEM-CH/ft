@@ -13,6 +13,403 @@ static QImage flipImage(const QImage &img, Qt::Orientations dir)
 }
 
 // ---------------------------------------------------------------------------
+//  Grouped tool buttons
+// ---------------------------------------------------------------------------
+//  The many individual tool squares along each panel edge are organised into a
+//  small number of group squares. A single-member group activates its tool
+//  directly; a multi-member group opens a floating popup grid of its members.
+//  Tool ids are the original per-function indices (see the icon-drawing loops
+//  in ftwindow_paint.cpp); the group lists below map ids into groups.
+void FtWindow::buildToolGroups()
+{
+    m_p1Groups = {
+        { "Edit",        {0, 1, 8} },       // eraser, paint brush, taper edges
+        { "Measure",     {2} },
+        { "Transform",   {3, 4, 5, 6, 7} }, // flip H/V, shift, rotate, invert
+        { "Symmetrize",  {9} },
+        { "Redimension", {10, 11} },        // bin, crop
+        { "Filter",      {12, 13} },        // gabor, hessian
+        { "Amyloid",     {14} },
+        { "Math",        {15} },
+        { "Particles",   {16, 17} },        // peak, extract
+    };
+    m_p2Groups = {
+        { "Edit",                  {0, 1, 10} },  // eraser, paint brush, phase ramp
+        { "Cross-section profile", {7} },
+        { "Filter",                {2, 3, 4, 5} },// bandpass, directional, line, lattice
+        { "Transform",             {6, 8} },      // rotate, symmetrize
+        { "Redimension",           {9} },         // Fourier crop / pad
+        { "CTF",                   {11, 12}, "CTF" }, // CTF SIM, CTF FIT (face = "CTF")
+        { "Math",                  {13} },
+    };
+}
+
+// Compute, for every tool id, the on-screen rect of the slot it occupies and
+// whether it is currently visible. Runs each paint; the mouse handler reads the
+// results (paint always precedes any click).
+void FtWindow::layoutToolSlots()
+{
+    int hy = height() - height() / 5;
+    int btnSide = std::max(width() * 5 / 400, 20);
+    int gap = 2;
+    int offset = btnSide / 2;
+    m_toolBtnSide = btnSide;
+    m_toolBtnGap = gap;
+    m_toolBtnOffset = offset;
+
+    auto layoutPanel = [&](int panel) {
+        const QVector<ToolGroup> &groups = (panel == 1) ? m_p1Groups : m_p2Groups;
+        QRect *groupRects = (panel == 1) ? m_p1GroupRects : m_p2GroupRects;
+        QRect *slotRects  = (panel == 1) ? m_p1BtnRects   : m_toolBtnRects;
+        bool  *slotVis    = (panel == 1) ? m_p1SlotVisible : m_p2SlotVisible;
+        int nTools = (panel == 1) ? P1_TOOL_BUTTONS : P2_TOOL_BUTTONS;
+        for (int i = 0; i < nTools; i++) { slotVis[i] = false; slotRects[i] = QRect(); }
+
+        int nG = groups.size();
+        int totalH = nG * btnSide + (nG - 1) * gap;
+        int startY = (hy - totalH) / 2;
+
+        for (int g = 0; g < nG; g++) {
+            int by = startY + g * (btnSide + gap);
+            int gx = (panel == 1) ? offset : (width() - btnSide - offset);
+            QRect G(gx, by, btnSide, btnSide);
+            groupRects[g] = G;
+            const QVector<int> &mem = groups[g].members;
+
+            bool open = (m_openMenuPanel == panel && m_openMenuGroup == g);
+            if (open && mem.size() > 1) {
+                // Members fan out into a single floating vertical column beside
+                // the group square; the group face itself is left empty (drawn
+                // as a highlighted anchor in paint).
+                int n = mem.size();
+                int pad = 4;
+                int panelW = btnSide + 2 * pad;
+                int panelH = n * btnSide + (n - 1) * gap + 2 * pad;
+                int px = (panel == 1) ? (G.right() + 6) : (G.left() - 6 - panelW);
+                int py = G.top();
+                if (py + panelH > height()) py = height() - panelH;
+                if (py < 0) py = 0;
+                QRect popup(px, py, panelW, panelH);
+                if (panel == 1) m_p1PopupRect = popup; else m_p2PopupRect = popup;
+                for (int k = 0; k < n; k++) {
+                    QRect cell(px + pad,
+                               py + pad + k * (btnSide + gap),
+                               btnSide, btnSide);
+                    slotRects[mem[k]] = cell;
+                    slotVis[mem[k]] = true;
+                }
+            } else if (groups[g].faceText.isEmpty()) {
+                slotRects[mem[0]] = G;   // collapsed: face shows first member
+                slotVis[mem[0]] = true;
+            }
+            // else: collapsed group with a custom text face — no member icon is
+            // drawn here; the face is rendered in paint (drawGroupExtras).
+        }
+    };
+    layoutPanel(1);
+    layoutPanel(2);
+}
+
+void FtWindow::deactivateAllP1Tools()
+{
+    m_p1EraserActive = false; m_p1BrushActive = false;
+    m_shiftActive = false; m_rotateActive = false;
+    m_p1TaperActive = false; m_p1SymmetrizeActive = false;
+    m_binActive = false; m_mathActive = false;
+    m_cropActive = false; m_cropDragging = false; m_cropMoving = false; m_cropHasSelection = false;
+    m_peakPickActive = false; m_extractActive = false;
+    m_gaborActive = false; m_hessianActive = false;
+    m_amyloidActive = false; m_amyloidPlacing = 0;
+    m_measureActive = false; m_measurePlacing = 0; m_measureHasLine = false;
+}
+
+void FtWindow::showP1ToolWidgets()
+{
+    m_p1EraserDiameterEdit->setVisible(m_p1EraserActive);
+    m_p1BrushValueEdit->setVisible(m_p1BrushActive);
+    m_p1BrushSolidDiameterEdit->setVisible(m_p1BrushActive);
+    m_p1BrushDiameterEdit->setVisible(m_p1BrushActive);
+    m_p1TaperWidthEdit->setVisible(m_p1TaperActive);
+    m_applyP1TaperBtn->setVisible(m_p1TaperActive);
+    m_p1SymmetryEdit->setVisible(m_p1SymmetrizeActive);
+    m_applyP1SymmetryBtn->setVisible(m_p1SymmetrizeActive);
+    m_binCombo->setVisible(m_binActive);
+    m_binKeepSizeBtn->setVisible(m_binActive);
+    m_applyBinBtn->setVisible(m_binActive);
+    m_cropTLxEdit->setVisible(m_cropActive);
+    m_cropTLyEdit->setVisible(m_cropActive);
+    m_cropBRxEdit->setVisible(m_cropActive);
+    m_cropBRyEdit->setVisible(m_cropActive);
+    m_cropCancelBtn->setVisible(m_cropActive);
+    m_applyCropBtn->setVisible(m_cropActive);
+    m_mathOutCombo->setVisible(m_mathActive);
+    m_mathEqualsLabel->setVisible(m_mathActive);
+    m_mathIn1Combo->setVisible(m_mathActive);
+    m_mathOpCombo->setVisible(m_mathActive);
+    m_mathIn2Combo->setVisible(m_mathActive);
+    m_mathCancelBtn->setVisible(m_mathActive);
+    m_mathComputeBtn->setVisible(m_mathActive);
+    m_peakSourceCombo->setVisible(m_peakPickActive);
+    m_peakThresholdSlider->setVisible(m_peakPickActive);
+    m_peakThresholdLabel->setVisible(m_peakPickActive);
+    m_peakExclLabel->setVisible(m_peakPickActive);
+    m_peakExclRadiusSlider->setVisible(m_peakPickActive);
+    m_peakCancelBtn->setVisible(m_peakPickActive);
+    m_peakComputeBtn->setVisible(m_peakPickActive);
+    m_peakShowPosBtn->setVisible(m_peakPickActive);
+    bool showExtract = m_extractActive && !m_peaks.empty();
+    m_extractSourceCombo->setVisible(showExtract);
+    m_extractTargetCombo->setVisible(showExtract);
+    m_extractSizeCombo->setVisible(showExtract);
+    m_extractCancelBtn->setVisible(showExtract);
+    m_extractComputeBtn->setVisible(showExtract);
+    m_gaborSigmaEdit->setVisible(m_gaborActive);
+    m_gaborLambdaEdit->setVisible(m_gaborActive);
+    m_gaborThetaEdit->setVisible(m_gaborActive);
+    m_gaborGammaEdit->setVisible(m_gaborActive);
+    m_gaborCancelBtn->setVisible(m_gaborActive);
+    m_gaborComputeBtn->setVisible(m_gaborActive);
+    m_hessianSigmaEdit->setVisible(m_hessianActive);
+    m_hessianPolarityEdit->setVisible(m_hessianActive);
+    m_hessianCancelBtn->setVisible(m_hessianActive);
+    m_hessianComputeBtn->setVisible(m_hessianActive);
+    m_amyloidRiseEdit->setVisible(m_amyloidActive);
+    m_amyloidTwistEdit->setVisible(m_amyloidActive);
+    m_amyloidMapCombo->setVisible(m_amyloidActive);
+    m_amyloidSizeCombo->setVisible(m_amyloidActive);
+    m_amyloidNoiseBtn->setVisible(m_amyloidActive);
+    m_amyloidNoiseEdit->setVisible(m_amyloidActive);
+    m_amyloidPersistEdit->setVisible(m_amyloidActive);
+    m_amyloidWaveEdit->setVisible(m_amyloidActive);
+    m_amyloidAmplEdit->setVisible(m_amyloidActive);
+    m_amyloidSignalBtn->setVisible(m_amyloidActive);
+    m_amyloidCancelBtn->setVisible(m_amyloidActive);
+    m_amyloidComputeBtn->setVisible(m_amyloidActive);
+    m_measureCancelBtn->setVisible(m_measureActive);
+}
+
+void FtWindow::activateP1Tool(int toolId)
+{
+    switch (toolId) {
+    case 0: { bool was = m_p1EraserActive; deactivateAllP1Tools(); m_p1EraserActive = !was; break; }
+    case 1: {
+        bool was = m_p1BrushActive; deactivateAllP1Tools(); m_p1BrushActive = !was;
+        if (m_p1BrushActive && !m_image.isNull()) {
+            double defVal = m_imageMaxVal > 0 ? m_imageMaxVal : 1.0;
+            m_p1BrushValueEdit->setText(QString::number(defVal, 'g', 5));
+        }
+        break;
+    }
+    case 2: {
+        bool was = m_measureActive; deactivateAllP1Tools(); m_measureActive = !was;
+        if (!m_measureActive) { m_measurePlacing = 0; m_measureHasLine = false; }
+        break;
+    }
+    case 3:
+        if (m_image.isNull()) return;
+        deactivateAllP1Tools(); storeUndoSnapshot();
+        m_image = flipImage(m_image, Qt::Horizontal);
+        extractImageData(); if (m_ftComputed) computeFFT();
+        break;
+    case 4:
+        if (m_image.isNull()) return;
+        deactivateAllP1Tools(); storeUndoSnapshot();
+        m_image = flipImage(m_image, Qt::Vertical);
+        extractImageData(); if (m_ftComputed) computeFFT();
+        break;
+    case 5: { bool was = m_shiftActive; deactivateAllP1Tools(); m_shiftActive = !was; break; }
+    case 6: { bool was = m_rotateActive; deactivateAllP1Tools(); m_rotateActive = !was; break; }
+    case 7:
+        if (m_image.isNull()) return;
+        deactivateAllP1Tools(); showP1ToolWidgets(); onInvertContrast();
+        return;
+    case 8: { bool was = m_p1TaperActive; deactivateAllP1Tools(); m_p1TaperActive = !was; break; }
+    case 9: { bool was = m_p1SymmetrizeActive; deactivateAllP1Tools(); m_p1SymmetrizeActive = !was; break; }
+    case 10: { bool was = m_binActive; deactivateAllP1Tools(); m_binActive = !was; break; }
+    case 11: {
+        bool was = m_cropActive; deactivateAllP1Tools(); m_cropActive = !was;
+        if (m_cropActive) { m_cropRect = QRect(); m_cropHasSelection = false; syncCropEdits(); }
+        break;
+    }
+    case 12: { bool was = m_gaborActive; deactivateAllP1Tools(); m_gaborActive = !was; break; }
+    case 13: { bool was = m_hessianActive; deactivateAllP1Tools(); m_hessianActive = !was; break; }
+    case 14: {
+        bool was = m_amyloidActive; deactivateAllP1Tools(); m_amyloidActive = !was;
+        if (!m_amyloidActive) { m_amyloidPlacing = 0; }
+        else if (m_activeSlot < 0 || m_image.isNull()) {
+            int sz = m_amyloidSizeCombo->currentText().toInt();
+            if (sz <= 0) sz = 1024;
+            onCreateImageSized(sz);
+        }
+        break;
+    }
+    case 15: { bool was = m_mathActive; deactivateAllP1Tools(); m_mathActive = !was; break; }
+    case 16: {
+        bool was = m_peakPickActive; deactivateAllP1Tools(); m_peakPickActive = !was;
+        if (m_peakPickActive) {
+            m_peakThresholdSlider->setValue(750);
+            if (m_activeSlot >= 0) m_peakSourceCombo->setCurrentIndex(m_activeSlot);
+        }
+        break;
+    }
+    case 17: {
+        bool was = m_extractActive; deactivateAllP1Tools(); m_extractActive = !was;
+        if (m_extractActive && m_activeSlot >= 0)
+            m_extractSourceCombo->setCurrentIndex(m_activeSlot);
+        break;
+    }
+    default: return;
+    }
+    showP1ToolWidgets();
+    update();
+}
+
+void FtWindow::deactivateAllP2Tools()
+{
+    m_eraserActive = false; m_brushActive = false;
+    m_bandpassActive = false; m_directionalActive = false;
+    m_lineFilterActive = false;
+    m_latticeActive = false; m_ftRotateActive = false;
+    m_crossSectionActive = false;
+    m_p2SymmetrizeActive = false;
+    m_ftCropActive = false; m_ftMathActive = false;
+    m_ctfActive = false;
+    m_ctfFitActive = false;
+    m_phaseRampActive = false;
+}
+
+void FtWindow::showP2ToolWidgets()
+{
+    bool showFilter = m_bandpassActive || m_directionalActive;
+    m_smoothEdit->setVisible(showFilter);
+    m_bandEraseOutside->setVisible(showFilter);
+    m_applyBandBtn->setVisible(showFilter);
+    m_resetBandBtn->setVisible(m_bandpassActive);
+
+    m_brushValueEdit->setVisible(m_brushActive);
+    m_brushDiameterEdit->setVisible(m_brushActive);
+
+    m_eraserDiameterEdit->setVisible(m_eraserActive);
+
+    m_lineWidthEdit->setVisible(m_lineFilterActive);
+    m_lineDirectionEdit->setVisible(m_lineFilterActive);
+    m_lineOffsetEdit->setVisible(m_lineFilterActive);
+    m_lineEraseOutsideBtn->setVisible(m_lineFilterActive);
+    m_applyLineBtn->setVisible(m_lineFilterActive);
+
+    m_latticeSmoothEdit->setVisible(m_latticeActive);
+    m_latticeDotDiamEdit->setVisible(m_latticeActive);
+    m_latticeUxEdit->setVisible(m_latticeActive);
+    m_latticeUyEdit->setVisible(m_latticeActive);
+    m_latticeVxEdit->setVisible(m_latticeActive);
+    m_latticeVyEdit->setVisible(m_latticeActive);
+    if (m_latticeActive) syncLatticeVectorEdits();
+    m_latticeEraseOutside->setVisible(m_latticeActive);
+    m_latticeApplyBtn->setVisible(m_latticeActive);
+
+    m_crossSectionDirEdit->setVisible(m_crossSectionActive);
+    m_crossSectionWidthEdit->setVisible(m_crossSectionActive);
+
+    m_p2SymmetryEdit->setVisible(m_p2SymmetrizeActive);
+    m_applyP2SymmetryBtn->setVisible(m_p2SymmetrizeActive);
+
+    m_ftCropCombo->setVisible(m_ftCropActive);
+    m_ftCropKeepSizeBtn->setVisible(m_ftCropActive);
+    m_applyFtCropBtn->setVisible(m_ftCropActive);
+    m_applyFtPadBtn->setVisible(m_ftCropActive);
+
+    m_ftMathOutCombo->setVisible(m_ftMathActive);
+    m_ftMathEqualsLabel->setVisible(m_ftMathActive);
+    m_ftMathIn1Combo->setVisible(m_ftMathActive);
+    m_ftMathOpCombo->setVisible(m_ftMathActive);
+    m_ftMathIn2Combo->setVisible(m_ftMathActive);
+    m_ftMathConjCombo->setVisible(m_ftMathActive);
+    m_ftMathCancelBtn->setVisible(m_ftMathActive);
+    m_ftMathComputeBtn->setVisible(m_ftMathActive);
+
+    m_ctfVoltageEdit->setVisible(m_ctfActive);
+    m_ctfEnergySpreadEdit->setVisible(m_ctfActive);
+    m_ctfDefocusSpreadEdit->setVisible(m_ctfActive);
+    m_ctfOpenAngleEdit->setVisible(m_ctfActive);
+    m_ctfCsEdit->setVisible(m_ctfActive);
+    m_ctfDefocusEdit->setVisible(m_ctfActive);
+    m_ctfAstigEdit->setVisible(m_ctfActive);
+    m_ctfAstigAngleEdit->setVisible(m_ctfActive);
+    m_ctfAmpContrastEdit->setVisible(m_ctfActive);
+    m_ctfBeamtiltEdit->setVisible(m_ctfActive);
+    m_ctfBeamtiltDirEdit->setVisible(m_ctfActive);
+    m_ctfCancelBtn->setVisible(m_ctfActive);
+    m_ctfComputeBtn->setVisible(m_ctfActive);
+
+    m_ctfFitVoltageEdit->setVisible(m_ctfFitActive);
+    m_ctfFitCsEdit->setVisible(m_ctfFitActive);
+    m_ctfFitInputCombo->setVisible(m_ctfFitActive);
+    m_ctfFitResHiEdit->setVisible(m_ctfFitActive);
+    m_ctfFitResLoEdit->setVisible(m_ctfFitActive);
+    m_ctfFitCancelBtn->setVisible(m_ctfFitActive);
+    m_ctfFitExecuteBtn->setVisible(m_ctfFitActive);
+
+    m_phaseRampSizeCombo->setVisible(m_phaseRampActive);
+    m_phaseRampDirEdit->setVisible(m_phaseRampActive);
+    m_phaseRampStepEdit->setVisible(m_phaseRampActive);
+    m_phaseRampCancelBtn->setVisible(m_phaseRampActive);
+    m_phaseRampComputeBtn->setVisible(m_phaseRampActive);
+}
+
+void FtWindow::activateP2Tool(int toolId)
+{
+    switch (toolId) {
+    case 0: { bool was = m_eraserActive; deactivateAllP2Tools(); m_eraserActive = !was; break; }
+    case 1: {
+        bool was = m_brushActive; deactivateAllP2Tools(); m_brushActive = !was;
+        if (m_brushActive && m_ftComputed) {
+            double bv = brushValue();
+            m_brushValueEdit->setText(bv > 0 ? QString::number(bv, 'g', 5) : "1");
+        }
+        break;
+    }
+    case 2: { bool was = m_bandpassActive; deactivateAllP2Tools(); m_bandpassActive = !was; break; }
+    case 3: { bool was = m_directionalActive; deactivateAllP2Tools(); m_directionalActive = !was; break; }
+    case 4: { bool was = m_lineFilterActive; deactivateAllP2Tools(); m_lineFilterActive = !was; break; }
+    case 5: { bool was = m_latticeActive; deactivateAllP2Tools(); m_latticeActive = !was; break; }
+    case 6: { bool was = m_ftRotateActive; deactivateAllP2Tools(); m_ftRotateActive = !was; break; }
+    case 7: {
+        bool was = m_crossSectionActive; deactivateAllP2Tools(); m_crossSectionActive = !was;
+        if (m_crossSectionActive && m_ftComputed) {
+            syncCrossSectionDirEdit();
+            computeCrossSectionProfile();
+        } else {
+            m_crossSectionProfile.clear();
+            m_crossSectionPhaseProfile.clear();
+        }
+        break;
+    }
+    case 8: { bool was = m_p2SymmetrizeActive; deactivateAllP2Tools(); m_p2SymmetrizeActive = !was; break; }
+    case 9: { bool was = m_ftCropActive; deactivateAllP2Tools(); m_ftCropActive = !was; break; }
+    case 10: { bool was = m_phaseRampActive; deactivateAllP2Tools(); m_phaseRampActive = !was; break; }
+    case 11: {
+        bool was = m_ctfActive; deactivateAllP2Tools(); m_ctfActive = !was;
+        m_ctfProfile.clear();
+        m_ctfPhaseProfile.clear();
+        break;
+    }
+    case 12: {
+        bool was = m_ctfFitActive; deactivateAllP2Tools(); m_ctfFitActive = !was;
+        if (m_ctfFitActive) {
+            m_ctfFitHasResult = false;
+            if (m_activeSlot >= 0 && m_ctfFitInputCombo)
+                m_ctfFitInputCombo->setCurrentIndex(m_activeSlot);
+        }
+        break;
+    }
+    case 13: { bool was = m_ftMathActive; deactivateAllP2Tools(); m_ftMathActive = !was; break; }
+    default: return;
+    }
+    showP2ToolWidgets();
+    update();
+}
+
+// ---------------------------------------------------------------------------
 //  Mouse
 // ---------------------------------------------------------------------------
 void FtWindow::mousePressEvent(QMouseEvent *event)
@@ -21,6 +418,30 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
     // (which intercept their own clicks) dismisses the popup before the click
     // proceeds to its normal handler.
     if (m_newImageActive) onNewImageCancel();
+
+    // If a tool-group popup is open, it floats over the image, so it must claim
+    // the click before any image-area handler. Clicking a member cell activates
+    // that tool; clicking anywhere else just dismisses the popup.
+    if (m_openMenuPanel != 0) {
+        int panel = m_openMenuPanel;
+        const QVector<ToolGroup> &groups = (panel == 1) ? m_p1Groups : m_p2Groups;
+        const QRect *slotRects = (panel == 1) ? m_p1BtnRects : m_toolBtnRects;
+        int hitTool = -1;
+        if (m_openMenuGroup >= 0 && m_openMenuGroup < groups.size()) {
+            for (int id : groups[m_openMenuGroup].members) {
+                if (slotRects[id].contains(event->pos())) { hitTool = id; break; }
+            }
+        }
+        m_openMenuPanel = 0;
+        m_openMenuGroup = -1;
+        if (hitTool >= 0) {
+            if (panel == 1) activateP1Tool(hitTool);
+            else            activateP2Tool(hitTool);
+        } else {
+            update();   // just close the popup
+        }
+        return;
+    }
 
     // Title bar click – show About dialog
     if (!m_titleRect.isNull() && m_titleRect.contains(event->pos())) {
@@ -192,193 +613,19 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         }
     }
 
-    // Check panel 1 tool button clicks (left edge)
-    auto deactivateAllP1Tools = [&]() {
-        m_p1EraserActive = false; m_p1BrushActive = false;
-        m_shiftActive = false; m_rotateActive = false;
-        m_p1TaperActive = false; m_p1SymmetrizeActive = false;
-        m_binActive = false; m_mathActive = false;
-        m_cropActive = false; m_cropDragging = false; m_cropMoving = false; m_cropHasSelection = false;
-        m_peakPickActive = false; m_extractActive = false;
-        m_gaborActive = false; m_hessianActive = false;
-        m_amyloidActive = false; m_amyloidPlacing = 0;
-        m_measureActive = false; m_measurePlacing = 0; m_measureHasLine = false;
-    };
-    auto showP1ToolWidgets = [&]() {
-        m_p1EraserDiameterEdit->setVisible(m_p1EraserActive);
-        m_p1BrushValueEdit->setVisible(m_p1BrushActive);
-        m_p1BrushSolidDiameterEdit->setVisible(m_p1BrushActive);
-        m_p1BrushDiameterEdit->setVisible(m_p1BrushActive);
-        m_p1TaperWidthEdit->setVisible(m_p1TaperActive);
-        m_applyP1TaperBtn->setVisible(m_p1TaperActive);
-        m_p1SymmetryEdit->setVisible(m_p1SymmetrizeActive);
-        m_applyP1SymmetryBtn->setVisible(m_p1SymmetrizeActive);
-        m_binCombo->setVisible(m_binActive);
-        m_binKeepSizeBtn->setVisible(m_binActive);
-        m_applyBinBtn->setVisible(m_binActive);
-        m_cropTLxEdit->setVisible(m_cropActive);
-        m_cropTLyEdit->setVisible(m_cropActive);
-        m_cropBRxEdit->setVisible(m_cropActive);
-        m_cropBRyEdit->setVisible(m_cropActive);
-        m_cropCancelBtn->setVisible(m_cropActive);
-        m_applyCropBtn->setVisible(m_cropActive);
-        m_mathOutCombo->setVisible(m_mathActive);
-        m_mathEqualsLabel->setVisible(m_mathActive);
-        m_mathIn1Combo->setVisible(m_mathActive);
-        m_mathOpCombo->setVisible(m_mathActive);
-        m_mathIn2Combo->setVisible(m_mathActive);
-        m_mathCancelBtn->setVisible(m_mathActive);
-        m_mathComputeBtn->setVisible(m_mathActive);
-        m_peakSourceCombo->setVisible(m_peakPickActive);
-        m_peakThresholdSlider->setVisible(m_peakPickActive);
-        m_peakThresholdLabel->setVisible(m_peakPickActive);
-        m_peakExclLabel->setVisible(m_peakPickActive);
-        m_peakExclRadiusSlider->setVisible(m_peakPickActive);
-        m_peakCancelBtn->setVisible(m_peakPickActive);
-        m_peakComputeBtn->setVisible(m_peakPickActive);
-        m_peakShowPosBtn->setVisible(m_peakPickActive);
-        bool showExtract = m_extractActive && !m_peaks.empty();
-        m_extractSourceCombo->setVisible(showExtract);
-        m_extractTargetCombo->setVisible(showExtract);
-        m_extractSizeCombo->setVisible(showExtract);
-        m_extractCancelBtn->setVisible(showExtract);
-        m_extractComputeBtn->setVisible(showExtract);
-        m_gaborSigmaEdit->setVisible(m_gaborActive);
-        m_gaborLambdaEdit->setVisible(m_gaborActive);
-        m_gaborThetaEdit->setVisible(m_gaborActive);
-        m_gaborGammaEdit->setVisible(m_gaborActive);
-        m_gaborCancelBtn->setVisible(m_gaborActive);
-        m_gaborComputeBtn->setVisible(m_gaborActive);
-        m_hessianSigmaEdit->setVisible(m_hessianActive);
-        m_hessianPolarityEdit->setVisible(m_hessianActive);
-        m_hessianCancelBtn->setVisible(m_hessianActive);
-        m_hessianComputeBtn->setVisible(m_hessianActive);
-        m_amyloidRiseEdit->setVisible(m_amyloidActive);
-        m_amyloidTwistEdit->setVisible(m_amyloidActive);
-        m_amyloidMapCombo->setVisible(m_amyloidActive);
-        m_amyloidSizeCombo->setVisible(m_amyloidActive);
-        m_amyloidNoiseBtn->setVisible(m_amyloidActive);
-        m_amyloidNoiseEdit->setVisible(m_amyloidActive);
-        m_amyloidPersistEdit->setVisible(m_amyloidActive);
-        m_amyloidWaveEdit->setVisible(m_amyloidActive);
-        m_amyloidAmplEdit->setVisible(m_amyloidActive);
-        m_amyloidSignalBtn->setVisible(m_amyloidActive);
-        m_amyloidCancelBtn->setVisible(m_amyloidActive);
-        m_amyloidComputeBtn->setVisible(m_amyloidActive);
-        m_measureCancelBtn->setVisible(m_measureActive);
-    };
-    if (m_p1BtnRects[0].contains(event->pos())) {
-        bool was = m_p1EraserActive; deactivateAllP1Tools();
-        m_p1EraserActive = !was; showP1ToolWidgets(); update(); return;
-    }
-    if (m_p1BtnRects[1].contains(event->pos())) {
-        bool was = m_p1BrushActive; deactivateAllP1Tools();
-        m_p1BrushActive = !was;
-        if (m_p1BrushActive && !m_image.isNull()) {
-            double defVal = m_imageMaxVal > 0 ? m_imageMaxVal : 1.0;
-            m_p1BrushValueEdit->setText(QString::number(defVal, 'g', 5));
+    // Check panel 1 tool group clicks (left edge). A single-member group
+    // activates its tool directly; a multi-member group opens its popup grid.
+    for (int g = 0; g < m_p1Groups.size(); g++) {
+        if (!m_p1GroupRects[g].contains(event->pos())) continue;
+        const ToolGroup &grp = m_p1Groups[g];
+        if (grp.members.size() == 1) {
+            activateP1Tool(grp.members[0]);
+        } else {
+            m_openMenuPanel = 1;
+            m_openMenuGroup = g;
+            update();
         }
-        showP1ToolWidgets(); update(); return;
-    }
-    if (m_p1BtnRects[2].contains(event->pos())) {
-        bool was = m_measureActive; deactivateAllP1Tools();
-        m_measureActive = !was;
-        if (!m_measureActive) { m_measurePlacing = 0; m_measureHasLine = false; }
-        showP1ToolWidgets(); update(); return;
-    }
-    if (m_p1BtnRects[3].contains(event->pos()) && !m_image.isNull()) {
-        deactivateAllP1Tools(); showP1ToolWidgets();
-        storeUndoSnapshot();
-        m_image = flipImage(m_image, Qt::Horizontal);
-        extractImageData();
-        if (m_ftComputed) computeFFT();
-        update();
         return;
-    }
-    if (m_p1BtnRects[4].contains(event->pos()) && !m_image.isNull()) {
-        deactivateAllP1Tools(); showP1ToolWidgets();
-        storeUndoSnapshot();
-        m_image = flipImage(m_image, Qt::Vertical);
-        extractImageData();
-        if (m_ftComputed) computeFFT();
-        update();
-        return;
-    }
-    if (m_p1BtnRects[5].contains(event->pos())) {
-        bool was = m_shiftActive; deactivateAllP1Tools();
-        m_shiftActive = !was; showP1ToolWidgets(); update(); return;
-    }
-    if (m_p1BtnRects[6].contains(event->pos())) {
-        bool was = m_rotateActive; deactivateAllP1Tools();
-        m_rotateActive = !was; showP1ToolWidgets(); update(); return;
-    }
-    if (m_p1BtnRects[7].contains(event->pos()) && !m_image.isNull()) {
-        deactivateAllP1Tools(); showP1ToolWidgets();
-        onInvertContrast();
-        return;
-    }
-    if (m_p1BtnRects[8].contains(event->pos())) {
-        bool was = m_p1TaperActive; deactivateAllP1Tools();
-        m_p1TaperActive = !was; showP1ToolWidgets(); update(); return;
-    }
-    if (m_p1BtnRects[9].contains(event->pos())) {
-        bool was = m_p1SymmetrizeActive; deactivateAllP1Tools();
-        m_p1SymmetrizeActive = !was; showP1ToolWidgets(); update(); return;
-    }
-    if (m_p1BtnRects[10].contains(event->pos())) {
-        bool was = m_binActive; deactivateAllP1Tools();
-        m_binActive = !was; showP1ToolWidgets(); update(); return;
-    }
-    if (m_p1BtnRects[11].contains(event->pos())) {
-        bool was = m_cropActive; deactivateAllP1Tools();
-        m_cropActive = !was;
-        if (m_cropActive) {
-            // Start with no selection; the user drags or types to define one.
-            m_cropRect = QRect();
-            m_cropHasSelection = false;
-            syncCropEdits();
-        }
-        showP1ToolWidgets(); update(); return;
-    }
-    if (m_p1BtnRects[12].contains(event->pos())) {
-        bool was = m_gaborActive; deactivateAllP1Tools();
-        m_gaborActive = !was; showP1ToolWidgets(); update(); return;
-    }
-    if (m_p1BtnRects[13].contains(event->pos())) {
-        bool was = m_hessianActive; deactivateAllP1Tools();
-        m_hessianActive = !was; showP1ToolWidgets(); update(); return;
-    }
-    if (m_p1BtnRects[14].contains(event->pos())) {
-        bool was = m_amyloidActive; deactivateAllP1Tools();
-        m_amyloidActive = !was;
-        if (!m_amyloidActive) { m_amyloidPlacing = 0; }
-        else if (m_activeSlot < 0 || m_image.isNull()) {
-            int sz = m_amyloidSizeCombo->currentText().toInt();
-            if (sz <= 0) sz = 1024;
-            onCreateImageSized(sz);
-        }
-        showP1ToolWidgets(); update(); return;
-    }
-    if (m_p1BtnRects[15].contains(event->pos())) {
-        bool was = m_mathActive; deactivateAllP1Tools();
-        m_mathActive = !was; showP1ToolWidgets(); update(); return;
-    }
-    if (m_p1BtnRects[16].contains(event->pos())) {
-        bool was = m_peakPickActive; deactivateAllP1Tools();
-        m_peakPickActive = !was;
-        if (m_peakPickActive) {
-            m_peakThresholdSlider->setValue(750);
-            if (m_activeSlot >= 0)
-                m_peakSourceCombo->setCurrentIndex(m_activeSlot);
-        }
-        showP1ToolWidgets(); update(); return;
-    }
-    if (m_p1BtnRects[17].contains(event->pos())) {
-        bool was = m_extractActive; deactivateAllP1Tools();
-        m_extractActive = !was;
-        if (m_extractActive && m_activeSlot >= 0)
-            m_extractSourceCombo->setCurrentIndex(m_activeSlot);
-        showP1ToolWidgets(); update(); return;
     }
 
     // Measure: click two points on panel 1 image
@@ -609,173 +856,18 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         }
     }
 
-    // Check tool button clicks (panel 2 right edge)
-    auto deactivateAllTools = [&]() {
-        m_eraserActive = false; m_brushActive = false;
-        m_bandpassActive = false; m_directionalActive = false;
-        m_lineFilterActive = false;
-        m_latticeActive = false; m_ftRotateActive = false;
-        m_crossSectionActive = false;
-        m_p2SymmetrizeActive = false;
-        m_ftCropActive = false; m_ftMathActive = false;
-        m_ctfActive = false;
-        m_ctfFitActive = false;
-        m_phaseRampActive = false;
-    };
-    auto showToolWidgets = [&]() {
-        bool showFilter = m_bandpassActive || m_directionalActive;
-        m_smoothEdit->setVisible(showFilter);
-        m_bandEraseOutside->setVisible(showFilter);
-        m_applyBandBtn->setVisible(showFilter);
-        m_resetBandBtn->setVisible(m_bandpassActive);
-
-        m_brushValueEdit->setVisible(m_brushActive);
-        m_brushDiameterEdit->setVisible(m_brushActive);
-
-        m_eraserDiameterEdit->setVisible(m_eraserActive);
-
-        m_lineWidthEdit->setVisible(m_lineFilterActive);
-        m_lineDirectionEdit->setVisible(m_lineFilterActive);
-        m_lineOffsetEdit->setVisible(m_lineFilterActive);
-        m_lineEraseOutsideBtn->setVisible(m_lineFilterActive);
-        m_applyLineBtn->setVisible(m_lineFilterActive);
-
-        m_latticeSmoothEdit->setVisible(m_latticeActive);
-        m_latticeDotDiamEdit->setVisible(m_latticeActive);
-        m_latticeUxEdit->setVisible(m_latticeActive);
-        m_latticeUyEdit->setVisible(m_latticeActive);
-        m_latticeVxEdit->setVisible(m_latticeActive);
-        m_latticeVyEdit->setVisible(m_latticeActive);
-        if (m_latticeActive) syncLatticeVectorEdits();
-        m_latticeEraseOutside->setVisible(m_latticeActive);
-        m_latticeApplyBtn->setVisible(m_latticeActive);
-
-        m_crossSectionDirEdit->setVisible(m_crossSectionActive);
-        m_crossSectionWidthEdit->setVisible(m_crossSectionActive);
-
-        m_p2SymmetryEdit->setVisible(m_p2SymmetrizeActive);
-        m_applyP2SymmetryBtn->setVisible(m_p2SymmetrizeActive);
-
-        m_ftCropCombo->setVisible(m_ftCropActive);
-        m_ftCropKeepSizeBtn->setVisible(m_ftCropActive);
-        m_applyFtCropBtn->setVisible(m_ftCropActive);
-        m_applyFtPadBtn->setVisible(m_ftCropActive);
-
-        m_ftMathOutCombo->setVisible(m_ftMathActive);
-        m_ftMathEqualsLabel->setVisible(m_ftMathActive);
-        m_ftMathIn1Combo->setVisible(m_ftMathActive);
-        m_ftMathOpCombo->setVisible(m_ftMathActive);
-        m_ftMathIn2Combo->setVisible(m_ftMathActive);
-        m_ftMathConjCombo->setVisible(m_ftMathActive);
-        m_ftMathCancelBtn->setVisible(m_ftMathActive);
-        m_ftMathComputeBtn->setVisible(m_ftMathActive);
-
-        m_ctfVoltageEdit->setVisible(m_ctfActive);
-        m_ctfEnergySpreadEdit->setVisible(m_ctfActive);
-        m_ctfDefocusSpreadEdit->setVisible(m_ctfActive);
-        m_ctfOpenAngleEdit->setVisible(m_ctfActive);
-        m_ctfCsEdit->setVisible(m_ctfActive);
-        m_ctfDefocusEdit->setVisible(m_ctfActive);
-        m_ctfAstigEdit->setVisible(m_ctfActive);
-        m_ctfAstigAngleEdit->setVisible(m_ctfActive);
-        m_ctfAmpContrastEdit->setVisible(m_ctfActive);
-        m_ctfBeamtiltEdit->setVisible(m_ctfActive);
-        m_ctfBeamtiltDirEdit->setVisible(m_ctfActive);
-        m_ctfCancelBtn->setVisible(m_ctfActive);
-        m_ctfComputeBtn->setVisible(m_ctfActive);
-
-        m_ctfFitVoltageEdit->setVisible(m_ctfFitActive);
-        m_ctfFitCsEdit->setVisible(m_ctfFitActive);
-        m_ctfFitInputCombo->setVisible(m_ctfFitActive);
-        m_ctfFitResHiEdit->setVisible(m_ctfFitActive);
-        m_ctfFitResLoEdit->setVisible(m_ctfFitActive);
-        m_ctfFitCancelBtn->setVisible(m_ctfFitActive);
-        m_ctfFitExecuteBtn->setVisible(m_ctfFitActive);
-
-        m_phaseRampSizeCombo->setVisible(m_phaseRampActive);
-        m_phaseRampDirEdit->setVisible(m_phaseRampActive);
-        m_phaseRampStepEdit->setVisible(m_phaseRampActive);
-        m_phaseRampCancelBtn->setVisible(m_phaseRampActive);
-        m_phaseRampComputeBtn->setVisible(m_phaseRampActive);
-    };
-    if (m_toolBtnRects[0].contains(event->pos())) {
-        bool was = m_eraserActive; deactivateAllTools();
-        m_eraserActive = !was; showToolWidgets(); update(); return;
-    }
-    if (m_toolBtnRects[1].contains(event->pos())) {
-        bool was = m_brushActive; deactivateAllTools();
-        m_brushActive = !was;
-        if (m_brushActive && m_ftComputed) {
-            double bv = brushValue();
-            m_brushValueEdit->setText(bv > 0 ? QString::number(bv, 'g', 5) : "1");
-        }
-        showToolWidgets(); update(); return;
-    }
-    if (m_toolBtnRects[2].contains(event->pos())) {
-        bool was = m_bandpassActive; deactivateAllTools();
-        m_bandpassActive = !was; showToolWidgets(); update(); return;
-    }
-    if (m_toolBtnRects[3].contains(event->pos())) {
-        bool was = m_directionalActive; deactivateAllTools();
-        m_directionalActive = !was; showToolWidgets(); update(); return;
-    }
-    if (m_toolBtnRects[4].contains(event->pos())) {
-        bool was = m_lineFilterActive; deactivateAllTools();
-        m_lineFilterActive = !was; showToolWidgets(); update(); return;
-    }
-    if (m_toolBtnRects[5].contains(event->pos())) {
-        bool was = m_latticeActive; deactivateAllTools();
-        m_latticeActive = !was; showToolWidgets(); update(); return;
-    }
-    if (m_toolBtnRects[6].contains(event->pos())) {
-        bool was = m_ftRotateActive; deactivateAllTools();
-        m_ftRotateActive = !was; showToolWidgets(); update(); return;
-    }
-    if (m_toolBtnRects[7].contains(event->pos())) {
-        bool was = m_crossSectionActive; deactivateAllTools();
-        m_crossSectionActive = !was;
-        if (m_crossSectionActive && m_ftComputed) {
-            syncCrossSectionDirEdit();
-            computeCrossSectionProfile();
+    // Check panel 2 tool group clicks (right edge).
+    for (int g = 0; g < m_p2Groups.size(); g++) {
+        if (!m_p2GroupRects[g].contains(event->pos())) continue;
+        const ToolGroup &grp = m_p2Groups[g];
+        if (grp.members.size() == 1) {
+            activateP2Tool(grp.members[0]);
         } else {
-            m_crossSectionProfile.clear();
-            m_crossSectionPhaseProfile.clear();
+            m_openMenuPanel = 2;
+            m_openMenuGroup = g;
+            update();
         }
-        showToolWidgets(); update(); return;
-    }
-    if (m_toolBtnRects[8].contains(event->pos())) {
-        bool was = m_p2SymmetrizeActive; deactivateAllTools();
-        m_p2SymmetrizeActive = !was; showToolWidgets(); update(); return;
-    }
-    if (m_toolBtnRects[9].contains(event->pos())) {
-        bool was = m_ftCropActive; deactivateAllTools();
-        m_ftCropActive = !was; showToolWidgets(); update(); return;
-    }
-    if (m_toolBtnRects[10].contains(event->pos())) {
-        bool was = m_phaseRampActive; deactivateAllTools();
-        m_phaseRampActive = !was; showToolWidgets(); update(); return;
-    }
-    if (m_toolBtnRects[11].contains(event->pos())) {
-        bool was = m_ctfActive; deactivateAllTools();
-        m_ctfActive = !was;
-        m_ctfProfile.clear();
-        m_ctfPhaseProfile.clear();
-        showToolWidgets(); update(); return;
-    }
-    if (m_toolBtnRects[12].contains(event->pos())) {
-        bool was = m_ctfFitActive; deactivateAllTools();
-        m_ctfFitActive = !was;
-        if (m_ctfFitActive) {
-            m_ctfFitHasResult = false;   // clear any stale fitted values
-            // Default the input buffer to the currently active slot.
-            if (m_activeSlot >= 0 && m_ctfFitInputCombo)
-                m_ctfFitInputCombo->setCurrentIndex(m_activeSlot);
-        }
-        showToolWidgets(); update(); return;
-    }
-    if (m_toolBtnRects[13].contains(event->pos())) {
-        bool was = m_ftMathActive; deactivateAllTools();
-        m_ftMathActive = !was; showToolWidgets(); update(); return;
+        return;
     }
 
     if (m_lineFilterActive && m_ftComputed && m_fftN > 0) {

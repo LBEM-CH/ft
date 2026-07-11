@@ -71,6 +71,24 @@
   .toolicons { margin-left: auto; display: inline-flex; align-items: center; }
   .toolicons svg { margin-left: 8px; }
 
+  h2.group {
+    font-size: 15px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--accent);
+    margin: 24px 0 8px 2px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border);
+  }
+  p.ctf-theory {
+    background: var(--code-bg);
+    border-left: 3px solid var(--accent);
+    padding: 8px 12px;
+    margin: 8px 0 12px 0;
+    font-size: 14px;
+    color: var(--muted);
+  }
+
   p { margin: 0.6em 0; }
   ul { padding-left: 22px; }
   li { margin: 3px 0; }
@@ -119,9 +137,14 @@
 
 <p>
 Panel 2 holds the Fourier transform of the panel-1 image, with the
-zero-frequency term at the centre. Tool icons run vertically along the
-right edge of the panel. Activating a tool opens its parameter window
-at the bottom of the panel.
+zero-frequency term at the centre. The tools run vertically along the
+right edge of the panel, organised into <strong>groups</strong>. Each
+square is a group. Clicking a group that holds several tools opens a
+small pop-up column of sub-squares beside it; you then click a sub-square
+to activate that tool. A group with only one tool activates it directly.
+Activating a tool opens its parameter window at the bottom of the panel.
+The sections below are arranged by group, in the same order as the
+squares in the panel.
 </p>
 
 <p>
@@ -163,6 +186,8 @@ four cardinal phase labels (<code>0°</code>, <code>±180°</code>,
 <code>+90°</code>, <code>−90°</code>) around it.
 </p>
 </details>
+
+<h2 class="group">Edit</h2>
 
 <details open>
 <summary>Eraser<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><polygon points="8.4,4.4 18.3,4.4 15.6,12 5.7,12" fill="#d2b98c" stroke="#a0825a" stroke-width=".7"/><polygon points="8.9,6.2 17.8,6.2 17,8.4 8.2,8.4" fill="#e1c8a0"/><polygon points="5.7,12 15.6,12 14.7,14.2 4.8,14.2" fill="#bec3c8" stroke="#8c8c8c" stroke-width=".5"/><polygon points="4.8,14.2 15.6,14.2 12.9,19.6 3,19.6" fill="#eb7882" stroke="#b44650" stroke-width=".7"/><polygon points="5.2,14.9 12,14.9 11.5,16.7 4.6,16.7" fill="#f5a0a5"/></svg></span></summary>
@@ -206,6 +231,50 @@ and its Fourier transform more intuitive to visualise and interact with.
  </div>
  <BR>
 </details>
+
+<details>
+<summary>Phase ramp<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><defs><linearGradient id="rampGrad" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#323232"/><stop offset="1" stop-color="#8c8c8c"/></linearGradient></defs><rect width="24" height="24" rx="3" fill="url(#rampGrad)" stroke="#fff" stroke-width="1"/><text x="12" y="12" font-family="sans-serif" font-weight="bold" font-size="8" fill="#fff" text-anchor="middle" dominant-baseline="central">Ramp</text></svg></span></summary>
+<p>
+Synthesise a fresh Fourier transform whose amplitude is uniformly
+1 and whose phase increases linearly along a chosen direction. Pure
+teaching tool: a phase ramp of step <em>s</em> at angle <em>θ</em>
+back-transforms to a single delta at the corresponding real-space
+position, illustrating the shift theorem.
+</p>
+<div class="controls">
+  <strong>Size of FFT:</strong> 512, 1024, 2048, or 4096
+  (default 1024). <br>
+  <strong>Direction:</strong> ramp direction in degrees, CCW from
+  the +x axis (default 30°). <br>
+  <strong>Phase step:</strong> phase increment per pixel along the
+  direction, in degrees (default 10°). <br>
+  <strong>Cancel:</strong> close the parameter window without
+  computing. <br>
+  <strong>Compute:</strong> build the FFT, back-transform to panel 1,
+  and store the result in the active history slot.
+</div>
+<BR>
+</details>
+
+<h2 class="group">Cross-section profile</h2>
+
+<details>
+<summary>Cross-section profile<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><line x1="3" y1="12" x2="21" y2="12" stroke="#dc3c3c" stroke-width="3"/></svg></span></summary>
+<p>
+Draw a 1D radial / oriented profile of the Fourier amplitude. The line
+direction is dragged in panel 2; pixels within the chosen integration
+band perpendicular to the line are averaged.
+</p>
+<div class="controls">
+  <strong>Integration width:</strong> band width perpendicular to the
+  line, as a percentage of the image size. Increase for less noise,
+  decrease for higher angular resolution. The profile redraws live as
+  you type.
+</div>
+<BR>
+</details>
+
+<h2 class="group">Filter</h2>
 
 <details>
 <summary>Bandpass filter<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><circle cx="12" cy="12" r="6" fill="#c8c8ff"/><circle cx="12" cy="12" r="3" fill="#323232"/><circle cx="12" cy="12" r="6" fill="none" stroke="#6464c8" stroke-width="1"/><circle cx="12" cy="12" r="3" fill="none" stroke="#6464c8" stroke-width="1"/></svg></span></summary>
@@ -293,6 +362,8 @@ lattice contamination from a non-crystalline target.
 <BR>
 </details>
 
+<h2 class="group">Transform</h2>
+
 <details>
 <summary>Rotate Fourier space<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><path d="M 18.65 8.16 A 7.68 7.68 0 1 0 16.94 17.88" fill="none" stroke="#fff" stroke-width="1.92"/><polygon points="22.82,12.95 18.42,19.65 15.46,16.12" fill="#fff"/></svg></span></summary>
 <p>
@@ -307,22 +378,6 @@ because the rotated FT corresponds to a rotated image that is periodically tiled
 You will see many copies of the rotated neighbors from outside of the current image appearing in the 
 back-transformed image, and they will interfere with the rotated version of the current image.
 </p>
-</details>
-
-<details>
-<summary>Cross-section profile<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><line x1="3" y1="12" x2="21" y2="12" stroke="#dc3c3c" stroke-width="3"/></svg></span></summary>
-<p>
-Draw a 1D radial / oriented profile of the Fourier amplitude. The line
-direction is dragged in panel 2; pixels within the chosen integration
-band perpendicular to the line are averaged.
-</p>
-<div class="controls">
-  <strong>Integration width:</strong> band width perpendicular to the
-  line, as a percentage of the image size. Increase for less noise,
-  decrease for higher angular resolution. The profile redraws live as
-  you type.
-</div>
-<BR>
 </details>
 
 <details>
@@ -352,6 +407,8 @@ lets you watch the diffraction pattern become N-fold symmetric directly.
 <BR>
 </details>
 
+<h2 class="group">Redimension</h2>
+
 <details>
 <summary>Fourier crop / Fourier pad<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><rect x="4.8" y="4.8" width="4.8" height="4.8" fill="#fff"/><rect x="14.4" y="4.8" width="4.8" height="4.8" fill="#b6b6b6"/><rect x="4.8" y="14.4" width="4.8" height="4.8" fill="#969696"/><rect x="14.4" y="14.4" width="4.8" height="4.8" fill="#d4d4d4"/></svg></span></summary>
 <p>
@@ -376,77 +433,17 @@ Resample the FFT by an integer factor:
 <BR>
 </details>
 
-<details>
-<summary>Phase ramp<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><defs><linearGradient id="rampGrad" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#323232"/><stop offset="1" stop-color="#8c8c8c"/></linearGradient></defs><rect width="24" height="24" rx="3" fill="url(#rampGrad)" stroke="#fff" stroke-width="1"/><text x="12" y="12" font-family="sans-serif" font-weight="bold" font-size="8" fill="#fff" text-anchor="middle" dominant-baseline="central">Ramp</text></svg></span></summary>
-<p>
-Synthesise a fresh Fourier transform whose amplitude is uniformly
-1 and whose phase increases linearly along a chosen direction. Pure
-teaching tool: a phase ramp of step <em>s</em> at angle <em>θ</em>
-back-transforms to a single delta at the corresponding real-space
-position, illustrating the shift theorem.
+<h2 class="group">CTF</h2>
+
+<p class="ctf-theory">
+The panel below explains the <strong>Contrast
+Transfer Function</strong> of an electron microscope. It is shared reference
+material for both CTF tools — <strong>CTF SIM</strong> and
+<strong>CTF FIT</strong> — which follow.
 </p>
-<div class="controls">
-  <strong>Size of FFT:</strong> 512, 1024, 2048, or 4096
-  (default 1024). <br>
-  <strong>Direction:</strong> ramp direction in degrees, CCW from
-  the +x axis (default 30°). <br>
-  <strong>Phase step:</strong> phase increment per pixel along the
-  direction, in degrees (default 10°). <br>
-  <strong>Cancel:</strong> close the parameter window without
-  computing. <br>
-  <strong>Compute:</strong> build the FFT, back-transform to panel 1,
-  and store the result in the active history slot.
-</div>
-<BR>
-</details>
 
 <details>
-<summary>CTF SIM (simulate a Contrast Transfer Function of an Electron Microscope)<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><text x="12" y="8" font-family="sans-serif" font-weight="bold" font-size="7" fill="#fff" text-anchor="middle" dominant-baseline="central">CTF</text><text x="12" y="16.5" font-family="sans-serif" font-weight="bold" font-size="7" fill="#fff" text-anchor="middle" dominant-baseline="central">SIM</text></svg></span></summary>
-<p>
-<strong>CTF SIM</strong> synthesises a 2D contrast transfer function for an
-electron microscope with the chosen optical parameters, including
-astigmatism, defocus spread, amplitude contrast, beam tilt, and the
-spatial-coherence envelope from a finite gun-opening angle. The result is
-written to the Fourier side of the currently selected buffer, and its
-real-space point spread function (PSF) to panel&nbsp;1. To fit a CTF to an
-existing image instead of simulating one, use <strong>CTF FIT</strong>
-(below).
-</p>
-<div class="controls">
-  <strong>Acceleration voltage:</strong> in kV. <br>
-  <strong>Energy spread:</strong> in eV (chromatic temporal coherence). <br>
-  <strong>Spherical aberration Cs:</strong> in mm. <br>
-  <strong>Open angle gun:</strong> half-convergence angle in mrad. <br>
-  <strong>Defocus:</strong> in nm (positive = underfocus). <br>
-  <strong>Defocus spread:</strong> in nm (temporal coherence). <br>
-  <strong>Astigmatism:</strong> defocus deviation along the
-  astigmatism axis, in nm. <br>
-  <strong>Astigmatism direction:</strong> in degrees, CCW from +x. <br>
-  <strong>Amplitude contrast:</strong> in percent (used as the
-  amplitude-contrast term <em>B</em>). <br>
-  <strong>Beamtilt:</strong> beam-tilt magnitude in mrad. <br>
-  <strong>Direction:</strong> beam-tilt direction in degrees, CCW from +x. <br>
-  <strong>Cancel / Compute:</strong> as for the phase ramp.
-</div>
-<BR>
-<div class="note">
-The CTF is built on a fixed 1024×1024 grid using the slot's pixel size
-to map Fourier pixels to spatial frequencies. While the tool is active a
-red direction line is drawn across panel 2; drag it to choose the
-azimuth along which the 1D profiles (below) are taken.<BR><BR>
-  The amplitude contrast defaults to 7%, a typical value for thin
-  biological cryo-EM samples. This means that the CTF is not purely a sinusoid,
-  but it has a small constant offset that makes it non-zero at low spatial frequencies.
-  The amplitude contrast you enter is used directly as the amplitude-contrast
-  term <em>B</em> (in fractional units, so 7% &rarr; B = 0.07), and the
-  phase-contrast term is derived from it as <em>A</em> = &radic;(1 &minus; B&sup2;),
-  so that A&sup2; + B&sup2; = 1. The CTF is then
-  A&middot;sin(&minus;&chi;) + B&middot;cos(&minus;&chi;), where &chi; is the
-  wave-aberration (phase) function.
-</div>
-<BR>
-<details>
-<summary><em>CTF theory</em></summary>
+<summary><em>The CTF of an electron microscope</em></summary>
 <p>
  <strong>The CTF equation (Scherzer wave-aberration function).</strong> The
  heart of the CTF is the wave-aberration function &chi;, also called the
@@ -619,7 +616,11 @@ azimuth along which the 1D profiles (below) are taken.<BR><BR>
  becomes a one-sided comet.
 </p>
 
-<p>
+<details>
+<summary style="font-size:14px;color:#5a5a62;margin-top:2px">
+ <strong>Astigmatism</strong>
+ </summary>
+ <p>
  <strong>Astigmatism.</strong> Real lenses are rarely perfectly round: the
  focal length differs slightly between two perpendicular directions, so the
  defocus becomes a function of azimuth,
@@ -668,51 +669,15 @@ azimuth along which the 1D profiles (below) are taken.<BR><BR>
  &Delta;<em>f</em><sub>a</sub> &mdash; half of the full peak-to-peak difference
  between the two axes.)
 </p>
-
 </details>
-<p>
- <strong>1D profile plots (panels 3 &amp; 4).</strong> While the CTF SIM tool is
- active, the two bottom panels show 1D cuts of the complex transfer function
- <em>C</em> taken along the red direction line in panel 2. You can change the 
- direction of the line by dragging it with the mouse and watch the profiles update live. 
- The two plots show the amplitude and phase of the CTF, respectively.:
-</p>
-<ul>
-  <li><strong>Panel 4 — CTF Amplitude Profile.</strong> The modulus
-      |<em>C</em>|, i.e. amplitude only, ignoring phase. The vertical axis
-      runs from 0 to 1.</li>
-  <li><strong>Panel 3 — CTF Phase Profile.</strong> The phase
-      arg(<em>C</em>) in radians, from &minus;&pi; to +&pi;, drawn as a
-      continuous curve (a jump at the &plusmn;&pi; wrap appears as a vertical
-      connector). With no beam tilt the CTF is real, so its phase is simply
-      0 or &plusmn;&pi; — i.e. the sign of the contrast transfer; beam tilt
-      adds the odd coma phase and tilts this curve.</li>
-</ul>
-<p>
- The horizontal axis of both plots is spatial frequency in 1/Å. The curves
- are drawn only up to the highest frequency that actually exists in panel 2
- along the chosen direction: a ray leaves the square Fourier grid at
- <em>q</em> = Nyquist when the red line is horizontal or vertical (so the
- plot stops at ~0.5 cycles/pixel and the rest is left empty), and out to the
- corner frequency (~0.707) when the line points along a diagonal.
-</p>
-<p>
-Note that the CTF is computed in Fourier-space with values between -1 and 1.
-When you back-transform it to real space, the result is the Point Spread Function (PSF) that corresponds to that CTF. 
-The PSF is the impulse response of the imaging system. It shows you, how a single atom would be 
-imaged by the microscope with the given parameters.  The PSF has very small values.
-<BR><BR> 
- If you forward Fourier transform the PSF from real space back to Fourier space, you will get back the original CTF. 
- However, now the values in Fourier space are numerically higher than before, because the Fourier transform 
- is not normalised.
- As a result, the display of the Powerspectrum as log(1 + amp*amp) will show the CTF differently than before.
- The different appearance of the back-transformed and again forward-transformed CTF is due to the
- non-linear scaling for the Powerspectrum display.
- </p>
+
+
+
+
 <details>
-  <summary><em>Beam tilt and coma.</em>
+  <summary style="font-size:13px;color:#5a5a62;margin-top:6px">
+    <strong>Beam tilt and coma.</strong>
   </summary>
- <p>
  <strong>Beam tilt.</strong> When the illuminating beam is not exactly
  parallel to the optical axis but tilted by a small angle &tau;, the
  scattering angle is shifted (the spatial frequency is effectively
@@ -873,9 +838,96 @@ imaged by the microscope with the given parameters.  The PSF has very small valu
 </details>
 
 <details>
-<summary>CTF FIT (fit a Contrast Transfer Function of an Electron Microscope)<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><text x="12" y="8" font-family="sans-serif" font-weight="bold" font-size="7" fill="#fff" text-anchor="middle" dominant-baseline="central">CTF</text><text x="12" y="16.5" font-family="sans-serif" font-weight="bold" font-size="7" fill="#fff" text-anchor="middle" dominant-baseline="central">FIT</text></svg></span></summary>
+<summary>CTF SIM (simulate a CTF)<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><text x="12" y="8" font-family="sans-serif" font-weight="bold" font-size="7" fill="#fff" text-anchor="middle" dominant-baseline="central">CTF</text><text x="12" y="16.5" font-family="sans-serif" font-weight="bold" font-size="7" fill="#fff" text-anchor="middle" dominant-baseline="central">SIM</text></svg></span></summary>
 <p>
-  <strong>For an explanation of CTF Theory, see the section CTF SIM</strong>
+<strong>CTF SIM</strong> synthesises a 2D contrast transfer function for an
+electron microscope with the chosen optical parameters, including
+astigmatism, defocus spread, amplitude contrast, beam tilt, and the
+spatial-coherence envelope from a finite gun-opening angle. The result is
+written to the Fourier side of the currently selected buffer, and its
+real-space point spread function (PSF) to panel&nbsp;1. To fit a CTF to an
+existing image instead of simulating one, use <strong>CTF FIT</strong>
+(below).
+</p>
+<div class="controls">
+  <strong>Acceleration voltage:</strong> in kV. <br>
+  <strong>Energy spread:</strong> in eV (chromatic temporal coherence). <br>
+  <strong>Spherical aberration Cs:</strong> in mm. <br>
+  <strong>Open angle gun:</strong> half-convergence angle in mrad. <br>
+  <strong>Defocus:</strong> in nm (positive = underfocus). <br>
+  <strong>Defocus spread:</strong> in nm (temporal coherence). <br>
+  <strong>Astigmatism:</strong> defocus deviation along the
+  astigmatism axis, in nm. <br>
+  <strong>Astigmatism direction:</strong> in degrees, CCW from +x. <br>
+  <strong>Amplitude contrast:</strong> in percent (used as the
+  amplitude-contrast term <em>B</em>). <br>
+  <strong>Beamtilt:</strong> beam-tilt magnitude in mrad. <br>
+  <strong>Direction:</strong> beam-tilt direction in degrees, CCW from +x. <br>
+  <strong>Cancel / Compute:</strong> as for the phase ramp.
+</div>
+<BR>
+<div class="note">
+The CTF is built on a fixed 1024×1024 grid using the slot's pixel size
+to map Fourier pixels to spatial frequencies. While the tool is active a
+red direction line is drawn across panel 2; drag it to choose the
+azimuth along which the 1D profiles (below) are taken.<BR><BR>
+  The amplitude contrast defaults to 7%, a typical value for thin
+  biological cryo-EM samples. This means that the CTF is not purely a sinusoid,
+  but it has a small constant offset that makes it non-zero at low spatial frequencies.
+  The amplitude contrast you enter is used directly as the amplitude-contrast
+  term <em>B</em> (in fractional units, so 7% &rarr; B = 0.07), and the
+  phase-contrast term is derived from it as <em>A</em> = &radic;(1 &minus; B&sup2;),
+  so that A&sup2; + B&sup2; = 1. The CTF is then
+  A&middot;sin(&minus;&chi;) + B&middot;cos(&minus;&chi;), where &chi; is the
+  wave-aberration (phase) function.
+</div>
+<BR>
+<p>
+ <strong>1D profile plots (panels 3 &amp; 4).</strong> While the CTF SIM tool is
+ active, the two bottom panels show 1D cuts of the complex transfer function
+ <em>C</em> taken along the red direction line in panel 2. You can change the 
+ direction of the line by dragging it with the mouse and watch the profiles update live. 
+ The two plots show the amplitude and phase of the CTF, respectively.:
+</p>
+<ul>
+  <li><strong>Panel 4 — CTF Amplitude Profile.</strong> The modulus
+      |<em>C</em>|, i.e. amplitude only, ignoring phase. The vertical axis
+      runs from 0 to 1.</li>
+  <li><strong>Panel 3 — CTF Phase Profile.</strong> The phase
+      arg(<em>C</em>) in radians, from &minus;&pi; to +&pi;, drawn as a
+      continuous curve (a jump at the &plusmn;&pi; wrap appears as a vertical
+      connector). With no beam tilt the CTF is real, so its phase is simply
+      0 or &plusmn;&pi; — i.e. the sign of the contrast transfer; beam tilt
+      adds the odd coma phase and tilts this curve.</li>
+</ul>
+<p>
+ The horizontal axis of both plots is spatial frequency in 1/Å. The curves
+ are drawn only up to the highest frequency that actually exists in panel 2
+ along the chosen direction: a ray leaves the square Fourier grid at
+ <em>q</em> = Nyquist when the red line is horizontal or vertical (so the
+ plot stops at ~0.5 cycles/pixel and the rest is left empty), and out to the
+ corner frequency (~0.707) when the line points along a diagonal.
+</p>
+<p>
+Note that the CTF is computed in Fourier-space with values between -1 and 1.
+When you back-transform it to real space, the result is the Point Spread Function (PSF) that corresponds to that CTF. 
+The PSF is the impulse response of the imaging system. It shows you, how a single atom would be 
+imaged by the microscope with the given parameters.  The PSF has very small values.
+<BR><BR> 
+ If you forward Fourier transform the PSF from real space back to Fourier space, you will get back the original CTF. 
+ However, now the values in Fourier space are numerically higher than before, because the Fourier transform 
+ is not normalised.
+ As a result, the display of the Powerspectrum as log(1 + amp*amp) will show the CTF differently than before.
+ The different appearance of the back-transformed and again forward-transformed CTF is due to the
+ non-linear scaling for the Powerspectrum display.
+ </p>
+</details>
+
+<details>
+<summary>CTF FIT (fit a CTF for an image)<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><text x="12" y="8" font-family="sans-serif" font-weight="bold" font-size="7" fill="#fff" text-anchor="middle" dominant-baseline="central">CTF</text><text x="12" y="16.5" font-family="sans-serif" font-weight="bold" font-size="7" fill="#fff" text-anchor="middle" dominant-baseline="central">FIT</text></svg></span></summary>
+<p>
+  <strong>For an explanation of CTF theory, see the <em>CTF theory</em> and
+  <em>Beam tilt and coma</em> panels at the top of the CTF section, above.</strong>
 </p>
 <p>
 <strong>CTF FIT</strong> estimates the defocus and astigmatism of a real
@@ -940,6 +992,8 @@ astigmatism field is the <em>amplitude</em> (half of the peak-to-peak
 difference), matching its own definition.
 </p>
 </details>
+
+<h2 class="group">Math</h2>
 
 <details>
 <summary>Math calculation<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><path d="M16.2 7.2 L7.8 7.2 L12 12 L7.8 16.8 L16.2 16.8 M16.2 7.2 L16.2 8.6 M16.2 16.8 L16.2 15.4" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"/></svg></span></summary>

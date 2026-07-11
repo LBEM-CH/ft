@@ -9,6 +9,7 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QSlider>
+#include <QVector>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #endif
@@ -186,6 +187,22 @@ private:
     void extractImageData();
     void computeFFT(bool keepZoom = false);
     void computeInverseFFT();
+
+    // ---- grouped tool buttons ----
+    // Panel 1 / panel 2 tool squares are organised into collapsible groups.
+    // Clicking a multi-member group square opens a floating popup grid of its
+    // members; clicking a member (or a single-member group square) activates
+    // that tool. These helpers were originally lambdas inside mousePressEvent;
+    // they are member functions now so the popup dispatch at the top of the
+    // handler can call them.
+    void buildToolGroups();
+    void layoutToolSlots();          // fills group/slot rects + visibility
+    void deactivateAllP1Tools();
+    void showP1ToolWidgets();
+    void activateP1Tool(int toolId);
+    void deactivateAllP2Tools();
+    void showP2ToolWidgets();
+    void activateP2Tool(int toolId);
     // Interactive (FT / FT⁻¹ arrow) variants. On desktop these just call the
     // synchronous versions above; in the WASM build they run the transform in
     // event-loop-yielding chunks so the blue progress fill actually animates
@@ -394,10 +411,38 @@ private:
     QRect       m_manualRect;       // "Manual" click region below title
 
     // ---- tool buttons ----
+    // P1_TOOL_BUTTONS / P2_TOOL_BUTTONS define the *tool id* space (one id per
+    // individual function). The visible squares are groups (see m_p1Groups /
+    // m_p2Groups); m_p1BtnRects / m_toolBtnRects are the on-screen rect of the
+    // slot each tool id currently occupies (a group face when collapsed, or a
+    // popup cell when its group is open), and m_*SlotVisible says whether that
+    // tool id is currently drawn / clickable.
     static constexpr int P1_TOOL_BUTTONS = 18;
     static constexpr int P2_TOOL_BUTTONS = 14;
     QRect       m_p1BtnRects[P1_TOOL_BUTTONS];       // panel 1 left edge
     QRect       m_toolBtnRects[P2_TOOL_BUTTONS];     // panel 2 right edge
+    bool        m_p1SlotVisible[P1_TOOL_BUTTONS] = {false};
+    bool        m_p2SlotVisible[P2_TOOL_BUTTONS] = {false};
+
+    struct ToolGroup {
+        QString      name;       // shown as tooltip on the group square
+        QVector<int> members;    // tool ids; members[0] is the group's "face"
+        QString      faceText;   // if set, the collapsed face is a black square
+                                 // showing this text instead of members[0]'s icon
+    };
+    QVector<ToolGroup> m_p1Groups;
+    QVector<ToolGroup> m_p2Groups;
+    static constexpr int TOOL_GROUPS_MAX = 16;
+    QRect       m_p1GroupRects[TOOL_GROUPS_MAX];
+    QRect       m_p2GroupRects[TOOL_GROUPS_MAX];
+    int         m_openMenuPanel = 0;   // 0 = none, 1 = panel 1, 2 = panel 2
+    int         m_openMenuGroup = -1;  // index into the open panel's group list
+    QRect       m_p1PopupRect;         // floating popup panel background rect
+    QRect       m_p2PopupRect;
+    // Metrics of the last laid-out tool column (shared by paint + mouse).
+    int         m_toolBtnSide = 20;
+    int         m_toolBtnGap  = 2;
+    int         m_toolBtnOffset = 10;
 
     // Panel 1 tools
     bool        m_shiftActive = false;

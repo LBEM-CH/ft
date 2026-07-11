@@ -71,6 +71,16 @@
   .toolicons { margin-left: auto; display: inline-flex; align-items: center; }
   .toolicons svg { margin-left: 8px; }
 
+  h2.group {
+    font-size: 15px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--accent);
+    margin: 24px 0 8px 2px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border);
+  }
+
   p { margin: 0.6em 0; }
   ul { padding-left: 22px; }
   li { margin: 3px 0; }
@@ -111,11 +121,15 @@
 <main>
 
 <p>
-Panel 1 holds the real-space image. Tool icons run vertically along the
-left edge of the panel. Click an icon to activate the corresponding
-tool; click it again to deactivate. While a tool is active a
-parameter window appears at the bottom of the panel; hover any
-parameter label for an inline tooltip.
+Panel 1 holds the real-space image. The tools run vertically along the
+left edge of the panel, organised into <strong>groups</strong>. Each
+square is a group. Clicking a group that holds several tools opens a
+small pop-up column of sub-squares beside it; you then click a sub-square
+to activate that tool. A group with only one tool activates it directly.
+Click an active tool again to deactivate it. While a tool is active a
+parameter window appears at the bottom of the panel; hover any parameter
+label for an inline tooltip. The sections below are arranged by group,
+in the same order as the squares in the panel.
 </p>
 
 <details>
@@ -143,6 +157,8 @@ panel, the toggle buttons remain partly visible behind it; clicks on
 the visible portion still toggle them.
 </p>
 </details>
+
+<h2 class="group">Edit</h2>
 
 <details open>
 <summary>Eraser<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><polygon points="8.4,4.4 18.3,4.4 15.6,12 5.7,12" fill="#d2b98c" stroke="#a0825a" stroke-width=".7"/><polygon points="8.9,6.2 17.8,6.2 17,8.4 8.2,8.4" fill="#e1c8a0"/><polygon points="5.7,12 15.6,12 14.7,14.2 4.8,14.2" fill="#bec3c8" stroke="#8c8c8c" stroke-width=".5"/><polygon points="4.8,14.2 15.6,14.2 12.9,19.6 3,19.6" fill="#eb7882" stroke="#b44650" stroke-width=".7"/><polygon points="5.2,14.9 12,14.9 11.5,16.7 4.6,16.7" fill="#f5a0a5"/></svg></span></summary>
@@ -189,6 +205,22 @@ to see how the symmetry and periodicity of the real-space image affect the Fouri
 </details>
 
 <details>
+<summary>Taper edges (Hanning)<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><rect x="1.8" y="1.8" width="20.4" height="20.4" fill="#fff"/><rect x="3.84" y="3.84" width="16.32" height="16.32" fill="#323232"/></svg></span></summary>
+<p>
+Apply a Hanning window of a chosen width around the image border. This
+suppresses the sharp edges that would otherwise leak into the FFT as a
+strong cross of high-frequency content.
+</p>
+<div class="controls">
+  <strong>Hanning width:</strong> width of the cosine-taper band, in
+  image pixels.
+</div>
+<BR>
+</details>
+
+<h2 class="group">Measure</h2>
+
+<details>
 <summary>Measure<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><rect x="3.9" y="8.4" width="16.2" height="6.3" fill="#f5dc8c" stroke="#785a00" stroke-width=".7"/><g stroke="#282828" stroke-width=".7"><line x1="3.9" y1="8.4" x2="3.9" y2="11.9"/><line x1="5.52" y1="8.4" x2="5.52" y2="10.3"/><line x1="7.14" y1="8.4" x2="7.14" y2="10.3"/><line x1="8.76" y1="8.4" x2="8.76" y2="10.3"/><line x1="10.38" y1="8.4" x2="10.38" y2="10.3"/><line x1="12" y1="8.4" x2="12" y2="11.9"/><line x1="13.62" y1="8.4" x2="13.62" y2="10.3"/><line x1="15.24" y1="8.4" x2="15.24" y2="10.3"/><line x1="16.86" y1="8.4" x2="16.86" y2="10.3"/><line x1="18.48" y1="8.4" x2="18.48" y2="10.3"/><line x1="20.1" y1="8.4" x2="20.1" y2="11.9"/></g></svg></span></summary>
 <p>
 Click and drag in panel 1 to measure distances. The pixel count and the
@@ -196,6 +228,8 @@ corresponding distance in Ångström (using the slot's pixel size) are
 shown next to the line.
 </p>
 </details>
+
+<h2 class="group">Transform</h2>
 
 <details>
 <summary>Flip horizontally / Flip vertically<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><polygon points="3.6,12 9.48,7.2 9.48,16.8" fill="#fff"/><polygon points="20.4,12 14.52,7.2 14.52,16.8" fill="#fff"/><line x1="9.48" y1="12" x2="14.52" y2="12" stroke="#fff" stroke-width="2"/></svg><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><polygon points="12,3.6 7.2,9.48 16.8,9.48" fill="#fff"/><polygon points="12,20.4 7.2,14.52 16.8,14.52" fill="#fff"/><line x1="12" y1="9.48" x2="12" y2="14.52" stroke="#fff" stroke-width="2"/></svg></span></summary>
@@ -232,19 +266,7 @@ you want a positive-contrast view.
 </p>
 </details>
 
-<details>
-<summary>Taper edges (Hanning)<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><rect x="1.8" y="1.8" width="20.4" height="20.4" fill="#fff"/><rect x="3.84" y="3.84" width="16.32" height="16.32" fill="#323232"/></svg></span></summary>
-<p>
-Apply a Hanning window of a chosen width around the image border. This
-suppresses the sharp edges that would otherwise leak into the FFT as a
-strong cross of high-frequency content.
-</p>
-<div class="controls">
-  <strong>Hanning width:</strong> width of the cosine-taper band, in
-  image pixels.
-</div> 
-<BR>
-</details>
+<h2 class="group">Symmetrize</h2>
 
 <details>
 <summary>Symmetrize image<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><polygon points="12,1.92 14.37,8.74 21.59,8.89 15.83,13.25 17.93,20.16 12,16.03 6.07,20.16 8.17,13.25 2.41,8.89 9.63,8.74" fill="#fff"/></svg></span></summary>
@@ -266,6 +288,8 @@ the integer pixel <code>(w/2, h/2)</code>.
 </div>
 <BR>
 </details>
+
+<h2 class="group">Redimension</h2>
 
 <details>
 <summary>Bin image<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><rect x="4.8" y="4.8" width="4.8" height="4.8" fill="#fff"/><rect x="14.4" y="4.8" width="4.8" height="4.8" fill="#b6b6b6"/><rect x="4.8" y="14.4" width="4.8" height="4.8" fill="#969696"/><rect x="14.4" y="14.4" width="4.8" height="4.8" fill="#d4d4d4"/></svg></span></summary>
@@ -314,6 +338,8 @@ the pixel size; only the image dimensions change.
 <BR>
 </details>
 
+<h2 class="group">Filter</h2>
+
 <details>
 <summary>Gabor filter<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><text x="12" y="12" font-family="sans-serif" font-weight="bold" font-size="15" fill="#fff" text-anchor="middle" dominant-baseline="central">G</text></svg></span></summary>
 <p>
@@ -343,6 +369,8 @@ You can also combine it with the <em>Gabor filter</em> for orientation-specific 
 </p>
 </details>
 
+<h2 class="group">Amyloid</h2>
+
 <details>
 <summary>Amyloid filament<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><text x="12" y="12" font-family="sans-serif" font-weight="bold" font-size="15" fill="#fff" text-anchor="middle" dominant-baseline="central">A</text></svg></span></summary>
 <p>
@@ -360,6 +388,8 @@ how a bent filament's Fourier spectrum differs from that of a straight filament,
 and to get a visual intuition for the effects of curvature on the Fourier transform.
 </p>
 </details>
+
+<h2 class="group">Math</h2>
 
 <details>
 <summary>Math calculations<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><path d="M16.2 7.2 L7.8 7.2 L12 12 L7.8 16.8 L16.2 16.8 M16.2 7.2 L16.2 8.6 M16.2 16.8 L16.2 15.4" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"/></svg></span></summary>
@@ -389,6 +419,8 @@ The Fourier-space multiplication is much faster. So this is a good way to get a 
 intuition for why the convolution and correlation theorems are so useful in practice.
 </p>
 </details>
+
+<h2 class="group">Particles</h2>
 
 <details>
 <summary>Peak search<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><g stroke="#00c800" stroke-width="1.4"><line x1="4.03" y1="6.6" x2="9.17" y2="6.6"/><line x1="6.6" y1="4.03" x2="6.6" y2="9.17"/><line x1="14.83" y1="6.6" x2="19.97" y2="6.6"/><line x1="17.4" y1="4.03" x2="17.4" y2="9.17"/><line x1="4.03" y1="17.4" x2="9.17" y2="17.4"/><line x1="6.6" y1="14.83" x2="6.6" y2="19.97"/><line x1="14.83" y1="17.4" x2="19.97" y2="17.4"/><line x1="17.4" y1="14.83" x2="17.4" y2="19.97"/></g></svg></span></summary>
