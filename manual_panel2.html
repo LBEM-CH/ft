@@ -88,6 +88,8 @@
     font-size: 14px;
     color: var(--muted);
   }
+  /* Nested (theory) sub-panels: less tall when collapsed. */
+  details details summary { padding: 4px 0; }
 
   p { margin: 0.6em 0; }
   ul { padding-left: 22px; }
@@ -489,20 +491,19 @@ material for both CTF tools — <strong>CTF SIM</strong> and
  zero crossing.
 </p>
 <p>
- <strong>Astigmatism</strong> makes the effective defocus depend on the
- azimuth &theta; in Fourier space, so &Delta;<em>f</em> is replaced by
- &Delta;<em>f</em>(&theta;) = &Delta;<em>f</em> + &Delta;<em>f</em><sub>a</sub>&middot;cos(2(&theta; &minus; &theta;<sub>a</sub>)),
- where &Delta;<em>f</em><sub>a</sub> is the astigmatism amplitude and
- &theta;<sub>a</sub> its direction. This turns the circular Thon rings into
- ellipses. The final transfer function combines this phase with the
+ The final transfer function combines the wave-aberration phase &chi; with the
  amplitude-contrast term as
  CTF(<em>q</em>,&theta;) = A&middot;sin(&minus;&chi;) + B&middot;cos(&minus;&chi;)
  described above, and beam tilt adds the further odd term &Delta;&chi;
  discussed below.
 </p>
 <BR>
+<details>
+<summary style="font-size:14px;color:#5a5a62;margin-top:2px">
+ <strong>A typical CTF</strong>
+ </summary>
 <p>
- <strong>A typical CTF.</strong> The plot below is the radial CTF for a
+ The plot below is the radial CTF for a
  realistic set of parameters: 300&nbsp;kV (&lambda; &asymp; 0.0197&nbsp;&Aring;),
  C<sub>s</sub> = 2.7&nbsp;mm, 0.8&nbsp;&micro;m underfocus, and 7% amplitude
  contrast. It is a 1D cut of the 2D CTF, plotted against spatial frequency
@@ -615,6 +616,7 @@ material for both CTF tools — <strong>CTF SIM</strong> and
  breaks this symmetry &mdash; see <em>Beam tilt and coma</em> below, where the PSF
  becomes a one-sided comet.
 </p>
+</details>
 
 <details>
 <summary style="font-size:14px;color:#5a5a62;margin-top:2px">
@@ -626,6 +628,9 @@ material for both CTF tools — <strong>CTF SIM</strong> and
  defocus becomes a function of azimuth,
  &Delta;<em>f</em>(&theta;) = &Delta;<em>f</em> +
  &Delta;<em>f</em><sub>a</sub>&middot;cos(2(&theta; &minus; &theta;<sub>a</sub>)).
+ Here &Delta;<em>f</em><sub>a</sub> is the astigmatism amplitude and
+ &theta;<sub>a</sub> its direction, and the otherwise circular Thon rings
+ become ellipses.
  The example below adds an astigmatism amplitude of
  &Delta;<em>f</em><sub>a</sub> = 300&nbsp;nm at &theta;<sub>a</sub> = 30&deg;
  to the same CTF as above (so the defocus swings between 0.5 and 1.1&nbsp;&micro;m
@@ -835,6 +840,176 @@ material for both CTF tools — <strong>CTF SIM</strong> and
 <BR>
 </details>
 </details>
+
+<details>
+  <summary style="font-size:13px;color:#5a5a62;margin-top:6px">
+    <strong>The CTF for a tilted specimen (defocus gradient).</strong>
+  </summary>
+ <p>
+ This is a different effect from the <em>beam tilt</em> discussed above:
+ there the <em>illumination</em> is tilted, here the <em>specimen</em> is
+ tilted. When the specimen plane is inclined by an angle &alpha; about an
+ in-plane axis &mdash; as in electron tomography, or simply when a support
+ film does not sit perpendicular to the beam &mdash; different parts of the
+ field of view lie at different heights along the optical axis. Since
+ defocus is the height of a point relative to the objective&rsquo;s focal
+ plane, the local defocus then varies <em>linearly</em> with in-plane
+ position. Measured perpendicular to the tilt axis,
+ &Delta;<em>z</em>(<em>r</em>) = &Delta;<em>z</em><sub>0</sub> +
+ <em>r</em>&middot;tan&nbsp;&alpha;, where <em>r</em> is the signed distance
+ from the tilt axis. This linear variation is the <strong>defocus
+ gradient</strong>: one side of the image is more underfocused, the opposite
+ side less, and only points on the tilt axis itself keep the nominal defocus
+ &Delta;<em>z</em><sub>0</sub>.
+ </p>
+ <p>
+ A consequence is that there is no single CTF for the whole image. A power
+ spectrum taken over the full micrograph shows smeared Thon rings, because
+ each region contributes rings at a slightly different defocus &mdash;
+ locally the ring spacing tightens toward the high-defocus side and loosens
+ toward the low-defocus side. For quantitative work the defocus must be
+ treated as position-dependent, for example by fitting a per-particle or
+ per-tile defocus, or by processing only small patches over which the
+ gradient is negligible.
+ </p>
+ <p>
+ Strictly speaking, image formation for a tilted specimen is no longer the simple
+ Fourier-space multiplication <em>object</em>&nbsp;&times;&nbsp;CTF that holds
+ for a flat weak-phase object. Because the effective defocus depends on
+ real-space position, the relationship becomes <em>non-local</em> in Fourier
+ space: neighbouring spatial frequencies are coupled, so the transfer is a
+ convolution in Fourier space rather than a point-by-point product. Philippsen, Engel and
+ Engel derived the correct description for this case &mdash; the
+ <strong>contrast-imaging function for tilted specimens (TCIF)</strong>
+ &mdash; which relates the transform of the recorded image to that of the
+ object while properly accounting for the defocus gradient, and which reduces
+ to the ordinary CTF in the untilted limit.
+ </p>
+ <p style="font-size:13px;color:#5a5a62">
+ Reference: Philippsen, A., Engel, H.-A., and Engel, A. (2007).
+ &ldquo;The contrast-imaging function for tilted specimens.&rdquo;
+ <em>Ultramicroscopy</em>, 107(2&ndash;3), 202&ndash;212. 
+ DOI: <a href="https://doi.org/10.1016/j.ultramic.2006.07.010" target="_blank">
+10.1016/j.ultramic.2006.07.010</a>
+ </p>
+</details>
+
+<details>
+  <summary style="font-size:13px;color:#5a5a62;margin-top:6px">
+    <strong>The CTF of a thick slab (lamella).</strong>
+  </summary>
+ <p>
+ A thick specimen &mdash; for example a FIB-milled cryo-EM lamella, typically
+ 100&ndash;300&nbsp;nm thick &mdash; has scattering material spread over a
+ substantial range of heights <em>z</em>. The recorded image is the sum of
+ contributions from every depth, and each depth is imaged at its <em>own</em>
+ defocus, because defocus is measured from the objective&rsquo;s focal plane.
+ So instead of a single defocus there is a continuous <em>range</em> of
+ defocus values spanning the slab thickness <em>t</em> &mdash; a defocus
+ spread of geometric, rather than chromatic, origin.
+ </p>
+ <p>
+ Averaging the CTF over that defocus range attenuates high spatial
+ frequencies. At high <em>k</em> the oscillations of sin(&minus;&chi;) shift
+ rapidly with defocus, so contributions from different depths partly cancel
+ when summed through the thickness, and the Thon rings wash out beyond a
+ thickness-limited resolution. The effect is an <strong>envelope
+ function</strong> <em>E</em>(<em>k</em>) multiplying the mean CTF,
+ mathematically similar to the temporal-coherence (defocus-spread) envelope
+ already built into the tool, but here fixed by the specimen geometry: the
+ thicker the slab, the lower the resolution at which the rings disappear.
+ </p>
+ <p>
+ Equivalently, high resolution demands a shallow <em>depth of field</em>. The
+ depth of field scales roughly as <em>D</em> &asymp; <em>d</em>&sup2;/&lambda;,
+ where <em>d</em> is the target resolution and &lambda; the electron
+ wavelength. At 300&nbsp;keV (&lambda; &asymp; 1.97&nbsp;pm) and
+ <em>d</em> = 3&nbsp;&Aring; this is only about 45&nbsp;nm &mdash; far thinner
+ than a typical lamella. When the slab is thicker than <em>D</em>, features at
+ different heights are no longer in common focus, the single 2D-CTF
+ (projection) description breaks down, and dynamical (multiple) scattering and
+ Ewald-sphere curvature can no longer be ignored. Properly, the sample must
+ then be treated in depth &mdash; per-depth or per-particle defocus,
+ tomographic reconstruction, or Ewald-sphere correction &mdash; rather than
+ with one flat transfer function.
+ </p>
+ <p>
+ This is why thinner lamellae yield higher resolution, and why lamella
+ thickness is a key quality metric. A lamella is also normally milled at a
+ pre-tilt, so the defocus <em>gradient</em> of the previous section and the
+ thickness <em>envelope</em> described here usually act at the same time.
+ </p>
+</details>
+
+<details>
+  <summary style="font-size:13px;color:#5a5a62;margin-top:6px">
+    <strong>The curvature of the Ewald sphere.</strong>
+  </summary>
+ <p>
+ Elastic scattering conserves energy, so every scattered electron keeps the
+ same wavevector length as the incident wave, |<em>k</em>| = 1/&lambda;. In
+ reciprocal space the tips of all elastically scattered wavevectors therefore
+ lie on a sphere of radius 1/&lambda; that passes through the origin &mdash;
+ the <strong>Ewald sphere</strong>. A spatial frequency (a point <em>g</em> in
+ reciprocal space) is recorded with its correct phase only where it lies on
+ that sphere.
+ </p>
+ <p>
+ Because the electron wavelength is tiny, the sphere is enormous: at
+ 300&nbsp;keV (&lambda; &asymp; 1.97&nbsp;pm) its radius is
+ 1/&lambda; &asymp; 508&nbsp;nm<sup>&minus;1</sup>, whereas the frequencies we
+ care about are of order 1/(3&nbsp;&Aring;) &asymp; 3.3&nbsp;nm<sup>&minus;1</sup>.
+ Over that small patch the sphere is almost a flat plane through the origin
+ &mdash; the <em>projection approximation</em>, which lets a single 2D image
+ stand for a projection of the object (the central-slice / projection
+ theorem). But the sphere is not exactly flat: at transverse frequency
+ <em>g</em> it curves away from the tangent plane by a small amount along the
+ beam (<em>z</em>) direction, the excitation error
+ &zeta; &asymp; &lambda;&middot;<em>g</em>&sup2;/2. This same quadratic-in-<em>g</em>
+ geometry is the origin of the defocus term in the CTF phase
+ (&chi; &prop; &lambda;&middot;&Delta;<em>z</em>&middot;<em>g</em>&sup2;)
+ &mdash; curvature of the Ewald sphere and defocus are two views of the same
+ effect.
+ </p>
+ <p>
+ Whether the curvature actually matters depends on how sharply the object is
+ defined along <em>z</em>, and this is where thickness enters. A <em>thin</em>
+ specimen has a reciprocal space that is smeared out along
+ <em>k</em><sub><em>z</em></sub> (thin in real space &rArr; elongated
+ &ldquo;rods&rdquo; in reciprocal space), so the curved sphere still cuts
+ through the correct information and the flat approximation holds. A
+ <em>thick</em> specimen &mdash; a slab that is larger in <em>z</em>, such as a
+ lamella or a large particle &mdash; has a reciprocal space that is sharply
+ confined in <em>k</em><sub><em>z</em></sub> (its <em>z</em>-extent
+ 1/<em>t</em> is small). Now the sagitta &zeta; = &lambda;<em>g</em>&sup2;/2 can
+ exceed that <em>z</em>-width 1/<em>t</em>, and the sphere samples the
+ object&rsquo;s 3D transform at (<em>g</em>,&nbsp;&zeta;) instead of at
+ (<em>g</em>,&nbsp;0). The recorded image is then no longer a faithful
+ projection: high-resolution information from the front and the back of the
+ object is sampled off-plane, so it is mixed and degraded.
+ </p>
+ <p>
+ The threshold is again the depth of field: the curvature must be corrected
+ once the thickness exceeds roughly <em>d</em>&sup2;/&lambda; for the target
+ resolution <em>d</em> (about 45&nbsp;nm at 3&nbsp;&Aring;, 300&nbsp;keV).
+ Beyond it, applying a single flat 2D CTF to a projection is wrong, because the
+ two halves of the object along <em>z</em> carry opposite effective defocus.
+ <strong>Ewald-sphere correction</strong> restores the lost resolution by
+ inserting each image into the 3D transform along the curved sphere rather than
+ a flat plane; it becomes important for large particles and thick slabs pushed
+ to high resolution.
+ </p>
+ <p style="font-size:13px;color:#5a5a62">
+ References: DeRosier, D.&nbsp;J. (2000). &ldquo;Correction of high-resolution
+ data for curvature of the Ewald sphere.&rdquo; <em>Ultramicroscopy</em>,
+ 81(2), 83&ndash;98. DOI: <a href="https://doi.org/10.1016/S0304-3991(99)00120-5" target="_blank">10.1016/S0304-3991(99)00120-5</a>. &mdash; Wolf, M., DeRosier, D.&nbsp;J., and Grigorieff, N.
+ (2006). &ldquo;Ewald sphere correction for single-particle electron
+ microscopy.&rdquo; <em>Ultramicroscopy</em>, 106(4&ndash;5), 376&ndash;382. DOI: <a href="https://doi.org/10.1016/j.ultramic.2005.11.001" target="_blank">10.1016/j.ultramic.2005.11.001</a>.
+ </p>
+</details>
+
+
+
 </details>
 
 <details>
