@@ -439,7 +439,9 @@ Resample the FFT by an integer factor:
 
 <p class="ctf-theory">
 The panel below explains the <strong>Contrast
-Transfer Function</strong> of an electron microscope. It is shared reference
+Transfer Function</strong> of an electron microscope. 
+The CTF describes, how contrast from the sample is transferred into the image. 
+This section is a shared reference
 material for both CTF tools — <strong>CTF SIM</strong> and
 <strong>CTF FIT</strong> — which follow.
 </p>
@@ -453,7 +455,7 @@ material for both CTF tools — <strong>CTF SIM</strong> and
  lens imparts to an electron wave scattered to spatial frequency <em>q</em>,
  relative to the unscattered beam:
  <br><br>
- &nbsp;&nbsp;&chi;(<em>q</em>) = &frac12;&middot;&pi;&middot;C<sub>s</sub>&middot;&lambda;&sup3;&middot;<em>q</em><sup>4</sup> &minus; &pi;&middot;&Delta;<em>f</em>&middot;&lambda;&middot;<em>q</em>&sup2;,
+ &nbsp;&nbsp;&nbsp;&nbsp;&chi;(<em>q</em>) = &frac12;&middot;&pi;&middot;C<sub>s</sub>&middot;&lambda;&sup3;&middot;<em>q</em><sup>4</sup> &minus; &pi;&middot;&Delta;<em>f</em>&middot;&lambda;&middot;<em>q</em>&sup2;,
  <br><br>
  which is often written in the factored form
  &chi;(<em>q</em>) = &pi;&middot;&lambda;&middot;<em>q</em>&sup2;&middot;(&frac12;&middot;C<sub>s</sub>&middot;&lambda;&sup2;&middot;<em>q</em>&sup2; &minus; &Delta;<em>f</em>).
@@ -491,11 +493,16 @@ material for both CTF tools — <strong>CTF SIM</strong> and
  zero crossing.
 </p>
 <p>
- The final transfer function combines the wave-aberration phase &chi; with the
- amplitude-contrast term as
- CTF(<em>q</em>,&theta;) = A&middot;sin(&minus;&chi;) + B&middot;cos(&minus;&chi;)
- described above, and beam tilt adds the further odd term &Delta;&chi;
- discussed below.
+ The final transfer function combines the wave-aberration phase &chi; with the contrast as
+ <br><br>
+&nbsp;&nbsp;&nbsp;&nbsp;CTF(<em>q</em>) = A&middot;sin(&minus;&chi;) + B&middot;cos(&minus;&chi;)
+<br><br>
+Here, A = sqrt(1 − B<sup>2</sup>), where A is the fraction of phase contrast and B is the
+fraction of amplitude contrast. The CTF is a sinusoidal function of the
+wave-aberration phase &chi;, which itself is a polynomial function of the spatial frequency <em>q</em>. The CTF oscillates between positive and negative values,
+with zero crossings at the Thon rings. The amplitude contrast term B shifts the
+
+Astigmatism, beam tilt and other effects add further terms as discussed below.
 </p>
 <BR>
 <details>
@@ -576,8 +583,74 @@ material for both CTF tools — <strong>CTF SIM</strong> and
       spatial and temporal coherence (finite gun-opening angle, energy spread,
       defocus spread) plus specimen/detector effects, and it sets the effective
       resolution limit: beyond the point where the envelope falls into the
-      noise, the Thon rings are no longer visible and no information survives.</li>
+      noise, the Thon rings are no longer visible and no information survives.
+    
+    
+    </li>
 </ul>
+
+<details>
+  <summary style="font-size:13px;color:#5a5a62;margin-top:6px">
+    <strong>What makes up the envelope?</strong>
+  </summary>
+ <p>
+ The red dashed envelope is not a single physical effect but the
+ <em>product</em> of several damping terms, each suppressing high spatial
+ frequencies for a different reason:
+ </p>
+ <p style="text-align:center">
+ <em>E</em>(<em>q</em>) =
+ <em>E</em><sub>tc</sub>(<em>q</em>)&middot;<em>E</em><sub>sc</sub>(<em>q</em>)&middot;MTF(<em>q</em>)&middot;<em>E</em><sub>drift</sub>(<em>q</em>)&middot;<em>E</em><sub>B</sub>(<em>q</em>).
+ </p>
+ <ul>
+   <li>
+     <strong>Temporal coherence (focal spread).</strong> The accelerating
+     voltage, the objective-lens current and the electrons&rsquo; own energy
+     spread &Delta;<em>E</em> all fluctuate, and through the chromatic
+     aberration <em>C</em><sub>c</sub> these blur the focal length by a focal
+     (defocus) spread &Delta;. Averaging the CTF over that Gaussian defocus
+     spread damps it as<br>
+     &nbsp;&nbsp;<em>E</em><sub>tc</sub>(<em>q</em>) =
+     exp[&thinsp;&minus;&frac12;(&pi;&lambda;&Delta;<em>q</em><sup>2</sup>)<sup>2</sup>&thinsp;],
+     &nbsp; with &nbsp;
+     &Delta; = <em>C</em><sub>c</sub>&thinsp;&radic;((&Delta;<em>E</em>/<em>E</em>)<sup>2</sup> + (2&Delta;<em>I</em>/<em>I</em>)<sup>2</sup> + (&Delta;<em>V</em>/<em>V</em>)<sup>2</sup>).<br>
+     In the tool this is the <em>Energy spread</em> and <em>Defocus spread</em>
+     parameters.
+   </li>
+   <li>
+     <strong>Spatial coherence (beam convergence).</strong> A finite
+     illumination semi-angle &alpha; (the gun-opening angle) lights the
+     specimen from a range of directions; each direction gives a slightly
+     shifted CTF, and their sum damps as<br>
+     &nbsp;&nbsp;<em>E</em><sub>sc</sub>(<em>q</em>) =
+     exp[&thinsp;&minus;(&pi;&alpha;)<sup>2</sup>(<em>C</em><sub>s</sub>&lambda;<sup>2</sup><em>q</em><sup>3</sup> &minus; &Delta;<em>z</em>&thinsp;<em>q</em>)<sup>2</sup>&thinsp;].<br>
+     The damping is strongest where the CTF oscillates fastest (large
+     d&chi;/d<em>q</em>), so it can even be reduced near the defocus that
+     flattens &chi;. In the tool this is the <em>Open angle gun</em> parameter.
+   </li>
+   <li>
+     <strong>Detector MTF.</strong> The camera does not transfer high
+     frequencies perfectly; its modulation transfer function MTF(<em>q</em>)
+     multiplies the signal and falls off toward the Nyquist frequency. (There
+     is no simple closed form; it is not simulated here.)
+   </li>
+   <li>
+     <strong>Specimen motion and drift.</strong> Beam-induced motion or stage
+     drift over the exposure smears the image. For a linear drift of total
+     length <em>d</em> the envelope is a sinc,<br>
+     &nbsp;&nbsp;<em>E</em><sub>drift</sub>(<em>q</em>) =
+     |sinc(&pi;<em>d</em><em>q</em>)| = |sin(&pi;<em>d</em><em>q</em>)&thinsp;/&thinsp;(&pi;<em>d</em><em>q</em>)|.
+     (Not simulated here.)
+   </li>
+   <li>
+     <strong>Overall B-factor.</strong> Radiation damage and all residual,
+     hard-to-model damping are usually lumped into a single empirical Gaussian,<br>
+     &nbsp;&nbsp;<em>E</em><sub>B</sub>(<em>q</em>) =
+     exp(&minus;<em>B</em><em>q</em><sup>2</sup>/4),<br>
+     the <em>B-factor</em> that is later removed when sharpening a map.
+   </li>
+ </ul>
+</details>
 
 <div style="display:flex;gap:16px;flex-wrap:wrap;margin:12px 0 4px">
   <figure style="flex:1 1 260px;margin:0;text-align:center">
@@ -585,7 +658,7 @@ material for both CTF tools — <strong>CTF SIM</strong> and
     <figcaption style="font-size:13px;color:#5a5a62;margin-top:6px">
       <strong>Real space &mdash; PSF (no beam tilt).</strong> A single point images
       to a symmetric blur: a bright central peak ringed by concentric
-      delocalisation fringes, the same on every side.
+      delocalisation fringes, the same on every side. The width of this real-space image is 128&nbsp;nm. 
     </figcaption>
   </figure>
   <figure style="flex:1 1 260px;margin:0;text-align:center">
@@ -602,7 +675,14 @@ material for both CTF tools — <strong>CTF SIM</strong> and
  amplitude contrast, no beam tilt). Right: the 2D CTF, whose radial cut is
  exactly the 1D curve above &mdash; each dark ring is a zero crossing. Left: its
  inverse Fourier transform, the real-space PSF that CTF SIM writes to
- panel&nbsp;1 &mdash; the image of a single atom.</em>
+ panel&nbsp;1 &mdash; the image of a single atom. 
+ </em>
+<div class="note">
+ Note that the width of this real-space image is 128&nbsp;nm. 
+ This shows that the ripples of the PSF reach out rather wide in the image. That is the reason why in 
+single particle cryo-EM, the CTF has to be corrected first, before particles are cropped, so that the fine
+ripples that encode the high-resolution details of the image are preserved.
+</div>
 </p>
 <p>
  Both panels are <strong>point-symmetric</strong>: rotating either by 180&deg;
