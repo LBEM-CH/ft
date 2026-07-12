@@ -3034,7 +3034,9 @@ void FtWindow::paintEvent(QPaintEvent *)
         }
 
         // Panel 1 tool option rectangles (bottom-left of panel 1)
-        bool p1Tool = m_p1EraserActive || m_p1BrushActive || m_p1TaperActive || m_p1SymmetrizeActive || m_binActive || m_cropActive || m_peakPickActive || m_extractActive || m_gaborActive || m_hessianActive || m_amyloidActive || m_measureActive;
+        bool p1Tool = m_p1EraserActive || m_p1BrushActive || m_p1TaperActive || m_p1SymmetrizeActive || m_binActive || m_cropActive || m_peakPickActive || m_extractActive || m_gaborActive || m_hessianActive || m_amyloidActive || m_measureActive || m_shiftActive || m_rotateActive;
+        const QString shiftHint  = "Use the mouse to shift the image";
+        const QString rotateHint = "Use the mouse to rotate the image";
         if (p1Tool) {
             int nRows = 0;
             int textW = 0;
@@ -3131,6 +3133,12 @@ void FtWindow::paintEvent(QPaintEvent *)
                 int r2 = m_measureCancelBtn->width();
                 textW = std::max({r0, r1, r2,
                                   fm.horizontalAdvance("Click two points on the image")});
+            } else if (m_shiftActive) {
+                nRows = 2;
+                textW = std::max(fm.horizontalAdvance(shiftHint), m_shiftCancelBtn->width());
+            } else if (m_rotateActive) {
+                nRows = 2;
+                textW = std::max(fm.horizontalAdvance(rotateHint), m_rotateCancelBtn->width());
             } else if (m_amyloidActive) {
                 nRows = 8;
                 const int colGap = 20;
@@ -3281,6 +3289,12 @@ void FtWindow::paintEvent(QPaintEvent *)
                 p.drawText(tx, ty + fm.ascent(), pixStr);
                 p.drawText(tx, ty + lh + fm.ascent(), lenStr);
                 m_measureCancelBtn->move(tx, ty + lh * 2);
+            } else if (m_shiftActive) {
+                p.drawText(tx, ty + fm.ascent(), shiftHint);
+                m_shiftCancelBtn->move(tx, ty + lh);
+            } else if (m_rotateActive) {
+                p.drawText(tx, ty + fm.ascent(), rotateHint);
+                m_rotateCancelBtn->move(tx, ty + lh);
             } else if (m_amyloidActive) {
                 const int colGap = 20;
                 int leftSize = fm.horizontalAdvance("Image size (px): ")   + m_amyloidSizeCombo->width();

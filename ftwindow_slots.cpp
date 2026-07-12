@@ -3521,6 +3521,22 @@ void FtWindow::onMeasureCancel()
     update();
 }
 
+void FtWindow::onShiftCancel()
+{
+    m_shiftActive = false;
+    m_p1Dragging = false;
+    m_shiftCancelBtn->hide();
+    update();
+}
+
+void FtWindow::onRotateCancel()
+{
+    m_rotateActive = false;
+    m_p1Dragging = false;
+    m_rotateCancelBtn->hide();
+    update();
+}
+
 void FtWindow::onApplyFtCrop()
 {
     if (!ensureCalcHeadroom(tr("crop in Fourier space"))) return;

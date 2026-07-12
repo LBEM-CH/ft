@@ -457,6 +457,12 @@ private:
     bool        m_p1SymmetrizeActive = false;
     bool        m_p1ToolDragging = false;  // mouse button held while painting/erasing in panel 1
 
+    // Shift / rotate parameter windows (hint text + Cancel)
+    QPushButton *m_shiftCancelBtn  = nullptr;
+    QPushButton *m_rotateCancelBtn = nullptr;
+    void onShiftCancel();
+    void onRotateCancel();
+
     // Panel 1 eraser/brush parameter widgets
     QLabel     *m_p1EraserDiamLabel = nullptr;
     QLineEdit  *m_p1EraserDiameterEdit = nullptr;

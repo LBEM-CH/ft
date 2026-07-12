@@ -34,11 +34,12 @@ void FtWindow::buildToolGroups()
         { "Particles",   {16, 17} },        // peak, extract
     };
     m_p2Groups = {
-        { "Edit",                  {0, 1, 10} },  // eraser, paint brush, phase ramp
+        { "Edit",                  {0, 1} },      // eraser, paint brush
         { "Cross-section profile", {7} },
         { "Filter",                {2, 3, 4, 5} },// bandpass, directional, line, lattice
         { "Transform",             {6, 8} },      // rotate, symmetrize
         { "Redimension",           {9} },         // Fourier crop / pad
+        { "Ramp",                  {10} },        // phase ramp
         { "CTF",                   {11, 12}, "CTF" }, // CTF SIM, CTF FIT (face = "CTF")
         { "Math",                  {13} },
     };
@@ -186,6 +187,8 @@ void FtWindow::showP1ToolWidgets()
     m_amyloidCancelBtn->setVisible(m_amyloidActive);
     m_amyloidComputeBtn->setVisible(m_amyloidActive);
     m_measureCancelBtn->setVisible(m_measureActive);
+    m_shiftCancelBtn->setVisible(m_shiftActive);
+    m_rotateCancelBtn->setVisible(m_rotateActive);
 }
 
 void FtWindow::activateP1Tool(int toolId)
@@ -831,7 +834,8 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
     }
 
     // Shift/rotate: start drag on panel 1 image
-    if ((m_shiftActive || m_rotateActive) && !m_image.isNull()) {
+    if ((m_shiftActive || m_rotateActive) && !m_image.isNull()
+        && !m_p1ToolRect.contains(event->pos())) {
         for (int i = 0; i < m_numDispItems; i++) {
             const DisplayItem &di = m_dispItems[i];
             if (di.valid && di.zoomIdx == 0 && di.screenRect.contains(event->pos())) {
