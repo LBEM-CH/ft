@@ -464,20 +464,85 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         return;
     }
 
-    // "Manual" click – show manual link dialog
+    // "Help" click – show manual link plus a question box that searches the
+    // online manual. Two ways to search (hybrid):
+    //   * "Find in manual" jumps straight into manual.html and highlights the
+    //     query using the browser's Text Fragments feature. Works immediately,
+    //     no search-engine indexing required.
+    //   * "Search Google" runs a site-restricted Google query. Only returns
+    //     hits once Google has crawled/indexed the manual pages.
     if (!m_manualRect.isNull() && m_manualRect.contains(event->pos())) {
-        auto *manual = new QMessageBox(this);
-        manual->setAttribute(Qt::WA_DeleteOnClose);
-        manual->setWindowTitle("Manual");
-        manual->setTextFormat(Qt::RichText);
-        manual->setTextInteractionFlags(Qt::TextBrowserInteraction);
-        manual->setIconPixmap(QApplication::windowIcon().pixmap(64, 64));
-        manual->setText(
-            "<h3>Fourier Analyzer</h3>"
-            "<p>For instructions and Exercises, visit this website:</p>"
-            "<p><a href=\"https://lbem-status.epfl.ch/ft/manual.html\">"
-            "https://lbem-status.epfl.ch/ft/manual.html</a></p>");
-        manual->open();
+        const QString manualUrl = "https://lbem-status.epfl.ch/ft/manual.html";
+
+        auto *dlg = new QDialog(this);
+        dlg->setAttribute(Qt::WA_DeleteOnClose);
+        dlg->setWindowTitle("Help");
+        dlg->setStyleSheet("QDialog { background:#333; }");
+
+        auto *layout = new QVBoxLayout(dlg);
+
+        auto *intro = new QLabel(dlg);
+        intro->setTextFormat(Qt::RichText);
+        intro->setTextInteractionFlags(Qt::TextBrowserInteraction);
+        intro->setOpenExternalLinks(true);
+        intro->setText(
+            "<h3 style=\"color:#eee;\">Fourier Analyzer</h3>"
+            "<p style=\"color:#eee;\">For instructions and exercises, visit the manual:</p>"
+            "<p><a href=\"" + manualUrl + "\">" + manualUrl + "</a></p>");
+        layout->addWidget(intro);
+
+        auto *qLabel = new QLabel(
+            "Ask a question about the Fourier Analyzer\n"
+            "(searches the online manual):", dlg);
+        qLabel->setStyleSheet("color:#eee;");
+        layout->addWidget(qLabel);
+
+        auto *edit = new QLineEdit(dlg);
+        edit->setPlaceholderText("e.g. How does the convolution theorem work?");
+        edit->setStyleSheet("background:#222; color:white; border:1px solid #888; padding:2px;");
+        layout->addWidget(edit);
+        edit->setFocus();
+
+        auto *buttons = new QDialogButtonBox(dlg);
+        auto *findBtn   = buttons->addButton("Find in manual", QDialogButtonBox::ActionRole);
+        auto *googleBtn = buttons->addButton("Search Google",  QDialogButtonBox::ActionRole);
+        buttons->addButton(QDialogButtonBox::Close);
+        buttons->setStyleSheet(
+            "QPushButton { background-color:#888; border:2px outset #aaa; color:#eee; padding:2px 12px; }");
+        layout->addWidget(buttons);
+
+        // Open manual.html and scroll to / highlight the query in the browser.
+        auto findInManual = [manualUrl, edit]() {
+            const QString question = edit->text().trimmed();
+            if (question.isEmpty()) return;
+            // Text-fragment directive: "#:~:text=<encoded phrase>". Force-encode
+            // '-' too, as it is a delimiter inside the directive syntax.
+            const QByteArray frag =
+                QUrl::toPercentEncoding(question, QByteArray(), "-");
+            const QString full = manualUrl + "#:~:text=" + QString::fromLatin1(frag);
+            QDesktopServices::openUrl(QUrl::fromEncoded(full.toUtf8()));
+        };
+
+        // Site-restricted Google query. The prefix (no scheme, no ".html")
+        // covers manual.html *and* manual_exercises.html, manual_panel1.html, ...
+        auto searchGoogle = [edit]() {
+            const QString question = edit->text().trimmed();
+            if (question.isEmpty()) return;
+            const QString query =
+                question + " site:lbem-status.epfl.ch/ft/manual";
+            QUrl url("https://www.google.com/search");
+            QUrlQuery uq;
+            uq.addQueryItem("q", query);
+            url.setQuery(uq);
+            QDesktopServices::openUrl(url);
+        };
+
+        connect(findBtn,   &QPushButton::clicked, dlg, findInManual);
+        connect(googleBtn, &QPushButton::clicked, dlg, searchGoogle);
+        connect(edit, &QLineEdit::returnPressed, dlg, findInManual);  // Enter = find in manual
+        connect(buttons, &QDialogButtonBox::rejected, dlg, &QDialog::reject);
+
+        dlg->open();
         return;
     }
 

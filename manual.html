@@ -261,7 +261,7 @@ lattice of spots is rotated by the same angle as the lattice in the image.</em>
 
 </details>
 
-<details>
+<details id="convolution-theorem">
   <summary>What are the Convolution and Correlation Theorems?</summary>
 <p>
 These two theorems are the reason why so much of image processing is done in
@@ -279,7 +279,7 @@ The Fourier Analyzer lets you see both sides of that equivalence: the real-space
 images on the left, their transforms on the right.
 </p>
 
-<h4 style="margin:16px 0 4px 0">1. Convolution — "stamping" one image onto another</h4>
+<h4 id="convolution" style="margin:16px 0 4px 0">1. Convolution — "stamping" one image onto another</h4>
 <p>
 <strong>The everyday picture.</strong> Take the object <em>f</em> and replace
 <em>every single point</em> of it by a small blurred blob <em>h</em>, then add all
@@ -349,7 +349,7 @@ pixel by pixel. The dark rings in |F&middot;H| are the frequencies that the PSF 
 transmit.</em>
 </p>
 
-<h4 style="margin:16px 0 4px 0">2. Correlation — "how well do these two match, at every shift?"</h4>
+<h4 id="correlation" style="margin:16px 0 4px 0">2. Correlation — "how well do these two match, at every shift?"</h4>
 <p>
 <strong>The everyday picture.</strong> Slide a reference image <em>g</em> (a template)
 across the image <em>f</em>, and at every possible shift ask: <em>how similar are the
@@ -404,10 +404,10 @@ image (each shift is scored for similarity: alignment, particle picking). Fourie
 <em>F</em>&middot;<em>H</em> for convolution, <em>F</em>&middot;<em>G</em>* for correlation.
 </div>
 
-<details>
+<details id="convolution-vs-correlation">
   <summary style="font-size:13px;color:#5a5a62;margin-top:6px">The difference between Convolution and Correlation</summary>
 <ul>
-<h4 style="margin:16px 0 4px 0">3. The only real difference: a flip</h4>
+<h4 id="flip" style="margin:16px 0 4px 0">3. The only real difference: a flip</h4>
 <p>
 Convolution and correlation are almost the same operation. Both slide one function over
 the other and integrate the product. The difference is that <strong>convolution flips the
@@ -435,7 +435,7 @@ space this flip is exactly the complex conjugation of <em>G</em>.</em>
 </details>
 
 
-<details>
+<details id="autocorrelation">
   <summary style="font-size:13px;color:#5a5a62;margin-top:6px">Autocorrelation - Correlation of a function with itself</summary>
 <ul>
 <h4 style="margin:16px 0 4px 0">The special case g = f: the autocorrelation</h4>
@@ -462,7 +462,7 @@ Wiener&ndash;Khinchin theorem). Consequences worth remembering:
 </ul>
 </details>
 
-<details>
+<details id="practical-points">
   <summary style="font-size:13px;color:#5a5a62;margin-top:6px"><strong>Practical points when you compute these yourself</strong></summary>
 <ul>
   <li><strong>The FFT is circular.</strong> Multiplying transforms implies a <em>periodic</em>
@@ -486,7 +486,7 @@ Wiener&ndash;Khinchin theorem). Consequences worth remembering:
 </details>
 </details>
 
-<details>
+<details id="complex-numbers">
   <summary>What are Complex Numbers?</summary>
 <p>
 Every value in a Fourier transform is a <strong>complex number</strong>. That sounds
@@ -497,7 +497,7 @@ book-keeping device that holds two numbers in one symbol, with multiplication ru
 happen to be precisely the rules that waves obey.
 </p>
 
-<h4 style="margin:16px 0 4px 0">1. Real and imaginary parts</h4>
+<h4 id="real-imaginary" style="margin:16px 0 4px 0">1. Real and imaginary parts</h4>
 <p>
 The imaginary unit <em>i</em> is defined by the one property
 </p>
@@ -527,7 +527,7 @@ mathematical equivalent of "mirror" or "run the wave backwards", and it is the o
 difference between the convolution and the correlation theorem.
 </p>
 
-<h4 style="margin:16px 0 4px 0">2. Cosine and sine: why a wave needs two numbers</h4>
+<h4 id="cosine-sine" style="margin:16px 0 4px 0">2. Cosine and sine: why a wave needs two numbers</h4>
 <p>
 Consider one of the plane waves that a Fourier transform decomposes an image into. It has a
 given wavelength and direction, but it may sit anywhere: its crests can be shifted along
@@ -556,7 +556,7 @@ with amplitude &radic;(0.6&sup2;&nbsp;+&nbsp;0.8&sup2;)&nbsp;=&nbsp;1, shifted b
 (amplitude, phase) are two descriptions of the same wave.</em>
 </p>
 
-<h4 style="margin:16px 0 4px 0">3. The Argand diagram: amplitude and phase</h4>
+<h4 id="argand-diagram" style="margin:16px 0 4px 0">3. The Argand diagram: amplitude and phase</h4>
 <p>
 Because a complex number is a pair of real numbers, it can be drawn as a point in a 2D plane, or better,
 as an <strong>arrow from the origin</strong> in a 2D plane. This plane is called the
@@ -627,7 +627,7 @@ polar instead of Cartesian coordinates. This is why the exponential
 is nothing but a wave: it is an arrow of length 1, spinning as you walk across the image.
 </p>
 
-<h4 style="margin:16px 0 4px 0">4. Adding and subtracting: use the Cartesian form</h4>
+<h4 id="adding-subtracting" style="margin:16px 0 4px 0">4. Adding and subtracting: use the Cartesian form</h4>
 <p>
 Addition is done <strong>component by component</strong> — real with real, imaginary with
 imaginary — exactly like adding two vectors head-to-tail:
@@ -645,7 +645,7 @@ is <strong>linear</strong>: FT{<em>f</em>&nbsp;+&nbsp;<em>g</em>} = <em>F</em>&n
 frequency by frequency.
 </p>
 
-<h4 style="margin:16px 0 4px 0">5. Multiplying and dividing: use the polar form</h4>
+<h4 id="multiplying-dividing" style="margin:16px 0 4px 0">5. Multiplying and dividing: use the polar form</h4>
 <p>
 Multiplication in Cartesian form follows from <em>i</em>&sup2; = &minus;1:
 </p>
@@ -724,7 +724,7 @@ by almost nothing amplifies noise without limit), and this is precisely why CTF 
 does not simply divide by the CTF.
 </p>
 
-<h4 style="margin:16px 0 4px 0">6. How the Fourier Analyzer displays complex numbers</h4>
+<h4 id="display-complex" style="margin:16px 0 4px 0">6. How the Fourier Analyzer displays complex numbers</h4>
 <p>
 A complex-valued image cannot be shown as one grey-scale picture — there are two numbers per
 pixel. The app therefore offers four ways to look at the very same Fourier transform; cycle
@@ -768,7 +768,7 @@ their <em>length</em>, mostly carries the contrast.
 
 
 
-<details> 
+<details id="ctf"> 
   <summary>What is the Contrast Transfer Function (CTF) of an Electron Microscope?</summary>
 <p>
   The Contrast Transfer Function (CTF) of an electron microscope defines, how contrast 
@@ -847,7 +847,7 @@ with zero crossings at the Thon rings. The amplitude contrast term B shifts the
 Astigmatism, beam tilt and other effects add further terms as discussed below.
 </p>
 <BR>
-<details>
+<details id="typical-ctf">
 <summary style="font-size:14px;color:#5a5a62;margin-top:2px">
  <strong>A typical CTF</strong>
  </summary>
@@ -931,7 +931,7 @@ Astigmatism, beam tilt and other effects add further terms as discussed below.
     </li>
 </ul>
 
-<details>
+<details id="envelope">
   <summary style="font-size:13px;color:#5a5a62;margin-top:6px">
     <strong>What makes up the envelope?</strong>
   </summary>
@@ -1040,7 +1040,7 @@ ripples that encode the high-resolution details of the image are preserved.
 </p>
 </details>
 
-<details>
+<details id="astigmatism">
 <summary style="font-size:14px;color:#5a5a62;margin-top:2px">
  <strong>Astigmatism</strong>
  </summary>
@@ -1098,7 +1098,7 @@ ripples that encode the high-resolution details of the image are preserved.
 </p>
 </details>
 
-<details>
+<details id="beam-tilt-coma">
   <summary style="font-size:13px;color:#5a5a62;margin-top:6px">
     <strong>Beam tilt and coma.</strong>
   </summary>
@@ -1183,7 +1183,7 @@ ripples that encode the high-resolution details of the image are preserved.
  in real space and the lopsided Thon rings in Fourier space are the same
  aberration &mdash; coma &mdash; seen in the two domains.</em>
 </p>
-<details>
+<details id="ctf-asymmetry">
 <summary>Why is the displayed beam-tilted CTF not symmetric?</summary>
 <p>
  A subtle but important point: the Fourier-space image on the right above is
@@ -1260,7 +1260,7 @@ ripples that encode the high-resolution details of the image are preserved.
 </details>
 </details>
 
-<details>
+<details id="tilted-specimen">
   <summary style="font-size:13px;color:#5a5a62;margin-top:6px">
     <strong>The CTF for a tilted specimen (defocus gradient).</strong>
   </summary>
@@ -1313,7 +1313,7 @@ ripples that encode the high-resolution details of the image are preserved.
  </p>
 </details>
 
-<details>
+<details id="thick-slab">
   <summary style="font-size:13px;color:#5a5a62;margin-top:6px">
     <strong>The CTF of a thick slab (lamella).</strong>
   </summary>
@@ -1360,7 +1360,7 @@ ripples that encode the high-resolution details of the image are preserved.
  </p>
 </details>
 
-<details>
+<details id="ewald-sphere">
   <summary style="font-size:13px;color:#5a5a62;margin-top:6px">
     <strong>The curvature of the Ewald sphere.</strong>
   </summary>
@@ -1636,7 +1636,7 @@ fresh slot, or click an empty thumbnail to begin one.
 </p>
 </details>
 
-<h2 class="section">Tool reference (sub-pages)</h2>
+<h2 class="section" id="tools">Tool reference (sub-pages)</h2>
 <p>
 Each panel has its own column of tool squares, organised into groups. A
 group square holding several tools opens a small pop-up column of
@@ -1688,5 +1688,27 @@ relevant tools in the app. Try to predict the outcome before clicking
 </footer>
 
 </main>
+
+<script>
+// Make every section directly linkable via URL fragment (e.g. manual.html#convolution).
+// If the target sits inside one or more collapsed <details>, open them and scroll to it.
+(function () {
+  function revealHash() {
+    var id = decodeURIComponent((location.hash || "").slice(1));
+    if (!id) return;
+    var el = document.getElementById(id);
+    if (!el) return;
+    var node = el;
+    while (node) {                                   // open all <details> ancestors
+      if (node.tagName === "DETAILS") node.open = true;
+      node = node.parentElement;
+    }
+    if (el.tagName === "DETAILS") el.open = true;    // and the target itself
+    el.scrollIntoView({ block: "start" });
+  }
+  window.addEventListener("DOMContentLoaded", function () { setTimeout(revealHash, 0); });
+  window.addEventListener("hashchange", revealHash);
+})();
+</script>
 </body>
 </html>

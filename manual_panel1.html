@@ -132,7 +132,7 @@ label for an inline tooltip. The sections below are arranged by group,
 in the same order as the squares in the panel.
 </p>
 
-<details>
+<details id="p1-histogram-toggles">
 <summary>Histogram-side toggles</summary>
 <p>
 Two toggle buttons sit to the <strong>left</strong> of the panel-1
@@ -158,9 +158,9 @@ the visible portion still toggle them.
 </p>
 </details>
 
-<h2 class="group">Edit</h2>
+<h2 class="group" id="p1-group-edit">Edit</h2>
 
-<details open>
+<details id="p1-eraser" open>
 <summary>Eraser<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><polygon points="8.4,4.4 18.3,4.4 15.6,12 5.7,12" fill="#d2b98c" stroke="#a0825a" stroke-width=".7"/><polygon points="8.9,6.2 17.8,6.2 17,8.4 8.2,8.4" fill="#e1c8a0"/><polygon points="5.7,12 15.6,12 14.7,14.2 4.8,14.2" fill="#bec3c8" stroke="#8c8c8c" stroke-width=".5"/><polygon points="4.8,14.2 15.6,14.2 12.9,19.6 3,19.6" fill="#eb7882" stroke="#b44650" stroke-width=".7"/><polygon points="5.2,14.9 12,14.9 11.5,16.7 4.6,16.7" fill="#f5a0a5"/></svg></span></summary>
 <p>
 Multiplies pixel values by <code>(1 − Gaussian)</code> under a soft
@@ -176,7 +176,7 @@ Fourier space.
 <BR>
 </details>
 
-<details>
+<details id="p1-paint-brush">
 <summary>Paint brush<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><line x1="12" y1="3.9" x2="12" y2="11.1" stroke="#a0783c" stroke-width="3"/><rect x="7.5" y="10.2" width="9" height="2.7" fill="#b4b4b4"/><polygon points="6.6,12.9 17.4,12.9 14.7,20.1 9.3,20.1" fill="#c8a050"/></svg></span></summary>
 <p>
 Writes a chosen pixel value into the image, blended with the existing
@@ -204,7 +204,7 @@ to see how the symmetry and periodicity of the real-space image affect the Fouri
 </p>
 </details>
 
-<details>
+<details id="p1-taper-edges">
 <summary>Taper edges (Hanning)<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><rect x="1.8" y="1.8" width="20.4" height="20.4" fill="#fff"/><rect x="3.84" y="3.84" width="16.32" height="16.32" fill="#323232"/></svg></span></summary>
 <p>
 Apply a Hanning window of a chosen width around the image border. This
@@ -218,9 +218,9 @@ strong cross of high-frequency content.
 <BR>
 </details>
 
-<h2 class="group">Measure</h2>
+<h2 class="group" id="p1-group-measure">Measure</h2>
 
-<details>
+<details id="p1-measure">
 <summary>Measure<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><rect x="3.9" y="8.4" width="16.2" height="6.3" fill="#f5dc8c" stroke="#785a00" stroke-width=".7"/><g stroke="#282828" stroke-width=".7"><line x1="3.9" y1="8.4" x2="3.9" y2="11.9"/><line x1="5.52" y1="8.4" x2="5.52" y2="10.3"/><line x1="7.14" y1="8.4" x2="7.14" y2="10.3"/><line x1="8.76" y1="8.4" x2="8.76" y2="10.3"/><line x1="10.38" y1="8.4" x2="10.38" y2="10.3"/><line x1="12" y1="8.4" x2="12" y2="11.9"/><line x1="13.62" y1="8.4" x2="13.62" y2="10.3"/><line x1="15.24" y1="8.4" x2="15.24" y2="10.3"/><line x1="16.86" y1="8.4" x2="16.86" y2="10.3"/><line x1="18.48" y1="8.4" x2="18.48" y2="10.3"/><line x1="20.1" y1="8.4" x2="20.1" y2="11.9"/></g></svg></span></summary>
 <p>
 Click and drag in panel 1 to measure distances. The pixel count and the
@@ -229,9 +229,9 @@ shown next to the line.
 </p>
 </details>
 
-<h2 class="group">Transform</h2>
+<h2 class="group" id="p1-group-transform">Transform</h2>
 
-<details>
+<details id="p1-flip">
 <summary>Flip horizontally / Flip vertically<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><polygon points="3.6,12 9.48,7.2 9.48,16.8" fill="#fff"/><polygon points="20.4,12 14.52,7.2 14.52,16.8" fill="#fff"/><line x1="9.48" y1="12" x2="14.52" y2="12" stroke="#fff" stroke-width="2"/></svg><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><polygon points="12,3.6 7.2,9.48 16.8,9.48" fill="#fff"/><polygon points="12,20.4 7.2,14.52 16.8,14.52" fill="#fff"/><line x1="12" y1="9.48" x2="12" y2="14.52" stroke="#fff" stroke-width="2"/></svg></span></summary>
 <p>
 Mirror the image along its horizontal or vertical axis. Pure geometric
@@ -239,7 +239,7 @@ operations, lossless. The Fourier transform updates accordingly.
 </p>
 </details>
 
-<details>
+<details id="p1-shift">
 <summary>Shift image<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><polygon points="20.4,12 15.36,6.72 15.36,17.28" fill="#fff"/><polygon points="3.6,12 8.64,6.72 8.64,17.28" fill="#fff"/><polygon points="12,3.6 6.72,8.64 17.28,8.64" fill="#fff"/><polygon points="12,20.4 6.72,15.36 17.28,15.36" fill="#fff"/></svg></span></summary>
 <p>
 Translate the image by an integer number of pixels in <code>x</code>
@@ -248,7 +248,7 @@ values are lost.
 </p>
 </details>
 
-<details>
+<details id="p1-rotate">
 <summary>Rotate image<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><path d="M 18.65 8.16 A 7.68 7.68 0 1 0 16.94 17.88" fill="none" stroke="#fff" stroke-width="1.92"/><polygon points="22.82,12.95 18.42,19.65 15.46,16.12" fill="#fff"/></svg></span></summary>
 <p>
 Rotate the image by a chosen angle. The corners are clipped if the
@@ -257,7 +257,7 @@ matters for downstream FFT analysis.
 </p>
 </details>
 
-<details>
+<details id="p1-invert-contrast">
 <summary>Invert contrast<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><g stroke="#fff" stroke-width="1.5"><line x1="4.93" y1="9.75" x2="10.07" y2="9.75"/><line x1="7.5" y1="7.18" x2="7.5" y2="12.32"/><line x1="13.93" y1="18.75" x2="19.07" y2="18.75"/><line x1="13.8" y1="9.75" x2="10.2" y2="18.75"/></g></svg></span></summary>
 <p>
 Replaces each pixel value with <code>max + min − value</code>. Often
@@ -266,9 +266,9 @@ you want a positive-contrast view.
 </p>
 </details>
 
-<h2 class="group">Symmetrize</h2>
+<h2 class="group" id="p1-group-symmetrize">Symmetrize</h2>
 
-<details>
+<details id="p1-symmetrize">
 <summary>Symmetrize image<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><polygon points="12,1.92 14.37,8.74 21.59,8.89 15.83,13.25 17.93,20.16 12,16.03 6.07,20.16 8.17,13.25 2.41,8.89 9.63,8.74" fill="#fff"/></svg></span></summary>
 <p>
 Enforce <code>N</code>-fold rotational symmetry on the real-space image
@@ -289,9 +289,9 @@ the integer pixel <code>(w/2, h/2)</code>.
 <BR>
 </details>
 
-<h2 class="group">Redimension</h2>
+<h2 class="group" id="p1-group-redimension">Redimension</h2>
 
-<details>
+<details id="p1-bin">
 <summary>Bin image<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><rect x="4.8" y="4.8" width="4.8" height="4.8" fill="#fff"/><rect x="14.4" y="4.8" width="4.8" height="4.8" fill="#b6b6b6"/><rect x="4.8" y="14.4" width="4.8" height="4.8" fill="#969696"/><rect x="14.4" y="14.4" width="4.8" height="4.8" fill="#d4d4d4"/></svg></span></summary>
 <p>
 Reduce the image dimensions by averaging adjacent pixels in
@@ -308,7 +308,7 @@ acts as a low-pass filter followed by downsampling.
 <BR>
 </details>
 
-<details>
+<details id="p1-crop">
 <summary>Crop image<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><rect x="10.4" y="10.4" width="9.6" height="9.6" fill="none" stroke="#fff" stroke-width="1.2"/></svg></span></summary>
 <p>
 Cut a square region out of the image and replace the slot with it.
@@ -338,9 +338,9 @@ the pixel size; only the image dimensions change.
 <BR>
 </details>
 
-<h2 class="group">Filter</h2>
+<h2 class="group" id="p1-group-filter">Filter</h2>
 
-<details>
+<details id="p1-gabor">
 <summary>Gabor filter<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><text x="12" y="12" font-family="sans-serif" font-weight="bold" font-size="15" fill="#fff" text-anchor="middle" dominant-baseline="central">G</text></svg></span></summary>
 <p>
 Apply a Gabor (oriented sinusoidal) filter to the image. The filter
@@ -350,7 +350,7 @@ texture.
 </p>
 </details>
 
-<details>
+<details id="p1-hessian">
 <summary>Hessian filter<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><text x="12" y="12" font-family="sans-serif" font-weight="bold" font-size="15" fill="#fff" text-anchor="middle" dominant-baseline="central">H</text></svg></span></summary>
 <p>
 Compute a Hessian-based ridge / blob enhancement. Good for highlighting
@@ -369,9 +369,9 @@ You can also combine it with the <em>Gabor filter</em> for orientation-specific 
 </p>
 </details>
 
-<h2 class="group">Amyloid</h2>
+<h2 class="group" id="p1-group-amyloid">Amyloid</h2>
 
-<details>
+<details id="p1-amyloid">
 <summary>Amyloid filament<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><text x="12" y="12" font-family="sans-serif" font-weight="bold" font-size="15" fill="#fff" text-anchor="middle" dominant-baseline="central">A</text></svg></span></summary>
 <p>
 Specialised analysis tool for amyloid filaments: extract straight
@@ -389,9 +389,9 @@ and to get a visual intuition for the effects of curvature on the Fourier transf
 </p>
 </details>
 
-<h2 class="group">Math</h2>
+<h2 class="group" id="p1-group-math">Math</h2>
 
-<details>
+<details id="p1-math">
 <summary>Math calculations<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><path d="M16.2 7.2 L7.8 7.2 L12 12 L7.8 16.8 L16.2 16.8 M16.2 7.2 L16.2 8.6 M16.2 16.8 L16.2 15.4" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"/></svg></span></summary>
 <p>
 Combine images from two history slots with a chosen arithmetic
@@ -420,9 +420,9 @@ intuition for why the convolution and correlation theorems are so useful in prac
 </p>
 </details>
 
-<h2 class="group">Particles</h2>
+<h2 class="group" id="p1-group-particles">Particles</h2>
 
-<details>
+<details id="p1-peak-search">
 <summary>Peak search<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><g stroke="#00c800" stroke-width="1.4"><line x1="4.03" y1="6.6" x2="9.17" y2="6.6"/><line x1="6.6" y1="4.03" x2="6.6" y2="9.17"/><line x1="14.83" y1="6.6" x2="19.97" y2="6.6"/><line x1="17.4" y1="4.03" x2="17.4" y2="9.17"/><line x1="4.03" y1="17.4" x2="9.17" y2="17.4"/><line x1="6.6" y1="14.83" x2="6.6" y2="19.97"/><line x1="14.83" y1="17.4" x2="19.97" y2="17.4"/><line x1="17.4" y1="14.83" x2="17.4" y2="19.97"/></g></svg></span></summary>
 <p>
 Locate local maxima in the image. The detected peaks can be displayed
@@ -443,7 +443,7 @@ The coordinates of the detected peaks can then be exported and used for particle
 </p>
 </details>
 
-<details>
+<details id="p1-extract-particles">
 <summary>Extract particles<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><circle cx="12" cy="12" r="8.4" fill="none" stroke="#fff" stroke-width="1.3"/><circle cx="9.06" cy="9.9" r="1" fill="#fff"/><circle cx="14.94" cy="9.9" r="1" fill="#fff"/><path d="M 7.6 13.2 A 4.6 4.6 0 0 0 16.4 13.2" fill="none" stroke="#fff" stroke-width="1"/></svg></span></summary>
 <p>
 Cut sub-images of a chosen size around each picked peak and write them
@@ -472,5 +472,27 @@ you would need to first rotationally align the particles, which is not implement
 </footer>
 
 </main>
+
+<script>
+// Make every section directly linkable via URL fragment (e.g. #eraser, #exercise-6).
+// If the target sits inside one or more collapsed <details>, open them and scroll to it.
+(function () {
+  function revealHash() {
+    var id = decodeURIComponent((location.hash || "").slice(1));
+    if (!id) return;
+    var el = document.getElementById(id);
+    if (!el) return;
+    var node = el;
+    while (node) {                                   // open all <details> ancestors
+      if (node.tagName === "DETAILS") node.open = true;
+      node = node.parentElement;
+    }
+    if (el.tagName === "DETAILS") el.open = true;    // and the target itself
+    el.scrollIntoView({ block: "start" });
+  }
+  window.addEventListener("DOMContentLoaded", function () { setTimeout(revealHash, 0); });
+  window.addEventListener("hashchange", revealHash);
+})();
+</script>
 </body>
 </html>

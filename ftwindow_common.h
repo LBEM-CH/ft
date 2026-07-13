@@ -20,6 +20,9 @@
 #include <QDialogButtonBox>
 #include <QPushButton>
 #include <QMessageBox>
+#include <QDesktopServices>
+#include <QUrl>
+#include <QUrlQuery>
 #include <QBuffer>
 #include <QSettings>
 #include <QMouseEvent>

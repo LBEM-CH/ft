@@ -4168,7 +4168,7 @@ void FtWindow::paintEvent(QPaintEvent *)
         p.setBrush(Qt::NoBrush);
         p.drawRect(manualRect);
 
-        p.drawText(manualRect, Qt::AlignCenter, "Manual");
+        p.drawText(manualRect, Qt::AlignCenter, "Help");
     }
 
     // ---- arrows ---------------------------------------------------------------
