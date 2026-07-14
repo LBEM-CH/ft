@@ -103,7 +103,7 @@ relevant tools in the app. Try to predict the outcome before clicking
 <strong>Compute</strong> or <strong>Apply</strong>.
 </p>
 
-<details open>
+<details id="exercise-0" open>
 <summary>Exercise 0 — Build a chessboard from Fourier-space pixels</summary>
 <p>
 Create an empty image (top toolbar → <strong>New</strong>). With the
@@ -112,7 +112,7 @@ space. Can you create a chessboard pattern in real space?
 </p>
 </details>
 
-<details>
+<details id="exercise-1">
 <summary>Exercise 1 — High-, low-, band-pass and directional filters</summary>
 <p>
 Load an image. Apply high-pass, low-pass and band-pass filters, as
@@ -122,7 +122,7 @@ image before clicking <strong>Apply</strong>.
 </p>
 </details>
 
-<details>
+<details id="exercise-2">
 <summary>Exercise 2 — Restore an image with the Fourier eraser</summary>
 <p>
 Load the <code>restauration_512.png</code> image. Inspect it in
@@ -132,7 +132,7 @@ changes.
 </p>
 </details>
 
-<details>
+<details id="exercise-3">
 <summary>Exercise 3 — Intact vs anisotropic EM images</summary>
 <p>
 Load intact and anisotropic electron microscopy images. Inspect them
@@ -141,7 +141,7 @@ distinguishes the two in each domain?
 </p>
 </details>
 
-<details>
+<details id="exercise-4">
 <summary>Exercise 4 — Lattice filtering of crystals and periodic scenes</summary>
 <p>
 Load the <code>2d_protein_crystal</code> and <code>Polyhead_virus</code>
@@ -156,7 +156,7 @@ content, or to delete the periodic content (toggle
 </p>
 </details>
 
-<details>
+<details id="exercise-5">
 <summary>Exercise 5 — Denoise a noisy apple with the lattice filter</summary>
 <p>
 Load a noisy apple image. Are you able to use the <strong>lattice
@@ -165,7 +165,7 @@ positioning the basis vectors.
 </p>
 </details>
 
-<details>
+<details id="exercise-6">
 <summary>Exercise 6 — Convolution theorem with Andreas</summary>
 <p>
 Load <code>andreas_1024.png</code> (-> g). Use a lattice filter with vectors
@@ -186,7 +186,7 @@ Does it look like Andreas?
 </p>
 </details>
 
-<details>
+<details id="exercise-7">
 <summary>Exercise 7 — Phase ramp and the shift theorem</summary>
 <p>
 Load an image. Create a <strong>phase ramp</strong> in a different
@@ -199,7 +199,7 @@ do you observe to happen with the image?
 </p>
 </details>
 
-<details>
+<details id="exercise-8">
 <summary>Exercise 8 — Real-space convolution vs Fourier multiplication</summary>
 <p>
 Load <code>Fourier_text</code> and <code>Fourier_word</code> and use
@@ -212,7 +212,7 @@ Compare the results — they should match up to a constant factor.
 </p>
 </details>
 
-<details>
+<details id="exercise-9">
 <summary>Exercise 9 — Cross-correlation, picking and lattice averaging</summary>
 <p>
 Load a single particle protein image (<code>a</code>) and a particle
@@ -235,7 +235,7 @@ particle (not rotationally aligned).
 </details>
 
 
-<details>
+<details id="exercise-10">
 <summary>Exercise 10 — Helix synthesis</summary>
 <p>
 Load an image of a fibril cross-section into a buffer (<code>a</code>) 
@@ -245,16 +245,72 @@ and use the Amyloid function template to create a fibril projection image with t
 Alternatively, draw a cross-section with the paint brush and create a fibril from that. 
 </p>
 <p>
-Can you create a synthetic fibril image that in Fourier space resembles the Fourier transform 
+Can you create a synthetic fibril image that in Fourier space resembles the Fourier transform
 of a real fibril image, especially concerning the reflection line at 4.75 Å?
 </p>
 </details>
 
-<details>
-<summary>Exercise 11 — CTF generation with amplitude contrast and beam tilt</summary>
+<details id="exercise-11">
+<summary>Exercise 11 — CTF FIT: measuring defocus and astigmatism</summary>
+<p>
+This exercise uses the <strong>Exercise_11-CTF</strong> data set: twelve
+simulated cryo-EM micrographs (<code>Example_&hellip;.mrc</code>) available
+from the example-image loader. Each is 1024&nbsp;&times;&nbsp;1024 pixels at
+<strong>2&nbsp;Å/pixel</strong>, imaged at 300&nbsp;kV with
+C<sub>s</sub>&nbsp;=&nbsp;2.7&nbsp;mm, and each was generated with a
+<em>known</em> defocus and astigmatism (the ground truth is listed in
+<code>ctf_ground_truth.csv</code>, and the file names encode the mean
+defocus and the astigmatism, e.g. <code>Example_325nm_50nm.mrc</code>).
+The goal is to recover those values with the <strong>CTF FIT</strong> tool
+and check how close the fit gets.
+</p>
+<p>
+Load one of the examples into a buffer and press the up-arrow to compute its
+Fourier transform — you should see Thon rings in panel&nbsp;2. Confirm the
+pixel size shown under panel&nbsp;1 reads <code>2 Å</code> (double-click it
+to edit if needed); the fit relies on it for the frequency scale.
+</p>
+<p>
+Activate <strong>CTF FIT</strong> (the <code>CTF / FIT</code> icon in
+panel&nbsp;2). Enter <code>300</code> kV and <code>2.7</code> mm, select the
+input buffer, set the resolution band (start with a lower limit of about
+<code>30</code>&nbsp;Å and an upper limit of about <code>4</code>&nbsp;Å),
+and press <strong>Execute</strong>. Read the fitted <em>defocus</em> and
+<em>astigmatism</em> reported in the window and compare them with the
+ground-truth value for that image.
+</p>
+<p>
+Inspect the composite that appears on the Fourier side of the buffer: the
+right half is the fitted CTF, the top-left quarter the original transform,
+and the bottom-left quarter its astigmatism-aware radial average. In a good
+fit the rings line up continuously across the vertical midline, and the
+elliptical rings of the radial average match the raw rings above it.
+</p>
+<p>
+Now experiment:
+</p>
+<ul>
+  <li>Change the resolution band. What happens if you include only very low
+      frequencies, or push the upper limit past where the rings are still
+      visible?</li>
+  <li>Try a high-defocus example (e.g. <code>Example_5000nm_0nm.mrc</code>)
+      and a strongly astigmatic one
+      (e.g. <code>Example_300nm_200nm.mrc</code>). Which parameter is easier
+      to measure, and why?</li>
+  <li>Note that CTF FIT reports astigmatism as the full peak-to-peak
+      difference df<sub>1</sub>&nbsp;&minus;&nbsp;df<sub>2</sub>, while the
+      values it copies into the CTF SIM fields use CTF SIM's amplitude
+      (half-difference) convention. Feed the fitted values into
+      <strong>CTF SIM</strong> and confirm the simulated rings reproduce the
+      ones you measured.</li>
+</ul>
+</details>
+
+<details id="exercise-12">
+<summary>Exercise 12 — CTF SIM: generation with amplitude contrast and beam tilt</summary>
 <p>
 Choose an empty image buffer. <BR>
-Use the CTF generation tool in panel 2 to create a CTF with different defocus settings.  How does the defocus affect the CTF in Fourier space and the PSF in real space? 
+Use the <strong>CTF SIM</strong> tool (the <code>CTF / SIM</code> icon in panel 2) to create a CTF with different defocus settings.  How does the defocus affect the CTF in Fourier space and the PSF in real space?
 Then, try to generate CTFs with different values of energy spread (try 3eV for LaB6, 0.7 for FEG, 0.3 for coldFEG, 0.1 for monochromator electron sources). Try different opening angles (0.1 mrad, 0.5 mrad, 1 mrad), which correspond to how parallel the beam is in illuminating the sample.
 How do the energy spread and opening angle affect the CTF in Fourier space and the PSF in real space? How do these parameters affect the Thon rings in Fourier space, or the coherence of the PSF in real space?
 <BR><BR>
@@ -278,5 +334,27 @@ In such cases, the correct solution is a Zemlin Tableaux acquisition and correct
 </footer>
 
 </main>
+
+<script>
+// Make every section directly linkable via URL fragment (e.g. #eraser, #exercise-6).
+// If the target sits inside one or more collapsed <details>, open them and scroll to it.
+(function () {
+  function revealHash() {
+    var id = decodeURIComponent((location.hash || "").slice(1));
+    if (!id) return;
+    var el = document.getElementById(id);
+    if (!el) return;
+    var node = el;
+    while (node) {                                   // open all <details> ancestors
+      if (node.tagName === "DETAILS") node.open = true;
+      node = node.parentElement;
+    }
+    if (el.tagName === "DETAILS") el.open = true;    // and the target itself
+    el.scrollIntoView({ block: "start" });
+  }
+  window.addEventListener("DOMContentLoaded", function () { setTimeout(revealHash, 0); });
+  window.addEventListener("hashchange", revealHash);
+})();
+</script>
 </body>
 </html>
