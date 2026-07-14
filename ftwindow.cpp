@@ -1598,10 +1598,24 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
 void FtWindow::resizeEvent(QResizeEvent *)
 {
     m_loadBtn->move(8, 8);
-    m_saveBtn->move(8 + m_loadBtn->width() + 4, 8);
-    m_createBtn->move(8 + m_loadBtn->width() + 4, 8 + m_saveBtn->height() + 4);
+    m_createBtn->move(8 + m_loadBtn->width() + 4, 8);
     int hy0 = height() - height() / 5;
-    m_reloadBtn->move(8, 8 + m_loadBtn->height() + 4);
+
+    // Reload / Save / Delete sit stacked in the gutter between the two history
+    // panels (3 and 4). paintEvent keeps the thumbnail grids clear of the same
+    // gutter — both sides derive its width from historyButtonGutter().
+    {
+        int bw   = m_reloadBtn->width();
+        int bh   = m_reloadBtn->height();
+        int gap  = 6;
+        int bx   = width() / 2 - bw / 2;
+        int top  = hy0 + 2;
+        int by   = top + ((height() - top) - (3 * bh + 2 * gap)) / 2;
+        if (by < top + 4) by = top + 4;
+        m_reloadBtn->move(bx, by);
+        m_saveBtn  ->move(bx, by + (bh + gap));
+        m_deleteBtn->move(bx, by + 2 * (bh + gap));
+    }
     // When running standalone, the "Fourier Analyzer" title and the "Manual"
     // button below it occupy the top-center area, so push undo/redo below
     // both of them. When embedded, the title is hidden but the Manual

@@ -3344,7 +3344,9 @@ void FtWindow::paintEvent(QPaintEvent *)
     {
         int p3x = 0;
         int p3y = hy + 2;
-        int p3w = cx - 1;
+        // Narrowed by half the centre gutter: the Reload / Save / Delete buttons
+        // are placed there by resizeEvent, so nothing may be drawn under them.
+        int p3w = cx - 1 - historyButtonGutter() / 2;
         int p3h = height() - p3y;
 
         int cols = 8, rows = 2;
@@ -3414,7 +3416,7 @@ void FtWindow::paintEvent(QPaintEvent *)
 
     // ---- Panel 4: power spectrum history (below panel 2) – 2 rows × 8 columns -
     {
-        int p4x = cx + 2;
+        int p4x = cx + 2 + historyButtonGutter() / 2;   // clear of the centre buttons
         int p4y = hy + 2;
         int p4w = width() - p4x;
         int p4h = height() - p4y;
@@ -3478,7 +3480,7 @@ void FtWindow::paintEvent(QPaintEvent *)
 
     // ---- Cross-section profile overlay in panel 4 --------------------------------
     if (m_crossSectionActive && m_ftComputed && !m_crossSectionProfile.empty()) {
-        int p4x = cx + 2;
+        int p4x = cx + 2 + historyButtonGutter() / 2;   // clear of the centre buttons
         int p4y = hy + 2;
         int p4w = width() - p4x;
         int p4h = height() - p4y;
@@ -3640,7 +3642,9 @@ void FtWindow::paintEvent(QPaintEvent *)
         && m_crossSectionValid.size() == m_crossSectionPhaseProfile.size()) {
         int p3x = 0;
         int p3y = hy + 2;
-        int p3w = cx - 1;
+        // Narrowed by half the centre gutter: the Reload / Save / Delete buttons
+        // are placed there by resizeEvent, so nothing may be drawn under them.
+        int p3w = cx - 1 - historyButtonGutter() / 2;
         int p3h = height() - p3y;
 
         int rw = static_cast<int>(p3w * 0.80);
@@ -3795,7 +3799,7 @@ void FtWindow::paintEvent(QPaintEvent *)
 
     // ---- CTF 1D profile overlay in panel 4 --------------------------------------
     if (m_ctfActive && !m_ctfProfile.empty()) {
-        int p4x = cx + 2;
+        int p4x = cx + 2 + historyButtonGutter() / 2;   // clear of the centre buttons
         int p4y = hy + 2;
         int p4w = width() - p4x;
         int p4h = height() - p4y;
@@ -3956,7 +3960,9 @@ void FtWindow::paintEvent(QPaintEvent *)
     if (m_ctfActive && !m_ctfPhaseProfile.empty()) {
         int p3x = 0;
         int p3y = hy + 2;
-        int p3w = cx - 1;
+        // Narrowed by half the centre gutter: the Reload / Save / Delete buttons
+        // are placed there by resizeEvent, so nothing may be drawn under them.
+        int p3w = cx - 1 - historyButtonGutter() / 2;
         int p3h = height() - p3y;
 
         int rw = static_cast<int>(p3w * 0.80);

@@ -392,6 +392,12 @@ private:
     // m_fftData (already centred), avoiding a fresh forward FFT. Equivalent to
     // computePowerSpecMasked(m_image) whenever m_ftComputed is true.
     QImage powerSpecFromCurrentFFT() const;
+    // Width of the vertical strip at the window centre that holds the Reload /
+    // Save / Delete buttons. resizeEvent centres the buttons in it; paintEvent
+    // keeps the panel-3 and panel-4 thumbnail grids out of it.
+    int historyButtonGutter() const
+    { return (m_reloadBtn ? m_reloadBtn->width() : 130) + 16; }
+
     void saveHistory();
     void restoreHistory();
     // Load slot `i` from m_history[i].path (full pixel data + power spectrum).

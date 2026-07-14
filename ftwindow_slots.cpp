@@ -512,6 +512,61 @@ void FtWindow::onReloadImage()
 #endif // !__EMSCRIPTEN__
 }
 
+// Clear the active buffer (image, raw pixels, FFT, power spectrum) after the
+// user confirms. The file on disk is never touched — only the slot is emptied,
+// and an undo snapshot is taken first so the buffer can be brought back.
+void FtWindow::onDeleteImage()
+{
+    if (m_activeSlot < 0 || m_activeSlot >= HISTORY_SLOTS) return;
+    if (!m_history[m_activeSlot].occupied && !m_history[m_activeSlot].deferred
+        && m_image.isNull())
+        return;   // nothing in this buffer to delete
+
+    const int slot = m_activeSlot;
+    const QString label = QString(QChar('a' + slot));
+
+    auto *box = new QMessageBox(this);
+    box->setAttribute(Qt::WA_DeleteOnClose);
+    box->setIcon(QMessageBox::Warning);
+    box->setWindowTitle(QStringLiteral("Delete image"));
+    box->setText(QStringLiteral("Delete the image in buffer %1?").arg(label));
+    box->setInformativeText(
+        QStringLiteral("The buffer is emptied. The file on disk is not deleted, "
+                       "and Undo brings the buffer back."));
+    QPushButton *cancelBtn = box->addButton(QStringLiteral("Cancel"), QMessageBox::RejectRole);
+    QPushButton *deleteBtn = box->addButton(QStringLiteral("Delete"), QMessageBox::DestructiveRole);
+    box->setDefaultButton(cancelBtn);
+
+    connect(box, &QMessageBox::finished, this, [this, box, deleteBtn, slot]() {
+        if (box->clickedButton() != deleteBtn) return;
+        if (slot != m_activeSlot) return;   // buffer switched while the dialog was open
+
+        storeUndoSnapshot();
+
+        m_history[slot] = HistoryEntry();
+
+        m_image = QImage();
+        m_imagePath.clear();
+        m_imageRawPixels.clear();
+        m_imageRawPixels.shrink_to_fit();
+        m_imageMinVal = m_imageMaxVal = 0;
+        m_imageDispMin = m_imageDispMax = 0;
+        m_pixelSize = 1.0;
+        m_fftData.clear();
+        m_fftData.shrink_to_fit();
+        m_ftComputed = false;
+
+        m_modeBtn->hide();
+        m_maskBtnVisible = false;
+
+        saveHistory();
+        updateUndoRedoButtons();
+        update();
+    });
+
+    box->open();
+}
+
 void FtWindow::onCycleMode()
 {
     m_displayMode = (m_displayMode + 1) % 4;
