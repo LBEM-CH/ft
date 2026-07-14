@@ -113,10 +113,16 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_createBtn->setFixedSize(130, 30);
     connect(m_createBtn, &QPushButton::clicked, this, &FtWindow::onCreateImage);
 
-    // Reload button
+    // Reload / Save / Delete live in the gutter between the two history panels
+    // (3 and 4), since they all act on the buffer whose thumbnails sit there.
     m_reloadBtn = new QPushButton("Reload image", this);
     m_reloadBtn->setFixedSize(130, 30);
     connect(m_reloadBtn, &QPushButton::clicked, this, &FtWindow::onReloadImage);
+
+    // Delete button (clears the active buffer after a confirmation dialog)
+    m_deleteBtn = new QPushButton("Delete image", this);
+    m_deleteBtn->setFixedSize(130, 30);
+    connect(m_deleteBtn, &QPushButton::clicked, this, &FtWindow::onDeleteImage);
 
     // Undo / Redo buttons
     m_undoBtn = new QPushButton("Undo", this);
@@ -146,7 +152,7 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     // Any top-level button click should dismiss the "New image" popup
     // (these buttons intercept mouse events, so mousePressEvent does not run).
     auto dismissNewImg = [this]() { if (m_newImageActive) onNewImageCancel(); };
-    for (QPushButton *b : {m_loadBtn, m_saveBtn, m_reloadBtn,
+    for (QPushButton *b : {m_loadBtn, m_saveBtn, m_reloadBtn, m_deleteBtn,
                            m_undoBtn, m_redoBtn, m_fullscreenBtn, m_modeBtn}) {
         connect(b, &QPushButton::pressed, this, dismissNewImg);
     }
@@ -1529,6 +1535,11 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
             m_zoom[0].reset(m_image.width(), m_image.height());
             computeFFT();
         }
+    } else if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS
+               && m_history[m_activeSlot].deferred) {
+        // The slot that was active last time was skipped by restoreHistory
+        // (large image, or file on a network volume). Keep it selected but
+        // leave the panels empty — clicking it loads it.
     } else {
         m_activeSlot = -1;
     }
@@ -1587,10 +1598,24 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
 void FtWindow::resizeEvent(QResizeEvent *)
 {
     m_loadBtn->move(8, 8);
-    m_saveBtn->move(8 + m_loadBtn->width() + 4, 8);
-    m_createBtn->move(8 + m_loadBtn->width() + 4, 8 + m_saveBtn->height() + 4);
+    m_createBtn->move(8 + m_loadBtn->width() + 4, 8);
     int hy0 = height() - height() / 5;
-    m_reloadBtn->move(8, 8 + m_loadBtn->height() + 4);
+
+    // Reload / Save / Delete sit stacked in the gutter between the two history
+    // panels (3 and 4). paintEvent keeps the thumbnail grids clear of the same
+    // gutter — both sides derive its width from historyButtonGutter().
+    {
+        int bw   = m_reloadBtn->width();
+        int bh   = m_reloadBtn->height();
+        int gap  = 6;
+        int bx   = width() / 2 - bw / 2;
+        int top  = hy0 + 2;
+        int by   = top + ((height() - top) - (3 * bh + 2 * gap)) / 2;
+        if (by < top + 4) by = top + 4;
+        m_reloadBtn->move(bx, by);
+        m_saveBtn  ->move(bx, by + (bh + gap));
+        m_deleteBtn->move(bx, by + 2 * (bh + gap));
+    }
     // When running standalone, the "Fourier Analyzer" title and the "Manual"
     // button below it occupy the top-center area, so push undo/redo below
     // both of them. When embedded, the title is hidden but the Manual

@@ -24,6 +24,51 @@ MrcResult loadMrc(const QString &path)
     return loadMrcFromData(fileData);
 }
 
+bool readMrcDimensions(const QString &path, int &nx, int &ny)
+{
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly))
+        return false;
+
+    QByteArray hdr = f.read(1024);
+    f.close();
+    if (hdr.size() < 1024)
+        return false;
+
+    // Byte-order detection, same rules as loadMrcFromData().
+    bool needSwap = false;
+    bool hasMapStamp = (hdr[208] == 'M' && hdr[209] == 'A' &&
+                        hdr[210] == 'P' && hdr[211] == ' ');
+    if (hasMapStamp) {
+        quint8 machst0 = (quint8)hdr[212];
+#if Q_BYTE_ORDER == Q_LITTLE_ENDIAN
+        needSwap = (machst0 == 0x11);
+#else
+        needSwap = (machst0 == 0x44);
+#endif
+    } else {
+        qint32 rawMode;
+        memcpy(&rawMode, hdr.constData() + 12, 4);
+        needSwap = (rawMode < 0 || rawMode > 16);
+    }
+
+    auto readI32 = [&](int offset) -> qint32 {
+        qint32 v;
+        memcpy(&v, hdr.constData() + offset, 4);
+        if (needSwap) v = qbswap(v);
+        return v;
+    };
+
+    qint32 w = readI32(0);
+    qint32 h = readI32(4);
+    if (w <= 0 || h <= 0)
+        return false;
+
+    nx = w;
+    ny = h;
+    return true;
+}
+
 MrcResult loadMrcFromData(const QByteArray &fileData)
 {
     MrcResult result;
