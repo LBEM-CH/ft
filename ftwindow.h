@@ -184,9 +184,7 @@ private:
     void onCtfFitExecuteImpl();
     void onPhaseRampComputeImpl();
     void onAmyloidComputeImpl();
-#ifdef __EMSCRIPTEN__
     void fetchAndLoadImage(const QString &relativePath);
-#endif
     void padImageToSquare();
     void extractImageData();
     void computeFFT(bool keepZoom = false);
