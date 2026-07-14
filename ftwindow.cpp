@@ -1577,11 +1577,9 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     if (m_activeSlot < 0)
         m_activeSlot = 0;
 
-#ifdef __EMSCRIPTEN__
-    // The web build has no session restore, so the panels a–p always start
-    // empty. In that case auto-load a default example into buffer a so the
-    // user has something to work with immediately. (Desktop restores its
-    // previous session above and must not overwrite it, so this is WASM-only.)
+    // If no slot is occupied (fresh launch or empty session restore),
+    // auto-load a default example into buffer a so the user has something
+    // to work with immediately.
     bool anySlotOccupied = false;
     for (int i = 0; i < HISTORY_SLOTS; i++)
         if (m_history[i].occupied) { anySlotOccupied = true; break; }
@@ -1589,7 +1587,6 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
         m_activeSlot = 0;   // buffer a
         fetchAndLoadImage(QStringLiteral("Exercise_01-Photos/lorenz_1999.png"));
     }
-#endif
 }
 
 FtWindow::~FtWindow()
