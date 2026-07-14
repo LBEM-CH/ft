@@ -110,6 +110,7 @@ private slots:
     void onCreateImage();
     void onCreateImageSized(int sz);
     void onReloadImage();
+    void onDeleteImage();
     void onCycleMode();
     void onToggleFullscreen();
 public:
@@ -254,6 +255,7 @@ private:
     QPushButton *m_saveBtn   = nullptr;
     QPushButton *m_createBtn = nullptr;
     QPushButton *m_reloadBtn = nullptr;
+    QPushButton *m_deleteBtn = nullptr;
     QPushButton *m_undoBtn   = nullptr;
     QPushButton *m_redoBtn   = nullptr;
     QPushButton *m_fullscreenBtn = nullptr;
@@ -345,6 +347,12 @@ private:
         double  minVal = 0, maxVal = 0;
         double  pixelSize = 1.0;
         bool    occupied = false;
+        // Set when a stored session slot was deliberately NOT loaded at startup
+        // (image too large, or the file lives on a network volume). Only
+        // meaningful while occupied == false: the slot then holds nothing but
+        // its path, is drawn as a placeholder, and is loaded from disk on first
+        // click. See loadHistorySlotFromDisk() / restoreHistory().
+        bool    deferred = false;
         // Cached forward FFT of this slot's image, so re-activating a slot
         // restores it instead of recomputing (the expensive part of a buffer
         // switch). Saved on leaving a slot and restored on entering one; empty
@@ -386,6 +394,10 @@ private:
     QImage powerSpecFromCurrentFFT() const;
     void saveHistory();
     void restoreHistory();
+    // Load slot `i` from m_history[i].path (full pixel data + power spectrum).
+    // Used both by restoreHistory() and to realise a deferred slot when the
+    // user clicks it. Returns false if the file is gone or unreadable.
+    bool loadHistorySlotFromDisk(int i);
     BufferSnapshot captureCurrentState() const;
     void applySnapshot(const BufferSnapshot &snapshot, bool keepZoom = false);
     void storeUndoSnapshot();
