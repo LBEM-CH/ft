@@ -3344,7 +3344,9 @@ void FtWindow::paintEvent(QPaintEvent *)
     {
         int p3x = 0;
         int p3y = hy + 2;
-        int p3w = cx - 1;
+        // Narrowed by half the centre gutter: the Reload / Save / Delete buttons
+        // are placed there by resizeEvent, so nothing may be drawn under them.
+        int p3w = cx - 1 - historyButtonGutter() / 2;
         int p3h = height() - p3y;
 
         int cols = 8, rows = 2;
@@ -3381,9 +3383,15 @@ void FtWindow::paintEvent(QPaintEvent *)
             }
 
             bool isActive = (i == m_activeSlot);
+            // Slot remembered from the last session but deliberately not loaded
+            // at startup (see restoreHistory): drawn as a dashed placeholder,
+            // filled in as soon as the user clicks it.
+            bool isDeferred = !m_history[i].occupied && m_history[i].deferred;
 
             if (isActive) {
                 p.setPen(QPen(QColor(120, 180, 255), 8));
+            } else if (isDeferred) {
+                p.setPen(QPen(QColor(160, 160, 60), 1, Qt::DashLine));
             } else {
                 p.setPen(QPen(QColor(255, 255, 0), 1));
             }
@@ -3398,13 +3406,17 @@ void FtWindow::paintEvent(QPaintEvent *)
                     p.drawImage(inner, m_image);
                 else
                     p.drawImage(inner, m_history[i].image);
+            } else if (isDeferred) {
+                QFont df; df.setPixelSize(std::max(8, labelFontHist - 1)); p.setFont(df);
+                p.setPen(QColor(190, 190, 90));
+                p.drawText(r, Qt::AlignCenter, QStringLiteral("click\nto load"));
             }
         }
     }
 
     // ---- Panel 4: power spectrum history (below panel 2) – 2 rows × 8 columns -
     {
-        int p4x = cx + 2;
+        int p4x = cx + 2 + historyButtonGutter() / 2;   // clear of the centre buttons
         int p4y = hy + 2;
         int p4w = width() - p4x;
         int p4h = height() - p4y;
@@ -3443,9 +3455,12 @@ void FtWindow::paintEvent(QPaintEvent *)
             }
 
             bool isActive = (i == m_activeSlot);
+            bool isDeferred = !m_history[i].occupied && m_history[i].deferred;
 
             if (isActive) {
                 p.setPen(QPen(QColor(120, 180, 255), 8));
+            } else if (isDeferred) {
+                p.setPen(QPen(QColor(160, 160, 60), 1, Qt::DashLine));
             } else {
                 p.setPen(QPen(QColor(255, 255, 0), 1));
             }
@@ -3465,7 +3480,7 @@ void FtWindow::paintEvent(QPaintEvent *)
 
     // ---- Cross-section profile overlay in panel 4 --------------------------------
     if (m_crossSectionActive && m_ftComputed && !m_crossSectionProfile.empty()) {
-        int p4x = cx + 2;
+        int p4x = cx + 2 + historyButtonGutter() / 2;   // clear of the centre buttons
         int p4y = hy + 2;
         int p4w = width() - p4x;
         int p4h = height() - p4y;
@@ -3627,7 +3642,9 @@ void FtWindow::paintEvent(QPaintEvent *)
         && m_crossSectionValid.size() == m_crossSectionPhaseProfile.size()) {
         int p3x = 0;
         int p3y = hy + 2;
-        int p3w = cx - 1;
+        // Narrowed by half the centre gutter: the Reload / Save / Delete buttons
+        // are placed there by resizeEvent, so nothing may be drawn under them.
+        int p3w = cx - 1 - historyButtonGutter() / 2;
         int p3h = height() - p3y;
 
         int rw = static_cast<int>(p3w * 0.80);
@@ -3782,7 +3799,7 @@ void FtWindow::paintEvent(QPaintEvent *)
 
     // ---- CTF 1D profile overlay in panel 4 --------------------------------------
     if (m_ctfActive && !m_ctfProfile.empty()) {
-        int p4x = cx + 2;
+        int p4x = cx + 2 + historyButtonGutter() / 2;   // clear of the centre buttons
         int p4y = hy + 2;
         int p4w = width() - p4x;
         int p4h = height() - p4y;
@@ -3943,7 +3960,9 @@ void FtWindow::paintEvent(QPaintEvent *)
     if (m_ctfActive && !m_ctfPhaseProfile.empty()) {
         int p3x = 0;
         int p3y = hy + 2;
-        int p3w = cx - 1;
+        // Narrowed by half the centre gutter: the Reload / Save / Delete buttons
+        // are placed there by resizeEvent, so nothing may be drawn under them.
+        int p3w = cx - 1 - historyButtonGutter() / 2;
         int p3h = height() - p3y;
 
         int rw = static_cast<int>(p3w * 0.80);

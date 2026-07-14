@@ -19,4 +19,9 @@ struct MrcResult {
 MrcResult loadMrc(const QString &path);
 MrcResult loadMrcFromData(const QByteArray &fileData);
 
+// Read only the 1024-byte MRC header to obtain the image dimensions, without
+// reading the (potentially huge) pixel data. Returns false if the file cannot
+// be opened or does not carry a usable header.
+bool readMrcDimensions(const QString &path, int &nx, int &ny);
+
 #endif // MRCLOADER_H

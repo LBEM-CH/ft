@@ -1,5 +1,10 @@
 #include "ftwindow_common.h"
 #include <cstdlib>   // std::malloc / std::free (allocation preflight probe)
+#include <QFileInfo>
+#include <QImageReader>
+#ifndef __EMSCRIPTEN__
+#include <QStorageInfo>   // network-volume check for the startup history restore
+#endif
 
 // Probe whether `bytes` can currently be allocated. The WASM build links with
 // ABORTING_MALLOC=0, so a failed malloc returns null instead of aborting the
@@ -505,6 +510,61 @@ void FtWindow::onReloadImage()
     }
     update();
 #endif // !__EMSCRIPTEN__
+}
+
+// Clear the active buffer (image, raw pixels, FFT, power spectrum) after the
+// user confirms. The file on disk is never touched — only the slot is emptied,
+// and an undo snapshot is taken first so the buffer can be brought back.
+void FtWindow::onDeleteImage()
+{
+    if (m_activeSlot < 0 || m_activeSlot >= HISTORY_SLOTS) return;
+    if (!m_history[m_activeSlot].occupied && !m_history[m_activeSlot].deferred
+        && m_image.isNull())
+        return;   // nothing in this buffer to delete
+
+    const int slot = m_activeSlot;
+    const QString label = QString(QChar('a' + slot));
+
+    auto *box = new QMessageBox(this);
+    box->setAttribute(Qt::WA_DeleteOnClose);
+    box->setIcon(QMessageBox::Warning);
+    box->setWindowTitle(QStringLiteral("Delete image"));
+    box->setText(QStringLiteral("Delete the image in buffer %1?").arg(label));
+    box->setInformativeText(
+        QStringLiteral("The buffer is emptied. The file on disk is not deleted, "
+                       "and Undo brings the buffer back."));
+    QPushButton *cancelBtn = box->addButton(QStringLiteral("Cancel"), QMessageBox::RejectRole);
+    QPushButton *deleteBtn = box->addButton(QStringLiteral("Delete"), QMessageBox::DestructiveRole);
+    box->setDefaultButton(cancelBtn);
+
+    connect(box, &QMessageBox::finished, this, [this, box, deleteBtn, slot]() {
+        if (box->clickedButton() != deleteBtn) return;
+        if (slot != m_activeSlot) return;   // buffer switched while the dialog was open
+
+        storeUndoSnapshot();
+
+        m_history[slot] = HistoryEntry();
+
+        m_image = QImage();
+        m_imagePath.clear();
+        m_imageRawPixels.clear();
+        m_imageRawPixels.shrink_to_fit();
+        m_imageMinVal = m_imageMaxVal = 0;
+        m_imageDispMin = m_imageDispMax = 0;
+        m_pixelSize = 1.0;
+        m_fftData.clear();
+        m_fftData.shrink_to_fit();
+        m_ftComputed = false;
+
+        m_modeBtn->hide();
+        m_maskBtnVisible = false;
+
+        saveHistory();
+        updateUndoRedoButtons();
+        update();
+    });
+
+    box->open();
 }
 
 void FtWindow::onCycleMode()
@@ -1790,18 +1850,167 @@ QImage FtWindow::powerSpecFromCurrentFFT() const
     return floatToImage(power, N);
 }
 
+#ifndef __EMSCRIPTEN__
+// Startup restore budget: a history slot is only loaded while the app opens if
+// its image is smaller than this in both dimensions. Larger images are read,
+// converted, padded and forward-transformed in full, which is exactly what made
+// opening slow — they become deferred placeholders instead.
+static constexpr int kHistoryRestoreMaxDim = 1200;
+
+// True when `path` sits on a volume that is not a network share. Reading a slot
+// from a mounted network drive can block for seconds (or forever, if the server
+// is gone), so those slots are never touched during startup.
+static bool isOnLocalVolume(const QString &path)
+{
+    const QStorageInfo storage(QFileInfo(path).absoluteFilePath());
+    if (!storage.isValid() || !storage.isReady())
+        return false;
+
+    // UNC / SMB style device names ("//server/share", "\\server\share").
+    const QString device = QString::fromLatin1(storage.device());
+    if (device.startsWith(QLatin1String("//")) || device.startsWith(QLatin1String("\\\\")))
+        return false;
+
+    // Network filesystem types across macOS / Linux / Windows. Matched as
+    // substrings so variants like "fuse.sshfs" or "nfs4" are covered too.
+    static const char *const kNetworkFs[] = {
+        "nfs", "smb", "cifs", "afp", "webdav", "davfs", "sshfs",
+        "ftp", "ncpfs", "9p", "afs", "gvfs", "fuseblk.network"
+    };
+    const QString fsType = QString::fromLatin1(storage.fileSystemType()).toLower();
+    for (const char *fs : kNetworkFs)
+        if (fsType.contains(QLatin1String(fs)))
+            return false;
+
+    return true;
+}
+
+// Read just the image dimensions of `path` — the MRC header, or the image
+// header via QImageReader — without decoding any pixel data.
+static bool readImageDimensions(const QString &path, int &w, int &h)
+{
+    if (path.endsWith(QLatin1String(".mrc"), Qt::CaseInsensitive))
+        return readMrcDimensions(path, w, h);
+
+    QImageReader reader(path);
+    const QSize size = reader.size();
+    if (!size.isValid() || size.isEmpty())
+        return false;
+    w = size.width();
+    h = size.height();
+    return true;
+}
+
+// Decide whether a stored history slot is cheap enough to load while the app is
+// opening. On refusal, `reason` explains why (for the log).
+static bool isRestoreCheapAtStartup(const QString &path, QString *reason)
+{
+    if (!isOnLocalVolume(path)) {
+        if (reason) *reason = QStringLiteral("not on a local volume");
+        return false;
+    }
+
+    int w = 0, h = 0;
+    if (!readImageDimensions(path, w, h)) {
+        if (reason) *reason = QStringLiteral("dimensions unreadable");
+        return false;
+    }
+    if (w >= kHistoryRestoreMaxDim || h >= kHistoryRestoreMaxDim) {
+        if (reason)
+            *reason = QStringLiteral("%1x%2 is too large").arg(w).arg(h);
+        return false;
+    }
+    return true;
+}
+#endif // !__EMSCRIPTEN__
+
 void FtWindow::saveHistory()
 {
 #ifndef __EMSCRIPTEN__
     QSettings settings("ft", "ft");
     for (int i = 0; i < HISTORY_SLOTS; i++) {
         QString key = QString("history/%1").arg(i);
-        if (m_history[i].occupied)
+        // Deferred slots hold no data but must keep their path in the session,
+        // otherwise skipping them at startup would silently delete them.
+        if (m_history[i].occupied || (m_history[i].deferred && !m_history[i].path.isEmpty()))
             settings.setValue(key, m_history[i].path);
         else
             settings.remove(key);
     }
     settings.setValue("activeSlot", m_activeSlot);
+#endif
+}
+
+bool FtWindow::loadHistorySlotFromDisk(int i)
+{
+#ifdef __EMSCRIPTEN__
+    Q_UNUSED(i);
+    return false;
+#else
+    if (i < 0 || i >= HISTORY_SLOTS) return false;
+
+    const QString path = m_history[i].path;
+    if (path.isEmpty() || !QFile::exists(path)) {
+        m_history[i].occupied = false;
+        m_history[i].deferred = false;
+        m_history[i].path.clear();
+        return false;
+    }
+
+    QImage img;
+    std::vector<double> rawPixels;
+    double minVal = 0, maxVal = 0, pixelSize = 1.0;
+
+    if (path.endsWith(".mrc", Qt::CaseInsensitive)) {
+        MrcResult r = loadMrc(path);
+        img       = r.image;
+        rawPixels = std::move(r.rawPixels);
+        minVal    = r.minVal;
+        maxVal    = r.maxVal;
+        pixelSize = r.pixelSize;
+    } else {
+        img = QImage(path);
+        if (!img.isNull()) {
+            QImage gray = img.convertToFormat(QImage::Format_Grayscale8);
+            int w = gray.width(), h = gray.height();
+            rawPixels.resize((size_t)w * h);
+            for (int y = 0; y < h; y++) {
+                const uchar *row = gray.constScanLine(y);
+                for (int x = 0; x < w; x++)
+                    rawPixels[y * w + x] = row[x];
+            }
+            minVal = *std::min_element(rawPixels.begin(), rawPixels.end());
+            maxVal = *std::max_element(rawPixels.begin(), rawPixels.end());
+        }
+    }
+
+    if (img.isNull()) {
+        m_history[i].occupied = false;
+        m_history[i].deferred = false;
+        return false;
+    }
+
+    // Pad to square using the existing padImageToSquare() helper
+    m_image          = img;
+    m_imageRawPixels = std::move(rawPixels);
+    m_imageMinVal    = minVal;
+    m_imageMaxVal    = maxVal;
+    padImageToSquare();
+    img       = m_image;
+    rawPixels = std::move(m_imageRawPixels);
+    minVal    = m_imageMinVal;
+    maxVal    = m_imageMaxVal;
+
+    m_history[i].image        = img;
+    m_history[i].path         = path;
+    m_history[i].rawPixels    = std::move(rawPixels);
+    m_history[i].minVal       = minVal;
+    m_history[i].maxVal       = maxVal;
+    m_history[i].pixelSize    = pixelSize;
+    m_history[i].powerSpecImg = computePowerSpecMasked(img);
+    m_history[i].occupied     = true;
+    m_history[i].deferred     = false;
+    return true;
 #endif
 }
 
@@ -1815,64 +2024,27 @@ void FtWindow::restoreHistory()
     for (int i = 0; i < HISTORY_SLOTS; i++) {
         QString key = QString("history/%1").arg(i);
         QString path = settings.value(key).toString();
+        m_history[i].occupied = false;
+        m_history[i].deferred = false;
         if (path.isEmpty() || !QFile::exists(path)) {
-            m_history[i].occupied = false;
+            m_history[i].path.clear();
             continue;
         }
 
-        // qDebug() << "Restoring history slot" << i << ":" << path;
+        m_history[i].path = path;
 
-        QImage img;
-        std::vector<double> rawPixels;
-        double minVal = 0, maxVal = 0, pixelSize = 1.0;
-
-        if (path.endsWith(".mrc", Qt::CaseInsensitive)) {
-            MrcResult r = loadMrc(path);
-            img       = r.image;
-            rawPixels = std::move(r.rawPixels);
-            minVal    = r.minVal;
-            maxVal    = r.maxVal;
-            pixelSize = r.pixelSize;
-        } else {
-            img = QImage(path);
-            if (!img.isNull()) {
-                QImage gray = img.convertToFormat(QImage::Format_Grayscale8);
-                int w = gray.width(), h = gray.height();
-                rawPixels.resize((size_t)w * h);
-                for (int y = 0; y < h; y++) {
-                    const uchar *row = gray.constScanLine(y);
-                    for (int x = 0; x < w; x++)
-                        rawPixels[y * w + x] = row[x];
-                }
-                minVal = *std::min_element(rawPixels.begin(), rawPixels.end());
-                maxVal = *std::max_element(rawPixels.begin(), rawPixels.end());
-            }
-        }
-
-        if (img.isNull()) {
-            m_history[i].occupied = false;
+        // Restoring a slot costs a full file read plus a forward FFT, so at
+        // startup only cheap slots are loaded: small images that live on a
+        // local disk. Everything else is kept as a deferred placeholder and
+        // loaded the moment the user clicks it.
+        QString reason;
+        if (!isRestoreCheapAtStartup(path, &reason)) {
+            qDebug() << "History slot" << i << "deferred (" << reason << "):" << path;
+            m_history[i].deferred = true;
             continue;
         }
 
-        // Pad to square using the existing padImageToSquare() helper
-        m_image          = img;
-        m_imageRawPixels = std::move(rawPixels);
-        m_imageMinVal    = minVal;
-        m_imageMaxVal    = maxVal;
-        padImageToSquare();
-        img       = m_image;
-        rawPixels = std::move(m_imageRawPixels);
-        minVal    = m_imageMinVal;
-        maxVal    = m_imageMaxVal;
-
-        m_history[i].image        = img;
-        m_history[i].path         = path;
-        m_history[i].rawPixels    = std::move(rawPixels);
-        m_history[i].minVal       = minVal;
-        m_history[i].maxVal       = maxVal;
-        m_history[i].pixelSize    = pixelSize;
-        m_history[i].powerSpecImg = computePowerSpecMasked(img);
-        m_history[i].occupied     = true;
+        loadHistorySlotFromDisk(i);
     }
 #endif // !__EMSCRIPTEN__
 }

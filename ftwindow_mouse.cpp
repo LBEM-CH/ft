@@ -558,7 +558,13 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
     if (clickedSlot >= 0) {
         int i = clickedSlot;
         {
-            if (i == m_activeSlot) return;   // already active
+            // A slot the startup restore skipped (large image, or file on a
+            // network volume) still holds its path. Clicking it is the moment we
+            // pay for the load — including when it is already the active slot,
+            // which is why the "already active" early-out comes after this test.
+            const bool needsDiskLoad = !m_history[i].occupied && m_history[i].deferred;
+
+            if (i == m_activeSlot && !needsDiskLoad) return;   // already active
 
             // Save current active image back to its slot, caching its forward
             // FFT so returning here won't recompute it. The power-spectrum
@@ -584,6 +590,16 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
                     cur.powerSpecImg = computePowerSpecMasked(m_image);
                 }
                 cur.occupied     = true;
+                cur.deferred     = false;
+            }
+
+            // Realise a deferred slot now that its data is actually wanted.
+            // This reads the file and computes its power spectrum, so it can
+            // take a while for exactly the images that were skipped at startup.
+            if (needsDiskLoad) {
+                QApplication::setOverrideCursor(Qt::WaitCursor);
+                loadHistorySlotFromDisk(i);
+                QApplication::restoreOverrideCursor();
             }
 
             // Activate the clicked slot
