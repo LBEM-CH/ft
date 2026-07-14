@@ -5,6 +5,72 @@
 // ---------------------------------------------------------------------------
 static QString g_exampleImagesDir;
 
+// ---------------------------------------------------------------------------
+//  Checkbox styling
+//
+//  A bare "color: white" stylesheet leaves the checkbox *indicator* to the
+//  native platform style. On Windows (including the WASM build) that indicator
+//  renders as a black box with no visible checkmark against our dark panels,
+//  so the user cannot tell whether the box is checked. Styling the indicator
+//  explicitly makes it render identically on every platform, including WASM:
+//  the box stays white in both states, and when checked a black checkmark is
+//  overlaid on it.
+//
+//  The checkmark is supplied via "image: url(<path>)". Qt's stylesheet url()
+//  loads a file that QPixmap can open — it does NOT accept "data:" URIs (an
+//  inline data URI silently renders nothing on every platform). So we decode
+//  an embedded PNG to a temp file once and point the stylesheet at that path;
+//  this needs no .qrc/resource and works on native and WASM (MEMFS) alike.
+// ---------------------------------------------------------------------------
+static QString checkMarkPngPath()
+{
+    // 16x16 black checkmark on a transparent background.
+    static const char kCheckPngB64[] =
+        "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAA4ElEQVR4nL3S"
+        "O04DMRAG4C/ZSDTQIE5ADwVSKLlETpBzpMoJaGhRCmrECWgpkXKGtEAD7ZIU"
+        "mUHGbFaAECNZtmc8/8M2/xwDDP8CqPkN8wCHOC9y345RzAu0mEfui51kKiPl"
+        "TrGOsYhzn6x0SUqGU7xG80MXWS72oylvu4nxGM3POFa9RiIdYYmbyO/FfBnN"
+        "LSaVrY9Ng/vC43XUJkXuKnIjVaTkCzzhPRpusYr1EgdB1Pl86WeMlwJkjTec"
+        "VOc6I6WNbS8rAaa7pPeBnOEOs9j/6OvWMnu/7K7isKi1fQAbxB0n6vwBzzMA"
+        "AAAASUVORK5CYII=";
+    static QString path;
+    if (!path.isEmpty())
+        return path;
+    const QByteArray png = QByteArray::fromBase64(QByteArray(kCheckPngB64));
+    const QString p = QDir::tempPath() + "/ft_checkmark.png";
+    QFile f(p);
+    if (f.open(QIODevice::WriteOnly)) {
+        f.write(png);
+        f.close();
+        path = p;
+    }
+    return path;
+}
+
+//  Pass fontPx > 0 to also pin the label font size (used from resizeEvent,
+//  which re-applies checkbox styles on every resize — WASM fires one at
+//  startup — and must keep the indicator rules, or the box falls back to the
+//  invisible native rendering).
+static QString checkBoxStyle(const QString &textColor, int fontPx = -1)
+{
+    const QString check = checkMarkPngPath();
+    const QString font = fontPx > 0
+        ? QStringLiteral("font-size: %1px;").arg(fontPx)
+        : QString();
+    return QStringLiteral(
+               "QCheckBox { color: %1; %3 }"
+               "QCheckBox::indicator {"
+               "  width: 16px; height: 16px;"
+               "  border: 1px solid #888; border-radius: 3px;"
+               "  background: white;"
+               "}"
+               "QCheckBox::indicator:checked {"
+               "  background: white; border: 1px solid #888;"
+               "  image: url(\"%2\");"
+               "}")
+        .arg(textColor, check, font);
+}
+
 void FtWindow::setExampleImagesDir(const QString &dir)
 {
     g_exampleImagesDir = dir;
@@ -24,6 +90,8 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
 
     setMouseTracking(true);
     grabGesture(Qt::PinchGesture);
+
+    buildToolGroups();
 
     QScreen *screen = QApplication::primaryScreen();
     QRect available = screen->availableGeometry();
@@ -95,7 +163,7 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_smoothEdit->hide();
 
     m_bandEraseOutside = new QCheckBox("Erase pixels outside of band", this);
-    m_bandEraseOutside->setStyleSheet("color: white;");
+    m_bandEraseOutside->setStyleSheet(checkBoxStyle("white"));
     m_bandEraseOutside->setChecked(true);
     m_bandEraseOutside->setToolTip(
         "Checked: keep only Fourier pixels inside the ring (band-pass);\n"
@@ -157,7 +225,7 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     });
 
     m_lineEraseOutsideBtn = new QCheckBox("Erase pixels outside of line", this);
-    m_lineEraseOutsideBtn->setStyleSheet("color: white;");
+    m_lineEraseOutsideBtn->setStyleSheet(checkBoxStyle("white"));
     m_lineEraseOutsideBtn->setChecked(true);
     m_lineEraseOutsideBtn->setToolTip(
         "Checked: keep only the line/stripe and zero everything else\n"
@@ -240,7 +308,7 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_latticeDotDiamEdit->hide();
 
     m_latticeEraseOutside = new QCheckBox("Erase pixels outside of lattice", this);
-    m_latticeEraseOutside->setStyleSheet("color: white;");
+    m_latticeEraseOutside->setStyleSheet(checkBoxStyle("white"));
     m_latticeEraseOutside->setChecked(true);
     m_latticeEraseOutside->setToolTip(
         "Checked: keep only the lattice spots and zero everything else\n"
@@ -405,7 +473,7 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_ftCropCombo->hide();
 
     m_ftCropKeepSizeBtn = new QCheckBox("Keep original size", this);
-    m_ftCropKeepSizeBtn->setStyleSheet("color: white;");
+    m_ftCropKeepSizeBtn->setStyleSheet(checkBoxStyle("white"));
     m_ftCropKeepSizeBtn->setChecked(true);
     m_ftCropKeepSizeBtn->setToolTip(
         "Checked: the FFT array stays at its original dimensions and\n"
@@ -572,6 +640,51 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
                           m_ctfAmpContrastEdit, m_ctfBeamtiltEdit,
                           m_ctfBeamtiltDirEdit })
         connect(e, &QLineEdit::returnPressed, this, &FtWindow::onCtfCompute);
+
+    // CTF FIT parameter widgets (only kV, Cs and a target buffer; the defocus,
+    // astigmatism and astigmatism angle are recovered by the fit itself).
+    m_ctfFitVoltageEdit = makeCtfEdit("300");
+    m_ctfFitVoltageEdit->setToolTip(
+        "Acceleration voltage of the microscope in kV. Determines the\n"
+        "relativistic electron wavelength used in the CTF fit.");
+    m_ctfFitCsEdit = makeCtfEdit("2.7");
+    m_ctfFitCsEdit->setToolTip(
+        "Spherical aberration constant Cs of the objective lens in mm.");
+    m_ctfFitInputCombo = new QComboBox(this);
+    for (int i = 0; i < HISTORY_SLOTS; i++)
+        m_ctfFitInputCombo->addItem(QString(QChar('A' + i)));
+    m_ctfFitInputCombo->setFixedSize(60, 22);
+    m_ctfFitInputCombo->setStyleSheet("background:#222; color:white; border:1px solid #888;");
+    m_ctfFitInputCombo->setToolTip(
+        "Input buffer (A…P) whose Fourier transform the CTF is fitted to.\n"
+        "The fitted CTF composite is written into the currently selected\n"
+        "buffer.");
+    m_ctfFitInputCombo->hide();
+    m_ctfFitResHiEdit = makeCtfEdit("3");
+    m_ctfFitResHiEdit->setToolTip(
+        "Upper resolution limit in Ångström (the finest, i.e. smallest\n"
+        "d-spacing) that is included in the CTF fit. Frequencies beyond\n"
+        "this (finer than the Nyquist limit) are ignored.");
+    m_ctfFitResLoEdit = makeCtfEdit("30");
+    m_ctfFitResLoEdit->setToolTip(
+        "Lower resolution limit in Ångström (the coarsest, i.e. largest\n"
+        "d-spacing) that is included in the CTF fit. Very low frequencies\n"
+        "below this are ignored.");
+    m_ctfFitCancelBtn = new QPushButton("Cancel", this);
+    m_ctfFitCancelBtn->setFixedSize(80, 26);
+    m_ctfFitCancelBtn->setStyleSheet(
+        "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }");
+    connect(m_ctfFitCancelBtn, &QPushButton::clicked, this, &FtWindow::onCtfFitCancel);
+    m_ctfFitCancelBtn->hide();
+    m_ctfFitExecuteBtn = new QPushButton("Execute", this);
+    m_ctfFitExecuteBtn->setFixedSize(80, 26);
+    m_ctfFitExecuteBtn->setStyleSheet(
+        "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }");
+    connect(m_ctfFitExecuteBtn, &QPushButton::clicked, this, &FtWindow::onCtfFitExecute);
+    m_ctfFitExecuteBtn->hide();
+    for (QLineEdit *e : { m_ctfFitVoltageEdit, m_ctfFitCsEdit,
+                          m_ctfFitResHiEdit, m_ctfFitResLoEdit })
+        connect(e, &QLineEdit::returnPressed, this, &FtWindow::onCtfFitExecute);
 
     // Phase ramp parameter widgets
     m_phaseRampSizeCombo = new QComboBox(this);
@@ -856,7 +969,7 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
         "buffer is empty or the Amyloid tool needs a fresh canvas.");
     m_amyloidSizeCombo->hide();
     m_amyloidNoiseBtn = new QCheckBox("Add gray noise", this);
-    m_amyloidNoiseBtn->setStyleSheet("color: #333;");
+    m_amyloidNoiseBtn->setStyleSheet(checkBoxStyle("#333"));
     m_amyloidNoiseBtn->setChecked(true);
     m_amyloidNoiseBtn->setToolTip(
         "Add Gaussian noise to the entire image after rendering the\n"
@@ -941,6 +1054,21 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
         "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }");
     connect(m_measureCancelBtn, &QPushButton::clicked, this, &FtWindow::onMeasureCancel);
     m_measureCancelBtn->hide();
+
+    // Shift / rotate tool Cancel buttons
+    const QString cancelBtnStyle =
+        "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }";
+    m_shiftCancelBtn = new QPushButton("Cancel", this);
+    m_shiftCancelBtn->setFixedSize(80, 26);
+    m_shiftCancelBtn->setStyleSheet(cancelBtnStyle);
+    connect(m_shiftCancelBtn, &QPushButton::clicked, this, &FtWindow::onShiftCancel);
+    m_shiftCancelBtn->hide();
+
+    m_rotateCancelBtn = new QPushButton("Cancel", this);
+    m_rotateCancelBtn->setFixedSize(80, 26);
+    m_rotateCancelBtn->setStyleSheet(cancelBtnStyle);
+    connect(m_rotateCancelBtn, &QPushButton::clicked, this, &FtWindow::onRotateCancel);
+    m_rotateCancelBtn->hide();
 
     // Math calculation widgets (hidden until math button is active)
     auto mathComboStyle = [](QComboBox *cb) {
@@ -1093,7 +1221,7 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_binCombo->hide();
 
     m_binKeepSizeBtn = new QCheckBox("Keep original image size", this);
-    m_binKeepSizeBtn->setStyleSheet("color: white;");
+    m_binKeepSizeBtn->setStyleSheet(checkBoxStyle("white"));
     m_binKeepSizeBtn->setChecked(true);
     m_binKeepSizeBtn->setToolTip(
         "Checked: after binning, the image is resampled back to its\n"
@@ -1437,6 +1565,20 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     // exactly like clicking an empty history slot in mousePressEvent.
     if (m_activeSlot < 0)
         m_activeSlot = 0;
+
+#ifdef __EMSCRIPTEN__
+    // The web build has no session restore, so the panels a–p always start
+    // empty. In that case auto-load a default example into buffer a so the
+    // user has something to work with immediately. (Desktop restores its
+    // previous session above and must not overwrite it, so this is WASM-only.)
+    bool anySlotOccupied = false;
+    for (int i = 0; i < HISTORY_SLOTS; i++)
+        if (m_history[i].occupied) { anySlotOccupied = true; break; }
+    if (!anySlotOccupied) {
+        m_activeSlot = 0;   // buffer a
+        fetchAndLoadImage(QStringLiteral("Exercise_01-Photos/lorenz_1999.png"));
+    }
+#endif
 }
 
 // ---------------------------------------------------------------------------
@@ -1468,7 +1610,10 @@ void FtWindow::resizeEvent(QResizeEvent *)
 
     // Styles for widgets on white rectangle background
     QString editSS  = QString("background:white; color:black; border:1px solid #888; font-size: %1px;").arg(fontSize);
-    QString cbSS    = QString("color: #333; font-size: %1px;").arg(fontSize);
+    // Keep the full indicator styling (white box + black checkmark) here, not
+    // just text color — otherwise the resize clobbers checkBoxStyle() from the
+    // constructor and the box reverts to the invisible native indicator.
+    QString cbSS    = checkBoxStyle("#333", fontSize);
     QString btnSS   = QString("QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; font-size: %1px; }").arg(fontSize);
 
     // Bandpass widgets (sizes only; positions set in paintEvent)

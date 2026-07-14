@@ -33,6 +33,7 @@ void FtWindow::paintEvent(QPaintEvent *)
     m_p2ToolRect = QRect();   // cleared each frame, set when a p2 tool dialog draws
     m_imageHistLockRect = QRect();
     m_markImageCenterRect = QRect();
+    m_pixelSizeInfoRect = QRect();
     m_ftHistLockRect = QRect();
     m_maskBtnRect = QRect();
 
@@ -114,18 +115,28 @@ void FtWindow::paintEvent(QPaintEvent *)
 
     // ---- Tool button columns ----------------------------------
     {
-        int btnSide = std::max(width() * 5 / 400, 20);
-        int gap = 2;
-        int totalH = P1_TOOL_BUTTONS * btnSide + (P1_TOOL_BUTTONS - 1) * gap;
-        int startY = (hy - totalH) / 2;
+        // Group/slot geometry is computed in layoutToolSlots() (shared with the
+        // mouse handler). Each visible tool id draws into the slot it currently
+        // occupies: a group face when collapsed, or a popup cell when its group
+        // is open. Invisible ids (non-face members of a collapsed group) skip.
+        layoutToolSlots();
+        int btnSide = m_toolBtnSide;
 
-        int offset = btnSide / 2;
+        // Floating popup panel background, under the member cells drawn below.
+        if (m_openMenuPanel == 1 && !m_p1PopupRect.isNull()) {
+            p.setPen(QPen(QColor(200, 200, 200), 1));
+            p.setBrush(QColor(30, 30, 30));
+            p.drawRect(m_p1PopupRect);
+        } else if (m_openMenuPanel == 2 && !m_p2PopupRect.isNull()) {
+            p.setPen(QPen(QColor(200, 200, 200), 1));
+            p.setBrush(QColor(30, 30, 30));
+            p.drawRect(m_p2PopupRect);
+        }
 
         // Panel 1: left edge
         for (int i = 0; i < P1_TOOL_BUTTONS; i++) {
-            int by = startY + i * (btnSide + gap);
-            QRect r(offset, by, btnSide, btnSide);
-            m_p1BtnRects[i] = r;
+            if (!m_p1SlotVisible[i]) continue;
+            QRect r = m_p1BtnRects[i];
 
             p.setPen(QPen(Qt::white, 1));
             if ((i == 0 && m_p1EraserActive) || (i == 1 && m_p1BrushActive) ||
@@ -892,9 +903,8 @@ void FtWindow::paintEvent(QPaintEvent *)
 
         // Panel 2: right edge
         for (int i = 0; i < P2_TOOL_BUTTONS; i++) {
-            int by = startY + i * (btnSide + gap);
-            QRect r(width() - btnSide - offset, by, btnSide, btnSide);
-            m_toolBtnRects[i] = r;
+            if (!m_p2SlotVisible[i]) continue;
+            QRect r = m_toolBtnRects[i];
 
             p.setPen(QPen(Qt::white, 1));
             if ((i == 0 && m_eraserActive) || (i == 1 && m_brushActive) ||
@@ -903,7 +913,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 (i == 6 && m_ftRotateActive) || (i == 7 && m_crossSectionActive) ||
                 (i == 8 && m_p2SymmetrizeActive) ||
                 (i == 9 && m_ftCropActive) || (i == 10 && m_phaseRampActive) ||
-                (i == 11 && m_ctfActive) || (i == 12 && m_ftMathActive))
+                (i == 11 && m_ctfActive) || (i == 12 && m_ctfFitActive) ||
+                (i == 13 && m_ftMathActive))
                 p.setBrush(QColor(60, 60, 60));
             else
                 p.setBrush(QColor(0, 0, 0));
@@ -1347,8 +1358,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Fourier math icon (button 12): Sigma/Sum sign
-            if (i == 12) {
+            // Fourier math icon (button 13): Sigma/Sum sign
+            if (i == 13) {
                 p.setRenderHint(QPainter::Antialiasing, true);
                 int inset = std::max(3, btnSide / 4);
                 QRect ir = r.adjusted(inset, inset, -inset, -inset);
@@ -1384,22 +1395,26 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // CTF icon (button 11): black background with white "CTF" text
+            // CTF SIM icon (button 11): black background with white "CTF"
+            // on the first line and "SIM" on the second line
             if (i == 11) {
                 p.setRenderHint(QPainter::Antialiasing, true);
                 QFont cf;
                 cf.setBold(true);
-                cf.setPixelSize(std::max(8, (int)(btnSide * 0.38)));
+                cf.setPixelSize(std::max(8, (int)(btnSide * 0.36)));
                 p.setFont(cf);
                 p.setPen(QPen(Qt::white, 1));
                 p.setBrush(Qt::NoBrush);
-                p.drawText(r, Qt::AlignCenter, "CTF");
+                QRect topHalf(r.left(), r.top(), r.width(), r.height() / 2);
+                QRect botHalf(r.left(), r.top() + r.height() / 2, r.width(), r.height() - r.height() / 2);
+                p.drawText(topHalf, Qt::AlignHCenter | Qt::AlignBottom, "CTF");
+                p.drawText(botHalf, Qt::AlignHCenter | Qt::AlignTop, "SIM");
                 p.setRenderHint(QPainter::Antialiasing, false);
 
                 if (r.contains(m_mousePos)) {
                     QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
                     QFontMetrics ttfm(ttf);
-                    QString tip = "CTF (contrast transfer function)";
+                    QString tip = "CTF SIM (contrast transfer function simulation)";
                     int ttw = ttfm.horizontalAdvance(tip) + 8;
                     int tth = ttfm.height() + 4;
                     int ttx = r.left() - ttw - 4;
@@ -1408,6 +1423,111 @@ void FtWindow::paintEvent(QPaintEvent *)
                     pendingTipText = tip;
                 }
             }
+
+            // CTF FIT icon (button 12): black background with white "CTF"
+            // on the first line and "FIT" on the second line
+            if (i == 12) {
+                p.setRenderHint(QPainter::Antialiasing, true);
+                QFont cf;
+                cf.setBold(true);
+                cf.setPixelSize(std::max(8, (int)(btnSide * 0.36)));
+                p.setFont(cf);
+                p.setPen(QPen(Qt::white, 1));
+                p.setBrush(Qt::NoBrush);
+                QRect topHalf(r.left(), r.top(), r.width(), r.height() / 2);
+                QRect botHalf(r.left(), r.top() + r.height() / 2, r.width(), r.height() - r.height() / 2);
+                p.drawText(topHalf, Qt::AlignHCenter | Qt::AlignBottom, "CTF");
+                p.drawText(botHalf, Qt::AlignHCenter | Qt::AlignTop, "FIT");
+                p.setRenderHint(QPainter::Antialiasing, false);
+
+                if (r.contains(m_mousePos)) {
+                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                    QFontMetrics ttfm(ttf);
+                    QString tip = "CTF FIT (fit contrast transfer function to the transform)";
+                    int ttw = ttfm.horizontalAdvance(tip) + 8;
+                    int tth = ttfm.height() + 4;
+                    int ttx = r.left() - ttw - 4;
+                    int tty = r.center().y() - tth / 2;
+                    pendingTipRect = QRect(ttx, tty, ttw, tth);
+                    pendingTipText = tip;
+                }
+            }
+        }
+
+        // ---- group extras: submenu markers, open-menu anchor, group tips ----
+        auto drawGroupExtras = [&](int panel) {
+            const QVector<ToolGroup> &groups = (panel == 1) ? m_p1Groups : m_p2Groups;
+            const QRect *groupRects = (panel == 1) ? m_p1GroupRects : m_p2GroupRects;
+            for (int g = 0; g < groups.size(); g++) {
+                const QRect &G = groupRects[g];
+                bool multi = groups[g].members.size() > 1;
+                bool open  = (m_openMenuPanel == panel && m_openMenuGroup == g);
+
+                // Collapsed group with a custom text face (e.g. "CTF"): a plain
+                // black square with the text, in place of the first member icon.
+                if (!open && !groups[g].faceText.isEmpty()) {
+                    p.setRenderHint(QPainter::Antialiasing, true);
+                    p.setPen(QPen(Qt::white, 1));
+                    p.setBrush(QColor(0, 0, 0));
+                    p.drawRect(G);
+                    QFont cf;
+                    cf.setBold(true);
+                    cf.setPixelSize(std::max(8, (int)(G.width() * 0.42)));
+                    p.setFont(cf);
+                    p.setPen(QPen(Qt::white, 1));
+                    p.drawText(G, Qt::AlignCenter, groups[g].faceText);
+                    p.setRenderHint(QPainter::Antialiasing, false);
+                }
+
+                // When a multi-member group is open its face is empty (the
+                // representative moved into the popup), so draw a highlighted
+                // anchor placeholder in its place.
+                if (open && multi) {
+                    p.setPen(QPen(Qt::white, 1));
+                    p.setBrush(QColor(70, 70, 70));
+                    p.drawRect(G);
+                }
+
+                // A small corner triangle marks every group that expands.
+                if (multi) {
+                    p.setRenderHint(QPainter::Antialiasing, false);
+                    p.setPen(Qt::NoPen);
+                    p.setBrush(QColor(120, 180, 255));
+                    int t = std::max(4, G.width() / 4);
+                    QPainterPath tri;
+                    tri.moveTo(G.right(), G.bottom() - t);
+                    tri.lineTo(G.right(), G.bottom());
+                    tri.lineTo(G.right() - t, G.bottom());
+                    tri.closeSubpath();
+                    p.drawPath(tri);
+                }
+
+                // Hovering a group face shows the group name (overriding any
+                // per-icon tip the representative may have set).
+                if (G.contains(m_mousePos)) {
+                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                    QFontMetrics ttfm(ttf);
+                    QString tip = groups[g].name;
+                    int ttw = ttfm.horizontalAdvance(tip) + 8;
+                    int tth = ttfm.height() + 4;
+                    int ttx = (panel == 1) ? (G.right() + 4) : (G.left() - ttw - 4);
+                    int tty = G.center().y() - tth / 2;
+                    pendingTipRect = QRect(ttx, tty, ttw, tth);
+                    pendingTipText = tip;
+                }
+            }
+        };
+        drawGroupExtras(1);
+        drawGroupExtras(2);
+
+        // While a sub-panel (popup) is open, suppress the mouse-over text on the
+        // top-level group squares — it would otherwise overlap and obscure the
+        // sub-panel. Tooltips for the popup's own member cells (mouse inside the
+        // popup) are kept.
+        if (m_openMenuPanel != 0) {
+            const QRect &popup = (m_openMenuPanel == 1) ? m_p1PopupRect : m_p2PopupRect;
+            if (!popup.contains(m_mousePos))
+                pendingTipText.clear();
         }
     }
 
@@ -1700,13 +1820,23 @@ void FtWindow::paintEvent(QPaintEvent *)
 
             // Resolution and pixel-size info below the bottom-right corner of panel 1
             int infoX = panel1W - 4;
-            int infoY = frame.bottom() + 4 + 3 * (pfm.height() + 1);
+            int infoTop = frame.bottom() + 4 + 3 * (pfm.height() + 1);
+            int infoY = infoTop;
 
             QString resLabel = QString("%1 x %2 pixels").arg(imgW).arg(imgH);
             p.drawText(infoX - pfm.horizontalAdvance(resLabel), infoY + pfm.ascent(), resLabel);
 
             infoY += pfm.height() + 1;
             p.drawText(infoX - pfm.horizontalAdvance(psLabel), infoY + pfm.ascent(), psLabel);
+
+            // The size + pixel-size lines are a double-click target for editing
+            // the pixel size (see mouseDoubleClickEvent / onEditPixelSize).
+            int infoBlockW = std::max(pfm.horizontalAdvance(resLabel),
+                                      pfm.horizontalAdvance(psLabel));
+            m_pixelSizeInfoRect = QRect(infoX - infoBlockW, infoTop,
+                                        infoBlockW,
+                                        (infoY + pfm.height()) - infoTop)
+                                      .adjusted(-2, -2, 2, 2);
 
             if (!m_imagePath.isEmpty()) {
                 infoY += pfm.height() + 1;
@@ -2577,7 +2707,7 @@ void FtWindow::paintEvent(QPaintEvent *)
         // Panel 2 tool option rectangles (bottom-right of panel 2)
         bool p2Tool = m_bandpassActive || m_directionalActive || m_lineFilterActive || m_brushActive
                       || m_eraserActive || m_latticeActive || m_ftCropActive || m_crossSectionActive
-                      || m_ctfActive || m_phaseRampActive || m_p2SymmetrizeActive;
+                      || m_ctfActive || m_ctfFitActive || m_phaseRampActive || m_p2SymmetrizeActive;
         if (p2Tool) {
             int nRows = 0;
             int textW = 0;
@@ -2668,6 +2798,23 @@ void FtWindow::paintEvent(QPaintEvent *)
                          + m_ctfBeamtiltDirEdit->width();
                 int r6 = m_ctfCancelBtn->width() + 8 + m_ctfComputeBtn->width();
                 textW = std::max({r0, r1, r2, r3, r4, r5, r6});
+            } else if (m_ctfFitActive) {
+                nRows = m_ctfFitHasResult ? 8 : 6;
+                int r0 = fm.horizontalAdvance("Acceleration Voltage (kV): ") + m_ctfFitVoltageEdit->width();
+                int r1 = fm.horizontalAdvance("Spherical aberration Cs (mm): ") + m_ctfFitCsEdit->width();
+                int r2 = fm.horizontalAdvance("Input buffer: ") + m_ctfFitInputCombo->width();
+                int r3 = fm.horizontalAdvance("Upper resolution limit (Å): ") + m_ctfFitResHiEdit->width();
+                int r4 = fm.horizontalAdvance("Lower resolution limit (Å): ") + m_ctfFitResLoEdit->width();
+                int r5 = m_ctfFitCancelBtn->width() + 8 + m_ctfFitExecuteBtn->width();
+                int r6 = 0, r7 = 0;
+                if (m_ctfFitHasResult) {
+                    r6 = fm.horizontalAdvance(QString("Fitted defocus: %1 nm")
+                             .arg(m_ctfFitResDefocusNM, 0, 'f', 1));
+                    r7 = fm.horizontalAdvance(QString("Fitted astigmatism: %1 nm at %2°")
+                             .arg(m_ctfFitResAstigNM, 0, 'f', 1)
+                             .arg(m_ctfFitResAngleDeg, 0, 'f', 1));
+                }
+                textW = std::max({r0, r1, r2, r3, r4, r5, r6, r7});
             } else if (m_phaseRampActive) {
                 nRows = 4;
                 int r0 = fm.horizontalAdvance("Size of FFT to be created: ") + m_phaseRampSizeCombo->width();
@@ -2844,6 +2991,36 @@ void FtWindow::paintEvent(QPaintEvent *)
                 // Row 6: Cancel / Compute
                 m_ctfCancelBtn->move(tx, ty + lh * 6);
                 m_ctfComputeBtn->move(rx + rw - margin - m_ctfComputeBtn->width(), ty + lh * 6);
+            } else if (m_ctfFitActive) {
+                // Row 0: Acceleration voltage
+                drawParamLabel(p, fm, tx, ty, "Acceleration Voltage (kV):", m_ctfFitVoltageEdit->toolTip());
+                m_ctfFitVoltageEdit->move(tx + fm.horizontalAdvance("Acceleration Voltage (kV): "), ty);
+                // Row 1: Spherical aberration Cs
+                drawParamLabel(p, fm, tx, ty + lh, "Spherical aberration Cs (mm):", m_ctfFitCsEdit->toolTip());
+                m_ctfFitCsEdit->move(tx + fm.horizontalAdvance("Spherical aberration Cs (mm): "), ty + lh);
+                // Row 2: Input buffer
+                drawParamLabel(p, fm, tx, ty + lh * 2, "Input buffer:", m_ctfFitInputCombo->toolTip());
+                m_ctfFitInputCombo->move(tx + fm.horizontalAdvance("Input buffer: "), ty + lh * 2);
+                // Row 3: Upper resolution limit
+                drawParamLabel(p, fm, tx, ty + lh * 3, "Upper resolution limit (Å):", m_ctfFitResHiEdit->toolTip());
+                m_ctfFitResHiEdit->move(tx + fm.horizontalAdvance("Upper resolution limit (Å): "), ty + lh * 3);
+                // Row 4: Lower resolution limit
+                drawParamLabel(p, fm, tx, ty + lh * 4, "Lower resolution limit (Å):", m_ctfFitResLoEdit->toolTip());
+                m_ctfFitResLoEdit->move(tx + fm.horizontalAdvance("Lower resolution limit (Å): "), ty + lh * 4);
+                // Row 5: Cancel / Execute
+                m_ctfFitCancelBtn->move(tx, ty + lh * 5);
+                m_ctfFitExecuteBtn->move(rx + rw - margin - m_ctfFitExecuteBtn->width(), ty + lh * 5);
+                // Rows 6-7: fitted results (after a successful Execute)
+                if (m_ctfFitHasResult) {
+                    drawParamLabel(p, fm, tx, ty + lh * 6,
+                        QString("Fitted defocus: %1 nm").arg(m_ctfFitResDefocusNM, 0, 'f', 1),
+                        QString());
+                    drawParamLabel(p, fm, tx, ty + lh * 7,
+                        QString("Fitted astigmatism: %1 nm at %2°")
+                            .arg(m_ctfFitResAstigNM, 0, 'f', 1)
+                            .arg(m_ctfFitResAngleDeg, 0, 'f', 1),
+                        QString());
+                }
             } else if (m_phaseRampActive) {
                 drawParamLabel(p, fm, tx, ty, "Size of FFT to be created:", m_phaseRampSizeCombo->toolTip());
                 m_phaseRampSizeCombo->move(tx + fm.horizontalAdvance("Size of FFT to be created: "), ty);
@@ -2857,7 +3034,9 @@ void FtWindow::paintEvent(QPaintEvent *)
         }
 
         // Panel 1 tool option rectangles (bottom-left of panel 1)
-        bool p1Tool = m_p1EraserActive || m_p1BrushActive || m_p1TaperActive || m_p1SymmetrizeActive || m_binActive || m_cropActive || m_peakPickActive || m_extractActive || m_gaborActive || m_hessianActive || m_amyloidActive || m_measureActive;
+        bool p1Tool = m_p1EraserActive || m_p1BrushActive || m_p1TaperActive || m_p1SymmetrizeActive || m_binActive || m_cropActive || m_peakPickActive || m_extractActive || m_gaborActive || m_hessianActive || m_amyloidActive || m_measureActive || m_shiftActive || m_rotateActive;
+        const QString shiftHint  = "Use the mouse to shift the image";
+        const QString rotateHint = "Use the mouse to rotate the image";
         if (p1Tool) {
             int nRows = 0;
             int textW = 0;
@@ -2954,6 +3133,12 @@ void FtWindow::paintEvent(QPaintEvent *)
                 int r2 = m_measureCancelBtn->width();
                 textW = std::max({r0, r1, r2,
                                   fm.horizontalAdvance("Click two points on the image")});
+            } else if (m_shiftActive) {
+                nRows = 2;
+                textW = std::max(fm.horizontalAdvance(shiftHint), m_shiftCancelBtn->width());
+            } else if (m_rotateActive) {
+                nRows = 2;
+                textW = std::max(fm.horizontalAdvance(rotateHint), m_rotateCancelBtn->width());
             } else if (m_amyloidActive) {
                 nRows = 8;
                 const int colGap = 20;
@@ -3104,6 +3289,12 @@ void FtWindow::paintEvent(QPaintEvent *)
                 p.drawText(tx, ty + fm.ascent(), pixStr);
                 p.drawText(tx, ty + lh + fm.ascent(), lenStr);
                 m_measureCancelBtn->move(tx, ty + lh * 2);
+            } else if (m_shiftActive) {
+                p.drawText(tx, ty + fm.ascent(), shiftHint);
+                m_shiftCancelBtn->move(tx, ty + lh);
+            } else if (m_rotateActive) {
+                p.drawText(tx, ty + fm.ascent(), rotateHint);
+                m_rotateCancelBtn->move(tx, ty + lh);
             } else if (m_amyloidActive) {
                 const int colGap = 20;
                 int leftSize = fm.horizontalAdvance("Image size (px): ")   + m_amyloidSizeCombo->width();
@@ -3977,7 +4168,7 @@ void FtWindow::paintEvent(QPaintEvent *)
         p.setBrush(Qt::NoBrush);
         p.drawRect(manualRect);
 
-        p.drawText(manualRect, Qt::AlignCenter, "Manual");
+        p.drawText(manualRect, Qt::AlignCenter, "Help");
     }
 
     // ---- arrows ---------------------------------------------------------------

@@ -71,6 +71,26 @@
   .toolicons { margin-left: auto; display: inline-flex; align-items: center; }
   .toolicons svg { margin-left: 8px; }
 
+  h2.group {
+    font-size: 15px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--accent);
+    margin: 24px 0 8px 2px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border);
+  }
+  p.ctf-theory {
+    background: var(--code-bg);
+    border-left: 3px solid var(--accent);
+    padding: 8px 12px;
+    margin: 8px 0 12px 0;
+    font-size: 14px;
+    color: var(--muted);
+  }
+  /* Nested (theory) sub-panels: less tall when collapsed. */
+  details details summary { padding: 4px 0; }
+
   p { margin: 0.6em 0; }
   ul { padding-left: 22px; }
   li { margin: 3px 0; }
@@ -119,9 +139,14 @@
 
 <p>
 Panel 2 holds the Fourier transform of the panel-1 image, with the
-zero-frequency term at the centre. Tool icons run vertically along the
-right edge of the panel. Activating a tool opens its parameter window
-at the bottom of the panel.
+zero-frequency term at the centre. The tools run vertically along the
+right edge of the panel, organised into <strong>groups</strong>. Each
+square is a group. Clicking a group that holds several tools opens a
+small pop-up column of sub-squares beside it; you then click a sub-square
+to activate that tool. A group with only one tool activates it directly.
+Activating a tool opens its parameter window at the bottom of the panel.
+The sections below are arranged by group, in the same order as the
+squares in the panel.
 </p>
 
 <p>
@@ -131,7 +156,7 @@ value of 5–20 pixels typically gives a clean Hanning fall-off and a
 much cleaner real-space result.
 </p>
 
-<details>
+<details id="p2-histogram-toggles">
 <summary>Histogram-side toggles</summary>
 <p>
 In <em>complex</em> and <em>power-spectrum</em> display modes two
@@ -164,7 +189,9 @@ four cardinal phase labels (<code>0°</code>, <code>±180°</code>,
 </p>
 </details>
 
-<details open>
+<h2 class="group" id="p2-group-edit">Edit</h2>
+
+<details id="p2-eraser" open>
 <summary>Eraser<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><polygon points="8.4,4.4 18.3,4.4 15.6,12 5.7,12" fill="#d2b98c" stroke="#a0825a" stroke-width=".7"/><polygon points="8.9,6.2 17.8,6.2 17,8.4 8.2,8.4" fill="#e1c8a0"/><polygon points="5.7,12 15.6,12 14.7,14.2 4.8,14.2" fill="#bec3c8" stroke="#8c8c8c" stroke-width=".5"/><polygon points="4.8,14.2 15.6,14.2 12.9,19.6 3,19.6" fill="#eb7882" stroke="#b44650" stroke-width=".7"/><polygon points="5.2,14.9 12,14.9 11.5,16.7 4.6,16.7" fill="#f5a0a5"/></svg></span></summary>
 <p>
 Multiplies the FFT by <code>(1 − Gaussian)</code> under the cursor,
@@ -178,7 +205,7 @@ diffraction spots or noise peaks.
 <BR>
 </details>
 
-<details>
+<details id="p2-paint-brush">
 <summary>Paint brush<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><line x1="12" y1="3.9" x2="12" y2="11.1" stroke="#a0783c" stroke-width="3"/><rect x="7.5" y="10.2" width="9" height="2.7" fill="#b4b4b4"/><polygon points="6.6,12.9 17.4,12.9 14.7,20.1 9.3,20.1" fill="#c8a050"/></svg></span></summary>
 <p>
 Writes a chosen real value (with zero imaginary part) into the FFT
@@ -207,7 +234,51 @@ and its Fourier transform more intuitive to visualise and interact with.
  <BR>
 </details>
 
-<details>
+<details id="p2-phase-ramp">
+<summary>Phase ramp<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><defs><linearGradient id="rampGrad" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#323232"/><stop offset="1" stop-color="#8c8c8c"/></linearGradient></defs><rect width="24" height="24" rx="3" fill="url(#rampGrad)" stroke="#fff" stroke-width="1"/><text x="12" y="12" font-family="sans-serif" font-weight="bold" font-size="8" fill="#fff" text-anchor="middle" dominant-baseline="central">Ramp</text></svg></span></summary>
+<p>
+Synthesise a fresh Fourier transform whose amplitude is uniformly
+1 and whose phase increases linearly along a chosen direction. Pure
+teaching tool: a phase ramp of step <em>s</em> at angle <em>θ</em>
+back-transforms to a single delta at the corresponding real-space
+position, illustrating the shift theorem.
+</p>
+<div class="controls">
+  <strong>Size of FFT:</strong> 512, 1024, 2048, or 4096
+  (default 1024). <br>
+  <strong>Direction:</strong> ramp direction in degrees, CCW from
+  the +x axis (default 30°). <br>
+  <strong>Phase step:</strong> phase increment per pixel along the
+  direction, in degrees (default 10°). <br>
+  <strong>Cancel:</strong> close the parameter window without
+  computing. <br>
+  <strong>Compute:</strong> build the FFT, back-transform to panel 1,
+  and store the result in the active history slot.
+</div>
+<BR>
+</details>
+
+<h2 class="group" id="p2-group-cross-section">Cross-section profile</h2>
+
+<details id="p2-cross-section">
+<summary>Cross-section profile<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><line x1="3" y1="12" x2="21" y2="12" stroke="#dc3c3c" stroke-width="3"/></svg></span></summary>
+<p>
+Draw a 1D radial / oriented profile of the Fourier amplitude. The line
+direction is dragged in panel 2; pixels within the chosen integration
+band perpendicular to the line are averaged.
+</p>
+<div class="controls">
+  <strong>Integration width:</strong> band width perpendicular to the
+  line, as a percentage of the image size. Increase for less noise,
+  decrease for higher angular resolution. The profile redraws live as
+  you type.
+</div>
+<BR>
+</details>
+
+<h2 class="group" id="p2-group-filter">Filter</h2>
+
+<details id="p2-bandpass">
 <summary>Bandpass filter<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><circle cx="12" cy="12" r="6" fill="#c8c8ff"/><circle cx="12" cy="12" r="3" fill="#323232"/><circle cx="12" cy="12" r="6" fill="none" stroke="#6464c8" stroke-width="1"/><circle cx="12" cy="12" r="3" fill="none" stroke="#6464c8" stroke-width="1"/></svg></span></summary>
 <p>
 Keep (or erase) Fourier pixels inside a circular ring centred on the
@@ -230,7 +301,7 @@ parameter window shows their current diameters.
 <BR>
 </details>
 
-<details>
+<details id="p2-directional">
 <summary>Directional filter<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><g fill="#c8c8ff" stroke="#6464c8" stroke-width="1"><polygon points="12,12 21.4,8.58 21.4,15.42"/><polygon points="12,12 2.6,15.42 2.6,8.58"/></g></svg></span></summary>
 <p>
 Keep (or erase) Fourier pixels inside an angular wedge centred on the
@@ -250,7 +321,7 @@ real images.
 <BR>
 </details>
 
-<details>
+<details id="p2-line-filter">
 <summary>Line filter<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><line x1="3.5" y1="16.9" x2="20.5" y2="7.1" stroke="#c8c8ff" stroke-width="2.4"/></svg></span></summary>
 <p>
 Keep (or erase) Fourier pixels inside a straight stripe. Useful for
@@ -271,7 +342,7 @@ grid-pattern artefacts.
 <BR>
 </details>
 
-<details>
+<details id="p2-lattice-filter">
 <summary>Lattice filter<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><g fill="#c8c8ff"><circle cx="12" cy="12" r="1.26"/><circle cx="20.4" cy="12" r="1.26"/><circle cx="16.2" cy="19.27" r="1.26"/><circle cx="7.8" cy="19.27" r="1.26"/><circle cx="3.6" cy="12" r="1.26"/><circle cx="7.8" cy="4.73" r="1.26"/><circle cx="16.2" cy="4.73" r="1.26"/></g></svg></span></summary>
 <p>
 Build a reciprocal lattice from two basis vectors <code>u</code> and
@@ -293,7 +364,9 @@ lattice contamination from a non-crystalline target.
 <BR>
 </details>
 
-<details>
+<h2 class="group" id="p2-group-transform">Transform</h2>
+
+<details id="p2-rotate">
 <summary>Rotate Fourier space<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><path d="M 18.65 8.16 A 7.68 7.68 0 1 0 16.94 17.88" fill="none" stroke="#fff" stroke-width="1.92"/><polygon points="22.82,12.95 18.42,19.65 15.46,16.12" fill="#fff"/></svg></span></summary>
 <p>
 Drag in panel 2 to rotate the Fourier transform around the centre.
@@ -309,23 +382,7 @@ back-transformed image, and they will interfere with the rotated version of the 
 </p>
 </details>
 
-<details>
-<summary>Cross-section profile<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><line x1="3" y1="12" x2="21" y2="12" stroke="#dc3c3c" stroke-width="3"/></svg></span></summary>
-<p>
-Draw a 1D radial / oriented profile of the Fourier amplitude. The line
-direction is dragged in panel 2; pixels within the chosen integration
-band perpendicular to the line are averaged.
-</p>
-<div class="controls">
-  <strong>Integration width:</strong> band width perpendicular to the
-  line, as a percentage of the image size. Increase for less noise,
-  decrease for higher angular resolution. The profile redraws live as
-  you type.
-</div>
-<BR>
-</details>
-
-<details>
+<details id="p2-symmetrize">
 <summary>Symmetrize Fourier space<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><polygon points="12,1.92 14.37,8.74 21.59,8.89 15.83,13.25 17.93,20.16 12,16.03 6.07,20.16 8.17,13.25 2.41,8.89 9.63,8.74" fill="#fff"/></svg></span></summary>
 <p>
 Enforce <code>N</code>-fold rotational symmetry on the Fourier
@@ -352,7 +409,9 @@ lets you watch the diffraction pattern become N-fold symmetric directly.
 <BR>
 </details>
 
-<details>
+<h2 class="group" id="p2-group-redimension">Redimension</h2>
+
+<details id="p2-fourier-crop-pad">
 <summary>Fourier crop / Fourier pad<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><rect x="4.8" y="4.8" width="4.8" height="4.8" fill="#fff"/><rect x="14.4" y="4.8" width="4.8" height="4.8" fill="#b6b6b6"/><rect x="4.8" y="14.4" width="4.8" height="4.8" fill="#969696"/><rect x="14.4" y="14.4" width="4.8" height="4.8" fill="#d4d4d4"/></svg></span></summary>
 <p>
 Resample the FFT by an integer factor:
@@ -376,37 +435,30 @@ Resample the FFT by an integer factor:
 <BR>
 </details>
 
-<details>
-<summary>Phase ramp<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><defs><linearGradient id="rampGrad" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#323232"/><stop offset="1" stop-color="#8c8c8c"/></linearGradient></defs><rect width="24" height="24" rx="3" fill="url(#rampGrad)" stroke="#fff" stroke-width="1"/><text x="12" y="12" font-family="sans-serif" font-weight="bold" font-size="8" fill="#fff" text-anchor="middle" dominant-baseline="central">Ramp</text></svg></span></summary>
-<p>
-Synthesise a fresh Fourier transform whose amplitude is uniformly
-1 and whose phase increases linearly along a chosen direction. Pure
-teaching tool: a phase ramp of step <em>s</em> at angle <em>θ</em>
-back-transforms to a single delta at the corresponding real-space
-position, illustrating the shift theorem.
+<h2 class="group" id="p2-group-ctf">CTF</h2>
+
+<p class="ctf-theory">
+The sections below deal with the <strong>Contrast
+Transfer Function</strong> of an electron microscope. The theory for this 
+is covered in the <a href="manual.html">Introduction</a> section of the manual.
 </p>
-<div class="controls">
-  <strong>Size of FFT:</strong> 512, 1024, 2048, or 4096
-  (default 1024). <br>
-  <strong>Direction:</strong> ramp direction in degrees, CCW from
-  the +x axis (default 30°). <br>
-  <strong>Phase step:</strong> phase increment per pixel along the
-  direction, in degrees (default 10°). <br>
-  <strong>Cancel:</strong> close the parameter window without
-  computing. <br>
-  <strong>Compute:</strong> build the FFT, back-transform to panel 1,
-  and store the result in the active history slot.
-</div>
-<BR>
+
+
+
+
 </details>
 
-<details>
-<summary>CTF (contrast transfer function)<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><text x="12" y="12" font-family="sans-serif" font-weight="bold" font-size="8" fill="#fff" text-anchor="middle" dominant-baseline="central">CTF</text></svg></span></summary>
+<details id="p2-ctf-sim">
+<summary>CTF SIM (simulate a CTF)<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><text x="12" y="8" font-family="sans-serif" font-weight="bold" font-size="7" fill="#fff" text-anchor="middle" dominant-baseline="central">CTF</text><text x="12" y="16.5" font-family="sans-serif" font-weight="bold" font-size="7" fill="#fff" text-anchor="middle" dominant-baseline="central">SIM</text></svg></span></summary>
 <p>
-Synthesise a 2D contrast transfer function for an electron microscope
-with the chosen optical parameters, including astigmatism, defocus
-spread, amplitude contrast, beam tilt, and the spatial-coherence
-envelope from a finite gun-opening angle.
+<strong>CTF SIM</strong> synthesises a 2D contrast transfer function for an
+electron microscope with the chosen optical parameters, including
+astigmatism, defocus spread, amplitude contrast, beam tilt, and the
+spatial-coherence envelope from a finite gun-opening angle. The result is
+written to the Fourier side of the currently selected buffer, and its
+real-space point spread function (PSF) to panel&nbsp;1. To fit a CTF to an
+existing image instead of simulating one, use <strong>CTF FIT</strong>
+(below).
 </p>
 <div class="controls">
   <strong>Acceleration voltage:</strong> in kV. <br>
@@ -442,7 +494,7 @@ azimuth along which the 1D profiles (below) are taken.<BR><BR>
 </div>
 <BR>
 <p>
- <strong>1D profile plots (panels 3 &amp; 4).</strong> While the CTF tool is
+ <strong>1D profile plots (panels 3 &amp; 4).</strong> While the CTF SIM tool is
  active, the two bottom panels show 1D cuts of the complex transfer function
  <em>C</em> taken along the red direction line in panel 2. You can change the 
  direction of the line by dragging it with the mouse and watch the profiles update live. 
@@ -467,7 +519,6 @@ azimuth along which the 1D profiles (below) are taken.<BR><BR>
  plot stops at ~0.5 cycles/pixel and the rest is left empty), and out to the
  corner frequency (~0.707) when the line points along a diagonal.
 </p>
-<BR>
 <p>
 Note that the CTF is computed in Fourier-space with values between -1 and 1.
 When you back-transform it to real space, the result is the Point Spread Function (PSF) that corresponds to that CTF. 
@@ -481,30 +532,81 @@ imaged by the microscope with the given parameters.  The PSF has very small valu
  The different appearance of the back-transformed and again forward-transformed CTF is due to the
  non-linear scaling for the Powerspectrum display.
  </p>
+</details>
+
+<details id="p2-ctf-fit">
+<summary>CTF FIT (fit a CTF for an image)<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><text x="12" y="8" font-family="sans-serif" font-weight="bold" font-size="7" fill="#fff" text-anchor="middle" dominant-baseline="central">CTF</text><text x="12" y="16.5" font-family="sans-serif" font-weight="bold" font-size="7" fill="#fff" text-anchor="middle" dominant-baseline="central">FIT</text></svg></span></summary>
 <p>
- <strong>Beam tilt.</strong> When the illuminating beam is not exactly
- parallel to the optical axis but tilted by a small angle &tau;, the
- scattering angle is shifted (the spatial frequency is effectively
- displaced, <em>k</em> &rarr; <em>k</em> + &tau;/&lambda;). To first order
- in the tilt this adds a coma-like term to the wave-aberration function:
- <br><br>
- &nbsp;&nbsp;&Delta;&chi; = 2&pi;&middot;C<sub>s</sub>&middot;&lambda;&sup2;&middot;q&sup3;&middot;&tau;&middot;cos(&theta; &minus; &tau;<sub>dir</sub>),
- <br><br>
- where <em>q</em> is the spatial frequency, &theta; its azimuth in Fourier
- space, &lambda; the electron wavelength, C<sub>s</sub> the spherical
- aberration, &tau; the tilt magnitude (in radians; entered in mrad), and
- &tau;<sub>dir</sub> the tilt direction (CCW from +x, the same convention as
- the astigmatism direction). Because this extra phase scales with
- C<sub>s</sub>&middot;q&sup3; and is <em>odd</em> in &theta; (the cos(&theta; &minus; &tau;<sub>dir</sub>)
- factor changes sign across the origin), beam tilt breaks the
- point-symmetry of the CTF: the Thon rings shift outward on one side and
- inward on the opposite side along the tilt direction, while remaining
- unchanged perpendicular to it. Setting the beam tilt to 0 mrad recovers
- the usual centrosymmetric CTF.
+  <strong>For an explanation of CTF theory, see the <em>CTF theory</em> and
+  <em>Beam tilt and coma</em> panels at the top of the CTF section, above.</strong>
+</p>
+<p>
+<strong>CTF FIT</strong> estimates the defocus and astigmatism of a real
+micrograph by fitting a theoretical contrast transfer function to the Thon
+rings in its power spectrum, in the style of
+<a href="https://github.com/czimaginginstitute/GCtfFind">GCtfFind</a> /
+CTFFIND. You supply only the microscope voltage and C<sub>s</sub>; the
+defocus, astigmatism and its angle are recovered automatically.
+</p>
+<div class="controls">
+  <strong>Acceleration voltage:</strong> in kV. <br>
+  <strong>Spherical aberration Cs:</strong> in mm. <br>
+  <strong>Input buffer:</strong> the buffer (A…P) whose Fourier transform is
+  fitted. Defaults to the currently selected buffer. <br>
+  <strong>Upper resolution limit:</strong> the finest resolution (smallest
+  Å, highest frequency) included in the fit. <br>
+  <strong>Lower resolution limit:</strong> the coarsest resolution (largest
+  Å, lowest frequency) included in the fit. <br>
+  <strong>Cancel / Execute:</strong> Execute runs the fit; the window stays
+  open and shows the result.
+</div>
+<BR>
+<div class="note">
+The correct <strong>pixel size</strong> of the input image is essential —
+it sets the spatial-frequency scale, so a wrong pixel size gives a wrong
+defocus. Check the value shown under panel&nbsp;1 (double-click it to edit)
+before fitting. Choose the resolution band to bracket the visible Thon
+rings: exclude the very low frequencies (dominated by the background) and
+the high frequencies where the rings fade into noise. A typical band is
+about 30&nbsp;Å (lower limit) to 3–5&nbsp;Å (upper limit).
+</div>
+<BR>
+<p>
+<strong>How it works.</strong> The power spectrum of the input buffer is
+sampled, a smooth radial background is subtracted (preserving the Thon
+rings), and the residual is whitened so weak high-frequency rings count as
+much as strong low-frequency ones. A theoretical |CTF|&sup2; is then matched
+to it by a normalised cross-correlation over the chosen resolution band —
+first a coarse 1D scan for the mean defocus, then a 2D search over defocus,
+astigmatism magnitude and angle, followed by iterative refinement.
+</p>
+<p>
+<strong>Output.</strong> The fitted CTF is written to the Fourier side of
+the currently selected buffer as a composite diagnostic: the
+<em>right half</em> shows the synthesised (fitted) CTF, the
+<em>top-left quarter</em> the original Fourier transform of the input image,
+and the <em>bottom-left quarter</em> its elliptically (astigmatism-aware)
+radially averaged transform. The left half is scaled so it reads at a
+similar brightness to the fitted model on the right, and because the power
+spectrum is centrosymmetric the experimental and model rings join
+continuously across the vertical midline — so a good fit shows rings that
+line up across the whole image.
+</p>
+<p>
+<strong>Reported values.</strong> After Execute the parameter window stays
+open and reports the fitted <em>defocus</em> (nm) and <em>astigmatism</em>
+(nm). The astigmatism is reported as the full peak-to-peak difference
+df<sub>1</sub>&nbsp;&minus;&nbsp;df<sub>2</sub> (the CTFFIND / GCtfFind
+convention), together with its angle. The same values are also copied into
+the CTF SIM fields so you can re-simulate or tweak them — note that CTF SIM's
+astigmatism field is the <em>amplitude</em> (half of the peak-to-peak
+difference), matching its own definition.
 </p>
 </details>
 
-<details>
+<h2 class="group" id="p2-group-math">Math</h2>
+
+<details id="p2-math">
 <summary>Math calculation<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><path d="M16.2 7.2 L7.8 7.2 L12 12 L7.8 16.8 L16.2 16.8 M16.2 7.2 L16.2 8.6 M16.2 16.8 L16.2 15.4" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"/></svg></span></summary>
 <p>
 Combine the Fourier transforms of two history slots with an arithmetic
@@ -530,5 +632,27 @@ arithmetic.
 </footer>
 
 </main>
+
+<script>
+// Make every section directly linkable via URL fragment (e.g. #eraser, #exercise-6).
+// If the target sits inside one or more collapsed <details>, open them and scroll to it.
+(function () {
+  function revealHash() {
+    var id = decodeURIComponent((location.hash || "").slice(1));
+    if (!id) return;
+    var el = document.getElementById(id);
+    if (!el) return;
+    var node = el;
+    while (node) {                                   // open all <details> ancestors
+      if (node.tagName === "DETAILS") node.open = true;
+      node = node.parentElement;
+    }
+    if (el.tagName === "DETAILS") el.open = true;    // and the target itself
+    el.scrollIntoView({ block: "start" });
+  }
+  window.addEventListener("DOMContentLoaded", function () { setTimeout(revealHash, 0); });
+  window.addEventListener("hashchange", revealHash);
+})();
+</script>
 </body>
 </html>
