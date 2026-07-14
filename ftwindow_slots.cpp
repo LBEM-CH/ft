@@ -518,8 +518,11 @@ void FtWindow::onReloadImage()
 void FtWindow::onDeleteImage()
 {
     if (m_activeSlot < 0 || m_activeSlot >= HISTORY_SLOTS) return;
-    if (!m_history[m_activeSlot].occupied && !m_history[m_activeSlot].deferred
-        && m_image.isNull())
+    const HistoryEntry &entry = m_history[m_activeSlot];
+    // A buffer that is still being read counts as deletable: the whole point of
+    // loading it in the background is that the user can throw it away without
+    // waiting for it.
+    if (!entry.occupied && !entry.deferred && !entry.loading && m_image.isNull())
         return;   // nothing in this buffer to delete
 
     const int slot = m_activeSlot;
@@ -542,6 +545,10 @@ void FtWindow::onDeleteImage()
         if (slot != m_activeSlot) return;   // buffer switched while the dialog was open
 
         storeUndoSnapshot();
+
+        // Throw away the result of a read that is still running for this slot,
+        // so it cannot repopulate the buffer we are about to empty.
+        cancelSlotLoad(slot);
 
         m_history[slot] = HistoryEntry();
 
@@ -1930,15 +1937,107 @@ void FtWindow::saveHistory()
     QSettings settings("ft", "ft");
     for (int i = 0; i < HISTORY_SLOTS; i++) {
         QString key = QString("history/%1").arg(i);
-        // Deferred slots hold no data but must keep their path in the session,
-        // otherwise skipping them at startup would silently delete them.
-        if (m_history[i].occupied || (m_history[i].deferred && !m_history[i].path.isEmpty()))
+        // Deferred and still-loading slots hold no data but must keep their path
+        // in the session, otherwise skipping them at startup — or quitting while
+        // one is still being read — would silently delete them.
+        if (m_history[i].occupied
+            || ((m_history[i].deferred || m_history[i].loading) && !m_history[i].path.isEmpty()))
             settings.setValue(key, m_history[i].path);
         else
             settings.remove(key);
     }
     settings.setValue("activeSlot", m_activeSlot);
 #endif
+}
+
+// Pad an image (and its raw pixel data) out to the next FFT-friendly square,
+// the same geometry padImageToSquare() produces — but without touching any
+// member state, so a worker thread may call it.
+static void padSlotImageToSquare(QImage &img, std::vector<double> &raw,
+                                 double &minVal, double &maxVal)
+{
+    if (img.isNull()) return;
+    int w = img.width(), h = img.height();
+    int side = nextSmooth235(std::max(w, h));
+    if (w == side && h == side) return;
+
+    int ox = (side - w) / 2;
+    int oy = (side - h) / 2;
+
+    if ((int)raw.size() == w * h) {
+        double sum = 0;
+        for (double v : raw) sum += v;
+        double avg = sum / raw.size();
+
+        std::vector<double> padded((size_t)side * side, avg);
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+                padded[(size_t)(y + oy) * side + (x + ox)] = raw[(size_t)y * w + x];
+        raw = std::move(padded);
+        minVal = *std::min_element(raw.begin(), raw.end());
+        maxVal = *std::max_element(raw.begin(), raw.end());
+
+        double range = maxVal - minVal;
+        double scale = (range > 0) ? 255.0 / range : 1.0;
+        img = QImage(side, side, QImage::Format_Grayscale8);
+        for (int y = 0; y < side; y++) {
+            uchar *row = img.scanLine(y);
+            for (int x = 0; x < side; x++)
+                row[x] = static_cast<uchar>(std::clamp(
+                    (raw[(size_t)y * side + x] - minVal) * scale, 0.0, 255.0));
+        }
+    } else {
+        QImage gray = img.convertToFormat(QImage::Format_Grayscale8);
+        double sum = 0;
+        for (int y = 0; y < h; y++) {
+            const uchar *row = gray.constScanLine(y);
+            for (int x = 0; x < w; x++) sum += row[x];
+        }
+        int avg = (int)(sum / ((double)w * h));
+
+        QImage paddedImg(side, side, QImage::Format_Grayscale8);
+        paddedImg.fill(QColor(avg, avg, avg));
+        QPainter pp(&paddedImg);
+        pp.drawImage(ox, oy, gray);
+        pp.end();
+        img = paddedImg;
+    }
+}
+
+FtWindow::SlotImageData FtWindow::readSlotImage(const QString &path)
+{
+    SlotImageData d;
+    if (path.isEmpty() || !QFile::exists(path)) return d;
+
+    if (path.endsWith(".mrc", Qt::CaseInsensitive)) {
+        MrcResult r  = loadMrc(path);
+        d.image      = r.image;
+        d.rawPixels  = std::move(r.rawPixels);
+        d.minVal     = r.minVal;
+        d.maxVal     = r.maxVal;
+        d.pixelSize  = r.pixelSize;
+    } else {
+        d.image = QImage(path);
+        if (!d.image.isNull()) {
+            QImage gray = d.image.convertToFormat(QImage::Format_Grayscale8);
+            int w = gray.width(), h = gray.height();
+            d.rawPixels.resize((size_t)w * h);
+            for (int y = 0; y < h; y++) {
+                const uchar *row = gray.constScanLine(y);
+                for (int x = 0; x < w; x++)
+                    d.rawPixels[(size_t)y * w + x] = row[x];
+            }
+            d.minVal = *std::min_element(d.rawPixels.begin(), d.rawPixels.end());
+            d.maxVal = *std::max_element(d.rawPixels.begin(), d.rawPixels.end());
+        }
+    }
+
+    if (d.image.isNull()) return d;
+
+    padSlotImageToSquare(d.image, d.rawPixels, d.minVal, d.maxVal);
+    d.powerSpec = computePowerSpecMasked(d.image);
+    d.ok = true;
+    return d;
 }
 
 bool FtWindow::loadHistorySlotFromDisk(int i)
@@ -1949,69 +2048,129 @@ bool FtWindow::loadHistorySlotFromDisk(int i)
 #else
     if (i < 0 || i >= HISTORY_SLOTS) return false;
 
-    const QString path = m_history[i].path;
-    if (path.isEmpty() || !QFile::exists(path)) {
+    SlotImageData d = readSlotImage(m_history[i].path);
+    if (!d.ok) {
+        const QString path = m_history[i].path;
         m_history[i].occupied = false;
         m_history[i].deferred = false;
-        m_history[i].path.clear();
+        m_history[i].loading  = false;
+        if (path.isEmpty() || !QFile::exists(path))
+            m_history[i].path.clear();
         return false;
     }
 
-    QImage img;
-    std::vector<double> rawPixels;
-    double minVal = 0, maxVal = 0, pixelSize = 1.0;
+    m_history[i].image        = d.image;
+    m_history[i].rawPixels    = std::move(d.rawPixels);
+    m_history[i].minVal       = d.minVal;
+    m_history[i].maxVal       = d.maxVal;
+    m_history[i].pixelSize    = d.pixelSize;
+    m_history[i].powerSpecImg = d.powerSpec;
+    m_history[i].occupied     = true;
+    m_history[i].deferred     = false;
+    m_history[i].loading      = false;
+    return true;
+#endif
+}
 
-    if (path.endsWith(".mrc", Qt::CaseInsensitive)) {
-        MrcResult r = loadMrc(path);
-        img       = r.image;
-        rawPixels = std::move(r.rawPixels);
-        minVal    = r.minVal;
-        maxVal    = r.maxVal;
-        pixelSize = r.pixelSize;
-    } else {
-        img = QImage(path);
-        if (!img.isNull()) {
-            QImage gray = img.convertToFormat(QImage::Format_Grayscale8);
-            int w = gray.width(), h = gray.height();
-            rawPixels.resize((size_t)w * h);
-            for (int y = 0; y < h; y++) {
-                const uchar *row = gray.constScanLine(y);
-                for (int x = 0; x < w; x++)
-                    rawPixels[y * w + x] = row[x];
-            }
-            minVal = *std::min_element(rawPixels.begin(), rawPixels.end());
-            maxVal = *std::max_element(rawPixels.begin(), rawPixels.end());
+void FtWindow::startSlotLoad(int i)
+{
+#ifndef __EMSCRIPTEN__
+    if (i < 0 || i >= HISTORY_SLOTS) return;
+    if (m_history[i].loading) return;              // already on its way
+    const QString path = m_history[i].path;
+    if (path.isEmpty()) return;
+
+    m_history[i].deferred = false;
+    m_history[i].loading  = true;
+
+#if FT_HAVE_THREADS
+    const quint64 token = ++m_slotLoadToken[i];
+    auto life = m_life;
+
+    std::thread worker([this, life, i, token, path]() {
+        SlotImageData data = readSlotImage(path);
+
+        // Only post back while the window provably still exists. ~QObject
+        // discards events posted to it, so a window destroyed after this point
+        // never sees the result either.
+        std::lock_guard<std::mutex> lock(life->mutex);
+        if (!life->alive) return;
+        QMetaObject::invokeMethod(
+            this,
+            [this, i, token, data = std::move(data)]() mutable {
+                finishSlotLoad(i, token, std::move(data));
+            },
+            Qt::QueuedConnection);
+    });
+    worker.detach();
+#else
+    // No threads available: read it inline and install the result directly.
+    finishSlotLoad(i, m_slotLoadToken[i], readSlotImage(path));
+#endif
+    update();
+#else
+    Q_UNUSED(i);
+#endif
+}
+
+// Discard the result of an in-flight read of slot `i` (the worker thread runs to
+// completion, but the token no longer matches, so nothing is installed).
+void FtWindow::cancelSlotLoad(int i)
+{
+    if (i < 0 || i >= HISTORY_SLOTS) return;
+    ++m_slotLoadToken[i];
+    m_history[i].loading = false;
+}
+
+void FtWindow::finishSlotLoad(int i, quint64 token, SlotImageData data)
+{
+    if (i < 0 || i >= HISTORY_SLOTS) return;
+    if (token != m_slotLoadToken[i]) return;   // cancelled or superseded meanwhile
+
+    m_history[i].loading = false;
+
+    if (!data.ok) {
+        // File vanished or is unreadable: drop the slot entirely.
+        m_history[i] = HistoryEntry();
+        if (m_activeSlot == i) {
+            m_image = QImage();
+            m_imagePath.clear();
+            m_imageRawPixels.clear();
+            m_ftComputed = false;
+        }
+        saveHistory();
+        update();
+        return;
+    }
+
+    m_history[i].image        = data.image;
+    m_history[i].rawPixels    = data.rawPixels;
+    m_history[i].minVal       = data.minVal;
+    m_history[i].maxVal       = data.maxVal;
+    m_history[i].pixelSize    = data.pixelSize;
+    m_history[i].powerSpecImg = data.powerSpec;
+    m_history[i].occupied     = true;
+    m_history[i].deferred     = false;
+
+    // Only pull it into the panels if it is still the buffer the user is on;
+    // they may have clicked elsewhere while it was reading.
+    if (m_activeSlot == i) {
+        m_image          = m_history[i].image;
+        m_imagePath      = m_history[i].path;
+        m_imageRawPixels = m_history[i].rawPixels;
+        m_imageMinVal    = m_history[i].minVal;
+        m_imageMaxVal    = m_history[i].maxVal;
+        m_imageDispMin   = m_history[i].minVal;
+        m_imageDispMax   = m_history[i].maxVal;
+        m_pixelSize      = m_history[i].pixelSize;
+        if (!m_image.isNull()) {
+            m_zoom[0].reset(m_image.width(), m_image.height());
+            computeFFT(true);
         }
     }
 
-    if (img.isNull()) {
-        m_history[i].occupied = false;
-        m_history[i].deferred = false;
-        return false;
-    }
-
-    // Pad to square using the existing padImageToSquare() helper
-    m_image          = img;
-    m_imageRawPixels = std::move(rawPixels);
-    m_imageMinVal    = minVal;
-    m_imageMaxVal    = maxVal;
-    padImageToSquare();
-    img       = m_image;
-    rawPixels = std::move(m_imageRawPixels);
-    minVal    = m_imageMinVal;
-    maxVal    = m_imageMaxVal;
-
-    m_history[i].image        = img;
-    m_history[i].path         = path;
-    m_history[i].rawPixels    = std::move(rawPixels);
-    m_history[i].minVal       = minVal;
-    m_history[i].maxVal       = maxVal;
-    m_history[i].pixelSize    = pixelSize;
-    m_history[i].powerSpecImg = computePowerSpecMasked(img);
-    m_history[i].occupied     = true;
-    m_history[i].deferred     = false;
-    return true;
-#endif
+    saveHistory();
+    update();
 }
 
 void FtWindow::restoreHistory()
@@ -2054,8 +2213,16 @@ FtWindow::BufferSnapshot FtWindow::captureCurrentState() const
     BufferSnapshot snapshot;
     snapshot.valid = true;
     snapshot.activeSlot = m_activeSlot;
-    for (int i = 0; i < HISTORY_SLOTS; i++)
+    for (int i = 0; i < HISTORY_SLOTS; i++) {
         snapshot.history[i] = m_history[i];
+        // A read in flight is not part of the state we can restore later: undoing
+        // back to it must offer the slot as a deferred placeholder ("click to
+        // load"), not as a load that nobody is running any more.
+        if (snapshot.history[i].loading) {
+            snapshot.history[i].loading  = false;
+            snapshot.history[i].deferred = true;
+        }
+    }
     snapshot.image = m_image;
     snapshot.imagePath = m_imagePath;
     snapshot.imageRawPixels = m_imageRawPixels;
@@ -2077,8 +2244,13 @@ void FtWindow::applySnapshot(const BufferSnapshot &snapshot, bool keepZoom)
     if (!snapshot.valid) return;
 
     m_activeSlot = snapshot.activeSlot;
-    for (int i = 0; i < HISTORY_SLOTS; i++)
+    for (int i = 0; i < HISTORY_SLOTS; i++) {
+        // Any read still in flight would land on top of the state we are about
+        // to restore, so drop its result.
+        if (m_history[i].loading)
+            cancelSlotLoad(i);
         m_history[i] = snapshot.history[i];
+    }
     m_image = snapshot.image;
     m_imagePath = snapshot.imagePath;
     m_imageRawPixels = snapshot.imageRawPixels;

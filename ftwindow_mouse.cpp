@@ -565,6 +565,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
             const bool needsDiskLoad = !m_history[i].occupied && m_history[i].deferred;
 
             if (i == m_activeSlot && !needsDiskLoad) return;   // already active
+            if (m_history[i].loading && i == m_activeSlot) return;   // still reading
 
             // Save current active image back to its slot, caching its forward
             // FFT so returning here won't recompute it. The power-spectrum
@@ -593,17 +594,16 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
                 cur.deferred     = false;
             }
 
-            // Realise a deferred slot now that its data is actually wanted.
-            // This reads the file and computes its power spectrum, so it can
-            // take a while for exactly the images that were skipped at startup.
-            if (needsDiskLoad) {
-                QApplication::setOverrideCursor(Qt::WaitCursor);
-                loadHistorySlotFromDisk(i);
-                QApplication::restoreOverrideCursor();
-            }
-
             // Activate the clicked slot
             m_activeSlot = i;
+
+            // Realise a deferred slot now that its data is actually wanted. The
+            // read runs on a worker thread — these are exactly the images that
+            // were too big to load at startup, so blocking here would freeze the
+            // window and leave the user unable to delete the buffer they just
+            // discovered they do not want. The slot fills in when it arrives.
+            if (needsDiskLoad)
+                startSlotLoad(i);
 
             if (m_history[i].occupied) {
                 // Load occupied slot into panel 1

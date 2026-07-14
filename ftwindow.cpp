@@ -1592,6 +1592,14 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
 #endif
 }
 
+FtWindow::~FtWindow()
+{
+    // Tell any in-flight slot-loading worker that this window is going away, so
+    // it does not post its result back to a dead object (see startSlotLoad()).
+    std::lock_guard<std::mutex> lock(m_life->mutex);
+    m_life->alive = false;
+}
+
 // ---------------------------------------------------------------------------
 //  Layout
 // ---------------------------------------------------------------------------
