@@ -3385,12 +3385,14 @@ void FtWindow::paintEvent(QPaintEvent *)
             bool isActive = (i == m_activeSlot);
             // Slot remembered from the last session but deliberately not loaded
             // at startup (see restoreHistory): drawn as a dashed placeholder,
-            // filled in as soon as the user clicks it.
+            // filled in as soon as the user clicks it. isLoading is the same
+            // slot once its background read has started.
             bool isDeferred = !m_history[i].occupied && m_history[i].deferred;
+            bool isLoading  = !m_history[i].occupied && m_history[i].loading;
 
             if (isActive) {
                 p.setPen(QPen(QColor(120, 180, 255), 8));
-            } else if (isDeferred) {
+            } else if (isDeferred || isLoading) {
                 p.setPen(QPen(QColor(160, 160, 60), 1, Qt::DashLine));
             } else {
                 p.setPen(QPen(QColor(255, 255, 0), 1));
@@ -3406,10 +3408,12 @@ void FtWindow::paintEvent(QPaintEvent *)
                     p.drawImage(inner, m_image);
                 else
                     p.drawImage(inner, m_history[i].image);
-            } else if (isDeferred) {
+            } else if (isDeferred || isLoading) {
                 QFont df; df.setPixelSize(std::max(8, labelFontHist - 1)); p.setFont(df);
                 p.setPen(QColor(190, 190, 90));
-                p.drawText(r, Qt::AlignCenter, QStringLiteral("click\nto load"));
+                p.drawText(r, Qt::AlignCenter,
+                           isLoading ? QStringLiteral("loading…")
+                                     : QStringLiteral("click\nto load"));
             }
         }
     }
@@ -3455,7 +3459,8 @@ void FtWindow::paintEvent(QPaintEvent *)
             }
 
             bool isActive = (i == m_activeSlot);
-            bool isDeferred = !m_history[i].occupied && m_history[i].deferred;
+            bool isDeferred = !m_history[i].occupied
+                              && (m_history[i].deferred || m_history[i].loading);
 
             if (isActive) {
                 p.setPen(QPen(QColor(120, 180, 255), 8));
