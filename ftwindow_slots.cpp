@@ -1107,6 +1107,20 @@ void FtWindow::fetchAndLoadImage(const QString &relativePath)
         }
     );
 }
+#else
+void FtWindow::fetchAndLoadImage(const QString &relativePath)
+{
+    // Native build: load the file from disk relative to the application directory.
+    QString filePath = QCoreApplication::applicationDirPath() + QStringLiteral("/images/") + relativePath;
+    QFile file(filePath);
+    if (!file.open(QIODevice::ReadOnly)) {
+        qWarning() << "Failed to load default image:" << filePath;
+        return;
+    }
+    QByteArray data = file.readAll();
+    file.close();
+    loadImageData(relativePath, data);
+}
 #endif
 
 // Find smallest n >= val whose only prime factors are 2, 3, or 5

@@ -23,25 +23,25 @@ static QImage flipImage(const QImage &img, Qt::Orientations dir)
 void FtWindow::buildToolGroups()
 {
     m_p1Groups = {
-        { "Edit",        {0, 1, 8} },       // eraser, paint brush, taper edges
-        { "Measure",     {2} },
-        { "Transform",   {3, 4, 5, 6, 7} }, // flip H/V, shift, rotate, invert
-        { "Symmetrize",  {9} },
-        { "Redimension", {10, 11} },        // bin, crop
-        { "Filter",      {12, 13} },        // gabor, hessian
-        { "Amyloid",     {14} },
-        { "Math",        {15} },
-        { "Particles",   {16, 17} },        // peak, extract
+        { "Edit",        {0, 1, 8},     {} }, // eraser, paint brush, taper edges
+        { "Measure",     {2},           {} },
+        { "Transform",   {3, 4, 5, 6, 7}, {} }, // flip H/V, shift, rotate, invert
+        { "Symmetrize",  {9},           {} },
+        { "Redimension", {10, 11},      {} }, // bin, crop
+        { "Filter",      {12, 13},      {} }, // gabor, hessian
+        { "Amyloid",     {14},          {} },
+        { "Math",        {15},          {} },
+        { "Particles",   {16, 17},      {} }, // peak, extract
     };
     m_p2Groups = {
-        { "Edit",                  {0, 1} },      // eraser, paint brush
-        { "Cross-section profile", {7} },
-        { "Filter",                {2, 3, 4, 5} },// bandpass, directional, line, lattice
-        { "Transform",             {6, 8} },      // rotate, symmetrize
-        { "Redimension",           {9} },         // Fourier crop / pad
-        { "Ramp",                  {10} },        // phase ramp
+        { "Edit",                  {0, 1},      {} }, // eraser, paint brush
+        { "Cross-section profile", {7},         {} },
+        { "Filter",                {2, 3, 4, 5}, {} }, // bandpass, directional, line, lattice
+        { "Transform",             {6, 8},      {} }, // rotate, symmetrize
+        { "Redimension",           {9},         {} }, // Fourier crop / pad
+        { "Ramp",                  {10},        {} }, // phase ramp
         { "CTF",                   {11, 12}, "CTF" }, // CTF SIM, CTF FIT (face = "CTF")
-        { "Math",                  {13} },
+        { "Math",                  {13},        {} },
     };
 }
 
