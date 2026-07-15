@@ -101,7 +101,7 @@ void FtWindow::paintEvent(QPaintEvent *)
     {
         QFont tf;
         tf.setBold(true);
-        tf.setPixelSize(14);
+        tf.setPixelSize(28);
         p.setFont(tf);
         p.setPen(Qt::white);
         QFontMetrics tfm(tf);

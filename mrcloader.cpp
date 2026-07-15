@@ -220,6 +220,19 @@ MrcResult loadMrcFromData(const QByteArray &fileData)
     // qDebug() << "MRC: Data offset =" << dataOffset;
 
     qint64 pixelCount = (qint64)nx * ny;
+
+
+    // Guard the allocation against a header claiming more pixels than the file can hold.
+    // Every supported mode uses >= 1 byte per pixel, so pixelCount can never legitimately
+    // exceed the number of data bytes available; bail before the (potentially huge) resize.
+    qint64 available = fileData.size() - dataOffset;
+    if (available <= 0 || pixelCount > available) {
+        qDebug() << "MRC: ERROR – header dimensions exceed available data (pixels ="
+                 << pixelCount << ", data bytes =" << available << ")";
+        return result;
+    }
+
+    
     result.nx = nx;
     result.ny = ny;
     result.rawPixels.resize(pixelCount);
