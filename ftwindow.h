@@ -16,6 +16,8 @@
 #include <vector>
 #include <deque>
 #include <functional>
+#include <memory>
+#include <mutex>
 #include "fft.h"          // Complex, nextPow2, fft2d, fftShift, floatToImage
 
 class QTimer;
@@ -67,6 +69,7 @@ class FtWindow : public QWidget {
     Q_OBJECT
 public:
     explicit FtWindow(QWidget *parent = nullptr);
+    ~FtWindow() override;
 
     // Override the directory used as the initial location in the
     // "Load image" file dialog. Intended for embedding applications
@@ -110,6 +113,7 @@ private slots:
     void onCreateImage();
     void onCreateImageSized(int sz);
     void onReloadImage();
+    void onDeleteImage();
     void onCycleMode();
     void onToggleFullscreen();
 public:
@@ -180,9 +184,7 @@ private:
     void onCtfFitExecuteImpl();
     void onPhaseRampComputeImpl();
     void onAmyloidComputeImpl();
-#ifdef __EMSCRIPTEN__
     void fetchAndLoadImage(const QString &relativePath);
-#endif
     void padImageToSquare();
     void extractImageData();
     void computeFFT(bool keepZoom = false);
@@ -254,6 +256,7 @@ private:
     QPushButton *m_saveBtn   = nullptr;
     QPushButton *m_createBtn = nullptr;
     QPushButton *m_reloadBtn = nullptr;
+    QPushButton *m_deleteBtn = nullptr;
     QPushButton *m_undoBtn   = nullptr;
     QPushButton *m_redoBtn   = nullptr;
     QPushButton *m_fullscreenBtn = nullptr;
@@ -345,6 +348,17 @@ private:
         double  minVal = 0, maxVal = 0;
         double  pixelSize = 1.0;
         bool    occupied = false;
+        // Set when a stored session slot was deliberately NOT loaded at startup
+        // (image too large, or the file lives on a network volume). Only
+        // meaningful while occupied == false: the slot then holds nothing but
+        // its path, is drawn as a placeholder, and is loaded from disk on first
+        // click. See loadHistorySlotFromDisk() / restoreHistory().
+        bool    deferred = false;
+        // Set while a background thread is reading this slot's file (started by
+        // clicking a deferred slot). The slot holds nothing yet, but the window
+        // stays responsive — in particular "Delete image" works on a slot that
+        // is still loading, which cancels the read. See startSlotLoad().
+        bool    loading  = false;
         // Cached forward FFT of this slot's image, so re-activating a slot
         // restores it instead of recomputing (the expensive part of a buffer
         // switch). Saved on leaving a slot and restored on entering one; empty
@@ -384,8 +398,51 @@ private:
     // m_fftData (already centred), avoiding a fresh forward FFT. Equivalent to
     // computePowerSpecMasked(m_image) whenever m_ftComputed is true.
     QImage powerSpecFromCurrentFFT() const;
+    // Width of the vertical strip at the window centre that holds the Reload /
+    // Save / Delete buttons. resizeEvent centres the buttons in it; paintEvent
+    // keeps the panel-3 and panel-4 thumbnail grids out of it.
+    int historyButtonGutter() const
+    { return (m_reloadBtn ? m_reloadBtn->width() : 130) + 16; }
+
     void saveHistory();
     void restoreHistory();
+    // Load slot `i` from m_history[i].path (full pixel data + power spectrum),
+    // blocking until done. Used by restoreHistory() for the small, local images
+    // it accepts. Returns false if the file is gone or unreadable.
+    bool loadHistorySlotFromDisk(int i);
+
+    // Everything a slot needs from disk. Produced off the GUI thread, so this
+    // must stay free of member access.
+    struct SlotImageData {
+        QImage  image;
+        std::vector<double> rawPixels;
+        double  minVal = 0, maxVal = 0;
+        double  pixelSize = 1.0;
+        QImage  powerSpec;
+        bool    ok = false;
+    };
+    static SlotImageData readSlotImage(const QString &path);
+
+    // Read slot `i` on a worker thread. The slot is marked `loading` and the
+    // window keeps processing events meanwhile, so the user can still delete it
+    // or click elsewhere. finishSlotLoad() installs the result on the GUI
+    // thread; cancelSlotLoad() makes an in-flight read's result be discarded.
+    void startSlotLoad(int i);
+    void cancelSlotLoad(int i);
+    void finishSlotLoad(int i, quint64 token, SlotImageData data);
+    // Bumped whenever a slot's in-flight read is cancelled or superseded; a
+    // worker's result is only installed if the slot's token still matches.
+    quint64 m_slotLoadToken[HISTORY_SLOTS] = {};
+
+    // Lets a detached worker thread find out whether this window still exists
+    // before it posts its result back. The destructor takes the lock and clears
+    // `alive`, so a worker either posts while the window is provably alive (and
+    // ~QObject then drops the pending event) or skips posting entirely.
+    struct LifeGuard {
+        std::mutex mutex;
+        bool alive = true;
+    };
+    std::shared_ptr<LifeGuard> m_life = std::make_shared<LifeGuard>();
     BufferSnapshot captureCurrentState() const;
     void applySnapshot(const BufferSnapshot &snapshot, bool keepZoom = false);
     void storeUndoSnapshot();

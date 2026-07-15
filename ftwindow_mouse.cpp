@@ -23,25 +23,25 @@ static QImage flipImage(const QImage &img, Qt::Orientations dir)
 void FtWindow::buildToolGroups()
 {
     m_p1Groups = {
-        { "Edit",        {0, 1, 8} },       // eraser, paint brush, taper edges
-        { "Measure",     {2} },
-        { "Transform",   {3, 4, 5, 6, 7} }, // flip H/V, shift, rotate, invert
-        { "Symmetrize",  {9} },
-        { "Redimension", {10, 11} },        // bin, crop
-        { "Filter",      {12, 13} },        // gabor, hessian
-        { "Amyloid",     {14} },
-        { "Math",        {15} },
-        { "Particles",   {16, 17} },        // peak, extract
+        { "Edit",        {0, 1, 8},     {} }, // eraser, paint brush, taper edges
+        { "Measure",     {2},           {} },
+        { "Transform",   {3, 4, 5, 6, 7}, {} }, // flip H/V, shift, rotate, invert
+        { "Symmetrize",  {9},           {} },
+        { "Redimension", {10, 11},      {} }, // bin, crop
+        { "Filter",      {12, 13},      {} }, // gabor, hessian
+        { "Amyloid",     {14},          {} },
+        { "Math",        {15},          {} },
+        { "Particles",   {16, 17},      {} }, // peak, extract
     };
     m_p2Groups = {
-        { "Edit",                  {0, 1} },      // eraser, paint brush
-        { "Cross-section profile", {7} },
-        { "Filter",                {2, 3, 4, 5} },// bandpass, directional, line, lattice
-        { "Transform",             {6, 8} },      // rotate, symmetrize
-        { "Redimension",           {9} },         // Fourier crop / pad
-        { "Ramp",                  {10} },        // phase ramp
+        { "Edit",                  {0, 1},      {} }, // eraser, paint brush
+        { "Cross-section profile", {7},         {} },
+        { "Filter",                {2, 3, 4, 5}, {} }, // bandpass, directional, line, lattice
+        { "Transform",             {6, 8},      {} }, // rotate, symmetrize
+        { "Redimension",           {9},         {} }, // Fourier crop / pad
+        { "Ramp",                  {10},        {} }, // phase ramp
         { "CTF",                   {11, 12}, "CTF" }, // CTF SIM, CTF FIT (face = "CTF")
-        { "Math",                  {13} },
+        { "Math",                  {13},        {} },
     };
 }
 
@@ -558,7 +558,14 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
     if (clickedSlot >= 0) {
         int i = clickedSlot;
         {
-            if (i == m_activeSlot) return;   // already active
+            // A slot the startup restore skipped (large image, or file on a
+            // network volume) still holds its path. Clicking it is the moment we
+            // pay for the load — including when it is already the active slot,
+            // which is why the "already active" early-out comes after this test.
+            const bool needsDiskLoad = !m_history[i].occupied && m_history[i].deferred;
+
+            if (i == m_activeSlot && !needsDiskLoad) return;   // already active
+            if (m_history[i].loading && i == m_activeSlot) return;   // still reading
 
             // Save current active image back to its slot, caching its forward
             // FFT so returning here won't recompute it. The power-spectrum
@@ -584,10 +591,19 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
                     cur.powerSpecImg = computePowerSpecMasked(m_image);
                 }
                 cur.occupied     = true;
+                cur.deferred     = false;
             }
 
             // Activate the clicked slot
             m_activeSlot = i;
+
+            // Realise a deferred slot now that its data is actually wanted. The
+            // read runs on a worker thread — these are exactly the images that
+            // were too big to load at startup, so blocking here would freeze the
+            // window and leave the user unable to delete the buffer they just
+            // discovered they do not want. The slot fills in when it arrives.
+            if (needsDiskLoad)
+                startSlotLoad(i);
 
             if (m_history[i].occupied) {
                 // Load occupied slot into panel 1
