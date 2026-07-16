@@ -342,7 +342,9 @@ void FtWindow::showP2ToolWidgets()
     m_ctfBeamtiltEdit->setVisible(m_ctfActive);
     m_ctfBeamtiltDirEdit->setVisible(m_ctfActive);
     m_ctfCancelBtn->setVisible(m_ctfActive);
-    m_ctfComputeBtn->setVisible(m_ctfActive);
+    m_ctfPupilBtn->setVisible(m_ctfActive);
+    m_ctfComplexBtn->setVisible(m_ctfActive);
+    m_ctfRealBtn->setVisible(m_ctfActive);
 
     m_ctfFitVoltageEdit->setVisible(m_ctfFitActive);
     m_ctfFitCsEdit->setVisible(m_ctfFitActive);
@@ -402,6 +404,9 @@ void FtWindow::activateP2Tool(int toolId)
             m_ctfFitHasResult = false;
             if (m_activeSlot >= 0 && m_ctfFitInputCombo)
                 m_ctfFitInputCombo->setCurrentIndex(m_activeSlot);
+            // Seed the fit band from the image's own Nyquist resolution, so the
+            // defaults follow the pixel size instead of being fixed at 3/30 Å.
+            updateCtfFitResolutionDefaults();
         }
         break;
     }
@@ -584,6 +589,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
                     cur.fftN         = m_fftN;
                     cur.fftOrigW     = m_origW;
                     cur.fftOrigH     = m_origH;
+                    cur.ftInverseOutput = m_ftInverseOutput;
                     cur.powerSpecImg = powerSpecFromCurrentFFT();
                 } else {
                     cur.fftData.clear();
@@ -637,6 +643,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
                 m_fftN       = m_history[i].fftN;
                 m_origW      = m_history[i].fftOrigW;
                 m_origH      = m_history[i].fftOrigH;
+                m_ftInverseOutput = m_history[i].ftInverseOutput;
                 m_ftComputed = true;
                 recomputeDisplayImages();
                 m_modeBtn->show();

@@ -531,13 +531,13 @@ void FtWindow::onDeleteImage()
     auto *box = new QMessageBox(this);
     box->setAttribute(Qt::WA_DeleteOnClose);
     box->setIcon(QMessageBox::Warning);
-    box->setWindowTitle(QStringLiteral("Delete image"));
-    box->setText(QStringLiteral("Delete the image in buffer %1?").arg(label));
+    box->setWindowTitle(QStringLiteral("Empty buffer"));
+    box->setText(QStringLiteral("Empty the buffer %1?").arg(label));
     box->setInformativeText(
-        QStringLiteral("The buffer is emptied. The file on disk is not deleted, "
+        QStringLiteral("The file on disk is not deleted, "
                        "and Undo brings the buffer back."));
     QPushButton *cancelBtn = box->addButton(QStringLiteral("Cancel"), QMessageBox::RejectRole);
-    QPushButton *deleteBtn = box->addButton(QStringLiteral("Delete"), QMessageBox::DestructiveRole);
+    QPushButton *deleteBtn = box->addButton(QStringLiteral("Empty buffer"), QMessageBox::DestructiveRole);
     box->setDefaultButton(cancelBtn);
 
     connect(box, &QMessageBox::finished, this, [this, box, deleteBtn, slot]() {
@@ -1123,6 +1123,59 @@ void FtWindow::fetchAndLoadImage(const QString &relativePath)
 }
 #endif
 
+// The image every empty session starts with, relative to the example-images
+// directory. Used by both the standalone app and embedders such as the 4d app.
+static const char *const kDefaultExampleImage = "Exercise_01-Photos/lorenz_1999.png";
+
+#ifndef __EMSCRIPTEN__
+QString FtWindow::resolveExampleImage(const QString &relativePath)
+{
+    const QString appDir = QCoreApplication::applicationDirPath();
+    QStringList dirs;
+    // Embedder-supplied location first (the 4d app points this at its own
+    // resources directory before constructing the window).
+    const QString overrideDir = FtWindow::exampleImagesDir();
+    if (!overrideDir.isEmpty())
+        dirs << overrideDir;
+    dirs << appDir + QStringLiteral("/../EXAMPLE_IMAGES")   // standalone build tree
+         << appDir + QStringLiteral("/EXAMPLE_IMAGES")
+         << appDir + QStringLiteral("/../Resources/EXAMPLE_IMAGES");  // macOS bundle
+
+    for (const QString &dir : dirs) {
+        QFileInfo fi(dir + QLatin1Char('/') + relativePath);
+        if (fi.exists() && fi.isFile())
+            return fi.absoluteFilePath();
+    }
+    return QString();
+}
+#endif
+
+void FtWindow::loadDefaultExampleIfEmpty()
+{
+    // "Empty" must account for buffers that only hold a path: a deferred or
+    // still-loading slot is a remembered image, not a free buffer.
+    for (int i = 0; i < HISTORY_SLOTS; i++) {
+        const HistoryEntry &e = m_history[i];
+        if (e.occupied || e.deferred || e.loading) return;
+    }
+    if (!m_image.isNull()) return;
+
+    m_activeSlot = 0;   // buffer a
+
+#ifdef __EMSCRIPTEN__
+    fetchAndLoadImage(QString::fromLatin1(kDefaultExampleImage));
+#else
+    const QString path = resolveExampleImage(QString::fromLatin1(kDefaultExampleImage));
+    if (path.isEmpty()) {
+        qWarning() << "Default example image not found:" << kDefaultExampleImage
+                   << "- looked under" << FtWindow::exampleImagesDir()
+                   << "and" << QCoreApplication::applicationDirPath();
+        return;
+    }
+    loadImageFile(path);
+#endif
+}
+
 // Find smallest n >= val whose only prime factors are 2, 3, or 5
 static int nextSmooth235(int val)
 {
@@ -1213,6 +1266,10 @@ void FtWindow::extractImageData()
 void FtWindow::computeFFT(bool keepZoom)
 {
     if (m_image.isNull()) return;
+
+    // This transform comes from a real image, so inverting it must give that
+    // image back: reset the mode in case the buffer previously held a pupil.
+    m_ftInverseOutput = InverseOutput::RealPart;
 
     m_fftProgress = 0.0;
     repaint();
@@ -1356,7 +1413,7 @@ void FtWindow::computeFFT(bool keepZoom)
         computeCrossSectionProfile();
 }
 
-void FtWindow::computeInverseFFT()
+void FtWindow::computeInverseFFT(InverseOutput out)
 {
     if (!m_ftComputed || m_fftN == 0) return;
 
@@ -1462,8 +1519,14 @@ void FtWindow::computeInverseFFT()
 
     m_imageRawPixels.resize(outW * outH);
     for (int y = 0; y < outH; y++)
-        for (int x = 0; x < outW; x++)
-            m_imageRawPixels[y * outW + x] = data[y * N + x].real();
+        for (int x = 0; x < outW; x++) {
+            const Complex &v = data[y * N + x];
+            // Intensity keeps |h|², which is what a detector records and the only
+            // form in which a complex wave's asymmetry survives; the real part
+            // alone would be centrosymmetric for a real-valued transform.
+            m_imageRawPixels[y * outW + x] =
+                (out == InverseOutput::Intensity) ? std::norm(v) : v.real();
+        }
 
     m_imageMinVal = *std::min_element(m_imageRawPixels.begin(), m_imageRawPixels.end());
     m_imageMaxVal = *std::max_element(m_imageRawPixels.begin(), m_imageRawPixels.end());
@@ -1655,8 +1718,11 @@ void FtWindow::computeInverseFFTAnimated()
 
         m_imageRawPixels.resize(outW * outH);
         for (int y = 0; y < outH; y++)
-            for (int x = 0; x < outW; x++)
-                m_imageRawPixels[y * outW + x] = (*data)[y * N + x].real();
+            for (int x = 0; x < outW; x++) {
+                const Complex &v = (*data)[y * N + x];
+                m_imageRawPixels[y * outW + x] =
+                    (m_ftInverseOutput == InverseOutput::Intensity) ? std::norm(v) : v.real();
+            }
 
         m_imageMinVal = *std::min_element(m_imageRawPixels.begin(), m_imageRawPixels.end());
         m_imageMaxVal = *std::max_element(m_imageRawPixels.begin(), m_imageRawPixels.end());
@@ -1690,7 +1756,8 @@ void FtWindow::computeInverseFFTAnimated()
 
     chainSteps(std::move(steps));
 #else
-    computeInverseFFT();
+    // Honour whatever the current Fourier data means (real image vs. pupil).
+    computeInverseFFT(m_ftInverseOutput);
 #endif
 }
 
@@ -2250,6 +2317,7 @@ FtWindow::BufferSnapshot FtWindow::captureCurrentState() const
     snapshot.origW = m_origW;
     snapshot.origH = m_origH;
     snapshot.fftData = m_fftData;
+    snapshot.ftInverseOutput = m_ftInverseOutput;
     return snapshot;
 }
 
@@ -2278,6 +2346,7 @@ void FtWindow::applySnapshot(const BufferSnapshot &snapshot, bool keepZoom)
     m_origW = snapshot.origW;
     m_origH = snapshot.origH;
     m_fftData = snapshot.fftData;
+    m_ftInverseOutput = snapshot.ftInverseOutput;
 
     if (!keepZoom) {
         if (!m_image.isNull())
@@ -5096,7 +5165,9 @@ void FtWindow::onCtfCancel()
     m_ctfBeamtiltEdit->hide();
     m_ctfBeamtiltDirEdit->hide();
     m_ctfCancelBtn->hide();
-    m_ctfComputeBtn->hide();
+    m_ctfPupilBtn->hide();
+    m_ctfComplexBtn->hide();
+    m_ctfRealBtn->hide();
     update();
 }
 
@@ -5181,8 +5252,9 @@ void FtWindow::computeCtfProfile1D()
         double qy = q * std::sin(profAngleRad);
         double chiP = chiTiltAt(qx, qy);
         double chiM = chiTiltAt(-qx, -qy);
-        double chiEven = 0.5 * (chiP + chiM)
-                       + M_PI * lambdaA * (dfProf - dfA) * q2;  // + user astig (even)
+        double chiAstig = M_PI * lambdaA * (dfProf - dfA) * q2;  // user astig (even)
+        double chiT    = chiP + chiAstig;                        // full tilted χ
+        double chiEven = 0.5 * (chiP + chiM) + chiAstig;
         double chiOdd  = 0.5 * (chiP - chiM);                    // coma (odd)
         double tArg = M_PI * lambdaA * defocusSpreadA * q2;
         double envT = std::exp(-0.5 * tArg * tArg);
@@ -5190,15 +5262,36 @@ void FtWindow::computeCtfProfile1D()
         //   E_s(q) = exp(-π² α² q² (Δf + Cs·λ²·q²)²)
         double sArg = dfProf + CsA * lambdaA * lambdaA * q2;
         double envS = std::exp(-(M_PI * M_PI) * alphaRad * alphaRad * q2 * sArg * sArg);
-        // Complex contrast transfer C = C₀·exp(−iχ_odd), with the real, oscillating
-        //   C₀ = E·(A·sin(−χ_even)+B·cos(−χ_even)).
-        // Panel 4 plots the amplitude |C| = |C₀| (the coma factor has unit modulus);
-        // panel 3 plots the phase arg(C) ∈ [−π,π].
-        double base = envT * envS * (A * std::sin(-chiEven) + B * std::cos(-chiEven));
-        Complex c = base * Complex(std::cos(chiOdd), -std::sin(chiOdd));
+        double E = envT * envS;
+        // The profile must plot whichever model is selected, or it would
+        // contradict what panel 2 shows. The formulae mirror ctfAt() in
+        // onCtfComputeImpl(); panel 4 plots |C| and panel 3 arg(C) ∈ [−π,π].
+        Complex c;
+        switch (m_ctfModel) {
+        case CtfModel::Pupil: {
+            double ph = -(chiT + std::atan2(B, A));
+            c = E * Complex(std::cos(ph), std::sin(ph));
+            break;
+        }
+        case CtfModel::ComplexCTF: {
+            double base = E * (A * std::sin(-chiEven) + B * std::cos(-chiEven));
+            c = base * Complex(std::cos(chiOdd), -std::sin(chiOdd));
+            break;
+        }
+        case CtfModel::RealCTF:
+        default:
+            c = Complex(E * (A * std::sin(-chiT) + B * std::cos(-chiT)), 0.0);
+            break;
+        }
         m_ctfProfile[j]      = std::abs(c);
         m_ctfPhaseProfile[j] = std::arg(c);
     }
+}
+
+void FtWindow::computeCtfWithModel(CtfModel model)
+{
+    m_ctfModel = model;
+    onCtfCompute();
 }
 
 void FtWindow::onCtfCompute()
@@ -5297,9 +5390,10 @@ void FtWindow::onCtfComputeImpl()
         return M_PI * lambdaA * dfA * k2
              + 0.5 * M_PI * CsA * lambdaA * lambdaA * lambdaA * k2 * k2;
     };
+    const CtfModel model = m_ctfModel;
     auto ctfAt = [N, dxA, lambdaA, dfA, CsA, defocusSpreadA, alphaRad,
-                  A, B, tx, ty, chiRound](double dfLocalA, double rPix,
-                                          double thetaRad) -> Complex {
+                  A, B, tx, ty, chiRound, model](double dfLocalA, double rPix,
+                                                 double thetaRad) -> Complex {
         // Spatial frequency q (1/Å) for this radial pixel distance.
         double q = rPix / (N * dxA);
         double q2 = q * q;
@@ -5315,15 +5409,19 @@ void FtWindow::onCtfComputeImpl()
             return chiRound(ux + tx, uy + ty) - chiRound(tx, ty)
                  - gcoef * (ux * tx + uy * ty);
         };
+        // The tilted aberration at +q and −q. With a beam tilt these differ, and
+        // that asymmetry is the whole physical effect of the tilt.
         double chiP = chiTiltAt(qx, qy);
         double chiM = chiTiltAt(-qx, -qy);
-        // EVEN part (defocus + Cs + 2nd-order tilt defocus/astigmatism): it sets
-        // the oscillating CTF modulus and carries the tilt astigmatism that makes
-        // the Thon rings elliptical. User lens astigmatism (also even) adds here.
-        double chiEven = 0.5 * (chiP + chiM)
-                       + M_PI * lambdaA * (dfLocalA - dfA) * q2;
-        // ODD part (1st-order coma): a pure phase aberration that does not change
-        // the modulus; it makes the transfer function genuinely complex.
+        // The user's lens astigmatism is even in q and rides along with defocus.
+        double chiAstig = M_PI * lambdaA * (dfLocalA - dfA) * q2;
+        // Full tilted aberration (no even/odd split).
+        double chiT = chiP + chiAstig;
+        // Even part: defocus, Cs, astigmatism and the defocus/astigmatism the
+        // tilt itself induces. It alone sets the oscillating Thon rings.
+        double chiEven = 0.5 * (chiP + chiM) + chiAstig;
+        // Odd part: 1st-order coma. A pure phase aberration — it never changes
+        // the modulus.
         double chiOdd = 0.5 * (chiP - chiM);
         // Temporal-coherence envelope from defocus spread.
         double tArg = M_PI * lambdaA * defocusSpreadA * q2;
@@ -5332,12 +5430,41 @@ void FtWindow::onCtfComputeImpl()
         //   E_s(q) = exp(-π² α² q² (Δf + Cs·λ²·q²)²)
         double sArg = dfLocalA + CsA * lambdaA * lambdaA * q2;
         double envS = std::exp(-(M_PI * M_PI) * alphaRad * alphaRad * q2 * sArg * sArg);
-        // Complex contrast-transfer function: the real, oscillating contrast
-        // transfer C₀ = E·(A·sin(−χ_even)+B·cos(−χ_even)) — whose modulus gives
-        // the (elliptical) Thon rings — times the coma phase factor exp(−iχ_odd).
         double E = envT * envS;
-        double base = E * (A * std::sin(-chiEven) + B * std::cos(-chiEven));
-        return base * Complex(std::cos(chiOdd), -std::sin(chiOdd));
+
+        switch (model) {
+        case CtfModel::Pupil: {
+            // Wave-optical pupil P(q) = E(q)·exp(−iχ_tilt(q)): the aberrated lens
+            // acting on the electron wave. The modulus is only the coherence
+            // envelope (no Thon rings — those belong to the intensity CTF); the
+            // aberration lives entirely in the phase. Under tilt it is genuinely
+            // non-Hermitian, so h = FT⁻¹[P] is complex and |h|² is the one-sided
+            // coma comet. Amplitude contrast is folded in as the constant phase
+            // atan2(B,A), which factors out of |h|² and so cannot affect the PSF.
+            double ph = -(chiT + std::atan2(B, A));
+            return E * Complex(std::cos(ph), std::sin(ph));
+        }
+        case CtfModel::ComplexCTF: {
+            // Linear image-intensity transfer function for a weak-phase object:
+            // the real oscillating transfer built from the even aberration, times
+            // the coma phase factor exp(−iχ_odd). Hermitian by construction —
+            // T(−q) = conj(T(q)) — because a real image demands it, so the Thon
+            // rings stay symmetric and the real-space PSF comes out real. It is
+            // Hermitian without being even, which is exactly what lets that real
+            // PSF still show one-sided coma.
+            double base = E * (A * std::sin(-chiEven) + B * std::cos(-chiEven));
+            return base * Complex(std::cos(chiOdd), -std::sin(chiOdd));
+        }
+        case CtfModel::RealCTF:
+        default: {
+            // The transfer function evaluated at the full tilted aberration and
+            // kept purely real: not Hermitian, so the Thon rings themselves go
+            // one-sided. The price is the PSF — for a real C the inverse
+            // transform obeys h(−r) = conj(h(r)), so the real part taken for
+            // panel 1 is exactly centrosymmetric and shows no coma at all.
+            return Complex(E * (A * std::sin(-chiT) + B * std::cos(-chiT)), 0.0);
+        }
+        }
     };
     std::vector<std::function<void()>> steps;
 
@@ -5402,46 +5529,74 @@ void FtWindow::onCtfComputeImpl()
     // Build the panel-2 mode images (cos/sin, amp/phase, complex, power). The
     // current display mode is honoured here exactly as for a real transform.
     // Note: the synthetic CTF is stored with raw amplitudes of order 1, whereas
-    // the FFT of an actual image (or this CTF after a real-space round trip,
-    // whose forward FFT runs on the 8-bit PSF image with its DC pedestal) has
-    // amplitudes orders of magnitude larger. Because the amplitude panel shows
+    // the FFT of an actual image has amplitudes orders of magnitude larger.
+    // Because the amplitude panel shows
     // log(1+amp) — which is ~linear for amp≲1 but truly logarithmic for amp≫1 —
-    // the fresh CTF's envelope fall-off looks much steeper than the same shape
-    // after a round trip. This is expected (a log-scale regime difference), not
-    // a wrong-display-mode bug.
+    // the CTF's envelope fall-off looks steeper than that of a transformed
+    // image. This is expected (a log-scale regime difference), not a
+    // wrong-display-mode bug.
     recomputeDisplayImages();
         m_toolProgress = 0.92;
     });
 
     // Step: inverse transform to real space for panel 1.
-    steps.push_back([this, N]() {
+    steps.push_back([this, N, model]() {
 
-    // Inverse-transform to real space for panel 1. The CTF is built in the
-    // centred Fourier convention (zero frequency at (N/2, N/2), real-valued and
-    // with smooth phases), and computeInverseFFT() already returns the result
-    // in centred real-space form — so the PSF lands at the image centre
-    // directly. No manual quadrant swap is performed here: that extra fftShift
-    // is equivalent to multiplying the Fourier data by (-1)^(x+y) (a 180° phase
-    // flip on every second pixel) and would push the PSF back into the corners.
+    // Inverse-transform to real space for panel 1. The pupil is built in the
+    // centred Fourier convention (zero frequency at (N/2, N/2)), and
+    // computeInverseFFT() already returns the result in centred real-space form
+    // — so the PSF lands at the image centre directly. No manual quadrant swap
+    // is performed here: that extra fftShift is equivalent to multiplying the
+    // Fourier data by (-1)^(x+y) (a 180° phase flip on every second pixel) and
+    // would push the PSF back into the corners.
+    //
+    // How the wave becomes an image depends on the model:
+    //  - Pupil: h = FT⁻¹[P] is a complex wave, and the microscope records its
+    //    intensity |h|². That is the point spread function, and the only form in
+    //    which the coma survives.
+    //  - Complex CTF: the transform is Hermitian, so the image is already real —
+    //    RealPart discards nothing, and the PSF is real and one-sided.
+    //  - Real-valued CTF: the transform is real, so h(−r) = conj(h(r)) and the
+    //    real part is exactly centrosymmetric. The discarded imaginary part is
+    //    where all the asymmetry went; this is inherent to the model, not a bug.
     m_origW = N;
     m_origH = N;
-    computeInverseFFT();
+    // Record what this buffer's Fourier data means, so the FT⁻¹ arrow (and any
+    // later re-inversion) reproduces this image instead of reinterpreting it.
+    m_ftInverseOutput = (model == CtfModel::Pupil) ? InverseOutput::Intensity
+                                                   : InverseOutput::RealPart;
+    computeInverseFFT(m_ftInverseOutput);
         m_toolProgress = 0.97;
     });
 
     // Step: store the result in the active history slot.
-    steps.push_back([this, voltageKV, defocusNM, csMM]() {
+    steps.push_back([this, voltageKV, defocusNM, csMM, model]() {
 
     if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS) {
-        m_imagePath = QString("ctf: %1kV df=%2nm Cs=%3mm")
-                          .arg(voltageKV).arg(defocusNM).arg(csMM);
+        const char *modelName = (model == CtfModel::Pupil)      ? "pupil"
+                              : (model == CtfModel::ComplexCTF) ? "complex"
+                                                                : "real";
+        m_imagePath = QString("ctf[%1]: %2kV df=%3nm Cs=%4mm")
+                          .arg(modelName).arg(voltageKV).arg(defocusNM).arg(csMM);
         m_history[m_activeSlot].image        = m_image;
         m_history[m_activeSlot].path         = m_imagePath;
         m_history[m_activeSlot].rawPixels    = m_imageRawPixels;
         m_history[m_activeSlot].minVal       = m_imageMinVal;
         m_history[m_activeSlot].maxVal       = m_imageMaxVal;
         m_history[m_activeSlot].pixelSize    = m_pixelSize;
-        m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
+        // Keep the simulated CTF itself as this buffer's transform. A beam-tilted
+        // CTF is not Hermitian, so it cannot be recovered from the real-space
+        // image: that image is the real part of the inverse transform, and any
+        // forward FFT of it is Hermitian by construction and would silently
+        // symmetrise the CTF (erasing the coma). Cache the transform and derive
+        // the panel-4 thumbnail from it rather than from the image.
+        m_history[m_activeSlot].fftData      = m_fftData;
+        m_history[m_activeSlot].fftN         = m_fftN;
+        m_history[m_activeSlot].fftOrigW     = m_origW;
+        m_history[m_activeSlot].fftOrigH     = m_origH;
+        m_history[m_activeSlot].ftComputed   = true;
+        m_history[m_activeSlot].ftInverseOutput = m_ftInverseOutput;
+        m_history[m_activeSlot].powerSpecImg = powerSpecFromCurrentFFT();
         m_history[m_activeSlot].occupied     = true;
     }
 
@@ -5450,6 +5605,33 @@ void FtWindow::onCtfComputeImpl()
     });
 
     chainSteps(std::move(steps));
+}
+
+// Default the fit band to 10%…90% of the Nyquist frequency of the current
+// image. Nyquist is 2 * pixelSize (Å), so a fraction f of the Nyquist frequency
+// corresponds to a d-spacing of nyquist / f: 90% of Nyquist is the fine (upper)
+// limit and 10% the coarse (lower) one. Percentages are of the frequency, not of
+// the d-spacing — taking 90% of the Nyquist *spacing* would place the limit
+// beyond Nyquist, where the transform holds no data.
+void FtWindow::updateCtfFitResolutionDefaults()
+{
+    if (!m_ctfFitResHiEdit || !m_ctfFitResLoEdit) return;
+
+    double pixelSize = m_pixelSize;
+    // Prefer the buffer actually being fitted, when it differs from the active one.
+    if (m_ctfFitInputCombo) {
+        int idx = m_ctfFitInputCombo->currentIndex();
+        if (idx >= 0 && idx < HISTORY_SLOTS && m_history[idx].occupied)
+            pixelSize = m_history[idx].pixelSize;
+    }
+    if (!(pixelSize > 0)) return;   // unknown scale: leave the existing defaults
+
+    const double nyquistA = 2.0 * pixelSize;
+    const double resHiA   = nyquistA / 0.9;   // finest included (small Å)
+    const double resLoA   = nyquistA / 0.1;   // coarsest included (large Å)
+
+    m_ctfFitResHiEdit->setText(QString::number(resHiA, 'g', 4));
+    m_ctfFitResLoEdit->setText(QString::number(resLoA, 'g', 4));
 }
 
 void FtWindow::onCtfFitCancel()
