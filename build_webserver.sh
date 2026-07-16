@@ -64,7 +64,7 @@ Then run on target host:
     sudo tar xzf $TARBALL -C /srv/ft2
     sudo systemctl reload apache2
 
-or: 
+
     sudo \rm -rf /srv/ft
     sudo mkdir -p /srv/ft
     sudo tar xzf $TARBALL -C /srv/ft
