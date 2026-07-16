@@ -2796,7 +2796,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 int r5 = fm.horizontalAdvance("Beamtilt (mrad): ") + m_ctfBeamtiltEdit->width()
                          + 12 + fm.horizontalAdvance("Direction (\u00B0): ")
                          + m_ctfBeamtiltDirEdit->width();
-                int r6 = m_ctfCancelBtn->width() + 8 + m_ctfComputeBtn->width();
+                int r6 = m_ctfCancelBtn->width() + 8 + m_ctfPupilBtn->width()
+                         + 8 + m_ctfComplexBtn->width() + 8 + m_ctfRealBtn->width();
                 textW = std::max({r0, r1, r2, r3, r4, r5, r6});
             } else if (m_ctfFitActive) {
                 nRows = m_ctfFitHasResult ? 8 : 6;
@@ -2988,9 +2989,15 @@ void FtWindow::paintEvent(QPaintEvent *)
                 int btdLblX = btX + m_ctfBeamtiltEdit->width() + 12;
                 drawParamLabel(p, fm, btdLblX, ty + lh * 5, "Direction (\u00B0):", m_ctfBeamtiltDirEdit->toolTip());
                 m_ctfBeamtiltDirEdit->move(btdLblX + fm.horizontalAdvance("Direction (\u00B0): "), ty + lh * 5);
-                // Row 6: Cancel / Compute
+                // Row 6: Cancel, then the three model buttons packed to the right
+                // in the order they are explained in their tooltips.
                 m_ctfCancelBtn->move(tx, ty + lh * 6);
-                m_ctfComputeBtn->move(rx + rw - margin - m_ctfComputeBtn->width(), ty + lh * 6);
+                int bRight = rx + rw - margin;
+                m_ctfRealBtn->move(bRight - m_ctfRealBtn->width(), ty + lh * 6);
+                bRight -= m_ctfRealBtn->width() + 8;
+                m_ctfComplexBtn->move(bRight - m_ctfComplexBtn->width(), ty + lh * 6);
+                bRight -= m_ctfComplexBtn->width() + 8;
+                m_ctfPupilBtn->move(bRight - m_ctfPupilBtn->width(), ty + lh * 6);
             } else if (m_ctfFitActive) {
                 // Row 0: Acceleration voltage
                 drawParamLabel(p, fm, tx, ty, "Acceleration Voltage (kV):", m_ctfFitVoltageEdit->toolTip());
