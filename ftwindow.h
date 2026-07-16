@@ -188,7 +188,21 @@ private:
     void padImageToSquare();
     void extractImageData();
     void computeFFT(bool keepZoom = false);
-    void computeInverseFFT();
+    // How the inverse transform is turned into a real-space image.
+    enum class InverseOutput {
+        RealPart,   // discard the imaginary part (a Hermitian transform is real anyway)
+        Intensity   // |h|², the measurable intensity of a genuinely complex wave
+    };
+    void computeInverseFFT(InverseOutput out = InverseOutput::RealPart);
+
+    // How the CURRENT Fourier data should be turned back into an image. This is
+    // a property of what m_fftData means, not of the button that inverts it: the
+    // transform of a real image inverts to its real part, whereas a wave-optical
+    // pupil (CTF SIM) inverts to the intensity |h|² a detector would record.
+    // computeFFT() resets it to RealPart; CTF SIM sets it per model. The FT⁻¹
+    // arrow honours it, so clicking the arrow reproduces what the tool showed
+    // rather than silently reinterpreting the result.
+    InverseOutput m_ftInverseOutput = InverseOutput::RealPart;
 
     // ---- grouped tool buttons ----
     // Panel 1 / panel 2 tool squares are organised into collapsible groups.
@@ -356,7 +370,7 @@ private:
         bool    deferred = false;
         // Set while a background thread is reading this slot's file (started by
         // clicking a deferred slot). The slot holds nothing yet, but the window
-        // stays responsive — in particular "Delete image" works on a slot that
+        // stays responsive — in particular "Empty buffer" works on a slot that
         // is still loading, which cancels the read. See startSlotLoad().
         bool    loading  = false;
         // Cached forward FFT of this slot's image, so re-activating a slot
@@ -367,6 +381,8 @@ private:
         int  fftN = 0;
         int  fftOrigW = 0, fftOrigH = 0;
         bool ftComputed = false;
+        // Travels with fftData: see m_ftInverseOutput.
+        InverseOutput ftInverseOutput = InverseOutput::RealPart;
     };
     HistoryEntry m_history[HISTORY_SLOTS];
     QRect        m_historyRects[HISTORY_SLOTS];    // panel 3 screen rects
@@ -387,6 +403,7 @@ private:
         int origW = 0;
         int origH = 0;
         std::vector<Complex> fftData;
+        InverseOutput ftInverseOutput = InverseOutput::RealPart;
     };
 
     static constexpr int MAX_UNDO = 10;
@@ -403,6 +420,16 @@ private:
     // keeps the panel-3 and panel-4 thumbnail grids out of it.
     int historyButtonGutter() const
     { return (m_reloadBtn ? m_reloadBtn->width() : 130) + 16; }
+
+    // Locate `relativePath` (e.g. "Exercise_01-Photos/lorenz_1999.png") under the
+    // example-images directory. Tries the embedder-supplied override first, then
+    // the standalone / bundle layouts. Returns an empty string if not found.
+    // Desktop only — the web build fetches example images over HTTP instead.
+    static QString resolveExampleImage(const QString &relativePath);
+    // When every buffer is empty (nothing restored, nothing deferred), load the
+    // default example into buffer "a" so the user starts with something to work
+    // with. No-op as soon as any buffer holds anything.
+    void loadDefaultExampleIfEmpty();
 
     void saveHistory();
     void restoreHistory();
@@ -805,11 +832,26 @@ private:
     QLineEdit  *m_ctfBeamtiltEdit     = nullptr;
     QLineEdit  *m_ctfBeamtiltDirEdit  = nullptr;
     QPushButton *m_ctfCancelBtn       = nullptr;
-    QPushButton *m_ctfComputeBtn      = nullptr;
+    // CTF SIM offers three different models of the same microscope. They differ
+    // in what is written into Fourier space and in how the real-space image
+    // follows from it; see the buttons' tooltips (ftwindow.cpp) for the full
+    // explanation, and ctfAt() in onCtfComputeImpl() for the formulae.
+    enum class CtfModel {
+        Pupil,        // P = E·exp(−iχ_tilt);   panel 1 = |FT⁻¹P|²  (coma comet)
+        ComplexCTF,   // T = 2E·sin(−χ_even)·exp(−iχ_odd), Hermitian; panel 1 real, asymmetric
+        RealCTF       // C = E·(A·sin(−χ_tilt)+B·cos(−χ_tilt)), real; panel 1 symmetric
+    };
+    CtfModel     m_ctfModel = CtfModel::Pupil;
+    QPushButton *m_ctfPupilBtn        = nullptr;
+    QPushButton *m_ctfComplexBtn      = nullptr;
+    QPushButton *m_ctfRealBtn         = nullptr;
     std::vector<double> m_ctfProfile;      // 1D CTF amplitude profile (|C|, center->corner)
     std::vector<double> m_ctfPhaseProfile; // 1D CTF phase profile (arg C, rad), same sampling
     double      m_ctfAngleDeg = 0.0;       // profile direction (deg, CCW from +x)
     bool        m_ctfDragging = false;
+    // Run CTF SIM with `model`; remembers it so Enter in a parameter field and
+    // the profile redraw reuse the same one.
+    void computeCtfWithModel(CtfModel model);
     void onCtfCompute();
     void onCtfCancel();
     void computeCtfProfile1D();
@@ -830,6 +872,10 @@ private:
     QPushButton *m_ctfFitCancelBtn  = nullptr;
     QPushButton *m_ctfFitExecuteBtn = nullptr;
     // Fitted results shown in the parameter window after Execute.
+    // Seed the CTF-fit resolution limits from the current image's Nyquist
+    // resolution: the fit band defaults to 10%…90% of the Nyquist frequency.
+    void updateCtfFitResolutionDefaults();
+
     bool        m_ctfFitHasResult   = false;
     double      m_ctfFitResDefocusNM = 0.0;
     double      m_ctfFitResAstigNM   = 0.0;

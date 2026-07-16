@@ -113,14 +113,14 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_createBtn->setFixedSize(130, 30);
     connect(m_createBtn, &QPushButton::clicked, this, &FtWindow::onCreateImage);
 
-    // Reload / Save / Delete live in the gutter between the two history panels
+    // Reload / Save / Empty live in the gutter between the two history panels
     // (3 and 4), since they all act on the buffer whose thumbnails sit there.
     m_reloadBtn = new QPushButton("Reload image", this);
     m_reloadBtn->setFixedSize(130, 30);
     connect(m_reloadBtn, &QPushButton::clicked, this, &FtWindow::onReloadImage);
 
-    // Delete button (clears the active buffer after a confirmation dialog)
-    m_deleteBtn = new QPushButton("Delete image", this);
+    // Empty-buffer button (clears the active buffer after a confirmation dialog)
+    m_deleteBtn = new QPushButton("Empty buffer", this);
     m_deleteBtn->setFixedSize(130, 30);
     connect(m_deleteBtn, &QPushButton::clicked, this, &FtWindow::onDeleteImage);
 
@@ -633,12 +633,95 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
         "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }");
     connect(m_ctfCancelBtn, &QPushButton::clicked, this, &FtWindow::onCtfCancel);
     m_ctfCancelBtn->hide();
-    m_ctfComputeBtn = new QPushButton("Compute", this);
-    m_ctfComputeBtn->setFixedSize(80, 26);
-    m_ctfComputeBtn->setStyleSheet(
-        "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }");
-    connect(m_ctfComputeBtn, &QPushButton::clicked, this, &FtWindow::onCtfCompute);
-    m_ctfComputeBtn->hide();
+    // Three ways to simulate the same microscope. They are genuinely different
+    // physics, not display options, so each gets its own button rather than
+    // hiding behind one "Compute".
+    const QString ctfBtnSS =
+        "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }";
+
+    m_ctfPupilBtn = new QPushButton("Pupil Function", this);
+    m_ctfPupilBtn->setFixedSize(120, 26);
+    m_ctfPupilBtn->setStyleSheet(ctfBtnSS);
+    m_ctfPupilBtn->setToolTip(
+        "PUPIL FUNCTION  P(q) = E(q)·exp(−iχ(q))   — wave optics\n"
+        "\n"
+        "Fourier space (panel 2) is filled with the aberrated lens pupil: the\n"
+        "phase is the full wave aberration χ (defocus, Cs, astigmatism and the\n"
+        "beam tilt), and the modulus is only the partial-coherence envelope E.\n"
+        "There are therefore NO Thon rings — rings belong to the intensity CTF\n"
+        "below, not to the pupil. With a beam tilt χ(q) ≠ χ(−q), so the pupil is\n"
+        "not Hermitian.\n"
+        "\n"
+        "Real space (panel 1) shows the point spread function |h|², where\n"
+        "h = FT⁻¹[P]: the image of a single luminous point, i.e. what the\n"
+        "microscope does to a delta function. Because P is not Hermitian, h is\n"
+        "genuinely complex and |h|² is asymmetric — the classic one-sided comet\n"
+        "of coma. The intensity, not the real part, is what a detector records.\n"
+        "\n"
+        "Note: amplitude contrast enters only as a constant phase and so leaves\n"
+        "|h|² unchanged in this model.\n"
+        "\n"
+        "Use this to see the aberration as an optician would: the shape of the\n"
+        "focused spot.");
+    connect(m_ctfPupilBtn, &QPushButton::clicked, this,
+            [this]() { computeCtfWithModel(CtfModel::Pupil); });
+    m_ctfPupilBtn->hide();
+
+    m_ctfComplexBtn = new QPushButton("Complex CTF", this);
+    m_ctfComplexBtn->setFixedSize(120, 26);
+    m_ctfComplexBtn->setStyleSheet(ctfBtnSS);
+    m_ctfComplexBtn->setToolTip(
+        "COMPLEX CTF  T(q) = E(q)·(A·sin(−χ_even)+B·cos(−χ_even))·exp(−iχ_odd)\n"
+        "— the linear image-intensity transfer function of a weak-phase object.\n"
+        "\n"
+        "The tilted aberration is split into its even part χ_even (defocus, Cs,\n"
+        "astigmatism, and the defocus/astigmatism the tilt itself induces),\n"
+        "which produces the oscillating Thon rings, and its odd part χ_odd\n"
+        "(coma), which enters purely as a phase and leaves the modulus alone.\n"
+        "\n"
+        "T is Hermitian: T(−q) = T*(q). That is not an approximation — image\n"
+        "intensity is real, so its transform must be Hermitian, and the power\n"
+        "spectrum of any real image is centrosymmetric (Friedel's law). Panel 2\n"
+        "therefore shows SYMMETRIC Thon rings even under beam tilt; the tilt is\n"
+        "carried by the phase, exactly as in a real micrograph.\n"
+        "\n"
+        "Real space (panel 1) is real-valued but NOT symmetric: Hermitian means\n"
+        "a real image, even means a symmetric image, and T is Hermitian without\n"
+        "being even. The PSF therefore shows the one-sided coma while the image\n"
+        "stays real — no imaginary part is discarded here.\n"
+        "\n"
+        "This is the physically correct model for what a real micrograph and\n"
+        "its power spectrum look like.");
+    connect(m_ctfComplexBtn, &QPushButton::clicked, this,
+            [this]() { computeCtfWithModel(CtfModel::ComplexCTF); });
+    m_ctfComplexBtn->hide();
+
+    m_ctfRealBtn = new QPushButton("Real-valued CTF", this);
+    m_ctfRealBtn->setFixedSize(120, 26);
+    m_ctfRealBtn->setStyleSheet(ctfBtnSS);
+    m_ctfRealBtn->setToolTip(
+        "REAL-VALUED CTF  C(q) = E(q)·(A·sin(−χ_tilt)+B·cos(−χ_tilt))\n"
+        "— the transfer function evaluated at the full tilted aberration and\n"
+        "kept purely real (no even/odd split, no phase factor).\n"
+        "\n"
+        "Panel 2 shows Thon rings that are themselves one-sided under beam tilt,\n"
+        "because χ_tilt(q) ≠ χ_tilt(−q) and nothing symmetrises them. C is real\n"
+        "but not even, hence NOT Hermitian.\n"
+        "\n"
+        "Caution — this is a didactic model, not a microscope: no real image can\n"
+        "have an asymmetric power spectrum. And because C is real, its inverse\n"
+        "transform obeys h(−r) = h*(r), so the real part shown in panel 1 is\n"
+        "EXACTLY centrosymmetric: the PSF shows no coma whatsoever. All of the\n"
+        "asymmetry sits in the imaginary part that is discarded.\n"
+        "\n"
+        "Compare with the two models above to see why an asymmetric CTF and an\n"
+        "asymmetric PSF cannot coexist in a single real-valued function: the\n"
+        "Pupil buys the comet with a complex transform, the Complex CTF buys it\n"
+        "with a Hermitian-but-uneven one, and this model buys asymmetric rings\n"
+        "at the cost of the comet.");
+    connect(m_ctfRealBtn, &QPushButton::clicked, this,
+            [this]() { computeCtfWithModel(CtfModel::RealCTF); });
+    m_ctfRealBtn->hide();
     for (QLineEdit *e : { m_ctfVoltageEdit, m_ctfEnergySpreadEdit,
                           m_ctfDefocusSpreadEdit, m_ctfOpenAngleEdit,
                           m_ctfCsEdit, m_ctfDefocusEdit,
@@ -666,16 +749,22 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
         "The fitted CTF composite is written into the currently selected\n"
         "buffer.");
     m_ctfFitInputCombo->hide();
+    // Switching the fitted buffer re-seeds the resolution limits, since they are
+    // derived from that buffer's pixel size.
+    connect(m_ctfFitInputCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [this](int) { if (m_ctfFitActive) updateCtfFitResolutionDefaults(); });
     m_ctfFitResHiEdit = makeCtfEdit("3");
     m_ctfFitResHiEdit->setToolTip(
         "Upper resolution limit in Ångström (the finest, i.e. smallest\n"
         "d-spacing) that is included in the CTF fit. Frequencies beyond\n"
-        "this (finer than the Nyquist limit) are ignored.");
+        "this (finer than the Nyquist limit) are ignored.\n"
+        "Defaults to 90% of the Nyquist frequency of the fitted buffer.");
     m_ctfFitResLoEdit = makeCtfEdit("30");
     m_ctfFitResLoEdit->setToolTip(
         "Lower resolution limit in Ångström (the coarsest, i.e. largest\n"
         "d-spacing) that is included in the CTF fit. Very low frequencies\n"
-        "below this are ignored.");
+        "below this are ignored.\n"
+        "Defaults to 10% of the Nyquist frequency of the fitted buffer.");
     m_ctfFitCancelBtn = new QPushButton("Cancel", this);
     m_ctfFitCancelBtn->setFixedSize(80, 26);
     m_ctfFitCancelBtn->setStyleSheet(
@@ -1577,16 +1666,10 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     if (m_activeSlot < 0)
         m_activeSlot = 0;
 
-    // If no slot is occupied (fresh launch or empty session restore),
+    // If no buffer holds anything (fresh launch or empty session restore),
     // auto-load a default example into buffer a so the user has something
     // to work with immediately.
-    bool anySlotOccupied = false;
-    for (int i = 0; i < HISTORY_SLOTS; i++)
-        if (m_history[i].occupied) { anySlotOccupied = true; break; }
-    if (!anySlotOccupied) {
-        m_activeSlot = 0;   // buffer a
-        fetchAndLoadImage(QStringLiteral("Exercise_01-Photos/lorenz_1999.png"));
-    }
+    loadDefaultExampleIfEmpty();
 }
 
 FtWindow::~FtWindow()
@@ -1722,8 +1805,12 @@ void FtWindow::resizeEvent(QResizeEvent *)
     m_ctfBeamtiltDirEdit->setStyleSheet(editSS);
     m_ctfCancelBtn->setFixedSize(static_cast<int>(80 * sc), btnH);
     m_ctfCancelBtn->setStyleSheet(btnSS);
-    m_ctfComputeBtn->setFixedSize(static_cast<int>(80 * sc), btnH);
-    m_ctfComputeBtn->setStyleSheet(btnSS);
+    // The three model buttons carry longer labels than "Compute" did, so they
+    // get a wider box; the parameter window sizes itself to fit the row.
+    for (QPushButton *b : { m_ctfPupilBtn, m_ctfComplexBtn, m_ctfRealBtn }) {
+        b->setFixedSize(static_cast<int>(120 * sc), btnH);
+        b->setStyleSheet(btnSS);
+    }
 
     // Phase ramp widgets (sizes only)
     m_phaseRampSizeCombo->setFixedSize(static_cast<int>(80 * sc), btnH);
