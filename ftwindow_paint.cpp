@@ -20,6 +20,119 @@ void FtWindow::drawParamLabel(QPainter &p, const QFontMetrics &fm,
     }
 }
 
+bool FtWindow::p1ToolWindowOpen() const
+{
+    return m_p1EraserActive || m_p1BrushActive || m_p1TaperActive || m_p1SymmetrizeActive
+        || m_binActive || m_cropActive || m_peakPickActive || m_extractActive
+        || m_gaborActive || m_hessianActive || m_amyloidActive || m_measureActive
+        || m_shiftActive || m_rotateActive
+        || m_p1FlipHActive || m_p1FlipVActive || m_p1InvertActive;
+}
+
+bool FtWindow::p2ToolWindowOpen() const
+{
+    return m_bandpassActive || m_directionalActive || m_lineFilterActive || m_brushActive
+        || m_eraserActive || m_latticeActive || m_ftCropActive || m_crossSectionActive
+        || m_ctfActive || m_ctfFitActive || m_phaseRampActive || m_p2SymmetrizeActive
+        || m_ftRotateActive;
+}
+
+bool FtWindow::p1FunctionOpen() const { return p1ToolWindowOpen() || m_mathActive; }
+bool FtWindow::p2FunctionOpen() const { return p2ToolWindowOpen() || m_ftMathActive; }
+
+bool FtWindow::toolHelpInfo(bool panel2, QString &title, QString &anchor) const
+{
+    struct Entry { bool active; const char *title; const char *anchor; };
+    // Listed in the same order as the drawing chains in paintEvent, so the
+    // header always names the tool whose parameters are on screen.
+    const Entry p1[] = {
+        { m_p1EraserActive,     "Eraser",                 "p1-eraser"            },
+        { m_p1BrushActive,      "Paint brush",            "p1-paint-brush"       },
+        { m_p1TaperActive,      "Taper edges (Hanning)",  "p1-taper-edges"       },
+        { m_p1SymmetrizeActive, "Symmetrize image",       "p1-symmetrize"        },
+        { m_binActive,          "Bin image",              "p1-bin"               },
+        { m_cropActive,         "Crop image",             "p1-crop"              },
+        { m_peakPickActive,     "Peak search",            "p1-peak-search"       },
+        { m_extractActive,      "Extract particles",      "p1-extract-particles" },
+        { m_gaborActive,        "Gabor filter",           "p1-gabor"             },
+        { m_hessianActive,      "Hessian filter",         "p1-hessian"           },
+        { m_measureActive,      "Measure",                "p1-measure"           },
+        { m_shiftActive,        "Shift image",            "p1-shift"             },
+        { m_rotateActive,       "Rotate image",           "p1-rotate"            },
+        { m_amyloidActive,      "Amyloid filament",       "p1-amyloid"           },
+        { m_p1FlipHActive,      "Flip horizontally",      "p1-flip"              },
+        { m_p1FlipVActive,      "Flip vertically",        "p1-flip"              },
+        { m_p1InvertActive,     "Invert contrast",        "p1-invert-contrast"   },
+    };
+    const Entry p2[] = {
+        { m_bandpassActive,     "Bandpass filter",           "p2-bandpass"          },
+        { m_directionalActive,  "Directional filter",        "p2-directional"       },
+        { m_brushActive,        "Paint brush",               "p2-paint-brush"       },
+        { m_eraserActive,       "Eraser",                    "p2-eraser"            },
+        { m_lineFilterActive,   "Line filter",               "p2-line-filter"       },
+        { m_latticeActive,      "Lattice filter",            "p2-lattice-filter"    },
+        { m_crossSectionActive, "Cross-section profile",     "p2-cross-section"     },
+        { m_p2SymmetrizeActive, "Symmetrize Fourier space",  "p2-symmetrize"        },
+        { m_ftCropActive,       "Fourier crop / Fourier pad","p2-fourier-crop-pad"  },
+        { m_ctfActive,          "CTF SIM (simulate a CTF)",  "p2-ctf-sim"           },
+        { m_ctfFitActive,       "CTF FIT (fit a CTF for an image)", "p2-ctf-fit"    },
+        { m_phaseRampActive,    "Phase ramp",                "p2-phase-ramp"        },
+        { m_ftRotateActive,     "Rotate Fourier space",      "p2-rotate"            },
+    };
+
+    const Entry *entries = panel2 ? p2 : p1;
+    const size_t n       = panel2 ? std::size(p2) : std::size(p1);
+    for (size_t i = 0; i < n; i++) {
+        if (entries[i].active) {
+            title  = QString::fromLatin1(entries[i].title);
+            anchor = QString::fromLatin1(entries[i].anchor);
+            return true;
+        }
+    }
+    return false;
+}
+
+QRect FtWindow::drawHelpButton(QPainter &p, const QRect &frame, int marginX,
+                               int marginY, int rowH, int maxSize)
+{
+    // Raised 3D square button, matching the toggle buttons next to the histograms.
+    int bs = std::clamp(rowH - 6, 14, maxSize);
+    QRect br(frame.right() - marginX - bs,
+             frame.top() + marginY + (rowH - bs) / 2, bs, bs);
+
+    p.save();
+    p.fillRect(br, QColor(0xdc, 0xdc, 0xdc));
+    const QColor lite(0xff, 0xff, 0xff), dark(0x60, 0x60, 0x60);
+    p.fillRect(QRect(br.left(),      br.top(),        br.width(), 2), lite);
+    p.fillRect(QRect(br.left(),      br.top(),        2, br.height()), lite);
+    p.fillRect(QRect(br.right() - 1, br.top(),        2, br.height()), dark);
+    p.fillRect(QRect(br.left(),      br.bottom() - 1, br.width(), 2), dark);
+    QFont qf; qf.setPixelSize(std::clamp(bs * 3 / 4, 9, 18)); qf.setBold(true);
+    p.setFont(qf);
+    p.setPen(Qt::black);
+    p.drawText(br, Qt::AlignCenter, "?");
+    p.restore();
+
+    m_paramLabelTips.emplace_back(br, QStringLiteral("Help"));
+    return br;
+}
+
+QRect FtWindow::drawToolHelpHeader(QPainter &p, const QRect &toolRect, int margin,
+                                   int lh, int fontPx, const QString &title)
+{
+    QFont tf; tf.setPixelSize(fontPx); tf.setBold(true);
+    QFontMetrics tfm(tf);
+
+    p.save();
+    p.setFont(tf);
+    p.setPen(QColor(20, 20, 20));
+    int baselineY = toolRect.top() + margin + (lh + tfm.ascent() - tfm.descent()) / 2;
+    p.drawText(toolRect.left() + margin, baselineY, title);
+    p.restore();
+
+    return drawHelpButton(p, toolRect, margin, margin, lh);
+}
+
 void FtWindow::paintEvent(QPaintEvent *)
 {
     QPainter p(this);
@@ -31,6 +144,10 @@ void FtWindow::paintEvent(QPaintEvent *)
 
     m_p1ToolRect = QRect();   // cleared each frame, set when a p1 tool dialog draws
     m_p2ToolRect = QRect();   // cleared each frame, set when a p2 tool dialog draws
+    m_p1HelpRect = QRect();
+    m_p2HelpRect = QRect();
+    m_p1MathHelpRect = QRect();
+    m_p2MathHelpRect = QRect();
     m_imageHistLockRect = QRect();
     m_markImageCenterRect = QRect();
     m_pixelSizeInfoRect = QRect();
@@ -1520,6 +1637,37 @@ void FtWindow::paintEvent(QPaintEvent *)
         drawGroupExtras(1);
         drawGroupExtras(2);
 
+        // Close ("X") button above each panel's function column. layoutToolSlots
+        // leaves the rect null unless that panel has a function open.
+        auto drawCloseButton = [&](const QRect &r, bool panel1) {
+            if (r.isNull()) return;
+            p.setPen(QPen(Qt::white, 1));
+            p.setBrush(QColor(0, 0, 0));
+            p.drawRect(r);
+
+            p.setRenderHint(QPainter::Antialiasing, true);
+            QRect ir = r.adjusted(r.width() / 4, r.height() / 4,
+                                  -r.width() / 4, -r.height() / 4);
+            p.setPen(QPen(Qt::white, std::max(1, r.width() / 10)));
+            p.drawLine(ir.topLeft(), ir.bottomRight());
+            p.drawLine(ir.topRight(), ir.bottomLeft());
+            p.setRenderHint(QPainter::Antialiasing, false);
+
+            if (r.contains(m_mousePos)) {
+                QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                QFontMetrics ttfm(ttf);
+                const QString tip = "Close function";
+                int ttw = ttfm.horizontalAdvance(tip) + 8;
+                int tth = ttfm.height() + 4;
+                int ttx = panel1 ? r.right() + 4 : r.left() - ttw - 4;
+                int tty = r.center().y() - tth / 2;
+                pendingTipRect = QRect(ttx, tty, ttw, tth);
+                pendingTipText = tip;
+            }
+        };
+        drawCloseButton(m_p1CloseRect, true);
+        drawCloseButton(m_p2CloseRect, false);
+
         // While a sub-panel (popup) is open, suppress the mouse-over text on the
         // top-level group squares — it would otherwise overlap and obscure the
         // sub-panel. Tooltips for the popup's own member cells (mouse inside the
@@ -1979,6 +2127,8 @@ void FtWindow::paintEvent(QPaintEvent *)
             int titleBaseY = fy + titleMarginY + tfm.ascent();
             p.drawText(fx + titleMarginX, titleBaseY, "Image calculation");
             titleBottom = titleBaseY + tfm.descent();
+            m_p1MathHelpRect = drawHelpButton(p, mathRect, titleMarginX,
+                                              titleMarginY, tfm.height() + 6, 26);
         }
 
         // Draw clean equation text centered between title and combo row
@@ -2583,6 +2733,8 @@ void FtWindow::paintEvent(QPaintEvent *)
             int titleBaseY = fy + titleMarginY + tfm.ascent();
             p.drawText(fx + titleMarginX, titleBaseY, "Fourier calculation");
             titleBottom2 = titleBaseY + tfm.descent();
+            m_p2MathHelpRect = drawHelpButton(p, ftMathRect, titleMarginX,
+                                              titleMarginY, tfm.height() + 6, 26);
         }
 
         // Draw clean equation text centered between title and combo row
@@ -2705,10 +2857,11 @@ void FtWindow::paintEvent(QPaintEvent *)
         QFontMetrics fm(sf);
 
         // Panel 2 tool option rectangles (bottom-right of panel 2)
-        bool p2Tool = m_bandpassActive || m_directionalActive || m_lineFilterActive || m_brushActive
-                      || m_eraserActive || m_latticeActive || m_ftCropActive || m_crossSectionActive
-                      || m_ctfActive || m_ctfFitActive || m_phaseRampActive || m_p2SymmetrizeActive;
+        const QString ftRotateHint = "Use the mouse to rotate the Fourier transform";
+        bool p2Tool = p2ToolWindowOpen();
         if (p2Tool) {
+            QString toolTitle, toolAnchor;
+            toolHelpInfo(true, toolTitle, toolAnchor);
             int nRows = 0;
             int textW = 0;
             if (m_bandpassActive) {
@@ -2823,6 +2976,17 @@ void FtWindow::paintEvent(QPaintEvent *)
                 int r2 = fm.horizontalAdvance("Phase step of first pixel (\u00B0): ") + m_phaseRampStepEdit->width();
                 int r3 = m_phaseRampCancelBtn->width() + 12 + m_phaseRampComputeBtn->width();
                 textW = std::max({r0, r1, r2, r3});
+            } else if (m_ftRotateActive) {
+                nRows = 2;
+                textW = std::max(fm.horizontalAdvance(ftRotateHint), m_ftRotateCancelBtn->width());
+            }
+
+            // Reserve the header row (function name + "?" help button) on top.
+            {
+                QFont tf = sf; tf.setBold(true);
+                nRows += 1;
+                textW = std::max(textW,
+                                 QFontMetrics(tf).horizontalAdvance(toolTitle) + 12 + 20);
             }
 
             int rw = textW * 6 / 5 + 2 * margin;
@@ -2841,11 +3005,13 @@ void FtWindow::paintEvent(QPaintEvent *)
                 p.drawRect(rx + 1, ry + 1, progW, rh - 2);
             }
 
+            m_p2HelpRect = drawToolHelpHeader(p, toolRect, margin, lh, fs2, toolTitle);
+
             // Draw painted labels inside the rectangle
             p.setFont(sf);
             p.setPen(QColor(60, 60, 60));
             int tx = rx + margin;
-            int ty = ry + margin;
+            int ty = ry + margin + lh;   // below the header row
 
             if (m_bandpassActive) {
                 drawParamLabel(p, fm, tx, ty, "Smooth edge by pixels:", m_smoothEdit->toolTip());
@@ -3037,14 +3203,19 @@ void FtWindow::paintEvent(QPaintEvent *)
                 m_phaseRampStepEdit->move(tx + fm.horizontalAdvance("Phase step of first pixel (°): "), ty + lh * 2);
                 m_phaseRampCancelBtn->move(tx, ty + lh * 3);
                 m_phaseRampComputeBtn->move(rx + rw - margin - m_phaseRampComputeBtn->width(), ty + lh * 3);
+            } else if (m_ftRotateActive) {
+                p.drawText(tx, ty + fm.ascent(), ftRotateHint);
+                m_ftRotateCancelBtn->move(tx, ty + lh);
             }
         }
 
         // Panel 1 tool option rectangles (bottom-left of panel 1)
-        bool p1Tool = m_p1EraserActive || m_p1BrushActive || m_p1TaperActive || m_p1SymmetrizeActive || m_binActive || m_cropActive || m_peakPickActive || m_extractActive || m_gaborActive || m_hessianActive || m_amyloidActive || m_measureActive || m_shiftActive || m_rotateActive;
+        bool p1Tool = p1ToolWindowOpen();
         const QString shiftHint  = "Use the mouse to shift the image";
         const QString rotateHint = "Use the mouse to rotate the image";
         if (p1Tool) {
+            QString toolTitle, toolAnchor;
+            toolHelpInfo(false, toolTitle, toolAnchor);
             int nRows = 0;
             int textW = 0;
             if (m_p1EraserActive) {
@@ -3164,6 +3335,18 @@ void FtWindow::paintEvent(QPaintEvent *)
                 int rInfo = fm.horizontalAdvance(infoStr);
                 int rBtns = m_amyloidCancelBtn->width() + 8 + m_amyloidComputeBtn->width();
                 textW = std::max({rRow0, rRow1, rRow2, rPer, rNoise, rSig, rInfo, rBtns});
+            } else if (m_p1FlipHActive || m_p1FlipVActive || m_p1InvertActive) {
+                // Applied immediately on click and take no parameters, so the
+                // window carries nothing but the header row added below.
+                nRows = 0;
+            }
+
+            // Reserve the header row (function name + "?" help button) on top.
+            {
+                QFont tf = sf; tf.setBold(true);
+                nRows += 1;
+                textW = std::max(textW,
+                                 QFontMetrics(tf).horizontalAdvance(toolTitle) + 12 + 20);
             }
 
             int rw = textW * 6 / 5 + 2 * margin;
@@ -3182,10 +3365,12 @@ void FtWindow::paintEvent(QPaintEvent *)
                 p.drawRect(rx + 1, ry + 1, progW, rh - 2);
             }
 
+            m_p1HelpRect = drawToolHelpHeader(p, toolRect, margin, lh, fs2, toolTitle);
+
             p.setFont(sf);
             p.setPen(QColor(60, 60, 60));
             int tx = rx + margin;
-            int ty = ry + margin;
+            int ty = ry + margin + lh;   // below the header row
 
             if (m_p1EraserActive) {
                 drawParamLabel(p, fm, tx, ty, "Eraser Gaussian diameter:", m_p1EraserDiameterEdit->toolTip());

@@ -1165,6 +1165,12 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     connect(m_rotateCancelBtn, &QPushButton::clicked, this, &FtWindow::onRotateCancel);
     m_rotateCancelBtn->hide();
 
+    m_ftRotateCancelBtn = new QPushButton("Cancel", this);
+    m_ftRotateCancelBtn->setFixedSize(80, 26);
+    m_ftRotateCancelBtn->setStyleSheet(cancelBtnStyle);
+    connect(m_ftRotateCancelBtn, &QPushButton::clicked, this, &FtWindow::onFtRotateCancel);
+    m_ftRotateCancelBtn->hide();
+
     // Math calculation widgets (hidden until math button is active)
     auto mathComboStyle = [](QComboBox *cb) {
         cb->setStyleSheet(
