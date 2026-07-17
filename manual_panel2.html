@@ -460,6 +460,20 @@ real-space point spread function (PSF) to panel&nbsp;1. To fit a CTF to an
 existing image instead of simulating one, use <strong>CTF FIT</strong>
 (below).
 </p>
+<p class="ctf-theory">
+  <strong>There is no single &ldquo;Compute&rdquo; button.</strong> CTF SIM
+  offers <strong>three different models</strong> of the same microscope —
+  <em>Pupil Function</em>, <em>Complex CTF</em> and <em>Real-valued CTF</em>.
+  They are different physics, not different display options: each writes a
+  different array into panel&nbsp;2 and turns it into panel&nbsp;1 in a
+  different way. With no beam tilt they largely agree; under beam tilt they
+  differ fundamentally, and the differences are the point. For the physics
+  behind them, see
+  <a href="manual.html#beam-tilt-coma">Beam tilt and coma</a> in the manual;
+  for the CTF itself, see
+  <a href="manual.html#ctf">What is the Contrast Transfer Function (CTF) of an
+  Electron Microscope?</a>
+</p>
 <div class="controls">
   <strong>Acceleration voltage:</strong> in kV. <br>
   <strong>Energy spread:</strong> in eV (chromatic temporal coherence). <br>
@@ -474,7 +488,13 @@ existing image instead of simulating one, use <strong>CTF FIT</strong>
   amplitude-contrast term <em>B</em>). <br>
   <strong>Beamtilt:</strong> beam-tilt magnitude in mrad. <br>
   <strong>Direction:</strong> beam-tilt direction in degrees, CCW from +x. <br>
-  <strong>Cancel / Compute:</strong> as for the phase ramp.
+  <strong>Cancel:</strong> closes the tool without computing. <br>
+  <strong>Pupil Function:</strong> computes the wave-optical pupil
+  <em>P</em>(<em>q</em>) — see the three models below. <br>
+  <strong>Complex CTF:</strong> computes the linear image-intensity transfer
+  function <em>T</em>(<em>q</em>) — the physically correct model. <br>
+  <strong>Real-valued CTF:</strong> computes the purely real
+  <em>C</em>(<em>q</em>) — a didactic model.
 </div>
 <BR>
 <div class="note">
@@ -493,6 +513,70 @@ azimuth along which the 1D profiles (below) are taken.<BR><BR>
   wave-aberration (phase) function.
 </div>
 <BR>
+<details>
+<summary><strong>The three models — which button does what</strong></summary>
+<p>
+  Beam tilt evaluates the wave aberration at the tilted geometry,
+  &chi;<sub>tilt</sub>(<em>q</em>) = &chi;(<em>q</em>+<em>t</em>) &minus;
+  &chi;(<em>t</em>) &minus; <em>q</em>&middot;&nabla;&chi;(<em>t</em>) with
+  <em>t</em> = &tau;/&lambda;, dropping the constant and the linear
+  (image-shift) terms. Unlike the round-lens case, this is
+  <em>not</em> symmetric: &chi;<sub>tilt</sub>(&minus;<em>q</em>) &ne;
+  &chi;<sub>tilt</sub>(<em>q</em>). It splits into an even part
+  &chi;<sub>even</sub> (defocus, Cs, astigmatism, and the
+  defocus/astigmatism the tilt itself induces), which alone makes the
+  oscillating Thon rings, and an odd part &chi;<sub>odd</sub> (coma), which
+  is a pure phase and never touches the modulus. <em>E</em>(<em>q</em>) below
+  is the combined temporal- and spatial-coherence envelope.
+</p>
+<ul>
+  <li><strong>Pupil Function</strong> —
+      <em>P</em>(<em>q</em>) = <em>E</em>(<em>q</em>)&middot;e<sup>&minus;i&chi;<sub>tilt</sub>(<em>q</em>)</sup>,
+      the wave-optics view: the aberrated lens acting on the electron wave.
+      The phase is the full wave aberration; the modulus is only the
+      envelope, so there are <strong>no Thon rings</strong> — rings belong to
+      the intensity CTF, not to the pupil. Under tilt <em>P</em> is not
+      Hermitian, so panel&nbsp;1 shows |<em>h</em>|&sup2; — the classic
+      one-sided <strong>coma comet</strong>, i.e. the shape of the focused
+      spot. (Amplitude contrast enters only as a constant phase and so
+      leaves |<em>h</em>|&sup2; unchanged.)</li>
+  <li><strong>Complex CTF</strong> —
+      <em>T</em>(<em>q</em>) = <em>E</em>&middot;(A&middot;sin(&minus;&chi;<sub>even</sub>)
+      + B&middot;cos(&minus;&chi;<sub>even</sub>))&middot;e<sup>&minus;i&chi;<sub>odd</sub></sup>,
+      the linear image-intensity transfer function of a weak-phase object and
+      the <strong>physically correct</strong> model of a real micrograph.
+      <em>T</em> is Hermitian — <em>T</em>(&minus;<em>q</em>) =
+      <em>T</em>*(<em>q</em>) — not by approximation but by necessity, since
+      image intensity is real. So panel&nbsp;2 shows <strong>symmetric Thon
+      rings</strong> even under tilt (the tilt rides in the phase), while
+      panel&nbsp;1 is real and still <strong>one-sided</strong>: Hermitian
+      buys the realness, not-even buys the coma.</li>
+  <li><strong>Real-valued CTF</strong> —
+      <em>C</em>(<em>q</em>) = <em>E</em>&middot;(A&middot;sin(&minus;&chi;<sub>tilt</sub>)
+      + B&middot;cos(&minus;&chi;<sub>tilt</sub>)), evaluated at the full
+      tilted aberration and kept purely real — no even/odd split, no phase
+      factor. It is real but not even, hence not Hermitian, so the
+      <strong>Thon rings themselves go lopsided</strong>. The price is
+      panel&nbsp;1: for a real <em>C</em> the back-transform obeys
+      <em>h</em>(&minus;<em>r</em>) = <em>h</em>*(<em>r</em>), so its real
+      part is exactly point-symmetric and shows <strong>no coma at
+      all</strong>. A useful didactic model, but not a microscope.</li>
+</ul>
+<p>
+  The trade-off is not a limitation of the program but a Fourier fact: a real
+  image needs a Hermitian transform, a point-symmetric image needs an even
+  one, and coma is a real image that is one-sided. So no single real-valued
+  function can give both asymmetric rings and an asymmetric PSF — the Pupil
+  buys the comet with a complex transform, the Complex CTF with a
+  Hermitian-but-uneven one, and the Real-valued CTF buys lopsided rings at the
+  cost of the comet. The practical punchline: the power spectrum of any real
+  micrograph is centrosymmetric (Friedel's law), so beam tilt can
+  <em>never</em> be found by hunting for lopsided Thon rings in real data.
+  This is worked through, with figures from the program, in
+  <a href="manual.html#beam-tilt-coma">Beam tilt and coma</a>.
+</p>
+</details>
+<BR>
 <p>
  <strong>1D profile plots (panels 3 &amp; 4).</strong> While the CTF SIM tool is
  active, the two bottom panels show 1D cuts of the complex transfer function
@@ -503,13 +587,26 @@ azimuth along which the 1D profiles (below) are taken.<BR><BR>
 <ul>
   <li><strong>Panel 4 — CTF Amplitude Profile.</strong> The modulus
       |<em>C</em>|, i.e. amplitude only, ignoring phase. The vertical axis
-      runs from 0 to 1.</li>
+      runs from 0 to 1. For the two CTF models this is the rectified envelope
+      of the oscillating contrast transfer; for the <em>Pupil Function</em> it
+      is just the coherence envelope <em>E</em>(<em>q</em>), a smooth
+      ringless decay.</li>
   <li><strong>Panel 3 — CTF Phase Profile.</strong> The phase
       arg(<em>C</em>) in radians, from &minus;&pi; to +&pi;, drawn as a
       continuous curve (a jump at the &plusmn;&pi; wrap appears as a vertical
-      connector). With no beam tilt the CTF is real, so its phase is simply
-      0 or &plusmn;&pi; — i.e. the sign of the contrast transfer; beam tilt
-      adds the odd coma phase and tilts this curve.</li>
+      connector). What it shows depends on the model:
+      <ul>
+        <li><em>Pupil Function</em>: the full wave aberration itself, winding
+            through many cycles — the aberration lives entirely in this
+            curve.</li>
+        <li><em>Complex CTF</em>: 0 or &plusmn;&pi; (the sign of the contrast
+            transfer) when there is no beam tilt; a tilt adds the odd coma
+            phase &chi;<sub>odd</sub> and tilts the curve away from those
+            levels.</li>
+        <li><em>Real-valued CTF</em>: always 0 or &plusmn;&pi;, tilt or no
+            tilt, because this model is real by construction — the asymmetry
+            shows up in the rings of panel&nbsp;2 instead.</li>
+      </ul></li>
 </ul>
 <p>
  The horizontal axis of both plots is spatial frequency in 1/Å. The curves
@@ -536,9 +633,12 @@ imaged by the microscope with the given parameters.  The PSF has very small valu
 
 <details id="p2-ctf-fit">
 <summary>CTF FIT (fit a CTF for an image)<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><text x="12" y="8" font-family="sans-serif" font-weight="bold" font-size="7" fill="#fff" text-anchor="middle" dominant-baseline="central">CTF</text><text x="12" y="16.5" font-family="sans-serif" font-weight="bold" font-size="7" fill="#fff" text-anchor="middle" dominant-baseline="central">FIT</text></svg></span></summary>
-<p>
-  <strong>For an explanation of CTF theory, see the <em>CTF theory</em> and
-  <em>Beam tilt and coma</em> panels at the top of the CTF section, above.</strong>
+<p class="ctf-theory">
+  <strong>For an explanation of CTF theory, see
+  <a href="manual.html#ctf">What is the Contrast Transfer Function (CTF) of an
+  Electron Microscope?</a> in the manual, and
+  <a href="manual.html#beam-tilt-coma">Beam tilt and coma</a> for what a tilted
+  beam does to it.</strong>
 </p>
 <p>
 <strong>CTF FIT</strong> estimates the defocus and astigmatism of a real
