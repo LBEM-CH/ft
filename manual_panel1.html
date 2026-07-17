@@ -99,6 +99,9 @@
     font-size: 14px;
   }
   .controls strong { display: inline-block; min-width: 110px; }
+  /* Emphasis inside a sentence, which must not be padded out to the
+     label-column width above. */
+  .controls strong.inline { display: inline; min-width: 0; }
 
   footer {
     color: var(--muted);
@@ -160,7 +163,7 @@ the visible portion still toggle them.
 
 <h2 class="group" id="p1-group-edit">Edit</h2>
 
-<details id="p1-eraser" open>
+<details id="p1-eraser">
 <summary>Eraser<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><polygon points="8.4,4.4 18.3,4.4 15.6,12 5.7,12" fill="#d2b98c" stroke="#a0825a" stroke-width=".7"/><polygon points="8.9,6.2 17.8,6.2 17,8.4 8.2,8.4" fill="#e1c8a0"/><polygon points="5.7,12 15.6,12 14.7,14.2 4.8,14.2" fill="#bec3c8" stroke="#8c8c8c" stroke-width=".5"/><polygon points="4.8,14.2 15.6,14.2 12.9,19.6 3,19.6" fill="#eb7882" stroke="#b44650" stroke-width=".7"/><polygon points="5.2,14.9 12,14.9 11.5,16.7 4.6,16.7" fill="#f5a0a5"/></svg></span></summary>
 <p>
 Multiplies pixel values by <code>(1 − Gaussian)</code> under a soft
@@ -348,24 +351,158 @@ emphasises features that match the chosen wavelength and orientation,
 making it useful for finding striations, lattice rows, or oriented
 texture.
 </p>
+<p>
+A Gabor filter is a cosine wave multiplied by a Gaussian envelope — a
+short piece of a stripe pattern. The image is convolved with that
+kernel, so the response is largest where the image locally looks like
+the kernel: stripes of the chosen <em>period</em>, running in the chosen
+<em>direction</em>. It is a band-pass filter that is also
+orientation-selective, which is what distinguishes it from the isotropic
+<em>Bandpass filter</em> in panel&nbsp;2. Formally, with coordinates
+(<em>x'</em>,&nbsp;<em>y'</em>) rotated by &theta;:
+</p>
+<p>
+&nbsp;&nbsp;<em>g</em>(<em>x'</em>,<em>y'</em>) =
+exp(&minus;(<em>x'</em>&sup2; + &gamma;&sup2;<em>y'</em>&sup2;) /
+2&sigma;&sup2;) &middot; cos(2&pi;<em>x'</em>/&lambda;)
+</p>
+<div class="controls">
+  <strong>Sigma (envelope):</strong> width of the Gaussian envelope, in
+  pixels — how much of the image the filter looks at. Small &sigma; is
+  sharply localised but noisy; large &sigma; is smoother and more global.
+  Typical: 2–8. <br>
+  <strong>Wavelength lambda:</strong> the period of the cosine, in
+  pixels. This is the feature spacing the filter is tuned to: stripes
+  with this period give the strongest response. Keep &lambda; &ge;
+  2&middot;&sigma; so the carrier completes at least one cycle inside the
+  envelope. <br>
+  <strong>Orientation (deg):</strong> direction of the intensity
+  modulation. At <strong class="inline">0°</strong> the filter is modulated along the
+  horizontal axis and so responds to <strong class="inline">vertical</strong> stripes;
+  at <strong class="inline">90°</strong> it responds to <strong class="inline">horizontal</strong>
+  stripes. The angle is measured from the +x axis <em>towards the bottom
+  of the image</em>: because the image y axis points down, increasing
+  &theta; turns the pattern clockwise as it appears on screen. Scan 0°,
+  45°, 90°, 135° to cover the major orientations. <br>
+  <strong>Aspect ratio gamma:</strong> the ellipticity of the envelope.
+  1.0 is circular; values below 1 stretch the envelope along the stripes,
+  making the filter longer and more directional. Typical: 0.3–0.7. <br>
+  <strong>Cancel / Compute:</strong> Compute replaces the image in the
+  active buffer with the filter response.
+</div>
+<p>
+The kernel is built out to 3&sigma; and then has its mean subtracted, so
+it is <strong>zero-mean</strong>: flat regions give no response and the
+overall brightness of the image is discarded. The output is therefore
+<strong>signed</strong> — a stripe pattern in phase with the cosine gives
+a positive response, one shifted by half a period gives an equally
+negative one, and a zero response lands between black and white once the
+display rescales to the new range. The carrier phase
+is fixed at 0, i.e. the kernel is symmetric (an even, cosine Gabor), so
+it responds to bar- and ridge-like features rather than to edges. Only
+this single response is computed — this is not the magnitude of a
+quadrature pair, so the result is phase-sensitive rather than a smooth
+oriented-energy map. Edges of the image are handled by mirroring.
+</p>
+<p>
+<strong>Choosing parameters.</strong> Set &lambda; to the spacing of the
+features you are after — for a striated or layered structure, the
+centre-to-centre repeat in pixels; then set &sigma; to about &lambda;/2
+so the kernel spans roughly two cycles, and lower &gamma; to about 0.5
+to make the filter more selective in direction. If you do not know the
+repeat, read it off the <em>Fourier transform</em> in panel&nbsp;2: a
+layer line or spot lying <em>q</em> pixels from the centre of an
+<em>N</em>×<em>N</em> transform corresponds to a real-space repeat of
+&lambda; = <em>N</em>/<em>q</em> pixels, and the direction from the centre
+of panel&nbsp;2 to that spot is the direction to enter as &theta; —
+measured on screen the same way, from +x towards the bottom. Such spots
+always come in pairs on opposite sides of the centre, and either one
+gives the same answer: &theta; and &theta;+180° describe the same
+stripes. Because the tool overwrites
+the buffer, copy the image to a second buffer first if you want to
+compare responses at several orientations side by side.
+</p>
+<p>
+See also the <em>Hessian filter</em> (below), which enhances ridges of a
+given width at <em>any</em> orientation, and so answers a different
+question: Gabor asks &ldquo;where does the image look like stripes in
+<em>this</em> direction?&rdquo;, Hessian asks &ldquo;where does the image
+look like a ridge, whichever way it runs?&rdquo;
+</p>
 </details>
 
 <details id="p1-hessian">
 <summary>Hessian filter<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><text x="12" y="12" font-family="sans-serif" font-weight="bold" font-size="15" fill="#fff" text-anchor="middle" dominant-baseline="central">H</text></svg></span></summary>
 <p>
 Compute a Hessian-based ridge / blob enhancement. Good for highlighting
-filaments and elongated features whose width matches the chosen scale.  
-The Hessian filter is a second-derivative operator that responds strongly 
-to curvilinear structures, making it useful for tracing filaments or enhancing 
-tubular features in the image. It is most powerful when the scale parameter 
-is tuned to match the width of the features of interest, 
-as it suppresses structures that are either much thinner or much thicker 
+filaments and elongated features whose width matches the chosen scale.
+The Hessian filter is a second-derivative operator that responds strongly
+to curvilinear structures, making it useful for tracing filaments or enhancing
+tubular features in the image. It is most powerful when the scale parameter
+is tuned to match the width of the features of interest,
+as it suppresses structures that are either much thinner or much thicker
 than the specified scale.
-In cryo-EM images of amyloid fibrils, fibrils are dark but the Hessian filter responds to bright structures. 
-On such images, try first inverting the contrast and then applying heavy downscaling with the 
-<em>Bin image</em> tool. The Hessian filter then 
-responds to the enhanced structures, providing a fast and effective way to enhance filaments of a certain width.
-You can also combine it with the <em>Gabor filter</em> for orientation-specific enhancement.
+</p>
+<p>
+<strong>How it works.</strong> The image is first smoothed with a Gaussian
+of width &sigma;, which is what selects the size of the structures the
+filter sees. The tool then measures, at every pixel, how the brightness
+<em>curves</em>: the three second derivatives
+<em>I<sub>xx</sub></em>, <em>I<sub>yy</sub></em> and
+<em>I<sub>xy</sub></em>, arranged in the 2&times;2 Hessian matrix. The
+two eigenvalues of that matrix are the curvatures along the two principal
+directions, and their eigenvectors say which way those directions point.
+On a ridge the picture is characteristic: strong curvature across the
+ridge, almost none along it. The filter keeps the eigenvalue of largest
+magnitude — the strongest curvature at that pixel — and the response is
+that value multiplied by &minus;<em>polarity</em>, with anything still
+negative clipped to zero. The derivatives
+are multiplied by &sigma;&sup2; (&gamma;-normalisation), which makes
+responses at different &sigma; comparable rather than shrinking as
+&sigma; grows.
+</p>
+<div class="controls">
+  <strong>Sigma (smoothing):</strong> the scale, in pixels, and the
+  parameter that matters. It sets the width of the structures that
+  respond: small &sigma; picks out thin features, large &sigma; broad
+  ones. Start near <strong class="inline">half the expected feature width</strong>.
+  Typical: 1–6. <br>
+  <strong>Polarity (+1/&minus;1):</strong> which sign of ridge to keep.
+  <strong class="inline">+1</strong> enhances <em>bright</em> ridges on a dark
+  background; <strong class="inline">&minus;1</strong> enhances <em>dark</em> ridges on
+  a bright background (dark fibres, carbon edges). Any positive number
+  counts as +1 and any negative as &minus;1. <br>
+  <strong>Cancel / Compute:</strong> Compute replaces the image in the
+  active buffer with the filter response.
+</div>
+<p>
+Because the opposite polarity is clipped away, the output is
+<strong>non-negative</strong>: bright means &ldquo;ridge of the requested
+sign here&rdquo;, and zero means both &ldquo;flat&rdquo; and &ldquo;ridge
+of the wrong sign&rdquo;. If a filtered image comes out nearly blank, the
+polarity is the first thing to check. Note also that the filter keeps the
+largest curvature whatever its shape, so it is a ridge <em>and</em> blob
+detector: compact dots respond as strongly as filaments, and it does not
+separate the two the way a dedicated vesselness measure would.
+</p>
+<p>
+<strong>Amyloid fibrils in cryo-EM.</strong> Fibrils are dark, but with
+the default polarity the filter responds to bright structures. On such
+images, first invert the contrast with <em>Invert contrast</em> (or set
+the polarity to &minus;1), then apply heavy downscaling with the
+<em>Bin image</em> tool — this both reduces the noise that second
+derivatives amplify and brings the fibril width down to a few pixels, so
+a small &sigma; matches it. The Hessian filter then responds to the
+enhanced structures, providing a fast and effective way to enhance
+filaments of a certain width.
+</p>
+<p>
+Second derivatives amplify noise, so on any noisy image increase &sigma;,
+bin the image first, or low-pass filter it before applying the filter.
+You can also combine it with the <em>Gabor filter</em> for
+orientation-specific enhancement: the Gabor filter selects a single
+direction, whereas the Hessian filter responds to ridges running any
+which way.
 </p>
 </details>
 
@@ -374,18 +511,106 @@ You can also combine it with the <em>Gabor filter</em> for orientation-specific 
 <details id="p1-amyloid">
 <summary>Amyloid filament<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><text x="12" y="12" font-family="sans-serif" font-weight="bold" font-size="15" fill="#fff" text-anchor="middle" dominant-baseline="central">A</text></svg></span></summary>
 <p>
-Specialised analysis tool for amyloid filaments: extract straight
-sections, compute averaged power spectra, and analyse periodicities
-along filament axes.<BR>
-This tool takes an existing image of a filament cross-section and produces a helical 
-filament image from it in a target slot.
-As source you can create an empty (black) image and draw a small snake trace into it. 
-Then use this tool to generate a long filament image from the trace, which can be used 
+Simulates cryo-EM images of helical amyloid filaments. This is a
+<strong>generator</strong>, not an analysis tool: you give it a 2D
+cross-section and a trajectory, and it builds the image a microscope
+would have recorded from that filament. Use it to make test data whose
+true helical parameters you already know, and then study what those
+parameters do to the Fourier transform in panel&nbsp;2.<BR>
+This tool takes an existing image of a filament cross-section and produces a helical
+filament image from it, replacing whatever is in the currently active slot — there is
+no separate target selector, so switch to a scratch slot first if you want to keep
+what is on display.
+As source you can create an empty (black) image and draw a small snake trace into it.
+Then use this tool to generate a long filament image from the trace, which can be used
 for Fourier analysis of the filament's helical parameters.<BR>
-You can also use the mouse to draw a long filament directly into the source slot, 
+You can also use the mouse to draw a long filament directly into the source slot,
 and then use the mouse to add curvature to the filament trajectory. Use this to study,
-how a bent filament's Fourier spectrum differs from that of a straight filament, 
+how a bent filament's Fourier spectrum differs from that of a straight filament,
 and to get a visual intuition for the effects of curvature on the Fourier transform.
+</p>
+<p>
+<strong>How it works.</strong> The chosen cross-section map is first
+flattened against its background: the mean of its border pixels is
+subtracted, so the surroundings fall to about zero and only the central
+structure contributes. That cross-section is then treated as a thin 3D
+slab (a couple of pixels thick) and stamped repeatedly along each
+filament trajectory — one copy every <em>helical rise</em>, each
+successive copy rotated about the filament axis by the <em>helical
+twist</em>. The resulting 3D density is projected along the viewing axis
+to make the image. It is a genuine helical construction rather than a
+painted-on pattern, which is why the crossovers and layer lines in its
+Fourier transform behave the way real ones do.
+</p>
+<div class="controls">
+  <strong>Image size (px):</strong> side length of the generated image.
+  The output is always square and replaces the image in the active slot.
+  Filament traces you have already drawn are rescaled to the new size. <br>
+  <strong>Source map:</strong> the buffer (a…p) holding the 2D
+  cross-section that is extruded along the filament. <br>
+  <strong>Helical rise (Å):</strong> axial translation between successive
+  subunits. The cross-β structure of amyloid gives
+  <strong class="inline">4.75&nbsp;Å</strong>, the inter-strand spacing —
+  the default. <br>
+  <strong>Helical twist (°):</strong> rotation between successive
+  subunits; negative is left-handed. Amyloid filaments are typically
+  &minus;1° to &minus;2°. <br>
+  <strong>Waviness wavelength (px)</strong> and
+  <strong>Waviness amplitude (px):</strong> a gentle sinusoidal lateral
+  bending of the filament, of this period and peak displacement. Set the
+  amplitude to <strong class="inline">0</strong> to switch waviness off.
+  Typical wavelengths are 30–100&nbsp;px. <br>
+  <strong>Persistence length (µm):</strong> filament stiffness — the
+  length over which it keeps its direction. The trajectory you draw is
+  relaxed until its radius of curvature is everywhere at least this
+  large, so a big value straightens a hand-drawn trace and a small one
+  lets it bend. Amyloid fibrils are typically 1–20&nbsp;µm. Set to
+  <strong class="inline">0</strong> to leave your trace untouched. <br>
+  <strong>Add gray noise / Sigma:</strong> additive zero-mean Gaussian
+  noise over the whole image, as a fraction of the peak filament signal:
+  0.1 is clean, <strong class="inline">0.3</strong> is moderate
+  (SNR&nbsp;≈&nbsp;3), 1.0 is very noisy (SNR&nbsp;≈&nbsp;1). <br>
+  <strong>White / Black signal:</strong> filament bright on a dark
+  background, or dark on bright as in a real cryo-EM micrograph. <br>
+  <strong>Filaments:</strong> click twice in panel&nbsp;1 to place a
+  filament's start and end; the count is shown live. Drag the control
+  points to bend the trajectory. If you compute without drawing
+  anything, one straight horizontal filament is generated across the
+  middle of the image. <br>
+  <strong>Cancel / Compute:</strong> Compute builds the image.
+</div>
+<BR>
+<p>
+<strong>The crossover.</strong> Rise and twist together set the length
+of one full turn of the helix, which is the repeat of the projected
+image — the distance the tool's tooltips call the crossover distance:
+</p>
+<p>
+&nbsp;&nbsp;crossover = (360 / |twist|) &times; rise
+</p>
+<p>
+With the defaults (4.75&nbsp;Å rise, &minus;1° twist) that is
+360&nbsp;×&nbsp;4.75 = 1710&nbsp;Å, so a 1024-pixel image holds a little
+over half a turn. Note that if your cross-section looks much the same
+after half a turn — a flat, ribbon-like density, as amyloid
+cross-sections often are — then the <em>visible</em> pinch points where
+the filament looks narrowest recur at half that spacing, twice per turn.
+The generated image is fixed at
+<strong>1&nbsp;Å per pixel</strong>, which makes this easy to read: a
+distance in pixels <em>is</em> a distance in Ångström. Halve the twist to
+&minus;0.5° and the crossover doubles; that is the quickest way to see how
+the twist controls the spacing of the layer lines in panel&nbsp;2.
+</p>
+<p>
+<strong>Suggested experiment.</strong> Generate a straight filament with
+noise off, compute the Fourier transform, and find the layer line at
+1/4.75&nbsp;Å⁻¹ produced by the rise. Then bend the trajectory, or lower
+the persistence length and let the relaxation curve it, and watch that
+sharp layer line smear out into an arc: curvature blurs the helical
+signal, which is exactly why real helical reconstruction cuts filaments
+into short, nearly straight segments. Turning the noise up then shows how
+quickly those layer lines disappear into the background — while remaining
+perfectly recoverable by averaging, since you know they are there.
 </p>
 </details>
 
@@ -438,8 +663,47 @@ map that is stored in another buffer, so that you can visually verify that the d
 to actual particles in the raw image.
 </p>
 <p>
-The coordinates of the detected peaks can then be exported and used for particle extraction with the 
+The coordinates of the detected peaks can then be exported and used for particle extraction with the
 <em>Extract particles</em> tool.
+</p>
+<p>
+<strong>How the picking works.</strong> Every pixel above the threshold
+is a candidate. The tool sorts them from brightest to faintest, takes the
+brightest, records it as a peak, and then blanks out every candidate
+within the exclusion radius of it — then repeats with the brightest of
+whatever survives, until none are left. So the exclusion radius sets a
+<em>guaranteed minimum separation</em> between picks, and each pick is
+the brightest pixel in its own neighbourhood. Note that this is not a
+local-maximum test: a broad bright plateau yields one pick, not none, and
+the result depends only on brightness order and spacing. Positions are
+whole pixels; there is no sub-pixel refinement.
+</p>
+<div class="controls">
+  <strong>Picking source map:</strong> the buffer (a…p) that is searched.
+  This need not be the buffer on display, which is what makes the
+  cross-correlation workflow above possible: pick on the correlation map
+  while looking at the raw micrograph. <br>
+  <strong>Show / Hide positions:</strong> toggles the green plus signs. <br>
+  <strong>Threshold:</strong> the cut-off, dragged as a fraction of the
+  source buffer's own min–max range; the resulting value is shown next to
+  the slider. Because it is relative to that buffer's range, the same
+  slider position means different things on different maps. <br>
+  <strong>Exclusion radius:</strong> minimum separation between picks, in
+  pixels. Set it to roughly the particle diameter so that one particle
+  cannot be picked twice. <br>
+  <strong>Peaks found:</strong> the live count, which updates on every
+  Compute — the number to watch while tuning. <br>
+  <strong>Cancel / Compute:</strong> Compute runs the search; the window
+  stays open so you can iterate.
+</div>
+<BR>
+<p>
+Tune the two sliders against the <em>Peaks found</em> count and the green
+markers: lower the threshold until you start picking noise, then back
+off. One detail matters if you go on to <em>Extract particles</em>: the
+peak list stays in <strong>brightest-first order</strong>, which decides
+which particles survive if there are more of them than the montage can
+hold.
 </p>
 </details>
 
@@ -460,8 +724,44 @@ You can then use the Fourier space lattice filter with filter vectors of either 
 to pick out the lattice of particle images in the montage, and to suppress noise between the particles. 
 When using the Fourier lattice filter, do not smooth the edges use a diameter of 1,
 so that you get a clean reconstruction of the average particle image without any blurring.
-This works ok-ish for round particles, such as Apoferritin, but for elongated particles, such as ribosomes, 
+This works ok-ish for round particles, such as Apoferritin, but for elongated particles, such as ribosomes,
 you would need to first rotationally align the particles, which is not implemented here.
+</p>
+<div class="controls">
+  <strong>Source image:</strong> the buffer (a…p) the boxes are cut from
+  — normally the raw micrograph, even when the peaks were picked on a
+  correlation map. <br>
+  <strong>Target image:</strong> the buffer the montage is written to. It
+  is overwritten, becomes the displayed slot, and inherits the source's
+  pixel size. <br>
+  <strong>Particle size:</strong> box side length, 64 or 128 pixels,
+  centred on each picked position. <br>
+  <strong>Cancel / Compute:</strong> Compute builds the montage. The tool
+  needs a peak list: without one it just says <em>“First prepare a
+  particle position list”</em>, so run <em>Peak search</em> first.
+</div>
+<BR>
+<p>
+<strong>The montage has a fixed capacity.</strong> The output is always
+1024×1024, so the box size decides how many particles fit:
+<strong class="inline">64&nbsp;px</strong> gives a 16×16 grid =
+<strong class="inline">256</strong> particles, and
+<strong class="inline">128&nbsp;px</strong> gives an 8×8 grid =
+<strong class="inline">64</strong>. If you picked more peaks than that,
+the extras are <em>silently dropped</em> — no warning. Because the peak
+list is ordered brightest-first, what you keep are the strongest picks,
+which is usually the sensible choice; but if you expected 400 particles
+and got 256, this is why. To keep more of them, raise the threshold in
+<em>Peak search</em> until the count fits, or extract in batches.
+</p>
+<p>
+Boxes at the very edge of the micrograph are handled gracefully: any part
+of a box falling outside the image is filled with the average of that
+box's own in-bounds pixels, so an edge particle gets a flat, neutral
+surround rather than a black step that would streak across its Fourier
+transform. The particles are cut out but not otherwise processed — not
+recentred, not normalised, not rotated — and the display contrast is
+rescaled across the montage as a whole.
 </p>
 </details>
 
