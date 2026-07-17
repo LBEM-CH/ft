@@ -414,7 +414,16 @@ lets you watch the diffraction pattern become N-fold symmetric directly.
 <details id="p2-fourier-crop-pad">
 <summary>Fourier crop / Fourier pad<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><rect x="4.8" y="4.8" width="4.8" height="4.8" fill="#fff"/><rect x="14.4" y="4.8" width="4.8" height="4.8" fill="#b6b6b6"/><rect x="4.8" y="14.4" width="4.8" height="4.8" fill="#969696"/><rect x="14.4" y="14.4" width="4.8" height="4.8" fill="#d4d4d4"/></svg></span></summary>
 <p>
-Resample the FFT by an integer factor:
+This function truncates or expands the FFT by an integer factor <code>N</code>. <BR><BR>
+
+When using Fourier cropping, the central <code>1/N×1/N</code> region of the FFT is kept, and the rest is discarded. 
+During the cropping, the Fourier transform becomes smaller, except if the option "Keep original size" is checked. 
+In that case, the eliminated area is kept but is then only containing zero values. <BR><BR>
+
+When using Fourier padding, the FFT is zero-padded to <code>N×</code> its current size. 
+In this case, the Fourier transform becomes larger due to the added zeros around the original FFT. 
+This means that also the real-space image becomes <code>N×</code> larger, but no new information is added. 
+The Fourier transform is now oversampled, and the back-transformed image will be larger in pixel size and smoother.  
 </p>
 <ul>
   <li><strong>Fourier crop</strong> keeps only the central
