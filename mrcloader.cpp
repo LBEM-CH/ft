@@ -231,7 +231,6 @@ MrcResult loadMrcFromData(const QByteArray &fileData)
                  << pixelCount << ", data bytes =" << available << ")";
         return result;
     }
-
     
     result.nx = nx;
     result.ny = ny;
