@@ -265,6 +265,45 @@ private:
     // consumed in mouseMoveEvent). Cleared at the start of each paintEvent.
     std::vector<std::pair<QRect, QString>> m_paramLabelTips;
 
+    // Name and manual anchor of the tool currently active in a panel.
+    // `title` is the function name as shown in the manual, `anchor` the id of
+    // its <details> entry in manual_panel1.html / manual_panel2.html.
+    // Returns false when no tool of that panel is active.
+    bool toolHelpInfo(bool panel2, QString &title, QString &anchor) const;
+
+    // Draw the header line of a tool parameter window: the function name in
+    // bold on the left, a square "?" help button on the right. Registers the
+    // button's "Help" tooltip and returns its rect for mouse handling.
+    QRect drawToolHelpHeader(QPainter &p, const QRect &toolRect, int margin,
+                             int lh, int fontPx, const QString &title);
+
+    // Draw just the square "?" help button, right-aligned inside `frame` on a
+    // row of height `rowH` starting `marginY` below the frame top. Used both by
+    // drawToolHelpHeader and by the centred Math windows, which draw their own
+    // titles. Registers the "Help" tooltip and returns the button rect.
+    QRect drawHelpButton(QPainter &p, const QRect &frame, int marginX,
+                         int marginY, int rowH, int maxSize = 20);
+
+    // A panel has a "tool window" open when one of its tools draws the
+    // parameter window in the panel's bottom corner. A panel has a "function"
+    // open when that window, or the centred Math window, is showing — i.e.
+    // whenever the close ("X") button should be offered.
+    bool p1ToolWindowOpen() const;
+    bool p2ToolWindowOpen() const;
+    bool p1FunctionOpen() const;
+    bool p2FunctionOpen() const;
+
+    // Close whatever function that panel has open.
+    void closeP1Function();
+    void closeP2Function();
+
+    // Open the manual page of the tool active in `panel2`'s panel, scrolled to
+    // that function's entry.
+    void openToolHelp(bool panel2);
+
+    // Open `panel2`'s manual page scrolled to an explicit function anchor.
+    void openManualAnchor(bool panel2, const QString &anchor);
+
     // ---- widgets ----
     QPushButton *m_loadBtn   = nullptr;
     QPushButton *m_saveBtn   = nullptr;
@@ -342,6 +381,10 @@ private:
     QRect       m_ftHistLockRect;
     QRect       m_p1ToolRect;       // current panel-1 tool-dialog rect
     QRect       m_p2ToolRect;       // current panel-2 tool-dialog rect
+    QRect       m_p1HelpRect;       // "?" help button in the panel-1 tool dialog
+    QRect       m_p2HelpRect;       // "?" help button in the panel-2 tool dialog
+    QRect       m_p1MathHelpRect;   // "?" help button in the panel-1 Math window
+    QRect       m_p2MathHelpRect;   // "?" help button in the panel-2 Math window
 
     // ---- mark image center toggle (custom-painted) ----
     QRect       m_markImageCenterRect;
@@ -508,6 +551,11 @@ private:
     bool        m_p1SlotVisible[P1_TOOL_BUTTONS] = {false};
     bool        m_p2SlotVisible[P2_TOOL_BUTTONS] = {false};
 
+    // Close ("X") button, half a square above the panel's function buttons.
+    // Set by layoutToolSlots() only while that panel has a function open.
+    QRect       m_p1CloseRect;
+    QRect       m_p2CloseRect;
+
     struct ToolGroup {
         QString      name;       // shown as tooltip on the group square
         QVector<int> members;    // tool ids; members[0] is the group's "face"
@@ -531,6 +579,11 @@ private:
     // Panel 1 tools
     bool        m_shiftActive = false;
     bool        m_rotateActive = false;
+    // Flip / invert apply immediately on every click; these flags only keep the
+    // parameter window (title + help button) on screen for the last one used.
+    bool        m_p1FlipHActive = false;
+    bool        m_p1FlipVActive = false;
+    bool        m_p1InvertActive = false;
     bool        m_p1Dragging = false;
     QPoint      m_p1DragStart;         // screen pos at drag start
     bool        m_p1PanDragging = false;
@@ -544,8 +597,10 @@ private:
     // Shift / rotate parameter windows (hint text + Cancel)
     QPushButton *m_shiftCancelBtn  = nullptr;
     QPushButton *m_rotateCancelBtn = nullptr;
+    QPushButton *m_ftRotateCancelBtn = nullptr;   // panel-2 rotate
     void onShiftCancel();
     void onRotateCancel();
+    void onFtRotateCancel();
 
     // Panel 1 eraser/brush parameter widgets
     QLabel     *m_p1EraserDiamLabel = nullptr;

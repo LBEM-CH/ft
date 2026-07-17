@@ -69,10 +69,17 @@ void FtWindow::layoutToolSlots()
         int nG = groups.size();
         int totalH = nG * btnSide + (nG - 1) * gap;
         int startY = (hy - totalH) / 2;
+        int gx = (panel == 1) ? offset : (width() - btnSide - offset);
+
+        // Close button: same size as a function button, sitting half a square
+        // above the column. Only offered while this panel has a function open.
+        bool funcOpen = (panel == 1) ? p1FunctionOpen() : p2FunctionOpen();
+        QRect &closeRect = (panel == 1) ? m_p1CloseRect : m_p2CloseRect;
+        closeRect = funcOpen ? QRect(gx, startY - btnSide - btnSide / 2, btnSide, btnSide)
+                             : QRect();
 
         for (int g = 0; g < nG; g++) {
             int by = startY + g * (btnSide + gap);
-            int gx = (panel == 1) ? offset : (width() - btnSide - offset);
             QRect G(gx, by, btnSide, btnSide);
             groupRects[g] = G;
             const QVector<int> &mem = groups[g].members;
@@ -122,6 +129,7 @@ void FtWindow::deactivateAllP1Tools()
     m_gaborActive = false; m_hessianActive = false;
     m_amyloidActive = false; m_amyloidPlacing = 0;
     m_measureActive = false; m_measurePlacing = 0; m_measureHasLine = false;
+    m_p1FlipHActive = false; m_p1FlipVActive = false; m_p1InvertActive = false;
 }
 
 void FtWindow::showP1ToolWidgets()
@@ -191,6 +199,35 @@ void FtWindow::showP1ToolWidgets()
     m_rotateCancelBtn->setVisible(m_rotateActive);
 }
 
+void FtWindow::closeP1Function()
+{
+    deactivateAllP1Tools();
+    m_p1Dragging = false;
+    m_toolDragging = false;
+    showP1ToolWidgets();
+    update();
+}
+
+void FtWindow::closeP2Function()
+{
+    deactivateAllP2Tools();
+    m_p2Dragging = false;
+    m_toolDragging = false;
+    // Mirrors the cross-section tool's own deactivation cleanup.
+    m_crossSectionProfile.clear();
+    m_crossSectionPhaseProfile.clear();
+    showP2ToolWidgets();
+    update();
+}
+
+void FtWindow::onFtRotateCancel()
+{
+    m_ftRotateActive = false;
+    m_p2Dragging = false;
+    m_ftRotateCancelBtn->hide();
+    update();
+}
+
 void FtWindow::activateP1Tool(int toolId)
 {
     switch (toolId) {
@@ -208,24 +245,36 @@ void FtWindow::activateP1Tool(int toolId)
         if (!m_measureActive) { m_measurePlacing = 0; m_measureHasLine = false; }
         break;
     }
-    case 3:
+    // Flip / invert act on every click (so two clicks still undo each other);
+    // the flag only toggles the parameter window carrying the help button.
+    case 3: {
         if (m_image.isNull()) return;
+        bool was = m_p1FlipHActive;
         deactivateAllP1Tools(); storeUndoSnapshot();
         m_image = flipImage(m_image, Qt::Horizontal);
         extractImageData(); if (m_ftComputed) computeFFT();
+        m_p1FlipHActive = !was;
         break;
-    case 4:
+    }
+    case 4: {
         if (m_image.isNull()) return;
+        bool was = m_p1FlipVActive;
         deactivateAllP1Tools(); storeUndoSnapshot();
         m_image = flipImage(m_image, Qt::Vertical);
         extractImageData(); if (m_ftComputed) computeFFT();
+        m_p1FlipVActive = !was;
         break;
+    }
     case 5: { bool was = m_shiftActive; deactivateAllP1Tools(); m_shiftActive = !was; break; }
     case 6: { bool was = m_rotateActive; deactivateAllP1Tools(); m_rotateActive = !was; break; }
-    case 7:
+    case 7: {
         if (m_image.isNull()) return;
+        bool was = m_p1InvertActive;
         deactivateAllP1Tools(); showP1ToolWidgets(); onInvertContrast();
+        m_p1InvertActive = !was;
+        update();
         return;
+    }
     case 8: { bool was = m_p1TaperActive; deactivateAllP1Tools(); m_p1TaperActive = !was; break; }
     case 9: { bool was = m_p1SymmetrizeActive; deactivateAllP1Tools(); m_p1SymmetrizeActive = !was; break; }
     case 10: { bool was = m_binActive; deactivateAllP1Tools(); m_binActive = !was; break; }
@@ -309,6 +358,8 @@ void FtWindow::showP2ToolWidgets()
     if (m_latticeActive) syncLatticeVectorEdits();
     m_latticeEraseOutside->setVisible(m_latticeActive);
     m_latticeApplyBtn->setVisible(m_latticeActive);
+
+    m_ftRotateCancelBtn->setVisible(m_ftRotateActive);
 
     m_crossSectionDirEdit->setVisible(m_crossSectionActive);
     m_crossSectionWidthEdit->setVisible(m_crossSectionActive);
@@ -420,6 +471,20 @@ void FtWindow::activateP2Tool(int toolId)
 // ---------------------------------------------------------------------------
 //  Mouse
 // ---------------------------------------------------------------------------
+void FtWindow::openManualAnchor(bool panel2, const QString &anchor)
+{
+    const QString page = panel2 ? "manual_panel2.html" : "manual_panel1.html";
+    QDesktopServices::openUrl(
+        QUrl("https://lbem-status.epfl.ch/ft/" + page + "#" + anchor));
+}
+
+void FtWindow::openToolHelp(bool panel2)
+{
+    QString title, anchor;
+    if (!toolHelpInfo(panel2, title, anchor)) return;
+    openManualAnchor(panel2, anchor);
+}
+
 void FtWindow::mousePressEvent(QMouseEvent *event)
 {
     // If the "New image" popup is open, any click outside its child widgets
@@ -448,6 +513,35 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         } else {
             update();   // just close the popup
         }
+        return;
+    }
+
+    // "?" help button in a tool parameter window – open that function's entry
+    // in the panel's manual page. Checked before the image-area handlers so a
+    // click on the button never reaches the tool underneath.
+    if (!m_p1HelpRect.isNull() && m_p1HelpRect.contains(event->pos())) {
+        openToolHelp(false);
+        return;
+    }
+    if (!m_p2HelpRect.isNull() && m_p2HelpRect.contains(event->pos())) {
+        openToolHelp(true);
+        return;
+    }
+    // "X" close button above a panel's function buttons.
+    if (!m_p1CloseRect.isNull() && m_p1CloseRect.contains(event->pos())) {
+        closeP1Function();
+        return;
+    }
+    if (!m_p2CloseRect.isNull() && m_p2CloseRect.contains(event->pos())) {
+        closeP2Function();
+        return;
+    }
+    if (!m_p1MathHelpRect.isNull() && m_p1MathHelpRect.contains(event->pos())) {
+        openManualAnchor(false, "p1-math");
+        return;
+    }
+    if (!m_p2MathHelpRect.isNull() && m_p2MathHelpRect.contains(event->pos())) {
+        openManualAnchor(true, "p2-math");
         return;
     }
 
@@ -1035,8 +1129,10 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         }
     }
 
-    // FT rotate: start drag on panel 2 FFT
-    if (m_ftRotateActive && m_ftComputed) {
+    // FT rotate: start drag on panel 2 FFT. The tool window overlaps the FFT,
+    // so clicks that land on it must not begin a rotation.
+    if (m_ftRotateActive && m_ftComputed
+        && !m_p2ToolRect.contains(event->pos())) {
         for (int i = 0; i < m_numDispItems; i++) {
             const DisplayItem &di = m_dispItems[i];
             if (di.valid && di.zoomIdx >= 1 && di.screenRect.contains(event->pos())) {
