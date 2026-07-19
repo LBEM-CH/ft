@@ -50,26 +50,30 @@ echo "Packing $TARBALL (dereferencing symlinks)…"
 tar czhf "$TARBALL" "${ARTIFACTS[@]}"
 echo "Created $BUILD_DIR/$TARBALL ($(du -h "$TARBALL" | cut -f1))"
 
-if [[ -z "$REMOTE" ]]; then
+# The manual-webserver upload is specific to this project's maintainers. Only
+# attempt it for their accounts; skip it entirely for everyone else.
+current_user=$(whoami)
+if [ "$current_user" = "henning" ] || [ "$current_user" = "stahlber" ]; then
+    if [ -e "/Users/stahlber/.pw" ]; then
+        pw=$(cat /Users/stahlber/.pw)
+        if command -v sshpass >/dev/null 2>&1; then
+            echo "Copying manual files to webserver."
+            sshpass -p "$pw" scp -o StrictHostKeyChecking=accept-new $BUILD_DIR/$TARBALL henning@lbem-status:/home/henning
+        else
+            echo "sshpass not found (install it with 'brew install sshpass'); falling back to an interactive copy."
+            scp "$BUILD_DIR/$TARBALL" henning@lbem-status:/home/henning
+        fi
+    else
+        echo "Password file /Users/stahlber/.pw not found. Please copy the manual files manually."
+        echo "To update the manual on the web, run this locally:"
+        echo " "
+        echo "scp $BUILD_DIR/$TARBALL henning@lbem-status:/home/henning"
+        echo " "
+    fi
+    echo "Run on the webserver: \"doit\""
+    # 
+else
     cat <<EOF
-
-To deploy manually, copy $TARBALL to the target:
-
-    scp build_wasm/ft-wasm.tar.gz henning@lbem-status:/home/henning
-
-Then run on target host:
-
-    sudo \rm -rf /srv/ft2 
-    sudo mkdir -p /srv/ft2
-    sudo tar xzf $TARBALL -C /srv/ft2
-    sudo systemctl reload apache2
-
-
-    sudo \rm -rf /srv/ft
-    sudo mkdir -p /srv/ft
-    sudo tar xzf $TARBALL -C /srv/ft
-    sudo systemctl reload apache2
-
 One-time Apache setup: see ft-apache.conf for the snippet and instructions.
 
 To evaluate website usage, copy ft-report.sh to the target. Run on the local machine:
@@ -89,32 +93,8 @@ From your local machine, fetch the HTML report:
     open ft-report.html
 
 EOF
-    exit 0
+
 fi
 
-echo "Deploying to $REMOTE:$REMOTE_DIR …"
+exit 0
 
-# Stage the tarball in the remote user's home, then sudo-extract into $REMOTE_DIR.
-scp "$TARBALL" "$REMOTE:~/$TARBALL"
-
-ssh -tt "$REMOTE" bash -s <<EOF
-set -euo pipefail
-sudo mkdir -p "$REMOTE_DIR"
-# Wipe only the app artifacts, not the whole directory, in case it holds other files.
-sudo rm -rf "$REMOTE_DIR"/{ft.html,ft.js,ft.wasm,ft.worker.js,qtloader.js,qtlogo.svg,images,manual.html,manual_panel1.html,manual_panel2.html,manual_exercises.html}
-sudo tar xzf ~/$TARBALL -C "$REMOTE_DIR"
-sudo chown -R root:root "$REMOTE_DIR"
-rm ~/$TARBALL
-if systemctl list-unit-files | grep -q '^apache2\.service'; then
-    sudo systemctl reload apache2
-    echo "Apache reloaded."
-else
-    echo "note: apache2 is not installed on the remote — install it and Include ft-apache.conf from the site's SSL vhost"
-fi
-EOF
-
-# Extract hostname from user@host for the URL hint. The public path is the
-# basename of the deploy dir (matches the Alias: /srv/ft -> /ft, /srv/ft2 -> /ft2).
-REMOTE_HOST="${REMOTE#*@}"
-echo "Deployed to $REMOTE:$REMOTE_DIR"
-echo "Open: https://$REMOTE_HOST/$(basename "$REMOTE_DIR")/"
