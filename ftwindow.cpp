@@ -89,6 +89,8 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     setWindowTitle("ft");
 
     setMouseTracking(true);
+    // Needed so the maximized image view can receive the ESC key that leaves it.
+    setFocusPolicy(Qt::StrongFocus);
     grabGesture(Qt::PinchGesture);
 
     buildToolGroups();
@@ -137,6 +139,10 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_fullscreenBtn = new QPushButton("Go fullscreen", this);
     m_fullscreenBtn->setFixedSize(180, 30);
     connect(m_fullscreenBtn, &QPushButton::clicked, this, &FtWindow::onToggleFullscreen);
+    // Start with the label matching reality (the window may already be
+    // fullscreen), and keep it matching from here on.
+    updateFullscreenButton(isWindow() && isFullScreen());
+    installFullscreenSync();
 
     // Mode cycle button
     m_modeBtn = new QPushButton(modeLabel(), this);
@@ -1689,6 +1695,15 @@ FtWindow::~FtWindow()
 // ---------------------------------------------------------------------------
 //  Layout
 // ---------------------------------------------------------------------------
+// Keep the fullscreen button label truthful no matter how the state changed:
+// our own button, F11, Escape, or the window manager all end up here.
+void FtWindow::changeEvent(QEvent *event)
+{
+    QWidget::changeEvent(event);
+    if (event->type() == QEvent::WindowStateChange && isWindow())
+        updateFullscreenButton(isFullScreen());
+}
+
 void FtWindow::resizeEvent(QResizeEvent *)
 {
     m_loadBtn->move(8, 8);

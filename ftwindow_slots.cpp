@@ -635,24 +635,8 @@ void FtWindow::onToggleFullscreen()
     // container (falls back to its canvas) instead of documentElement,
     // which iPad Safari exits immediately. The actual button label is
     // synced from JS via fullscreenchange listeners installed once.
-    g_fsWindow = this;
+    installFullscreenSync();
     EM_ASM({
-        if (!window.__ftFsInit) {
-            window.__ftFsInit = true;
-            var sync = function() {
-                var fs = document.fullscreenElement ||
-                         document.webkitFullscreenElement ||
-                         document.webkitCurrentFullScreenElement;
-                if (window.Module && window.Module.ccall) {
-                    try {
-                        window.Module.ccall('ft_on_fullscreen_change',
-                            null, ['number'], [fs ? 1 : 0]);
-                    } catch (e) { console.warn('fs sync failed:', e); }
-                }
-            };
-            document.addEventListener('fullscreenchange', sync);
-            document.addEventListener('webkitfullscreenchange', sync);
-        }
         // Target the #screen container, NOT its inner <canvas>. Qt resizes
         // the canvas (DPR + pixel dims) the moment fullscreen begins, and
         // iPad Safari exits fullscreen when the fullscreen element itself
@@ -694,13 +678,35 @@ void FtWindow::onToggleFullscreen()
         emit fullscreenToggleRequested();
         return;
     }
-    if (isFullScreen()) {
+    // changeEvent() refreshes the button label on the resulting state change.
+    if (isFullScreen())
         showNormal();
-        m_fullscreenBtn->setText("Go fullscreen");
-    } else {
+    else
         showFullScreen();
-        m_fullscreenBtn->setText("Leave fullscreen");
-    }
+#endif
+}
+
+void FtWindow::installFullscreenSync()
+{
+#ifdef __EMSCRIPTEN__
+    g_fsWindow = this;
+    EM_ASM({
+        if (window.__ftFsInit) return;
+        window.__ftFsInit = true;
+        var sync = function() {
+            var fs = document.fullscreenElement ||
+                     document.webkitFullscreenElement ||
+                     document.webkitCurrentFullScreenElement;
+            if (window.Module && window.Module.ccall) {
+                try {
+                    window.Module.ccall('ft_on_fullscreen_change',
+                        null, ['number'], [fs ? 1 : 0]);
+                } catch (e) { console.warn('fs sync failed:', e); }
+            }
+        };
+        document.addEventListener('fullscreenchange', sync);
+        document.addEventListener('webkitfullscreenchange', sync);
+    });
 #endif
 }
 

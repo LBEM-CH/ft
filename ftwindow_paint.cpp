@@ -138,6 +138,16 @@ void FtWindow::paintEvent(QPaintEvent *)
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing, false);
 
+    // The maximized view replaces the whole layout, so it paints on its own
+    // and none of the normal panel bookkeeping below applies.
+    m_p1MaxRect = QRect();
+    m_p2MaxRectA = QRect();
+    m_p2MaxRectB = QRect();
+    if (m_maxPanel != 0) {
+        paintMaximized(p);
+        return;
+    }
+
     // Reset painted parameter-label hover rectangles; they are repopulated
     // below as the tool option panels are drawn.
     m_paramLabelTips.clear();
@@ -1679,8 +1689,11 @@ void FtWindow::paintEvent(QPaintEvent *)
         }
     }
 
-    // Helper: draw zoom/pan overlay vertically at top-right of a frame
-    auto drawZoomPanOverlay = [&](const QRect &frame, const ZoomState &zoom) {
+    // Helper: draw zoom/pan overlay vertically at top-right of a frame, with
+    // the maximize icon below it. maxRect (when given) receives the icon's
+    // click target for mousePressEvent.
+    auto drawZoomPanOverlay = [&](const QRect &frame, const ZoomState &zoom,
+                                  QRect *maxRect = nullptr) {
         p.save();
         QFont zf;
         zf.setPixelSize(11);
@@ -1701,6 +1714,29 @@ void FtWindow::paintEvent(QPaintEvent *)
         p.setPen(QColor(180, 180, 180));
         p.drawText(bx, by + zfm.ascent(), zoomTxt);
         p.drawText(bx, by + lineH + zfm.ascent(), panTxt);
+
+        // Maximize icon, set apart below the two text lines.
+        if (maxRect) {
+            const int iconSide = 32;
+            *maxRect = QRect(bx, by + 2 * lineH + 12, iconSide, iconSide);
+            drawMaximizeIcon(p, *maxRect);
+
+            if (maxRect->contains(m_mousePos)) {
+                QFont ttf; ttf.setPixelSize(11);
+                QFontMetrics ttfm(ttf);
+                const QString tip = "Show maximized (✕ or ESC to return)";
+                int ttw = ttfm.horizontalAdvance(tip) + 8;
+                int tth = ttfm.height() + 4;
+                // Flip to the icon's left when the tip would run off the
+                // window — the panel-2 icons sit against the right edge.
+                int ttx = (maxRect->right() + 4 + ttw <= width())
+                              ? maxRect->right() + 4
+                              : maxRect->left() - ttw - 4;
+                pendingTipRect = QRect(ttx, maxRect->center().y() - tth / 2,
+                                       ttw, tth);
+                pendingTipText = tip;
+            }
+        }
         Q_UNUSED(maxW);
         p.restore();
     };
@@ -1922,7 +1958,7 @@ void FtWindow::paintEvent(QPaintEvent *)
         }
 
         drawAxes(p, frame, m_zoom[0], imgW, imgH, false, m_pixelSize);
-        drawZoomPanOverlay(frame, m_zoom[0]);
+        drawZoomPanOverlay(frame, m_zoom[0], &m_p1MaxRect);
 
         QRect inner = frame.adjusted(2, 2, -2, -2);
         double curVal = 0;
@@ -2321,7 +2357,7 @@ void FtWindow::paintEvent(QPaintEvent *)
             drawImageWithFrame(p, frame, img, m_zoom[1], m_fftN, m_fftN);
             drawOriginCross(frame.adjusted(2, 2, -2, -2), m_zoom[1], m_fftN, m_fftN);
             drawAxes(p, frame, m_zoom[1], m_fftN, m_fftN, true, m_pixelSize);
-            drawZoomPanOverlay(frame, m_zoom[1]);
+            drawZoomPanOverlay(frame, m_zoom[1], &m_p2MaxRectA);
 
             QRect inner = frame.adjusted(2, 2, -2, -2);
             double curVal = 0;
@@ -2536,6 +2572,10 @@ void FtWindow::paintEvent(QPaintEvent *)
             drawImageWithFrame(p, frame1, *img1, m_zoom[1], m_fftN, m_fftN);
             drawOriginCross(frame1.adjusted(2, 2, -2, -2), m_zoom[1], m_fftN, m_fftN);
             drawAxes(p, frame1, m_zoom[1], m_fftN, m_fftN, true, m_pixelSize);
+            // No maximize icon here: the left overlay sits in the narrow gap
+            // between the two frames and is clipped by frame2, so the icon
+            // would not be clickable. The right-hand overlay carries the icon,
+            // and it maximizes both images anyway.
             drawZoomPanOverlay(frame1, m_zoom[1]);
             QRect inner1 = frame1.adjusted(2, 2, -2, -2);
             double curVal1 = 0;
@@ -2563,7 +2603,7 @@ void FtWindow::paintEvent(QPaintEvent *)
             drawImageWithFrame(p, frame2, *img2, m_zoom[2], m_fftN, m_fftN);
             drawOriginCross(frame2.adjusted(2, 2, -2, -2), m_zoom[2], m_fftN, m_fftN);
             drawAxes(p, frame2, m_zoom[2], m_fftN, m_fftN, true, m_pixelSize, true);
-            drawZoomPanOverlay(frame2, m_zoom[2]);
+            drawZoomPanOverlay(frame2, m_zoom[2], &m_p2MaxRectB);
             QRect inner2 = frame2.adjusted(2, 2, -2, -2);
             double curVal2 = 0;
             int mX2 = 0, mY2 = 0;
@@ -4813,4 +4853,160 @@ void FtWindow::drawCtfDirectionLine(QPainter &p, const QRect &screenRect,
     p.drawEllipse(QPointF(endScrX, endScrY), 4.0, 4.0);
     p.setRenderHint(QPainter::Antialiasing, false);
     p.restore();
+}
+
+// ---------------------------------------------------------------------------
+//  Maximized (display-only) image view
+// ---------------------------------------------------------------------------
+// Entered by clicking the maximize icon under a panel's Zoom/Pan overlay. The
+// chosen image fills the whole widget, covering the normal layout. Zoom and
+// pan keep working (wheel, pinch, drag) because the maximized frames are
+// registered as DisplayItems just like the normal panels; nothing else is.
+// ESC returns to the normal layout.
+void FtWindow::enterMaximized(int panel)
+{
+    if (panel == 1 && m_image.isNull())   return;
+    if (panel == 2 && !m_ftComputed)      return;
+    if (m_maxPanel == panel)              return;
+
+    // Child widgets are real QWidgets and would keep painting over the
+    // maximized image, so hide the visible ones and remember which they were.
+    m_maxHiddenWidgets.clear();
+    for (QObject *o : children()) {
+        auto *w = qobject_cast<QWidget *>(o);
+        if (w && w->isVisible()) {
+            m_maxHiddenWidgets.append(w);
+            w->hide();
+        }
+    }
+
+    m_maxPanel = panel;
+    setFocus(Qt::OtherFocusReason);   // so ESC reaches keyPressEvent
+    update();
+}
+
+void FtWindow::exitMaximized()
+{
+    if (m_maxPanel == 0) return;
+    m_maxPanel = 0;
+    m_maxCloseRect = QRect();
+    for (const QPointer<QWidget> &w : m_maxHiddenWidgets)
+        if (w) w->show();
+    m_maxHiddenWidgets.clear();
+    update();
+}
+
+QRectF FtWindow::itemSrcRect(const DisplayItem &di) const
+{
+    const ZoomState &z = m_zoom[di.zoomIdx];
+    if (m_maxPanel == 0 || di.screenRect.height() <= 0)
+        return z.visibleRect(di.imgW, di.imgH);
+    return z.visibleRect(di.imgW, di.imgH,
+                         di.screenRect.width() / (double)di.screenRect.height());
+}
+
+void FtWindow::paintMaximized(QPainter &p)
+{
+    m_numDispItems = 0;
+    p.fillRect(rect(), Qt::black);
+
+    // Fill `area` with the image and register it so the zoom/pan handlers in
+    // ftwindow_mouse.cpp find it. The item owns the whole area rather than a
+    // square inside it: unzoomed, the image is letterboxed as before, but a
+    // zoomed image widens into the full area instead of staying boxed in.
+    auto place = [&](const QRect &area, const QImage &img, int zoomIdx,
+                     int imgW, int imgH, const std::vector<double> *vals) {
+        if (img.isNull() || imgW <= 0 || imgH <= 0) return;
+        if (m_numDispItems >= MAX_DISP) return;
+        if (area.width() <= 0 || area.height() <= 0) return;
+
+        DisplayItem &di = m_dispItems[m_numDispItems++];
+        di = { area, imgW, imgH, zoomIdx, vals, true };
+
+        // The source rect may reach past the image (that surplus is what
+        // becomes the black letterbox), so draw only the part that exists and
+        // map it to the matching slice of the area.
+        QRectF src = itemSrcRect(di);
+        QRectF have = src.intersected(QRectF(0, 0, imgW, imgH));
+        if (have.isEmpty()) return;
+        double sx = area.width()  / src.width();
+        double sy = area.height() / src.height();
+        QRectF target(area.x() + (have.x() - src.x()) * sx,
+                      area.y() + (have.y() - src.y()) * sy,
+                      have.width() * sx, have.height() * sy);
+        p.drawImage(target, img, have);
+    };
+
+    const int margin = 8;
+    QRect area = rect().adjusted(margin, margin, -margin, -margin);
+
+    if (m_maxPanel == 1) {
+        place(area, m_image, 0, m_image.width(), m_image.height(),
+              &m_imageRawPixels);
+    } else if (m_displayMode == 2 || m_displayMode == 3) {
+        const QImage &img = (m_displayMode == 3) ? m_powerImg : m_complexImg;
+        place(area, img, 1, m_fftN, m_fftN, &m_powerVals);
+    } else {
+        // Two-image Fourier displays (cos/sin, amplitude/phase) occupy the
+        // left and right halves, separated by a black divider down the middle.
+        const QImage *img1 = (m_displayMode == 0) ? &m_cosImg  : &m_ampImg;
+        const QImage *img2 = (m_displayMode == 0) ? &m_sinImg  : &m_phaseImg;
+        const std::vector<double> *vals1 =
+            (m_displayMode == 0) ? &m_cosVals : &m_ampVals;
+        const std::vector<double> *vals2 =
+            (m_displayMode == 0) ? &m_sinVals : &m_phaseVals;
+
+        const int divider = 4;
+        int halfW = (area.width() - divider) / 2;
+        QRect left(area.x(), area.y(), halfW, area.height());
+        QRect right(area.x() + halfW + divider, area.y(), halfW, area.height());
+
+        place(left,  *img1, 1, m_fftN, m_fftN, vals1);
+        place(right, *img2, 2, m_fftN, m_fftN, vals2);
+
+        p.fillRect(QRect(area.x() + halfW, rect().top(), divider, height()),
+                   Qt::black);
+    }
+
+    // Close button, top right. This is the only way out on a touch device —
+    // iPad has no ESC key — so it is sized as a comfortable tap target and
+    // drawn over its own backing so it stays legible on top of any image.
+    const int closeSide = 44;
+    m_maxCloseRect = QRect(width() - closeSide - margin, margin,
+                           closeSide, closeSide);
+    {
+        const bool hover = m_maxCloseRect.contains(m_mousePos);
+        p.save();
+        p.setRenderHint(QPainter::Antialiasing, true);
+        p.setPen(QPen(QColor(200, 200, 200), 1));
+        p.setBrush(QColor(0, 0, 0, hover ? 220 : 160));
+        p.drawRoundedRect(m_maxCloseRect, 6, 6);
+
+        QRect x = m_maxCloseRect.adjusted(13, 13, -13, -13);
+        p.setPen(QPen(hover ? Qt::white : QColor(210, 210, 210), 2.5));
+        p.drawLine(x.topLeft(), x.bottomRight());
+        p.drawLine(x.topRight(), x.bottomLeft());
+        p.restore();
+    }
+
+    // Hint along the bottom. It sits on its own dark pill: the image may run
+    // all the way to the edge, and plain grey text on top of it is unreadable.
+    {
+        QFont hf; hf.setPixelSize(13); p.setFont(hf);
+        QFontMetrics hfm(hf);
+        const QString hint =
+            "Tap ✕ (top right) or press ESC to leave the maximized view";
+        int tw = hfm.horizontalAdvance(hint);
+        int th = hfm.height();
+        QRect pill((width() - tw) / 2 - 10, height() - th - 18,
+                   tw + 20, th + 8);
+        p.save();
+        p.setRenderHint(QPainter::Antialiasing, true);
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(0, 0, 0, 170));
+        p.drawRoundedRect(pill, 5, 5);
+        p.setPen(QColor(215, 215, 215));
+        p.drawText(pill, Qt::AlignCenter, hint);
+        p.restore();
+    }
 }

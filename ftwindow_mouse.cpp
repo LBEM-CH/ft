@@ -487,6 +487,37 @@ void FtWindow::openToolHelp(bool panel2)
 
 void FtWindow::mousePressEvent(QMouseEvent *event)
 {
+    // Maximized view: display only. The one interaction still offered is
+    // starting a pan drag on a zoomed image; everything else is suppressed.
+    if (m_maxPanel != 0) {
+        if (m_maxCloseRect.contains(event->pos())) {
+            exitMaximized();
+            return;
+        }
+        for (int i = 0; i < m_numDispItems; i++) {
+            const DisplayItem &di = m_dispItems[i];
+            if (!di.valid || di.zoomIdx < 0) continue;
+            if (!di.screenRect.contains(event->pos())) continue;
+            if (m_zoom[di.zoomIdx].factor <= 1.0) break;
+            if (di.zoomIdx == 0) { m_p1PanDragging = true; m_p1PanStart = event->pos(); }
+            else                 { m_p2PanDragging = true; m_p2PanStart = event->pos(); }
+            break;
+        }
+        return;
+    }
+
+    // Maximize icon under a panel's Zoom/Pan overlay. Both panel-2 icons open
+    // the same view, which shows whichever images panel 2 currently displays.
+    if (!m_p1MaxRect.isNull() && m_p1MaxRect.contains(event->pos())) {
+        enterMaximized(1);
+        return;
+    }
+    if ((!m_p2MaxRectA.isNull() && m_p2MaxRectA.contains(event->pos())) ||
+        (!m_p2MaxRectB.isNull() && m_p2MaxRectB.contains(event->pos()))) {
+        enterMaximized(2);
+        return;
+    }
+
     // If the "New image" popup is open, any click outside its child widgets
     // (which intercept their own clicks) dismisses the popup before the click
     // proceeds to its normal handler.
@@ -1306,6 +1337,12 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
 
 void FtWindow::mouseReleaseEvent(QMouseEvent *event)
 {
+    if (m_maxPanel != 0) {
+        m_p1PanDragging = false;
+        m_p2PanDragging = false;
+        return;
+    }
+
     if (m_histDragging) {
         m_histDragging = false;
         int h = m_histDragTarget;
@@ -1616,7 +1653,46 @@ void FtWindow::mouseReleaseEvent(QMouseEvent *event)
 
 void FtWindow::mouseMoveEvent(QMouseEvent *event)
 {
+    const QPoint prevMouse = m_mousePos;
     m_mousePos = event->pos();
+
+    // Maximized view: only pan dragging is live. Skipping the handlers below
+    // also keeps them off the hit rects left over from the last normal paint.
+    if (m_maxPanel != 0) {
+        // Repaint just when the close button's hover state flips, rather than
+        // on every move — the maximized image can be an expensive redraw.
+        if (m_maxCloseRect.contains(prevMouse) != m_maxCloseRect.contains(m_mousePos))
+            update();
+        if (!m_p1PanDragging && !m_p2PanDragging) return;
+        for (int i = 0; i < m_numDispItems; i++) {
+            const DisplayItem &di = m_dispItems[i];
+            if (!di.valid || di.zoomIdx < 0) continue;
+            if (m_p1PanDragging != (di.zoomIdx == 0)) continue;
+
+            ZoomState &z = m_zoom[di.zoomIdx];
+            QRectF src = itemSrcRect(di);
+            QPoint &start = (di.zoomIdx == 0) ? m_p1PanStart : m_p2PanStart;
+            double dxImg = (event->pos().x() - start.x())
+                           / (double)di.screenRect.width() * src.width();
+            double dyImg = (event->pos().y() - start.y())
+                           / (double)di.screenRect.height() * src.height();
+            z.centerX -= dxImg;
+            z.centerY -= dyImg;
+            z.centerX = ZoomState::clampCenter(z.centerX, src.width(),  di.imgW);
+            z.centerY = ZoomState::clampCenter(z.centerY, src.height(), di.imgH);
+
+            // Keep the two Fourier images locked together, as in normal layout.
+            if ((m_displayMode == 0 || m_displayMode == 1) &&
+                (di.zoomIdx == 1 || di.zoomIdx == 2)) {
+                m_zoom[(di.zoomIdx == 1) ? 2 : 1] = z;
+            }
+
+            start = event->pos();
+            update();
+            break;
+        }
+        return;
+    }
 
     // Check if mouse is over a histogram – show tooltip
     {
@@ -1950,6 +2026,8 @@ void FtWindow::mouseMoveEvent(QMouseEvent *event)
 // ---------------------------------------------------------------------------
 void FtWindow::mouseDoubleClickEvent(QMouseEvent *event)
 {
+    if (m_maxPanel != 0) return;   // display-only view
+
     // Double-click the panel-1 size / pixel-size info to edit the pixel size.
     if (!m_pixelSizeInfoRect.isNull() && m_pixelSizeInfoRect.contains(event->pos())
         && !m_image.isNull()) {
@@ -1996,6 +2074,17 @@ void FtWindow::mouseDoubleClickEvent(QMouseEvent *event)
 // ---------------------------------------------------------------------------
 //  Wheel – zoom
 // ---------------------------------------------------------------------------
+// ESC is the documented way out of the maximized image view.
+void FtWindow::keyPressEvent(QKeyEvent *event)
+{
+    if (m_maxPanel != 0 && event->key() == Qt::Key_Escape) {
+        exitMaximized();
+        event->accept();
+        return;
+    }
+    QWidget::keyPressEvent(event);
+}
+
 void FtWindow::wheelEvent(QWheelEvent *event)
 {
     QPoint pos = event->position().toPoint();
@@ -2013,7 +2102,7 @@ void FtWindow::wheelEvent(QWheelEvent *event)
 
         if (isTrackpad && z.factor > 1.0) {
             // Trackpad two-finger scroll while zoomed → pan
-            QRectF src = z.visibleRect(di.imgW, di.imgH);
+            QRectF src = itemSrcRect(di);
             // Use pixelDelta if available, otherwise fall back to angleDelta
             double dx, dy;
             if (!event->pixelDelta().isNull()) {
@@ -2028,9 +2117,8 @@ void FtWindow::wheelEvent(QWheelEvent *event)
 
             z.centerX += dxImg;
             z.centerY += dyImg;
-            double hw = src.width() / 2.0, hh = src.height() / 2.0;
-            z.centerX = std::clamp(z.centerX, hw, (double)di.imgW - hw);
-            z.centerY = std::clamp(z.centerY, hh, (double)di.imgH - hh);
+            z.centerX = ZoomState::clampCenter(z.centerX, src.width(),  di.imgW);
+            z.centerY = ZoomState::clampCenter(z.centerY, src.height(), di.imgH);
         } else if (isTrackpad) {
             // Trackpad but not zoomed in — ignore (pinch handles zoom)
             event->accept();
@@ -2045,21 +2133,21 @@ void FtWindow::wheelEvent(QWheelEvent *event)
             if (newFactor <= 1.0) {
                 z.reset(di.imgW, di.imgH);
             } else {
-                QRectF src = z.visibleRect(di.imgW, di.imgH);
+                QRectF src = itemSrcRect(di);
                 double relX = (pos.x() - di.screenRect.x()) / (double)di.screenRect.width();
                 double relY = (pos.y() - di.screenRect.y()) / (double)di.screenRect.height();
                 double imgX = src.x() + relX * src.width();
                 double imgY = src.y() + relY * src.height();
 
+                // Keep the image point under the cursor pinned while the view
+                // shrinks by step; the new view keeps the item's proportions.
                 z.factor = newFactor;
-                double newVW = di.imgW / newFactor;
-                double newVH = di.imgH / newFactor;
-                z.centerX = imgX + (0.5 - relX) * newVW;
-                z.centerY = imgY + (0.5 - relY) * newVH;
+                QRectF newSrc = itemSrcRect(di);
+                z.centerX = imgX + (0.5 - relX) * newSrc.width();
+                z.centerY = imgY + (0.5 - relY) * newSrc.height();
 
-                double hw = newVW / 2.0, hh = newVH / 2.0;
-                z.centerX = std::clamp(z.centerX, hw, di.imgW - hw);
-                z.centerY = std::clamp(z.centerY, hh, di.imgH - hh);
+                z.centerX = ZoomState::clampCenter(z.centerX, newSrc.width(),  di.imgW);
+                z.centerY = ZoomState::clampCenter(z.centerY, newSrc.height(), di.imgH);
             }
         }
 
@@ -2095,21 +2183,19 @@ bool FtWindow::applyPinchZoom(const QPoint &pos, double step)
         if (newFactor <= 1.0) {
             z.reset(di.imgW, di.imgH);
         } else {
-            QRectF src = z.visibleRect(di.imgW, di.imgH);
+            QRectF src = itemSrcRect(di);
             double relX = (pos.x() - di.screenRect.x()) / (double)di.screenRect.width();
             double relY = (pos.y() - di.screenRect.y()) / (double)di.screenRect.height();
             double imgX = src.x() + relX * src.width();
             double imgY = src.y() + relY * src.height();
 
             z.factor = newFactor;
-            double newVW = di.imgW / newFactor;
-            double newVH = di.imgH / newFactor;
-            z.centerX = imgX + (0.5 - relX) * newVW;
-            z.centerY = imgY + (0.5 - relY) * newVH;
+            QRectF newSrc = itemSrcRect(di);
+            z.centerX = imgX + (0.5 - relX) * newSrc.width();
+            z.centerY = imgY + (0.5 - relY) * newSrc.height();
 
-            double hw = newVW / 2.0, hh = newVH / 2.0;
-            z.centerX = std::clamp(z.centerX, hw, di.imgW - hw);
-            z.centerY = std::clamp(z.centerY, hh, di.imgH - hh);
+            z.centerX = ZoomState::clampCenter(z.centerX, newSrc.width(),  di.imgW);
+            z.centerY = ZoomState::clampCenter(z.centerY, newSrc.height(), di.imgH);
         }
 
         if ((m_displayMode == 0 || m_displayMode == 1) &&

@@ -10,11 +10,13 @@
 #include <QComboBox>
 #include <QSlider>
 #include <QVector>
+#include <QPointer>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #endif
 #include <vector>
 #include <deque>
+#include <algorithm>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -51,6 +53,42 @@ struct ZoomState {
             if (y0 + vh > h) y0 = h - vh;
         }
         return QRectF(x0, y0, vw, vh);
+    }
+
+    // Visible source rectangle for a viewport whose shape is not square.
+    // `aspect` is the viewport's width/height. The scale stays uniform in x
+    // and y, so a wide viewport simply reveals more of the image sideways —
+    // and once the image runs out, the surplus falls outside it and is left
+    // black. At factor 1.0 this reproduces the familiar letterboxed fit.
+    QRectF visibleRect(int w, int h, double aspect) const {
+        if (aspect <= 0.0 || w <= 0 || h <= 0) return visibleRect(w, h);
+
+        // Scale that fits the whole image in the viewport ("contain"), then
+        // the zoom factor on top of it.
+        double vw, vh;
+        if (aspect < w / (double)h) {   // viewport narrower than image: width-limited
+            vw = w / factor;
+            vh = vw / aspect;
+        } else {                        // height-limited
+            vh = h / factor;
+            vw = vh * aspect;
+        }
+
+        double x0 = (vw >= w) ? (w - vw) / 2.0
+                              : std::min(std::max(centerX - vw / 2.0, 0.0), w - vw);
+        double y0 = (vh >= h) ? (h - vh) / 2.0
+                              : std::min(std::max(centerY - vh / 2.0, 0.0), h - vh);
+        return QRectF(x0, y0, vw, vh);
+    }
+
+    // Pull the pan centre back into range for a viewport showing `visible`
+    // image pixels across `extent`. When the viewport is the larger of the
+    // two there is nothing to pan to, so the centre is pinned to the middle
+    // (a plain clamp would have its bounds crossed there).
+    static double clampCenter(double c, double visible, double extent) {
+        double half = visible / 2.0;
+        if (visible >= extent) return extent / 2.0;
+        return std::min(std::max(c, half), extent - half);
     }
 };
 
@@ -98,10 +136,12 @@ signals:
 
 protected:
     void resizeEvent(QResizeEvent *)            override;
+    void changeEvent(QEvent *event)             override;
     void mousePressEvent(QMouseEvent *event)      override;
     void mouseReleaseEvent(QMouseEvent *event)    override;
     void mouseMoveEvent(QMouseEvent *event)       override;
     void mouseDoubleClickEvent(QMouseEvent *event) override;
+    void keyPressEvent(QKeyEvent *event)        override;
     void wheelEvent(QWheelEvent *event)         override;
     bool event(QEvent *event)                  override;
     bool applyPinchZoom(const QPoint &pos, double step);
@@ -118,6 +158,10 @@ private slots:
     void onToggleFullscreen();
 public:
     void updateFullscreenButton(bool isFullscreen);
+    // WASM only: subscribe to browser fullscreenchange events so the button
+    // label tracks fullscreen entered/left by any route (F11, Escape, our
+    // own button). A no-op on other platforms and safe to call repeatedly.
+    void installFullscreenSync();
 private slots:
     void onToggleMask(bool checked);
     void onApplyBandpass();
@@ -239,6 +283,17 @@ private:
 
     void drawImageWithFrame(QPainter &p, const QRect &frame, const QImage &img,
                             const ZoomState &zoom, int imgW, int imgH);
+    // Maximized (display-only) view: enter/leave, paint, and the little
+    // outward-arrows icon that triggers it.
+    void enterMaximized(int panel);
+    void exitMaximized();
+    // Image-space rectangle a display item currently shows. In the normal
+    // layout every item is square, so this is the plain visibleRect(); in the
+    // maximized view the item fills a non-square area and the rect widens to
+    // match, which is what lets a zoomed image use the full screen width.
+    QRectF itemSrcRect(const DisplayItem &di) const;
+    void paintMaximized(QPainter &p);
+    void drawMaximizeIcon(QPainter &p, const QRect &r);
     void drawAxes(QPainter &p, const QRect &frame, const ZoomState &zoom,
                   int imgW, int imgH, bool reciprocal, double pixelSize,
                   bool yAxisRight = false);
@@ -588,6 +643,25 @@ private:
     QPoint      m_p1DragStart;         // screen pos at drag start
     bool        m_p1PanDragging = false;
     QPoint      m_p1PanStart;          // screen pos at pan drag start
+
+    // ---- maximized (display-only fullscreen) image view -------------------
+    // 0 = normal layout, 1 = panel-1 image fills the window, 2 = the Fourier
+    // display fills it (side by side when panel 2 shows two images). Zoom and
+    // pan stay live; every other interaction is suppressed. ESC returns.
+    int         m_maxPanel = 0;
+    // Click targets for the maximize icons, below each Zoom/Pan overlay.
+    // Repopulated every paintEvent; null while the view is maximized.
+    QRect       m_p1MaxRect;
+    QRect       m_p2MaxRectA;          // panel 2, single or left-hand image
+    QRect       m_p2MaxRectB;          // panel 2, right-hand image (dual modes)
+    // Close button drawn in the maximized view. Touch devices (iPad, and the
+    // WASM build generally) have no ESC key, so the view must be dismissable
+    // by tapping. Null while the normal layout is showing.
+    QRect       m_maxCloseRect;
+    // Child widgets (buttons, line edits) hidden on entering the maximized
+    // view, restored on leaving it — they are real QWidgets and would
+    // otherwise float above the maximized image.
+    QList<QPointer<QWidget>> m_maxHiddenWidgets;
     bool        m_p1EraserActive = false;
     bool        m_p1BrushActive = false;
     bool        m_p1TaperActive = false;
