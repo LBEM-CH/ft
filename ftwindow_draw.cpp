@@ -80,6 +80,39 @@ void FtWindow::drawImageWithFrame(QPainter &p, const QRect &frame,
     p.drawImage(QRectF(target), img, src);
 }
 
+// Square icon with a double-headed diagonal arrow running from the lower-left
+// to the upper-right corner — the conventional "maximize this image" glyph.
+// Clicking it opens the display-only maximized view (see enterMaximized).
+void FtWindow::drawMaximizeIcon(QPainter &p, const QRect &r)
+{
+    p.save();
+    p.setRenderHint(QPainter::Antialiasing, true);
+
+    const bool hover = r.contains(m_mousePos);
+    const QColor fg = hover ? QColor(255, 255, 255) : QColor(180, 180, 180);
+
+    p.setPen(QPen(fg, 1));
+    p.setBrush(QColor(40, 40, 40));
+    p.drawRect(r);
+
+    // Arrow tips sit inside a margin so the heads do not touch the border.
+    const int m = std::max(3, r.width() / 5);
+    const QPointF lo(r.left() + m, r.bottom() - m);    // lower-left tip
+    const QPointF hi(r.right() - m, r.top() + m);      // upper-right tip
+
+    p.setPen(QPen(fg, std::max(1.4, r.width() / 16.0)));
+    p.drawLine(lo, hi);
+
+    // Two short barbs per tip, forming the arrow heads.
+    const double head = std::max(3.0, r.width() / 4.0);
+    p.drawLine(hi, QPointF(hi.x() - head, hi.y()));
+    p.drawLine(hi, QPointF(hi.x(), hi.y() + head));
+    p.drawLine(lo, QPointF(lo.x() + head, lo.y()));
+    p.drawLine(lo, QPointF(lo.x(), lo.y() - head));
+
+    p.restore();
+}
+
 void FtWindow::drawAxes(QPainter &p, const QRect &frame,
                          const ZoomState &zoom,
                          int imgW, int imgH, bool reciprocal,
