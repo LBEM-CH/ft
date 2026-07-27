@@ -30,7 +30,7 @@ REMOTE_DIR="${2:-/srv/ft}"
 
 # ft.worker.js is the pthread worker bootstrap emitted by the multithreaded
 # (-pthread) build; it is required at runtime or the worker pool fails to load.
-ARTIFACTS=(ft.html ft.js ft.wasm ft.worker.js qtloader.js qtlogo.svg images
+ARTIFACTS=(ft.html ft.js ft.wasm ft.worker.js qtloader.js icon-ft.png images
            manual.html manual_panel1.html manual_panel2.html manual_exercises.html)
 
 if [[ ! -d "$BUILD_DIR" ]]; then
