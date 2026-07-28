@@ -32,6 +32,9 @@ void FtWindow::buildToolGroups()
         { "Amyloid",     {14},          {} },
         { "Math",        {15},          {} },
         { "Particles",   {16, 17},      {} }, // peak, extract
+        // Single-member group: the group face is what the user hovers, so the
+        // group name is the tooltip that shows (it overrides the icon's own).
+        { "Align image to reference", {18}, {} },
     };
     m_p2Groups = {
         { "Edit",                  {0, 1},      {} }, // eraser, paint brush
@@ -126,6 +129,7 @@ void FtWindow::deactivateAllP1Tools()
     m_binActive = false; m_mathActive = false;
     m_cropActive = false; m_cropDragging = false; m_cropMoving = false; m_cropHasSelection = false;
     m_peakPickActive = false; m_extractActive = false;
+    m_alignActive = false;
     m_gaborActive = false; m_hessianActive = false;
     m_amyloidActive = false; m_amyloidPlacing = 0;
     m_measureActive = false; m_measurePlacing = 0; m_measureHasLine = false;
@@ -197,6 +201,12 @@ void FtWindow::showP1ToolWidgets()
     m_measureCancelBtn->setVisible(m_measureActive);
     m_shiftCancelBtn->setVisible(m_shiftActive);
     m_rotateCancelBtn->setVisible(m_rotateActive);
+    m_alignSrcCombo->setVisible(m_alignActive);
+    m_alignRefCombo->setVisible(m_alignActive);
+    m_alignOutCombo->setVisible(m_alignActive);
+    m_alignCancelBtn->setVisible(m_alignActive);
+    m_alignShiftBtn->setVisible(m_alignActive);
+    m_alignRotBtn->setVisible(m_alignActive);
 }
 
 void FtWindow::closeP1Function()
@@ -308,6 +318,30 @@ void FtWindow::activateP1Tool(int toolId)
         bool was = m_extractActive; deactivateAllP1Tools(); m_extractActive = !was;
         if (m_extractActive && m_activeSlot >= 0)
             m_extractSourceCombo->setCurrentIndex(m_activeSlot);
+        break;
+    }
+    case 18: {
+        bool was = m_alignActive; deactivateAllP1Tools(); m_alignActive = !was;
+        if (m_alignActive) {
+            m_alignResult.clear();
+            int src = (m_activeSlot >= 0) ? m_activeSlot : 0;
+            {   // Seed source + output together without the source's own
+                // currentIndexChanged handler dragging the output along.
+                QSignalBlocker b(m_alignSrcCombo);
+                m_alignSrcCombo->setCurrentIndex(src);
+            }
+            m_alignPrevSrc = src;
+            m_alignOutCombo->setCurrentIndex(src);
+            // A reference equal to the source is not a usable starting point;
+            // prefer another buffer that actually holds an image.
+            if (m_alignRefCombo->currentIndex() == src) {
+                int alt = -1;
+                for (int i = 0; i < HISTORY_SLOTS; i++)
+                    if (i != src && m_history[i].occupied) { alt = i; break; }
+                m_alignRefCombo->setCurrentIndex(alt >= 0 ? alt : (src + 1) % HISTORY_SLOTS);
+            }
+            syncAlignCombos();
+        }
         break;
     }
     default: return;

@@ -23,6 +23,7 @@
 #include "fft.h"          // Complex, nextPow2, fft2d, fftShift, floatToImage
 
 class QTimer;
+class QAbstractItemDelegate;
 
 // ---- zoom state for one display panel ----
 struct ZoomState {
@@ -599,7 +600,7 @@ private:
     // slot each tool id currently occupies (a group face when collapsed, or a
     // popup cell when its group is open), and m_*SlotVisible says whether that
     // tool id is currently drawn / clickable.
-    static constexpr int P1_TOOL_BUTTONS = 18;
+    static constexpr int P1_TOOL_BUTTONS = 19;
     static constexpr int P2_TOOL_BUTTONS = 14;
     QRect       m_p1BtnRects[P1_TOOL_BUTTONS];       // panel 1 left edge
     QRect       m_toolBtnRects[P2_TOOL_BUTTONS];     // panel 2 right edge
@@ -774,6 +775,47 @@ private:
     QPushButton *m_extractComputeBtn = nullptr;
     void onExtractCancel();
     void onExtractCompute();
+
+    // Align image to reference (cross-correlation shift / rotation search)
+    bool        m_alignActive = false;
+    QComboBox  *m_alignSrcCombo   = nullptr;   // image to be aligned
+    QComboBox  *m_alignRefCombo   = nullptr;   // reference to align onto
+    QComboBox  *m_alignOutCombo   = nullptr;   // buffer receiving the result
+    QPushButton *m_alignCancelBtn = nullptr;
+    QPushButton *m_alignShiftBtn  = nullptr;
+    QPushButton *m_alignRotBtn    = nullptr;
+    // Outcome of the last alignment, shown as an extra line in the parameter
+    // window. Empty until one of the two buttons has run.
+    QString     m_alignResult;
+    // Source index the output combo was last kept in step with, so that an
+    // output the user picked deliberately is not dragged along by the source.
+    int         m_alignPrevSrc = 0;
+    // Source and reference must differ, so the source's own letter is disabled
+    // in the reference list. Whenever the two coincide anyway (the user moved
+    // the source onto the reference) the alignment buttons are disabled too.
+    // Called on every combo change and when the tool opens.
+    void syncAlignCombos();
+    // Popup delegate that greys out the disabled entry. Shared by the three
+    // align combos and re-applied whenever their stylesheet is set.
+    QAbstractItemDelegate *m_alignItemDelegate = nullptr;
+    void styleAlignComboPopup(QComboBox *cb);
+    bool alignInputsValid() const;
+    // Raw pixels of buffer `idx`, taken from the live image when that buffer is
+    // the active one so unsaved edits are aligned too. Returns an empty vector
+    // (and w = h = 0) when the buffer holds nothing.
+    std::vector<double> alignSlotPixels(int idx, int &w, int &h) const;
+    QString alignSlotPath(int idx) const;
+    double  alignSlotPixelSize(int idx) const;
+    // Store an aligned result in buffer `outIdx` and make it the displayed one.
+    // `sourcePath` is the source buffer's file, which the output inherits so
+    // that "Reload image" still finds the original on disk.
+    void finishAlign(int outIdx, std::vector<double> result, int w, int h,
+                     double pixelSize, const QString &sourcePath);
+    void onAlignCancel();
+    void onAlignShift();
+    void onAlignRotate();
+    void onAlignShiftImpl();
+    void onAlignRotateImpl();
 
     // Panel 2 tools
     bool        m_eraserActive = false;

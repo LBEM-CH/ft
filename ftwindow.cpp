@@ -1558,6 +1558,77 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     connect(m_extractComputeBtn, &QPushButton::clicked, this, &FtWindow::onExtractCompute);
     m_extractComputeBtn->hide();
 
+    // Align-to-reference widgets
+    {
+        auto makeAlignCombo = [this](const QString &tip) {
+            auto *cb = new QComboBox(this);
+            for (int i = 0; i < HISTORY_SLOTS; i++)
+                cb->addItem(QString(QChar('a' + i)));
+            cb->setFixedSize(70, 28);
+            cb->setStyleSheet(
+                "QComboBox { background:white; color:black; border:1px solid #888;"
+                "  padding: 2px 8px; }"
+                "QComboBox::drop-down { width: 20px; }"
+                // No text colour here on purpose — see setComboItemEnabled().
+                "QComboBox QAbstractItemView { background:white;"
+                "  selection-color:black; selection-background-color:#ccc;"
+                "  min-width: 60px; padding: 4px; }");
+            styleAlignComboPopup(cb);
+            cb->setToolTip(tip);
+            cb->hide();
+            return cb;
+        };
+        m_alignSrcCombo = makeAlignCombo(
+            "Image buffer (a…p) holding the image that is to be moved.\n"
+            "Defaults to the buffer currently on display.");
+        m_alignRefCombo = makeAlignCombo(
+            "Image buffer (a…p) the source image is aligned onto. The\n"
+            "reference itself is never modified. The source buffer's own\n"
+            "letter is greyed out: an image cannot be aligned to itself.");
+        m_alignOutCombo = makeAlignCombo(
+            "Image buffer (a…p) that receives the aligned image. Defaults\n"
+            "to the source buffer, i.e. the source is replaced in place.\n"
+            "Any existing content of the chosen buffer is overwritten.");
+
+        // Changing the source moves the greyed-out entry in the reference list.
+        // The output follows the source only while it still points at it, so a
+        // deliberately chosen output buffer is never silently retargeted.
+        connect(m_alignSrcCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+                this, [this](int idx) {
+                    if (m_alignOutCombo->currentIndex() == m_alignPrevSrc)
+                        m_alignOutCombo->setCurrentIndex(idx);
+                    m_alignPrevSrc = idx;
+                    syncAlignCombos();
+                });
+        connect(m_alignRefCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+                this, [this](int) { syncAlignCombos(); });
+
+        const QString alignBtnSS =
+            "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }"
+            "QPushButton:disabled { background-color: #777; border: 2px outset #888; color: #999; }";
+
+        m_alignCancelBtn = new QPushButton("Cancel", this);
+        m_alignCancelBtn->setFixedSize(80, 26);
+        m_alignCancelBtn->setStyleSheet(alignBtnSS);
+        m_alignCancelBtn->setToolTip("Cancel and close this function");
+        connect(m_alignCancelBtn, &QPushButton::clicked, this, &FtWindow::onAlignCancel);
+        m_alignCancelBtn->hide();
+
+        m_alignShiftBtn = new QPushButton("Shift align", this);
+        m_alignShiftBtn->setFixedSize(110, 26);
+        m_alignShiftBtn->setStyleSheet(alignBtnSS);
+        m_alignShiftBtn->setToolTip("Align image onto reference by shifting the image");
+        connect(m_alignShiftBtn, &QPushButton::clicked, this, &FtWindow::onAlignShift);
+        m_alignShiftBtn->hide();
+
+        m_alignRotBtn = new QPushButton("Rotation align", this);
+        m_alignRotBtn->setFixedSize(120, 26);
+        m_alignRotBtn->setStyleSheet(alignBtnSS);
+        m_alignRotBtn->setToolTip("Align image onto reference by rotating the image");
+        connect(m_alignRotBtn, &QPushButton::clicked, this, &FtWindow::onAlignRotate);
+        m_alignRotBtn->hide();
+    }
+
     // All four toggle buttons next to the histograms ("freeze display
     // contrast" x2, "mark image center", "mask center for display") are
     // custom-painted in paintEvent so that panel-1 / panel-2 tool dialogs
@@ -1944,6 +2015,35 @@ void FtWindow::resizeEvent(QResizeEvent *)
     m_extractCancelBtn->setStyleSheet(btnSS);
     m_extractComputeBtn->setFixedSize(static_cast<int>(80 * sc), btnH);
     m_extractComputeBtn->setStyleSheet(btnSS);
+
+    // Align-to-reference widgets (sizes only)
+    {
+        // The popup deliberately carries no text colour: one there would beat
+        // the per-item colour that greys out the unusable entry. See
+        // setComboItemEnabled() in ftwindow_align.cpp.
+        QString alignComboSS = QString(
+            "QComboBox { background:white; color:black; border:1px solid #888;"
+            "  padding: 2px 4px; font-size: %1px; }"
+            "QComboBox::drop-down { width: %2px; }"
+            "QComboBox QAbstractItemView { background:white;"
+            "  selection-color:black; selection-background-color:#ccc;"
+            "  min-width: 60px; padding: 4px; font-size: %1px; }")
+            .arg(fontSize).arg(static_cast<int>(20 * sc));
+        QString alignBtnSS = btnSS + QString(
+            "QPushButton:disabled { background-color: #777; border: 2px outset #888;"
+            "  color: #999; padding: 2px; font-size: %1px; }").arg(fontSize);
+        for (QComboBox *cb : {m_alignSrcCombo, m_alignRefCombo, m_alignOutCombo}) {
+            cb->setFixedSize(static_cast<int>(70 * sc), btnH);
+            cb->setStyleSheet(alignComboSS);
+            styleAlignComboPopup(cb);   // restyling drops the delegate
+        }
+        m_alignCancelBtn->setFixedSize(static_cast<int>(80 * sc), btnH);
+        m_alignCancelBtn->setStyleSheet(alignBtnSS);
+        m_alignShiftBtn->setFixedSize(static_cast<int>(110 * sc), btnH);
+        m_alignShiftBtn->setStyleSheet(alignBtnSS);
+        m_alignRotBtn->setFixedSize(static_cast<int>(120 * sc), btnH);
+        m_alignRotBtn->setStyleSheet(alignBtnSS);
+    }
 
     // Binning widgets (sizes only)
     m_binCombo->setFixedSize(static_cast<int>(70 * sc), btnH);

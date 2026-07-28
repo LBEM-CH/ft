@@ -171,7 +171,16 @@ void FtWindow::onLoadImage()
           << "Exercise_11-CTF/Example_0nm_1000nm.mrc"
           << "Exercise_11-CTF/Example_50nm_500nm.mrc"
           << "Exercise_11-CTF/Example_550nm_500nm.mrc"
-          << "Exercise_11-CTF/Example_8500nm_3000nm.mrc";
+          << "Exercise_11-CTF/Example_8500nm_3000nm.mrc"
+          << "Exercise_12-Alignment/Bacteriophages.png"
+          << "Exercise_12-Alignment/Phage1.png"
+          << "Exercise_12-Alignment/Phage1b.png"
+          << "Exercise_12-Alignment/Phage1c.png"
+          << "Exercise_12-Alignment/Phage2.png"
+          << "Exercise_12-Alignment/Phage2b.png"
+          << "Exercise_12-Alignment/Phage2c.png"
+          << "Exercise_12-Alignment/Phage3b.png"
+          << "Exercise_12-Alignment/Phage3c.png";
 
     // Use a QListWidget inside a QDialog so the list scrolls within the
     // dialog instead of spilling off the page like a combo-box popup.

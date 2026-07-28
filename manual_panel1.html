@@ -765,6 +765,70 @@ rescaled across the montage as a whole.
 </p>
 </details>
 
+<h2 class="group" id="p1-group-align">Align</h2>
+
+<details id="p1-align">
+<summary>Align to reference<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><g stroke="#fff" stroke-width="2.2" stroke-linecap="butt"><line x1="4.5" y1="17.5" x2="15.2" y2="11.3"/></g><polygon points="19.5,6.5 13.6,8.1 15.9,12.1" fill="#fff"/></svg></span></summary>
+<p>
+Move one image onto another so that the two line up. The image to be
+moved, the reference it is aligned onto, and the buffer that receives
+the result are chosen independently, so you can align <em>a</em> onto
+<em>b</em> and drop the answer into <em>c</em> without disturbing
+either input. The reference itself is never modified.
+</p>
+<div class="controls">
+  <strong>Image source:</strong> the buffer (a…p) holding the image that
+  moves. Defaults to the buffer on display. <br>
+  <strong>Alignment reference:</strong> the buffer the image is aligned
+  onto. The source's own letter is greyed out — an image cannot be
+  aligned to itself — and if the two selectors ever end up on the same
+  buffer, both alignment buttons go grey and stop responding until you
+  pick a different one. <br>
+  <strong>Output buffer:</strong> where the aligned image is written. It
+  defaults to the source, i.e. the image is replaced in place, and it has
+  no exclusions: writing over the reference is allowed if you want it.
+  The output buffer becomes the displayed one when the alignment
+  finishes. <br>
+  <strong>Cancel / Shift align / Rotation align:</strong> Cancel closes
+  the window; the other two run the two kinds of alignment described
+  below. The window stays open afterwards, and the shift or angle that
+  was found is reported on the line underneath.
+</div>
+<BR>
+<p>
+<strong>Shift align</strong> cross-correlates the image with the
+reference through Fourier space — both are mean-subtracted first, so a
+bright background cannot swamp the result — and takes the position of
+the correlation maximum as the displacement between them. The image is
+then shifted by that amount <em>cyclically</em>: pixels pushed off one
+edge reappear at the opposite edge, so nothing is lost and no blank
+border appears. This is the same wrap-around behaviour as the
+interactive <em>Shift image</em> tool, only with the amount computed
+instead of dragged. The displacement is found to the nearest whole
+pixel; there is no sub-pixel refinement.
+</p>
+<p>
+<strong>Rotation align</strong> turns the image through a full circle in
+0.5° steps and scores every one of the 720 orientations against the
+reference, keeping the one that correlates best. The scoring is done
+over the largest circle that fits inside the image — the only region
+that stays inside the frame at every angle — and is normalised, so the
+number reported alongside the angle is a correlation coefficient between
+−1 and +1. Corners left empty by the final rotation are filled with the
+image mean.
+</p>
+<p>
+Two things are worth knowing about the rotation search. It compares the
+two images <em>as they lie</em>, without trying any shifts, so if the
+object is also displaced, run <em>Shift align</em> first and then rotate.
+And the 720 trial orientations are scored on a working grid capped at
+512 pixels rather than at full resolution: half a degree still moves the
+outermost pixels of such a grid by more than two pixels, so the angle
+found is the same one, and only that winning angle is then applied to
+the full-resolution image.
+</p>
+</details>
+
 <footer>
   Fourier Analyzer · <a href="https://lbem.ch">Stahlberg Lab</a>, EPFL & UNIL ·
   <a href="manual.html">← Back to manual</a> ·

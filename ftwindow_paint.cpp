@@ -25,7 +25,7 @@ bool FtWindow::p1ToolWindowOpen() const
     return m_p1EraserActive || m_p1BrushActive || m_p1TaperActive || m_p1SymmetrizeActive
         || m_binActive || m_cropActive || m_peakPickActive || m_extractActive
         || m_gaborActive || m_hessianActive || m_amyloidActive || m_measureActive
-        || m_shiftActive || m_rotateActive
+        || m_shiftActive || m_rotateActive || m_alignActive
         || m_p1FlipHActive || m_p1FlipVActive || m_p1InvertActive;
 }
 
@@ -60,6 +60,7 @@ bool FtWindow::toolHelpInfo(bool panel2, QString &title, QString &anchor) const
         { m_shiftActive,        "Shift image",            "p1-shift"             },
         { m_rotateActive,       "Rotate image",           "p1-rotate"            },
         { m_amyloidActive,      "Amyloid filament",       "p1-amyloid"           },
+        { m_alignActive,        "Align to reference",     "p1-align"             },
         { m_p1FlipHActive,      "Flip horizontally",      "p1-flip"              },
         { m_p1FlipVActive,      "Flip vertically",        "p1-flip"              },
         { m_p1InvertActive,     "Invert contrast",        "p1-invert-contrast"   },
@@ -273,7 +274,8 @@ void FtWindow::paintEvent(QPaintEvent *)
                 (i == 10 && m_binActive) || (i == 11 && m_cropActive) ||
                 (i == 12 && m_gaborActive) || (i == 13 && m_hessianActive) ||
                 (i == 14 && m_amyloidActive) || (i == 15 && m_mathActive) ||
-                (i == 16 && m_peakPickActive) || (i == 17 && m_extractActive))
+                (i == 16 && m_peakPickActive) || (i == 17 && m_extractActive) ||
+                (i == 18 && m_alignActive))
                 p.setBrush(QColor(60, 60, 60));
             else
                 p.setBrush(QColor(0, 0, 0));
@@ -944,6 +946,61 @@ void FtWindow::paintEvent(QPaintEvent *)
                     int tty = r.center().y() - tth / 2;
                     pendingTipRect = QRect(ttx, tty, ttw, tth);
                     pendingTipText = tip;
+                }
+            }
+
+            // Align-to-reference icon (button 18): a white arrow running from
+            // the lower left to the upper right at 30° above the horizontal.
+            if (i == 18) {
+                p.setRenderHint(QPainter::Antialiasing, true);
+                QRectF ir = QRectF(r).adjusted(3, 3, -3, -3);
+                double cx2 = ir.center().x(), cy2 = ir.center().y();
+
+                // 30° above horizontal, i.e. up and to the right on a y-down
+                // screen. The shaft is as long as fits inside the square.
+                const double ang = 30.0 * M_PI / 180.0;
+                double ux = std::cos(ang), uy = -std::sin(ang);
+                double half = std::min(ir.width() / (2 * std::abs(ux)),
+                                       ir.height() / (2 * std::abs(uy)));
+                QPointF tail(cx2 - ux * half, cy2 - uy * half);
+                QPointF head(cx2 + ux * half, cy2 + uy * half);
+
+                QColor col = m_alignActive ? QColor(180, 180, 255) : Qt::white;
+                double lw = std::max(1.5, ir.width() * 0.11);
+
+                // Shaft stops short of the tip so the head is not blunted.
+                double headLen = std::max(3.0, ir.width() * 0.34);
+                QPointF shaftEnd(head.x() - ux * headLen * 0.75,
+                                 head.y() - uy * headLen * 0.75);
+                p.setPen(QPen(col, lw, Qt::SolidLine, Qt::FlatCap));
+                p.setBrush(Qt::NoBrush);
+                p.drawLine(tail, shaftEnd);
+
+                // Solid triangular head.
+                double px = -uy, py = ux;                 // unit normal
+                double headHalfW = headLen * 0.45;
+                QPolygonF tip;
+                tip << head
+                    << QPointF(head.x() - ux * headLen + px * headHalfW,
+                               head.y() - uy * headLen + py * headHalfW)
+                    << QPointF(head.x() - ux * headLen - px * headHalfW,
+                               head.y() - uy * headLen - py * headHalfW);
+                p.setPen(Qt::NoPen);
+                p.setBrush(col);
+                p.drawPolygon(tip);
+
+                p.setRenderHint(QPainter::Antialiasing, false);
+
+                if (r.contains(m_mousePos)) {
+                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                    QFontMetrics ttfm(ttf);
+                    QString tip2 = "Align image to reference";
+                    int ttw = ttfm.horizontalAdvance(tip2) + 8;
+                    int tth = ttfm.height() + 4;
+                    int ttx = r.right() + 4;
+                    int tty = r.center().y() - tth / 2;
+                    pendingTipRect = QRect(ttx, tty, ttw, tth);
+                    pendingTipText = tip2;
                 }
             }
 
@@ -3324,6 +3381,13 @@ void FtWindow::paintEvent(QPaintEvent *)
                     int r3 = m_extractCancelBtn->width() + 8 + m_extractComputeBtn->width();
                     textW = std::max({r0, r1, r2, r3});
                 }
+            } else if (m_alignActive) {
+                nRows = m_alignResult.isEmpty() ? 4 : 5;
+                int r0 = fm.horizontalAdvance("Alignment reference: ") + m_alignRefCombo->width();
+                int r1 = m_alignCancelBtn->width() + 8 + m_alignShiftBtn->width()
+                         + 8 + m_alignRotBtn->width();
+                int r2 = m_alignResult.isEmpty() ? 0 : fm.horizontalAdvance(m_alignResult);
+                textW = std::max({r0, r1, r2});
             } else if (m_gaborActive) {
                 nRows = 5;
                 int r0 = fm.horizontalAdvance("Sigma (envelope): ")     + m_gaborSigmaEdit->width();
@@ -3493,6 +3557,27 @@ void FtWindow::paintEvent(QPaintEvent *)
                     m_extractCancelBtn->move(tx, ty + lh * 3);
                     m_extractComputeBtn->move(rx + rw - margin - m_extractComputeBtn->width(), ty + lh * 3);
                 }
+            } else if (m_alignActive) {
+                int labW = std::max({fm.horizontalAdvance("Image source: "),
+                                     fm.horizontalAdvance("Alignment reference: "),
+                                     fm.horizontalAdvance("Output buffer: ")});
+                drawParamLabel(p, fm, tx, ty, "Image source:", m_alignSrcCombo->toolTip(),
+                               m_alignSrcCombo->height());
+                m_alignSrcCombo->move(tx + labW, ty);
+                drawParamLabel(p, fm, tx, ty + lh, "Alignment reference:", m_alignRefCombo->toolTip(),
+                               m_alignRefCombo->height());
+                m_alignRefCombo->move(tx + labW, ty + lh);
+                drawParamLabel(p, fm, tx, ty + lh * 2, "Output buffer:", m_alignOutCombo->toolTip(),
+                               m_alignOutCombo->height());
+                m_alignOutCombo->move(tx + labW, ty + lh * 2);
+                // Cancel on the left, the two alignment actions right-aligned.
+                m_alignCancelBtn->move(tx, ty + lh * 3);
+                int bRight = rx + rw - margin;
+                m_alignRotBtn->move(bRight - m_alignRotBtn->width(), ty + lh * 3);
+                bRight -= m_alignRotBtn->width() + 8;
+                m_alignShiftBtn->move(bRight - m_alignShiftBtn->width(), ty + lh * 3);
+                if (!m_alignResult.isEmpty())
+                    p.drawText(tx, ty + lh * 4 + fm.ascent(), m_alignResult);
             } else if (m_gaborActive) {
                 drawParamLabel(p, fm, tx, ty, "Sigma (envelope):", m_gaborSigmaEdit->toolTip());
                 m_gaborSigmaEdit->move(tx + fm.horizontalAdvance("Sigma (envelope): "), ty);

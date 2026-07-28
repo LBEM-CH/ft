@@ -250,10 +250,29 @@ of a real fibril image, especially concerning the reflection line at 4.75 Å?
 </p>
 </details>
 
+
 <details id="exercise-11">
-<summary>Exercise 11 — CTF FIT: measuring defocus and astigmatism</summary>
+<summary>Exercise 11 — Image alignment</summary>
 <p>
-This exercise uses the <strong>Exercise_11-CTF</strong> data set: twelve
+Load two or three images of bacteriophages into different buffers. 
+Then use the alignment tool to align an image of one bacteriophage onto an image of a different bacteriophage.
+Try first Shift and then Rotation alignment. This may initially not work well, because the shift alignment 
+will align the strongly contrasted virus head onto the other virus head, which is not centered. 
+The rotation alignment then tries to bring the virus into the same orientation, but rotating about the image center. 
+Since the virus head is not centered, this may not produce the desired result.</p>
+<p>
+Alternatively, first shift one of the viruses into the center of the image, preferably so that the virus head is centered.
+Then try again the Shift and Rotation alignments. Does it now work better? 
+</p>
+<p>
+When you have aligned a few image, you can use the <strong>Math</strong> function to sum up all aligned images to create an average of these. 
+</p>
+</details>
+
+<details id="exercise-12">
+<summary>Exercise 12 — CTF FIT: measuring defocus and astigmatism</summary>
+<p>
+This exercise uses the <strong>Exercise_12-CTF</strong> data set: twelve
 simulated cryo-EM micrographs (<code>Example_&hellip;.mrc</code>) available
 from the example-image loader. Each is 1024&nbsp;&times;&nbsp;1024 pixels at
 <strong>2&nbsp;Å/pixel</strong>, imaged at 300&nbsp;kV with
@@ -306,8 +325,8 @@ Now experiment:
 </ul>
 </details>
 
-<details id="exercise-12">
-<summary>Exercise 12 — CTF SIM: generation with amplitude contrast and beam tilt</summary>
+<details id="exercise-13">
+<summary>Exercise 13 — CTF SIM: generation with amplitude contrast and beam tilt</summary>
 <p>
 Choose an empty image buffer. <BR>
 Use the <strong>CTF SIM</strong> tool (the <code>CTF / SIM</code> icon in panel 2) to create a CTF with different defocus settings.  How does the defocus affect the CTF in Fourier space and the PSF in real space?
