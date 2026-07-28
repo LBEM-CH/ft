@@ -1055,7 +1055,7 @@ void FtWindow::paintEvent(QPaintEvent *)
                 if (r.contains(m_mousePos)) {
                     QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
                     QFontMetrics ttfm(ttf);
-                    QString tip = "pad image to larger image dimensions";
+                    QString tip = "pad image to larger or crop to smaller image dimensions";
                     int ttw = ttfm.horizontalAdvance(tip) + 8;
                     int tth = ttfm.height() + 4;
                     pendingTipRect = QRect(r.right() + 4, r.center().y() - tth / 2, ttw, tth);
