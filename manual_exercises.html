@@ -254,18 +254,45 @@ of a real fibril image, especially concerning the reflection line at 4.75 Å?
 <details id="exercise-11">
 <summary>Exercise 11 — Image alignment</summary>
 <p>
-Load two or three images of bacteriophages into different buffers. 
-Then use the alignment tool to align an image of one bacteriophage onto an image of a different bacteriophage.
-Try first Shift and then Rotation alignment. This may initially not work well, because the shift alignment 
-will align the strongly contrasted virus head onto the other virus head, which is not centered. 
-The rotation alignment then tries to bring the virus into the same orientation, but rotating about the image center. 
-Since the virus head is not centered, this may not produce the desired result.</p>
-<p>
-Alternatively, first shift one of the viruses into the center of the image, preferably so that the virus head is centered.
-Then try again the Shift and Rotation alignments. Does it now work better? 
+This exercise uses the <strong>Exercise_11-Alignment</strong> data set: several
+electron micrographs of bacteriophages, each a bright angular head with a thin
+tail. <code>Phage1</code>, <code>Phage2</code> and <code>Phage3b</code> show
+different particles, each sitting at its own place in the frame and pointing its
+own way. The <code>b</code> and <code>c</code> variants are the same particles, but
+artificial background was added around the viruses.
 </p>
 <p>
-When you have aligned a few image, you can use the <strong>Math</strong> function to sum up all aligned images to create an average of these. 
+Start with a control. Load <code>Phage1</code> and <code>Phage1b</code> into two
+buffers and use <strong>Align to reference</strong> to align one onto the other.
+Both buttons should report essentially nothing to do — zero shift, zero rotation —
+because the two images differ only in their redundant background. Note the correlation value that
+<strong>Rotation align</strong> reports; it is your yardstick for a good match.
+</p>
+<p>
+Now the real task. Load <code>Phage1</code> and <code>Phage2</code>, and align one
+onto the other with <strong>Shift align</strong> followed by
+<strong>Rotation align</strong>. The result disappoints, and the reason is the
+point of the exercise. Shift align locks onto the head, by far the strongest
+feature, and lays one head on the other — but both then sit away from the middle
+of the frame. Rotation align turns the image about the <em>image centre</em>, so
+an off-centre head does not spin on the spot: it swings around the centre on a
+wide arc, undoing the shift that was just found.
+</p>
+<p>
+So, first center the head of one particle with the <em>Shift image</em> tool. 
+Then run
+<strong>Shift align</strong> to bring another virus to the same position, and then
+<strong>Rotation align</strong> to rotate the viruses into the same orientation. You can 
+cyclically repeate Shift and Rotation aligns until the aligned virus does not move any longer.
+Does it work better now? What does that tell you about where a feature has to lie before a
+rotation search can find it?
+</p>
+<p>
+With two or three phages aligned, sum them with <strong>Math calculation</strong>
+(<code>d = a + b</code>, then <code>e = d + c</code>). The display rescales to the
+data range, so a sum reads as an average. Which parts sharpen and which blur? Only
+what was genuinely aligned survives the averaging — which makes the average itself
+a verdict on your alignment.
 </p>
 </details>
 
