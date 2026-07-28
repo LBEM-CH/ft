@@ -19,6 +19,7 @@ set(FT_CORE_SOURCES
     ftwindow_draw.cpp
     ftwindow_slots.cpp
     ftwindow_amyloid.cpp
+    ftwindow_align.cpp
     fft.cpp
     mrcloader.cpp
 )
@@ -42,6 +43,9 @@ endif()
 
 if(NOT FT_EMBEDDED)
     add_executable(ft main.cpp)
+    # Embed the app icon so main.cpp can set it as the window icon (shown in
+    # the taskbar/dock and in the About dialog) instead of the default Qt logo.
+    qt_add_resources(ft "ft_icon" PREFIX "/" FILES icon-ft.png)
     target_link_libraries(ft PRIVATE ft_core)
     set_target_properties(ft PROPERTIES
         WIN32_EXECUTABLE ON

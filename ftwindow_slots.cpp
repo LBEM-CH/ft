@@ -160,18 +160,27 @@ void FtWindow::onLoadImage()
           << "Exercise_10-Fibrils/aSyn_cryoEM_image_2048.mrc"
           << "Exercise_10-Fibrils/aSyn_dragon_c1_BGzero_1024.mrc"
           << "Exercise_10-Fibrils/aSyn_dragon_c2_BGzero_1024.mrc"
-          << "Exercise_11-CTF/Example_200nm_0nm.mrc"
-          << "Exercise_11-CTF/Example_325nm_50nm.mrc"
-          << "Exercise_11-CTF/Example_400nm_0nm.mrc"
-          << "Exercise_11-CTF/Example_300nm_200nm.mrc"
-          << "Exercise_11-CTF/Example_975nm_50nm.mrc"
-          << "Exercise_11-CTF/Example_1500nm_200nm.mrc"
-          << "Exercise_11-CTF/Example_5000nm_0nm.mrc"
-          << "Exercise_11-CTF/Example_4150nm_1700nm.mrc"
-          << "Exercise_11-CTF/Example_0nm_1000nm.mrc"
-          << "Exercise_11-CTF/Example_50nm_500nm.mrc"
-          << "Exercise_11-CTF/Example_550nm_500nm.mrc"
-          << "Exercise_11-CTF/Example_8500nm_3000nm.mrc";
+          << "Exercise_11-Alignment/Bacteriophages.png"
+          << "Exercise_11-Alignment/Phage1.png"
+          << "Exercise_11-Alignment/Phage1b.png"
+          << "Exercise_11-Alignment/Phage1c.png"
+          << "Exercise_11-Alignment/Phage2.png"
+          << "Exercise_11-Alignment/Phage2b.png"
+          << "Exercise_11-Alignment/Phage2c.png"
+          << "Exercise_11-Alignment/Phage3b.png"
+          << "Exercise_11-Alignment/Phage3c.png"
+          << "Exercise_12-CTF/Example_200nm_0nm.mrc"
+          << "Exercise_12-CTF/Example_325nm_50nm.mrc"
+          << "Exercise_12-CTF/Example_400nm_0nm.mrc"
+          << "Exercise_12-CTF/Example_300nm_200nm.mrc"
+          << "Exercise_12-CTF/Example_975nm_50nm.mrc"
+          << "Exercise_12-CTF/Example_1500nm_200nm.mrc"
+          << "Exercise_12-CTF/Example_5000nm_0nm.mrc"
+          << "Exercise_12-CTF/Example_4150nm_1700nm.mrc"
+          << "Exercise_12-CTF/Example_0nm_1000nm.mrc"
+          << "Exercise_12-CTF/Example_50nm_500nm.mrc"
+          << "Exercise_12-CTF/Example_550nm_500nm.mrc"
+          << "Exercise_12-CTF/Example_8500nm_3000nm.mrc";
 
     // Use a QListWidget inside a QDialog so the list scrolls within the
     // dialog instead of spilling off the page like a combo-box popup.
@@ -3252,6 +3261,230 @@ void FtWindow::onCropCancel()
     m_cropBRyEdit->hide();
     m_cropCancelBtn->hide();
     m_applyCropBtn->hide();
+    update();
+}
+
+// Resize the w×h field `pix` to targetW×targetH about its centre, so whatever
+// sits in the middle of the image stays in the middle. Dimensions that shrink
+// are cropped; dimensions that grow are filled with the image's own average
+// grey, and the outermost `taper` pixels of the original content are faded into
+// that grey with a Hanning roll-off (same convention as the "Taper edges" tool:
+// full image at the inner rim of the band, full grey at the outer). Without
+// that fade the join would be a brightness step, which transforms into a cross
+// of streaks across Fourier space.
+//
+// The taper is applied only along axes that actually gained a border. A cropped
+// edge is a plain cut with no new grey beside it to blend into, and is left
+// alone — use the Taper edges tool if it needs softening.
+void FtWindow::padOrCropCentred(std::vector<double> &pix, int &w, int &h,
+                                int targetW, int targetH, double taper)
+{
+    if (targetW < 1 || targetH < 1) return;
+    if (w == targetW && h == targetH) return;
+    if ((int)pix.size() != w * h) return;
+
+    double sum = 0.0;
+    for (double v : pix) sum += v;
+    const double grey = pix.empty() ? 0.0 : sum / pix.size();
+
+    const int  ox = (targetW - w) / 2;      // negative where the image is cropped
+    const int  oy = (targetH - h) / 2;
+    const bool padX = targetW > w, padY = targetH > h;
+
+    // A band wider than half the image would have opposite sides overlap.
+    const double t = (padX || padY)
+        ? std::clamp(taper, 0.0, std::max(0.0, std::min(w, h) / 2.0 - 1.0))
+        : 0.0;
+
+    std::vector<double> out((size_t)targetW * targetH, grey);
+    for (int Y = 0; Y < targetH; Y++) {
+        int y = Y - oy;
+        if (y < 0 || y >= h) continue;
+        for (int X = 0; X < targetW; X++) {
+            int x = X - ox;
+            if (x < 0 || x >= w) continue;
+            double v = pix[(size_t)y * w + x];
+            if (t > 0.0) {
+                double dist = std::numeric_limits<double>::max();
+                if (padX) dist = std::min({ dist, (double)x, (double)(w - 1 - x) });
+                if (padY) dist = std::min({ dist, (double)y, (double)(h - 1 - y) });
+                if (dist < t) {
+                    double phase = (t - dist) / t;
+                    double keep  = 0.5 * (1.0 + std::cos(M_PI * phase));
+                    v = v * keep + grey * (1.0 - keep);
+                }
+            }
+            out[(size_t)Y * targetW + X] = v;
+        }
+    }
+    pix = std::move(out);
+    w = targetW;
+    h = targetH;
+}
+
+// ---------------------------------------------------------------------------
+//  Copy — duplicate one image buffer into another
+// ---------------------------------------------------------------------------
+bool FtWindow::bufferInUse(int idx) const
+{
+    if (idx < 0 || idx >= HISTORY_SLOTS) return false;
+    // The active slot's history entry can lag behind the live image, so it is
+    // judged by what is actually on screen.
+    if (idx == m_activeSlot && !m_image.isNull()) return true;
+    return m_history[idx].occupied;
+}
+
+void FtWindow::syncCopyCombos()
+{
+    if (!m_copySrcCombo) return;
+    const int src = (m_activeSlot >= 0) ? m_activeSlot : 0;
+    {
+        QSignalBlocker b(m_copySrcCombo);
+        m_copySrcCombo->setCurrentIndex(src);
+    }
+    // Prefer the first buffer that holds nothing; if every one is taken, fall
+    // back to the one after the source so the proposal is at least never the
+    // source itself.
+    int tgt = -1;
+    for (int i = 0; i < HISTORY_SLOTS; i++)
+        if (i != src && !bufferInUse(i)) { tgt = i; break; }
+    if (tgt < 0) tgt = (src + 1) % HISTORY_SLOTS;
+    QSignalBlocker b(m_copyTgtCombo);
+    m_copyTgtCombo->setCurrentIndex(tgt);
+}
+
+void FtWindow::onCopyCancel()
+{
+    m_copyActive = false;
+    showP1ToolWidgets();
+    update();
+}
+
+void FtWindow::onCopyDuplicate()
+{
+    if (!ensureCalcHeadroom(tr("copy the image buffer"))) return;
+
+    const int srcIdx = m_copySrcCombo->currentIndex();
+    const int tgtIdx = m_copyTgtCombo->currentIndex();
+    if (srcIdx < 0 || srcIdx >= HISTORY_SLOTS) return;
+    if (tgtIdx < 0 || tgtIdx >= HISTORY_SLOTS) return;
+    if (srcIdx == tgtIdx) return;               // nothing to do
+
+    // Take the live image when the source is the buffer on display, so unsaved
+    // edits are copied rather than the last snapshot written to its slot.
+    HistoryEntry src;
+    if (srcIdx == m_activeSlot && !m_image.isNull()) {
+        src.image        = m_image;
+        src.path         = m_imagePath;
+        src.rawPixels    = m_imageRawPixels;
+        src.minVal       = m_imageMinVal;
+        src.maxVal       = m_imageMaxVal;
+        src.pixelSize    = m_pixelSize;
+        src.powerSpecImg = computePowerSpecMasked(m_image);
+        src.occupied     = true;
+    } else if (m_history[srcIdx].occupied) {
+        src = m_history[srcIdx];
+    } else {
+        return;                                  // source holds nothing
+    }
+
+    storeUndoSnapshot();
+
+    // A copy is the same picture, so it keeps the source's path: "Reload image"
+    // on the duplicate then still finds the original file. The cached FFT is
+    // dropped rather than copied, since the display recomputes it on demand.
+    m_history[tgtIdx] = src;
+    m_history[tgtIdx].occupied   = true;
+    m_history[tgtIdx].deferred   = false;
+    m_history[tgtIdx].loading    = false;
+    m_history[tgtIdx].ftComputed = false;
+    m_history[tgtIdx].fftData.clear();
+
+    saveHistory();
+    update();
+}
+
+// ---------------------------------------------------------------------------
+//  Pad image — resize the canvas to a chosen square size, centred
+// ---------------------------------------------------------------------------
+int FtWindow::padTargetSize() const
+{
+    if (!m_padSizeCombo) return 0;
+    QVariant data = m_padSizeCombo->currentData();
+    if (data.isValid()) return data.toInt();        // one of the preset sizes
+    bool ok = false;                                 // "custom"
+    int v = m_padCustomEdit->text().toInt(&ok);
+    if (!ok) return 0;
+    return std::clamp(v, 1, kMaxPadSize);
+}
+
+void FtWindow::syncPadSizeCombo()
+{
+    if (!m_padSizeCombo || m_image.isNull()) return;
+    const int side = std::max(m_image.width(), m_image.height());
+    QSignalBlocker b(m_padSizeCombo);
+    for (int i = 0; i < m_padSizeCombo->count(); i++) {
+        if (m_padSizeCombo->itemData(i).isValid()
+            && m_padSizeCombo->itemData(i).toInt() == side) {
+            m_padSizeCombo->setCurrentIndex(i);
+            m_padCustomEdit->setEnabled(false);
+            return;
+        }
+    }
+    // Not one of the presets: show it under "custom" so the window opens
+    // stating the size the image actually has.
+    m_padSizeCombo->setCurrentIndex(m_padSizeCombo->count() - 1);
+    m_padCustomEdit->setText(QString::number(std::min(side, kMaxPadSize)));
+    m_padCustomEdit->setEnabled(true);
+}
+
+void FtWindow::onPadCancel()
+{
+    m_padActive = false;
+    showP1ToolWidgets();
+    update();
+}
+
+void FtWindow::onApplyPad()
+{
+    if (!ensureCalcHeadroom(tr("resize the image"))) return;
+    onApplyPadImpl();
+}
+
+void FtWindow::onApplyPadImpl()
+{
+    if (m_image.isNull()) return;
+    int target = padTargetSize();
+    if (target < 1) return;
+
+    int w = m_image.width(), h = m_image.height();
+    if ((int)m_imageRawPixels.size() != w * h) return;
+    if (w == target && h == target) return;          // already that size
+
+    storeUndoSnapshot();
+
+    padOrCropCentred(m_imageRawPixels, w, h, target, target);
+
+    m_imageMinVal = *std::min_element(m_imageRawPixels.begin(), m_imageRawPixels.end());
+    m_imageMaxVal = *std::max_element(m_imageRawPixels.begin(), m_imageRawPixels.end());
+    if (!m_imageContrastLocked) {
+        m_imageDispMin = m_imageMinVal;
+        m_imageDispMax = m_imageMaxVal;
+    }
+    double range = m_imageMaxVal - m_imageMinVal;
+    double scale = (range > 0) ? 255.0 / range : 1.0;
+    m_image = QImage(w, h, QImage::Format_Grayscale8);
+    for (int y = 0; y < h; y++) {
+        uchar *row = m_image.scanLine(y);
+        for (int x = 0; x < w; x++)
+            row[x] = static_cast<uchar>(std::clamp(
+                (m_imageRawPixels[(size_t)y * w + x] - m_imageMinVal) * scale, 0.0, 255.0));
+    }
+    m_zoom[0].reset(w, h);
+    // Padding and cropping change the field of view, not the sampling, so
+    // m_pixelSize is left alone.
+
+    if (m_ftComputed) computeFFT();
     update();
 }
 

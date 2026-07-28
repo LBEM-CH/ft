@@ -83,7 +83,9 @@ cmake --build . --parallel
 
 echo "=== Generating ft.html and copying loader assets ==="
 cp "$QT_WASM_PATH/plugins/platforms/qtloader.js" .
-cp "$QT_WASM_PATH/plugins/platforms/qtlogo.svg" . 2>/dev/null || true
+# App icon: used as favicon, home-screen icon and loading-screen logo instead
+# of Qt's qtlogo.svg.
+cp "$SCRIPT_DIR/icon-ft.png" .
 BUILD_STAMP="$(date +%s)"
 sed -e 's/@APPNAME@/ft/g' \
     -e 's/@APPEXPORTNAME@/createQtAppInstance/g' \
@@ -94,8 +96,10 @@ sed -e 's/@APPNAME@/ft/g' \
     <meta name="apple-mobile-web-app-capable" content="yes">\
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">\
     <meta name="apple-mobile-web-app-title" content="ft">\
-    <link rel="apple-touch-icon" href="qtlogo.svg">\
+    <link rel="icon" type="image/png" href="icon-ft.png">\
+    <link rel="apple-touch-icon" href="icon-ft.png">\
     <script>window.__FT_BUILD_STAMP="'"${BUILD_STAMP}"'";</script>|' \
+  | sed -e 's|<img src="qtlogo.svg" width="320" height="200"|<img src="icon-ft.png" width="100" height="100"|' \
   | sed -e 's|await qtLoad({|await qtLoad({ locateFile: (p) => p.endsWith(".wasm") ? p + "?v=" + window.__FT_BUILD_STAMP : p,|' \
   > ft.html
 if [ -d "$SCRIPT_DIR/EXAMPLE_IMAGES" ]; then
