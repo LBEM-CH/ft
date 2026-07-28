@@ -27,11 +27,14 @@ void FtWindow::buildToolGroups()
         { "Measure",     {2},           {} },
         { "Transform",   {3, 4, 5, 6, 7}, {} }, // flip H/V, shift, rotate, invert
         { "Symmetrize",  {9},           {} },
-        { "Redimension", {10, 11},      {} }, // bin, crop
+        { "Redimension", {10, 19, 11},  {} }, // bin, pad, crop
         { "Filter",      {12, 13},      {} }, // gabor, hessian
         { "Amyloid",     {14},          {} },
-        { "Math",        {15},          {} },
+        { "Math",        {15, 20},      {} }, // math calculations, copy buffer
         { "Particles",   {16, 17},      {} }, // peak, extract
+        // Single-member group: the group face is what the user hovers, so the
+        // group name is the tooltip that shows (it overrides the icon's own).
+        { "Align image to reference", {18}, {} },
     };
     m_p2Groups = {
         { "Edit",                  {0, 1},      {} }, // eraser, paint brush
@@ -123,9 +126,11 @@ void FtWindow::deactivateAllP1Tools()
     m_p1EraserActive = false; m_p1BrushActive = false;
     m_shiftActive = false; m_rotateActive = false;
     m_p1TaperActive = false; m_p1SymmetrizeActive = false;
-    m_binActive = false; m_mathActive = false;
+    m_binActive = false; m_mathActive = false; m_padActive = false;
+    m_copyActive = false;
     m_cropActive = false; m_cropDragging = false; m_cropMoving = false; m_cropHasSelection = false;
     m_peakPickActive = false; m_extractActive = false;
+    m_alignActive = false; clearAlignDiagnostics();
     m_gaborActive = false; m_hessianActive = false;
     m_amyloidActive = false; m_amyloidPlacing = 0;
     m_measureActive = false; m_measurePlacing = 0; m_measureHasLine = false;
@@ -142,6 +147,14 @@ void FtWindow::showP1ToolWidgets()
     m_applyP1TaperBtn->setVisible(m_p1TaperActive);
     m_p1SymmetryEdit->setVisible(m_p1SymmetrizeActive);
     m_applyP1SymmetryBtn->setVisible(m_p1SymmetrizeActive);
+    m_copySrcCombo->setVisible(m_copyActive);
+    m_copyTgtCombo->setVisible(m_copyActive);
+    m_copyCancelBtn->setVisible(m_copyActive);
+    m_copyDuplicateBtn->setVisible(m_copyActive);
+    m_padSizeCombo->setVisible(m_padActive);
+    m_padCustomEdit->setVisible(m_padActive);
+    m_padCancelBtn->setVisible(m_padActive);
+    m_applyPadBtn->setVisible(m_padActive);
     m_binCombo->setVisible(m_binActive);
     m_binKeepSizeBtn->setVisible(m_binActive);
     m_applyBinBtn->setVisible(m_binActive);
@@ -197,6 +210,12 @@ void FtWindow::showP1ToolWidgets()
     m_measureCancelBtn->setVisible(m_measureActive);
     m_shiftCancelBtn->setVisible(m_shiftActive);
     m_rotateCancelBtn->setVisible(m_rotateActive);
+    m_alignSrcCombo->setVisible(m_alignActive);
+    m_alignRefCombo->setVisible(m_alignActive);
+    m_alignOutCombo->setVisible(m_alignActive);
+    m_alignCancelBtn->setVisible(m_alignActive);
+    m_alignShiftBtn->setVisible(m_alignActive);
+    m_alignRotBtn->setVisible(m_alignActive);
 }
 
 void FtWindow::closeP1Function()
@@ -278,6 +297,16 @@ void FtWindow::activateP1Tool(int toolId)
     case 8: { bool was = m_p1TaperActive; deactivateAllP1Tools(); m_p1TaperActive = !was; break; }
     case 9: { bool was = m_p1SymmetrizeActive; deactivateAllP1Tools(); m_p1SymmetrizeActive = !was; break; }
     case 10: { bool was = m_binActive; deactivateAllP1Tools(); m_binActive = !was; break; }
+    case 20: {
+        bool was = m_copyActive; deactivateAllP1Tools(); m_copyActive = !was;
+        if (m_copyActive) syncCopyCombos();
+        break;
+    }
+    case 19: {
+        bool was = m_padActive; deactivateAllP1Tools(); m_padActive = !was;
+        if (m_padActive) syncPadSizeCombo();
+        break;
+    }
     case 11: {
         bool was = m_cropActive; deactivateAllP1Tools(); m_cropActive = !was;
         if (m_cropActive) { m_cropRect = QRect(); m_cropHasSelection = false; syncCropEdits(); }
@@ -308,6 +337,30 @@ void FtWindow::activateP1Tool(int toolId)
         bool was = m_extractActive; deactivateAllP1Tools(); m_extractActive = !was;
         if (m_extractActive && m_activeSlot >= 0)
             m_extractSourceCombo->setCurrentIndex(m_activeSlot);
+        break;
+    }
+    case 18: {
+        bool was = m_alignActive; deactivateAllP1Tools(); m_alignActive = !was;
+        if (m_alignActive) {
+            m_alignResult.clear();
+            int src = (m_activeSlot >= 0) ? m_activeSlot : 0;
+            {   // Seed source + output together without the source's own
+                // currentIndexChanged handler dragging the output along.
+                QSignalBlocker b(m_alignSrcCombo);
+                m_alignSrcCombo->setCurrentIndex(src);
+            }
+            m_alignPrevSrc = src;
+            m_alignOutCombo->setCurrentIndex(src);
+            // A reference equal to the source is not a usable starting point;
+            // prefer another buffer that actually holds an image.
+            if (m_alignRefCombo->currentIndex() == src) {
+                int alt = -1;
+                for (int i = 0; i < HISTORY_SLOTS; i++)
+                    if (i != src && m_history[i].occupied) { alt = i; break; }
+                m_alignRefCombo->setCurrentIndex(alt >= 0 ? alt : (src + 1) % HISTORY_SLOTS);
+            }
+            syncAlignCombos();
+        }
         break;
     }
     default: return;
@@ -478,6 +531,13 @@ void FtWindow::openManualAnchor(bool panel2, const QString &anchor)
         QUrl("https://lbem-status.epfl.ch/ft/" + page + "#" + anchor));
 }
 
+void FtWindow::openExercise(const QString &anchor)
+{
+    if (anchor.isEmpty()) return;
+    QDesktopServices::openUrl(
+        QUrl("https://lbem-status.epfl.ch/ft/manual_exercises.html#" + anchor));
+}
+
 void FtWindow::openToolHelp(bool panel2)
 {
     QString title, anchor;
@@ -552,6 +612,14 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
     // click on the button never reaches the tool underneath.
     if (!m_p1HelpRect.isNull() && m_p1HelpRect.contains(event->pos())) {
         openToolHelp(false);
+        return;
+    }
+    if (!m_p1ExerciseRect.isNull() && m_p1ExerciseRect.contains(event->pos())) {
+        openExercise(toolExerciseAnchor(false));
+        return;
+    }
+    if (!m_p2ExerciseRect.isNull() && m_p2ExerciseRect.contains(event->pos())) {
+        openExercise(toolExerciseAnchor(true));
         return;
     }
     if (!m_p2HelpRect.isNull() && m_p2HelpRect.contains(event->pos())) {

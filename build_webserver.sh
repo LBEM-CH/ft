@@ -30,7 +30,7 @@ REMOTE_DIR="${2:-/srv/ft}"
 
 # ft.worker.js is the pthread worker bootstrap emitted by the multithreaded
 # (-pthread) build; it is required at runtime or the worker pool fails to load.
-ARTIFACTS=(ft.html ft.js ft.wasm ft.worker.js qtloader.js qtlogo.svg images
+ARTIFACTS=(ft.html ft.js ft.wasm ft.worker.js qtloader.js icon-ft.png images
            manual.html manual_panel1.html manual_panel2.html manual_exercises.html)
 
 if [[ ! -d "$BUILD_DIR" ]]; then
@@ -47,7 +47,25 @@ for f in "${ARTIFACTS[@]}"; do
 done
 
 echo "Packing $TARBALL (dereferencing symlinks)…"
-tar czhf "$TARBALL" "${ARTIFACTS[@]}"
+# macOS ships bsdtar, which by default records Apple metadata — extended
+# attributes (com.apple.provenance, com.apple.FinderInfo, …), BSD file flags and
+# ACLs — as pax extended headers. GNU tar on the Linux target does not know
+# those keywords and prints a screenful of "Ignoring unknown extended header
+# keyword" warnings on extraction. Nothing is lost either way, but the warnings
+# bury any real error, so the metadata is left out of the archive. These flags
+# are bsdtar-specific; GNU tar (should this ever be packed on Linux) does not
+# record the attributes in the first place, so they are only passed when the
+# running tar advertises them. "-T /dev/null" makes each probe an empty archive,
+# so it tests only whether the flag is accepted and touches no files.
+TAR_OPTS=()
+for opt in --no-xattrs --no-fflags --no-acls --no-mac-metadata; do
+    if tar czf /dev/null "$opt" -T /dev/null >/dev/null 2>&1; then
+        TAR_OPTS+=("$opt")
+    fi
+done
+# The ${...+...} guard keeps an empty TAR_OPTS from tripping `set -u` on the
+# bash 3.2 that ships with macOS.
+tar czhf "$TARBALL" ${TAR_OPTS[@]+"${TAR_OPTS[@]}"} "${ARTIFACTS[@]}"
 echo "Created $BUILD_DIR/$TARBALL ($(du -h "$TARBALL" | cut -f1))"
 
 # The manual-webserver upload is specific to this project's maintainers. Only

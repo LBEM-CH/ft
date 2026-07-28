@@ -612,3 +612,208 @@ void FtWindow::drawDirectionalWedge(QPainter &p, const QRect &screenRect,
 
     p.restore();
 }
+
+// ---------------------------------------------------------------------------
+//  Alignment diagnostics overlay (panel 4)
+//
+//  Shows why the tool chose the shift and the angle it did, which is the part a
+//  number alone cannot convey: a correlation peak that stands clear of its
+//  surroundings means a confident match, one lost in a field of similar bumps
+//  does not. Drawn while the Align tool is open and cleared with it; each half
+//  appears only once its own operation has been run.
+// ---------------------------------------------------------------------------
+void FtWindow::drawAlignOverlay(QPainter &p)
+{
+    const bool haveMap   = (m_alignCorrD > 0 && !m_alignCorrMap.empty());
+    const bool haveCurve = (m_alignRotCurve.size() > 1);
+    if (!haveMap && !haveCurve) return;
+
+    int hy  = height() - height() / 5;
+    int p4x = width() / 2 + 2 + historyButtonGutter() / 2;   // clear of the centre buttons
+    int p4y = hy + 2;
+    int p4w = width() - p4x;
+    int p4h = height() - p4y;
+    if (p4w < 80 || p4h < 60) return;
+
+    int rw = static_cast<int>(p4w * 0.92);
+    int rh = static_cast<int>(p4h * 0.88);
+    int rx = p4x + (p4w - rw) / 2;
+    int ry = p4y + (p4h - rh) / 2;
+    QRect frame(rx, ry, rw, rh);
+    drawShadowRect(p, frame);
+
+    const int margin = 8;
+    QFont tf; tf.setBold(true); tf.setPixelSize(12);
+    QFontMetrics tfm(tf);
+    p.setFont(tf);
+    p.setPen(QColor(40, 40, 40));
+    p.drawText(rx + margin, ry + margin + tfm.ascent(), "Alignment diagnostics");
+
+    int contentTop = ry + margin + tfm.height() + 4;
+    int contentH   = ry + rh - margin - contentTop;
+    if (contentH < 30) return;
+
+    QFont lf; lf.setPixelSize(10);
+    QFontMetrics lfm(lf);
+    const int labelH = lfm.height() + 2;
+
+    // Left half: the cross-correlation map. Right half: the angle sweep.
+    int halfW  = (rw - 2 * margin) / 2;
+    int leftX  = rx + margin;
+    int rightX = leftX + halfW + margin / 2;
+    int rightW = rx + rw - margin - rightX;
+
+    // ---- left: correlation map, zero shift at the centre -------------------
+    if (haveMap) {
+        const int D = m_alignCorrD;
+        int side = std::min(halfW, contentH - labelH);
+        if (side > 8) {
+            int mx = leftX + (halfW - side) / 2;
+            int my = contentTop;
+
+            double mn =  std::numeric_limits<double>::infinity();
+            double mxv = -std::numeric_limits<double>::infinity();
+            for (double v : m_alignCorrMap) {
+                if (!std::isfinite(v)) continue;
+                mn = std::min(mn, v);
+                mxv = std::max(mxv, v);
+            }
+            double range = mxv - mn;
+            double scale = (range > 0) ? 255.0 / range : 0.0;
+
+            QImage img(D, D, QImage::Format_Grayscale8);
+            for (int y = 0; y < D; y++) {
+                uchar *row = img.scanLine(y);
+                for (int x = 0; x < D; x++) {
+                    double v = m_alignCorrMap[(size_t)y * D + x];
+                    row[x] = std::isfinite(v)
+                        ? static_cast<uchar>(std::clamp((v - mn) * scale, 0.0, 255.0))
+                        : 0;
+                }
+            }
+            QRect imgRect(mx, my, side, side);
+            p.drawImage(imgRect, img);
+            p.setPen(QPen(QColor(90, 90, 90), 1));
+            p.setBrush(Qt::NoBrush);
+            p.drawRect(imgRect);
+
+            // Yellow cross on the peak that decided the shift.
+            double px = mx + m_alignCrossX * side / D;
+            double py = my + m_alignCrossY * side / D;
+            int arm = std::max(4, side / 12);
+            p.setRenderHint(QPainter::Antialiasing, true);
+            p.setPen(QPen(QColor(255, 230, 0), 1.6));
+            p.drawLine(QPointF(px - arm, py), QPointF(px + arm, py));
+            p.drawLine(QPointF(px, py - arm), QPointF(px, py + arm));
+            p.setRenderHint(QPainter::Antialiasing, false);
+
+            p.setFont(lf);
+            p.setPen(QColor(60, 60, 60));
+            QString cap = QString("Cross-correlation — peak at x=%1, y=%2")
+                              .arg(m_alignShiftX).arg(m_alignShiftY);
+            if (lfm.horizontalAdvance(cap) > halfW)
+                cap = QString("Peak x=%1, y=%2").arg(m_alignShiftX).arg(m_alignShiftY);
+            p.drawText(leftX + (halfW - lfm.horizontalAdvance(cap)) / 2,
+                       my + side + lfm.ascent() + 1, cap);
+        }
+    } else {
+        p.setFont(lf);
+        p.setPen(QColor(140, 140, 140));
+        QString msg = "Shift align not run yet";
+        p.drawText(leftX + (halfW - lfm.horizontalAdvance(msg)) / 2,
+                   contentTop + contentH / 2, msg);
+    }
+
+    // ---- right: correlation against rotation angle -------------------------
+    if (haveCurve && rightW > 40) {
+        int axL = 34, axB = labelH + 12, axT = 4, axR = 6;
+        int plotX = rightX + axL;
+        int plotY = contentTop + axT;
+        int plotW = rightW - axL - axR;
+        int plotH = contentH - axT - axB;
+        if (plotW > 20 && plotH > 20) {
+            const int n = (int)m_alignRotCurve.size();
+            double mn =  std::numeric_limits<double>::infinity();
+            double mx = -std::numeric_limits<double>::infinity();
+            for (double v : m_alignRotCurve) { mn = std::min(mn, v); mx = std::max(mx, v); }
+            double span = mx - mn;
+            if (span <= 0) span = 1.0;
+            // A little headroom so the peak is not glued to the frame edge.
+            double lo = mn - span * 0.08, hi = mx + span * 0.08;
+            auto yOf = [&](double v) {
+                return plotY + plotH - (v - lo) / (hi - lo) * plotH;
+            };
+            auto xOf = [&](double deg) {
+                return plotX + (deg + 180.0) / 360.0 * plotW;
+            };
+
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(245, 245, 245));
+            p.drawRect(plotX, plotY, plotW, plotH);
+
+            // Vertical grid at every 90°, with 0° emphasised.
+            for (int d = -180; d <= 180; d += 90) {
+                double gx = xOf(d);
+                p.setPen(QPen(d == 0 ? QColor(180, 180, 180) : QColor(215, 215, 215), 1));
+                p.drawLine(QPointF(gx, plotY), QPointF(gx, plotY + plotH));
+            }
+
+            p.setRenderHint(QPainter::Antialiasing, true);
+            p.setPen(QPen(QColor(40, 100, 220), 1.4));
+            p.setBrush(Qt::NoBrush);
+            QPainterPath curve;
+            for (int j = 0; j < n; j++) {
+                double deg = -180.0 + 360.0 * j / n;
+                QPointF pt(xOf(deg), yOf(m_alignRotCurve[j]));
+                if (j == 0) curve.moveTo(pt); else curve.lineTo(pt);
+            }
+            p.drawPath(curve);
+
+            // Arrow dropping onto the chosen angle.
+            {
+                double ax = xOf(m_alignRotBestDeg);
+                double ay = yOf(m_alignRotCurve[std::clamp(
+                    (int)std::lround((m_alignRotBestDeg + 180.0) / 360.0 * n), 0, n - 1)]);
+                double tail = std::max(10.0, plotH * 0.22);
+                double top  = std::max((double)plotY + 2, ay - tail);
+                p.setPen(QPen(QColor(220, 50, 50), 1.6));
+                p.drawLine(QPointF(ax, top), QPointF(ax, ay - 3));
+                QPolygonF head;
+                head << QPointF(ax, ay) << QPointF(ax - 4, ay - 8) << QPointF(ax + 4, ay - 8);
+                p.setPen(Qt::NoPen);
+                p.setBrush(QColor(220, 50, 50));
+                p.drawPolygon(head);
+            }
+            p.setRenderHint(QPainter::Antialiasing, false);
+
+            p.setPen(QPen(QColor(60, 60, 60), 1));
+            p.setBrush(Qt::NoBrush);
+            p.drawRect(plotX, plotY, plotW, plotH);
+
+            p.setFont(lf);
+            p.setPen(QColor(60, 60, 60));
+            // Y extremes, so the curve's scale is readable.
+            p.drawText(plotX - lfm.horizontalAdvance(QString::number(mx, 'f', 2)) - 3,
+                       plotY + lfm.ascent(), QString::number(mx, 'f', 2));
+            p.drawText(plotX - lfm.horizontalAdvance(QString::number(mn, 'f', 2)) - 3,
+                       plotY + plotH, QString::number(mn, 'f', 2));
+            for (int d = -180; d <= 180; d += 90) {
+                QString lbl = QString::number(d);
+                p.drawText((int)xOf(d) - lfm.horizontalAdvance(lbl) / 2,
+                           plotY + plotH + lfm.ascent() + 2, lbl);
+            }
+            QString cap = QString("Correlation vs rotation (°) — best %1°")
+                              .arg(m_alignRotBestDeg, 0, 'f', 1);
+            if (lfm.horizontalAdvance(cap) > rightW)
+                cap = QString("best %1°").arg(m_alignRotBestDeg, 0, 'f', 1);
+            p.drawText(rightX + (rightW - lfm.horizontalAdvance(cap)) / 2,
+                       plotY + plotH + lfm.height() + lfm.ascent() + 2, cap);
+        }
+    } else if (!haveCurve && rightW > 40) {
+        p.setFont(lf);
+        p.setPen(QColor(140, 140, 140));
+        QString msg = "Rotation align not run yet";
+        p.drawText(rightX + (rightW - lfm.horizontalAdvance(msg)) / 2,
+                   contentTop + contentH / 2, msg);
+    }
+}

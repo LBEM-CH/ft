@@ -250,10 +250,56 @@ of a real fibril image, especially concerning the reflection line at 4.75 Å?
 </p>
 </details>
 
+
 <details id="exercise-11">
-<summary>Exercise 11 — CTF FIT: measuring defocus and astigmatism</summary>
+<summary>Exercise 11 — Image alignment</summary>
 <p>
-This exercise uses the <strong>Exercise_11-CTF</strong> data set: twelve
+This exercise uses the <strong>Exercise_11-Alignment</strong> data set: several
+electron micrographs of bacteriophages, each a bright angular head with a thin
+tail. <code>Phage1</code>, <code>Phage2</code> and <code>Phage3b</code> show
+different particles, each sitting at its own place in the frame and pointing its
+own way. The <code>b</code> and <code>c</code> variants are the same particles, but
+artificial background was added around the viruses.
+</p>
+<p>
+Start with a control. Load <code>Phage1</code> and <code>Phage1b</code> into two
+buffers and use <strong>Align to reference</strong> to align one onto the other.
+Both buttons should report essentially nothing to do — zero shift, zero rotation —
+because the two images differ only in their redundant background. Note the correlation value that
+<strong>Rotation align</strong> reports; it is your yardstick for a good match.
+</p>
+<p>
+Now the real task. Load <code>Phage1</code> and <code>Phage2</code>, and align one
+onto the other with <strong>Shift align</strong> followed by
+<strong>Rotation align</strong>. The result disappoints, and the reason is the
+point of the exercise. Shift align locks onto the head, by far the strongest
+feature, and lays one head on the other — but both then sit away from the middle
+of the frame. Rotation align turns the image about the <em>image centre</em>, so
+an off-centre head does not spin on the spot: it swings around the centre on a
+wide arc, undoing the shift that was just found.
+</p>
+<p>
+So, first center the head of one particle with the <strong>Shift image</strong> tool.
+Then run
+<strong>Shift align</strong> to bring another virus to the same position, and then
+<strong>Rotation align</strong> to rotate the viruses into the same orientation. You can 
+cyclically repeate Shift and Rotation aligns until the aligned virus does not move any longer.
+Does it work better now? What does that tell you about where a feature has to lie before a
+rotation search can find it?
+</p>
+<p>
+With two or three phages aligned, sum them with <strong>Math calculation</strong>
+(<code>d = a + b</code>, then <code>e = d + c</code>). The display rescales to the
+data range, so a sum reads as an average. Which parts sharpen and which blur? Only
+what was genuinely aligned survives the averaging — which makes the average itself
+a verdict on your alignment.
+</p>
+</details>
+
+<details id="exercise-12">
+<summary>Exercise 12 — CTF FIT: measuring defocus and astigmatism</summary>
+<p>
+This exercise uses the <strong>Exercise_12-CTF</strong> data set: twelve
 simulated cryo-EM micrographs (<code>Example_&hellip;.mrc</code>) available
 from the example-image loader. Each is 1024&nbsp;&times;&nbsp;1024 pixels at
 <strong>2&nbsp;Å/pixel</strong>, imaged at 300&nbsp;kV with
@@ -306,8 +352,8 @@ Now experiment:
 </ul>
 </details>
 
-<details id="exercise-12">
-<summary>Exercise 12 — CTF SIM: generation with amplitude contrast and beam tilt</summary>
+<details id="exercise-13">
+<summary>Exercise 13 — CTF SIM: generation with amplitude contrast and beam tilt</summary>
 <p>
 Choose an empty image buffer. <BR>
 Use the <strong>CTF SIM</strong> tool (the <code>CTF / SIM</code> icon in panel 2) to create a CTF with different defocus settings.  How does the defocus affect the CTF in Fourier space and the PSF in real space?

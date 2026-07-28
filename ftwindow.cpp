@@ -1344,6 +1344,57 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     connect(m_applyBinBtn, &QPushButton::clicked, this, &FtWindow::onApplyBinning);
     m_applyBinBtn->hide();
 
+    // Pad image widgets (hidden until pad mode active)
+    m_padSizeCombo = new QComboBox(this);
+    for (int sz : {256, 512, 1024, 2048, 4096})
+        m_padSizeCombo->addItem(QString::number(sz), sz);
+    m_padSizeCombo->addItem("custom");        // no data => custom, see padTargetSize()
+    m_padSizeCombo->setCurrentIndex(2);        // 1024
+    m_padSizeCombo->setFixedSize(90, 28);
+    m_padSizeCombo->setStyleSheet(
+        "QComboBox { background:#222; color:white; border:1px solid #888;"
+        "  padding: 2px 8px; }"
+        "QComboBox::drop-down { width: 20px; }"
+        "QComboBox QAbstractItemView { background:#222; color:white;"
+        "  selection-background-color:#555; min-width: 80px; padding: 4px; }");
+    m_padSizeCombo->setToolTip(
+        "Edge length of the resized image, in pixels. Choose one of the\n"
+        "standard sizes or \"custom\" to type your own (up to 8192).\n"
+        "A larger value pads the image, a smaller one crops it; either\n"
+        "way the image stays centred.");
+    m_padSizeCombo->hide();
+    connect(m_padSizeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [this](int) {
+                // The free-text field is only live for the "custom" entry.
+                m_padCustomEdit->setEnabled(!m_padSizeCombo->currentData().isValid());
+                update();
+            });
+
+    m_padCustomEdit = new QLineEdit("1024", this);
+    m_padCustomEdit->setFixedSize(70, 22);
+    m_padCustomEdit->setStyleSheet("background:#222; color:white; border:1px solid #888;");
+    m_padCustomEdit->setValidator(new QIntValidator(1, kMaxPadSize, m_padCustomEdit));
+    m_padCustomEdit->setEnabled(false);
+    m_padCustomEdit->setToolTip(
+        QString("Custom edge length in pixels, up to %1. Only used when the\n"
+                "selector on the left is set to \"custom\".").arg(kMaxPadSize));
+    m_padCustomEdit->hide();
+    connect(m_padCustomEdit, &QLineEdit::returnPressed, this, &FtWindow::onApplyPad);
+
+    m_padCancelBtn = new QPushButton("Cancel", this);
+    m_padCancelBtn->setFixedSize(80, 26);
+    m_padCancelBtn->setStyleSheet(
+        "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }");
+    connect(m_padCancelBtn, &QPushButton::clicked, this, &FtWindow::onPadCancel);
+    m_padCancelBtn->hide();
+
+    m_applyPadBtn = new QPushButton("Resize image", this);
+    m_applyPadBtn->setFixedSize(120, 26);
+    m_applyPadBtn->setStyleSheet(
+        "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }");
+    connect(m_applyPadBtn, &QPushButton::clicked, this, &FtWindow::onApplyPad);
+    m_applyPadBtn->hide();
+
     // Crop widgets (hidden until crop mode active)
     auto makeCropEdit = [this](const QString &tip) {
         auto *e = new QLineEdit("0", this);
@@ -1557,6 +1608,126 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
         "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }");
     connect(m_extractComputeBtn, &QPushButton::clicked, this, &FtWindow::onExtractCompute);
     m_extractComputeBtn->hide();
+
+    // Copy-buffer widgets
+    {
+        auto makeCopyCombo = [this](const QString &tip) {
+            auto *cb = new QComboBox(this);
+            for (int i = 0; i < HISTORY_SLOTS; i++)
+                cb->addItem(QString(QChar('a' + i)));
+            cb->setFixedSize(70, 28);
+            cb->setStyleSheet(
+                "QComboBox { background:white; color:black; border:1px solid #888;"
+                "  padding: 2px 8px; }"
+                "QComboBox::drop-down { width: 20px; }"
+                "QComboBox QAbstractItemView { background:white; color:black;"
+                "  selection-background-color:#ccc; min-width: 60px; padding: 4px; }");
+            cb->setToolTip(tip);
+            cb->hide();
+            return cb;
+        };
+        m_copySrcCombo = makeCopyCombo(
+            "Image buffer (a…p) to copy from. It is left untouched.\n"
+            "Defaults to the buffer currently on display.");
+        m_copyTgtCombo = makeCopyCombo(
+            "Image buffer (a…p) to copy into. Any existing content is\n"
+            "overwritten. Defaults to the first free buffer.");
+
+        const QString copyBtnSS =
+            "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }";
+
+        m_copyCancelBtn = new QPushButton("Cancel", this);
+        m_copyCancelBtn->setFixedSize(80, 26);
+        m_copyCancelBtn->setStyleSheet(copyBtnSS);
+        m_copyCancelBtn->setToolTip("Cancel and close this function");
+        connect(m_copyCancelBtn, &QPushButton::clicked, this, &FtWindow::onCopyCancel);
+        m_copyCancelBtn->hide();
+
+        m_copyDuplicateBtn = new QPushButton("Duplicate", this);
+        m_copyDuplicateBtn->setFixedSize(100, 26);
+        m_copyDuplicateBtn->setStyleSheet(copyBtnSS);
+        m_copyDuplicateBtn->setToolTip("Copy the source buffer into the target buffer");
+        connect(m_copyDuplicateBtn, &QPushButton::clicked, this, &FtWindow::onCopyDuplicate);
+        m_copyDuplicateBtn->hide();
+
+        // Moving the source re-proposes a sensible target, unless the user has
+        // already picked one that is free.
+        connect(m_copySrcCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+                this, [this](int) { if (m_copyActive) update(); });
+        connect(m_copyTgtCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+                this, [this](int) { if (m_copyActive) update(); });
+    }
+
+    // Align-to-reference widgets
+    {
+        auto makeAlignCombo = [this](const QString &tip) {
+            auto *cb = new QComboBox(this);
+            for (int i = 0; i < HISTORY_SLOTS; i++)
+                cb->addItem(QString(QChar('a' + i)));
+            cb->setFixedSize(70, 28);
+            cb->setStyleSheet(
+                "QComboBox { background:white; color:black; border:1px solid #888;"
+                "  padding: 2px 8px; }"
+                "QComboBox::drop-down { width: 20px; }"
+                // No text colour here on purpose — see setComboItemEnabled().
+                "QComboBox QAbstractItemView { background:white;"
+                "  selection-color:black; selection-background-color:#ccc;"
+                "  min-width: 60px; padding: 4px; }");
+            styleAlignComboPopup(cb);
+            cb->setToolTip(tip);
+            cb->hide();
+            return cb;
+        };
+        m_alignSrcCombo = makeAlignCombo(
+            "Image buffer (a…p) holding the image that is to be moved.\n"
+            "Defaults to the buffer currently on display.");
+        m_alignRefCombo = makeAlignCombo(
+            "Image buffer (a…p) the source image is aligned onto. The\n"
+            "reference itself is never modified. The source buffer's own\n"
+            "letter is greyed out: an image cannot be aligned to itself.");
+        m_alignOutCombo = makeAlignCombo(
+            "Image buffer (a…p) that receives the aligned image. Defaults\n"
+            "to the source buffer, i.e. the source is replaced in place.\n"
+            "Any existing content of the chosen buffer is overwritten.");
+
+        // Changing the source moves the greyed-out entry in the reference list.
+        // The output follows the source only while it still points at it, so a
+        // deliberately chosen output buffer is never silently retargeted.
+        connect(m_alignSrcCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+                this, [this](int idx) {
+                    if (m_alignOutCombo->currentIndex() == m_alignPrevSrc)
+                        m_alignOutCombo->setCurrentIndex(idx);
+                    m_alignPrevSrc = idx;
+                    syncAlignCombos();
+                });
+        connect(m_alignRefCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+                this, [this](int) { syncAlignCombos(); });
+
+        const QString alignBtnSS =
+            "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }"
+            "QPushButton:disabled { background-color: #777; border: 2px outset #888; color: #999; }";
+
+        m_alignCancelBtn = new QPushButton("Cancel", this);
+        m_alignCancelBtn->setFixedSize(80, 26);
+        m_alignCancelBtn->setStyleSheet(alignBtnSS);
+        m_alignCancelBtn->setToolTip("Cancel and close this function");
+        connect(m_alignCancelBtn, &QPushButton::clicked, this, &FtWindow::onAlignCancel);
+        m_alignCancelBtn->hide();
+
+        m_alignShiftBtn = new QPushButton("Shift align", this);
+        m_alignShiftBtn->setFixedSize(110, 26);
+        m_alignShiftBtn->setStyleSheet(alignBtnSS);
+        m_alignShiftBtn->setToolTip("Align image onto reference by shifting the image");
+        connect(m_alignShiftBtn, &QPushButton::clicked, this, &FtWindow::onAlignShift);
+        m_alignShiftBtn->hide();
+
+        m_alignRotBtn = new QPushButton("Rotation align", this);
+        m_alignRotBtn->setFixedSize(120, 26);
+        m_alignRotBtn->setStyleSheet(alignBtnSS);
+        m_alignRotBtn->setToolTip("Align image onto reference by rotating the image");
+        connect(m_alignRotBtn, &QPushButton::clicked, this, &FtWindow::onAlignRotate);
+        m_alignRotBtn->hide();
+    }
 
     // All four toggle buttons next to the histograms ("freeze display
     // contrast" x2, "mark image center", "mask center for display") are
@@ -1945,6 +2116,54 @@ void FtWindow::resizeEvent(QResizeEvent *)
     m_extractComputeBtn->setFixedSize(static_cast<int>(80 * sc), btnH);
     m_extractComputeBtn->setStyleSheet(btnSS);
 
+    // Copy-buffer widgets (sizes only)
+    {
+        QString copyComboSS = QString(
+            "QComboBox { background:white; color:black; border:1px solid #888;"
+            "  padding: 2px 4px; font-size: %1px; }"
+            "QComboBox::drop-down { width: %2px; }"
+            "QComboBox QAbstractItemView { background:white; color:black;"
+            "  selection-background-color:#ccc; min-width: 60px; padding: 4px;"
+            "  font-size: %1px; }").arg(fontSize).arg(static_cast<int>(20 * sc));
+        m_copySrcCombo->setFixedSize(static_cast<int>(70 * sc), btnH);
+        m_copySrcCombo->setStyleSheet(copyComboSS);
+        m_copyTgtCombo->setFixedSize(static_cast<int>(70 * sc), btnH);
+        m_copyTgtCombo->setStyleSheet(copyComboSS);
+        m_copyCancelBtn->setFixedSize(static_cast<int>(80 * sc), btnH);
+        m_copyCancelBtn->setStyleSheet(btnSS);
+        m_copyDuplicateBtn->setFixedSize(static_cast<int>(100 * sc), btnH);
+        m_copyDuplicateBtn->setStyleSheet(btnSS);
+    }
+
+    // Align-to-reference widgets (sizes only)
+    {
+        // The popup deliberately carries no text colour: one there would beat
+        // the per-item colour that greys out the unusable entry. See
+        // setComboItemEnabled() in ftwindow_align.cpp.
+        QString alignComboSS = QString(
+            "QComboBox { background:white; color:black; border:1px solid #888;"
+            "  padding: 2px 4px; font-size: %1px; }"
+            "QComboBox::drop-down { width: %2px; }"
+            "QComboBox QAbstractItemView { background:white;"
+            "  selection-color:black; selection-background-color:#ccc;"
+            "  min-width: 60px; padding: 4px; font-size: %1px; }")
+            .arg(fontSize).arg(static_cast<int>(20 * sc));
+        QString alignBtnSS = btnSS + QString(
+            "QPushButton:disabled { background-color: #777; border: 2px outset #888;"
+            "  color: #999; padding: 2px; font-size: %1px; }").arg(fontSize);
+        for (QComboBox *cb : {m_alignSrcCombo, m_alignRefCombo, m_alignOutCombo}) {
+            cb->setFixedSize(static_cast<int>(70 * sc), btnH);
+            cb->setStyleSheet(alignComboSS);
+            styleAlignComboPopup(cb);   // restyling drops the delegate
+        }
+        m_alignCancelBtn->setFixedSize(static_cast<int>(80 * sc), btnH);
+        m_alignCancelBtn->setStyleSheet(alignBtnSS);
+        m_alignShiftBtn->setFixedSize(static_cast<int>(110 * sc), btnH);
+        m_alignShiftBtn->setStyleSheet(alignBtnSS);
+        m_alignRotBtn->setFixedSize(static_cast<int>(120 * sc), btnH);
+        m_alignRotBtn->setStyleSheet(alignBtnSS);
+    }
+
     // Binning widgets (sizes only)
     m_binCombo->setFixedSize(static_cast<int>(70 * sc), btnH);
     m_binCombo->setStyleSheet(QString(
@@ -1957,6 +2176,28 @@ void FtWindow::resizeEvent(QResizeEvent *)
     m_binKeepSizeBtn->setStyleSheet(cbSS);
     m_applyBinBtn->setFixedSize(static_cast<int>(110 * sc), btnH);
     m_applyBinBtn->setStyleSheet(btnSS);
+
+    // Pad image widgets (sizes only)
+    m_padSizeCombo->setFixedSize(static_cast<int>(90 * sc), btnH);
+    m_padSizeCombo->setStyleSheet(QString(
+        "QComboBox { background:white; color:black; border:1px solid #888;"
+        "  padding: 2px 4px; font-size: %1px; }"
+        "QComboBox::drop-down { width: %2px; }"
+        "QComboBox QAbstractItemView { background:white; color:black;"
+        "  selection-background-color:#ccc; min-width: 80px; padding: 4px;"
+        "  font-size: %1px; }").arg(fontSize).arg(static_cast<int>(20 * sc)));
+    m_padCustomEdit->setFixedSize(static_cast<int>(70 * sc), editH);
+    // Needs full rules rather than editSS (a bare declaration list), so that the
+    // greyed-out look while a preset size is selected can be expressed.
+    m_padCustomEdit->setStyleSheet(QString(
+        "QLineEdit { background:white; color:black; border:1px solid #888;"
+        "  font-size: %1px; }"
+        "QLineEdit:disabled { background:#dcdcdc; color:#999; border:1px solid #aaa; }")
+        .arg(fontSize));
+    m_padCancelBtn->setFixedSize(static_cast<int>(80 * sc), btnH);
+    m_padCancelBtn->setStyleSheet(btnSS);
+    m_applyPadBtn->setFixedSize(static_cast<int>(120 * sc), btnH);
+    m_applyPadBtn->setStyleSheet(btnSS);
 
     // Crop widgets (sizes only)
     for (QLineEdit *e : {m_cropTLxEdit, m_cropTLyEdit, m_cropBRxEdit, m_cropBRyEdit}) {
