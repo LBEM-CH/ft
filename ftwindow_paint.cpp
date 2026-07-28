@@ -23,7 +23,7 @@ void FtWindow::drawParamLabel(QPainter &p, const QFontMetrics &fm,
 bool FtWindow::p1ToolWindowOpen() const
 {
     return m_p1EraserActive || m_p1BrushActive || m_p1TaperActive || m_p1SymmetrizeActive
-        || m_binActive || m_cropActive || m_peakPickActive || m_extractActive
+        || m_binActive || m_padActive || m_copyActive || m_cropActive || m_peakPickActive || m_extractActive
         || m_gaborActive || m_hessianActive || m_amyloidActive || m_measureActive
         || m_shiftActive || m_rotateActive || m_alignActive
         || m_p1FlipHActive || m_p1FlipVActive || m_p1InvertActive;
@@ -51,6 +51,8 @@ bool FtWindow::toolHelpInfo(bool panel2, QString &title, QString &anchor) const
         { m_p1TaperActive,      "Taper edges (Hanning)",  "p1-taper-edges"       },
         { m_p1SymmetrizeActive, "Symmetrize image",       "p1-symmetrize"        },
         { m_binActive,          "Bin image",              "p1-bin"               },
+        { m_padActive,          "Pad image",              "p1-pad"               },
+        { m_copyActive,         "Copy image buffer",      "p1-copy"              },
         { m_cropActive,         "Crop image",             "p1-crop"              },
         { m_peakPickActive,     "Peak search",            "p1-peak-search"       },
         { m_extractActive,      "Extract particles",      "p1-extract-particles" },
@@ -93,14 +95,12 @@ bool FtWindow::toolHelpInfo(bool panel2, QString &title, QString &anchor) const
     return false;
 }
 
-QRect FtWindow::drawHelpButton(QPainter &p, const QRect &frame, int marginX,
-                               int marginY, int rowH, int maxSize)
+// One raised 3D square button carrying a single character, matching the toggle
+// buttons next to the histograms. Shared by the "?" help button and the "E"
+// exercise button so the two are guaranteed identical in size and styling.
+void FtWindow::drawSquareLabelButton(QPainter &p, const QRect &br,
+                                     const QString &label, const QString &tip)
 {
-    // Raised 3D square button, matching the toggle buttons next to the histograms.
-    int bs = std::clamp(rowH - 6, 14, maxSize);
-    QRect br(frame.right() - marginX - bs,
-             frame.top() + marginY + (rowH - bs) / 2, bs, bs);
-
     p.save();
     p.fillRect(br, QColor(0xdc, 0xdc, 0xdc));
     const QColor lite(0xff, 0xff, 0xff), dark(0x60, 0x60, 0x60);
@@ -108,14 +108,60 @@ QRect FtWindow::drawHelpButton(QPainter &p, const QRect &frame, int marginX,
     p.fillRect(QRect(br.left(),      br.top(),        2, br.height()), lite);
     p.fillRect(QRect(br.right() - 1, br.top(),        2, br.height()), dark);
     p.fillRect(QRect(br.left(),      br.bottom() - 1, br.width(), 2), dark);
-    QFont qf; qf.setPixelSize(std::clamp(bs * 3 / 4, 9, 18)); qf.setBold(true);
+    QFont qf; qf.setPixelSize(std::clamp(br.width() * 3 / 4, 9, 18)); qf.setBold(true);
     p.setFont(qf);
     p.setPen(Qt::black);
-    p.drawText(br, Qt::AlignCenter, "?");
+    p.drawText(br, Qt::AlignCenter, label);
     p.restore();
 
-    m_paramLabelTips.emplace_back(br, QStringLiteral("Help"));
+    m_paramLabelTips.emplace_back(br, tip);
+}
+
+QRect FtWindow::drawHelpButton(QPainter &p, const QRect &frame, int marginX,
+                               int marginY, int rowH, int maxSize)
+{
+    int bs = std::clamp(rowH - 6, 14, maxSize);
+    QRect br(frame.right() - marginX - bs,
+             frame.top() + marginY + (rowH - bs) / 2, bs, bs);
+    drawSquareLabelButton(p, br, QStringLiteral("?"), QStringLiteral("Help"));
     return br;
+}
+
+// The "E" button sits immediately left of the help button, same size and shape,
+// and is drawn only for tools that an exercise actually covers. Returns a null
+// rect otherwise, which is also what suppresses its click target.
+QRect FtWindow::drawExerciseButton(QPainter &p, const QRect &helpRect,
+                                   const QString &anchor)
+{
+    if (helpRect.isNull() || anchor.isEmpty()) return QRect();
+    QRect br = helpRect.translated(-(helpRect.width() + 4), 0);
+    drawSquareLabelButton(p, br, QStringLiteral("E"),
+                          QStringLiteral("Show the exercise for this function"));
+    return br;
+}
+
+// The exercise in manual_exercises.html that teaches the tool currently open in
+// this panel, or an empty string when no exercise covers it. Only these tools
+// get an "E" button.
+QString FtWindow::toolExerciseAnchor(bool panel2) const
+{
+    if (panel2) {
+        if (m_brushActive || m_eraserActive)                    return "exercise-0";
+        if (m_bandpassActive || m_directionalActive
+            || m_lineFilterActive)                              return "exercise-1";
+        if (m_latticeActive)                                    return "exercise-4";
+        if (m_phaseRampActive)                                  return "exercise-7";
+        if (m_ftMathActive)                                     return "exercise-8";
+        if (m_ctfFitActive)                                     return "exercise-12";
+        if (m_ctfActive)                                        return "exercise-13";
+        return QString();
+    }
+    if (m_p1BrushActive || m_p1EraserActive)                    return "exercise-0";
+    if (m_mathActive)                                           return "exercise-6";
+    if (m_peakPickActive || m_extractActive)                    return "exercise-9";
+    if (m_amyloidActive)                                        return "exercise-10";
+    if (m_alignActive)                                          return "exercise-11";
+    return QString();
 }
 
 QRect FtWindow::drawToolHelpHeader(QPainter &p, const QRect &toolRect, int margin,
@@ -159,6 +205,8 @@ void FtWindow::paintEvent(QPaintEvent *)
     m_p2HelpRect = QRect();
     m_p1MathHelpRect = QRect();
     m_p2MathHelpRect = QRect();
+    m_p1ExerciseRect = QRect();
+    m_p2ExerciseRect = QRect();
     m_imageHistLockRect = QRect();
     m_markImageCenterRect = QRect();
     m_pixelSizeInfoRect = QRect();
@@ -272,6 +320,7 @@ void FtWindow::paintEvent(QPaintEvent *)
                 (i == 5 && m_shiftActive) || (i == 6 && m_rotateActive) ||
                 (i == 8 && m_p1TaperActive) || (i == 9 && m_p1SymmetrizeActive) ||
                 (i == 10 && m_binActive) || (i == 11 && m_cropActive) ||
+                (i == 19 && m_padActive) || (i == 20 && m_copyActive) ||
                 (i == 12 && m_gaborActive) || (i == 13 && m_hessianActive) ||
                 (i == 14 && m_amyloidActive) || (i == 15 && m_mathActive) ||
                 (i == 16 && m_peakPickActive) || (i == 17 && m_extractActive) ||
@@ -945,6 +994,71 @@ void FtWindow::paintEvent(QPaintEvent *)
                     int ttx = r.right() + 4;
                     int tty = r.center().y() - tth / 2;
                     pendingTipRect = QRect(ttx, tty, ttw, tth);
+                    pendingTipText = tip;
+                }
+            }
+
+            // Copy icon (button 20): two numbered white squares, "1" at the top
+            // left and "2" over it at the bottom right, overlapping by 30% of a
+            // square's width — one buffer duplicated onto another.
+            if (i == 20) {
+                QRectF ir = QRectF(r).adjusted(2, 2, -2, -2);
+                // Two squares offset by 70% of their side span 1.7 sides in all,
+                // which is what has to fit inside the icon.
+                double s = ir.width() / 1.7;
+                double off = s * 0.7;
+                QRectF sq1(ir.x(), ir.y(), s, s);
+                QRectF sq2(ir.x() + off, ir.y() + off, s, s);
+
+                QFont nf; nf.setBold(true);
+                nf.setPixelSize(std::max(6, (int)(s * 0.62)));
+                p.setFont(nf);
+
+                p.setPen(QPen(QColor(70, 70, 70), 1));
+                p.setBrush(m_copyActive ? QColor(180, 180, 255) : Qt::white);
+                p.drawRect(sq1);
+                p.setPen(QColor(20, 20, 20));
+                p.drawText(sq1, Qt::AlignCenter, "1");
+
+                // Drop shadow, then the second square on top of the first.
+                p.setPen(Qt::NoPen);
+                p.setBrush(QColor(0, 0, 0, 160));
+                p.drawRect(sq2.translated(2, 2));
+                p.setPen(QPen(QColor(40, 40, 40), 1));
+                p.setBrush(m_copyActive ? QColor(180, 180, 255) : Qt::white);
+                p.drawRect(sq2);
+                p.setPen(QColor(20, 20, 20));
+                p.drawText(sq2, Qt::AlignCenter, "2");
+
+                if (r.contains(m_mousePos)) {
+                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                    QFontMetrics ttfm(ttf);
+                    QString tip = "Copy an image buffer to another one";
+                    int ttw = ttfm.horizontalAdvance(tip) + 8;
+                    int tth = ttfm.height() + 4;
+                    pendingTipRect = QRect(r.right() + 4, r.center().y() - tth / 2, ttw, tth);
+                    pendingTipText = tip;
+                }
+            }
+
+            // Pad-image icon (button 19): a small white square centred on the
+            // black face, a third of its width — the original image sitting
+            // inside the larger canvas it is padded out to.
+            if (i == 19) {
+                int side = std::max(2, r.width() / 3);
+                QRect inner(r.center().x() - side / 2, r.center().y() - side / 2,
+                            side, side);
+                p.setPen(Qt::NoPen);
+                p.setBrush(m_padActive ? QColor(180, 180, 255) : Qt::white);
+                p.drawRect(inner);
+
+                if (r.contains(m_mousePos)) {
+                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                    QFontMetrics ttfm(ttf);
+                    QString tip = "pad image to larger image dimensions";
+                    int ttw = ttfm.horizontalAdvance(tip) + 8;
+                    int tth = ttfm.height() + 4;
+                    pendingTipRect = QRect(r.right() + 4, r.center().y() - tth / 2, ttw, tth);
                     pendingTipText = tip;
                 }
             }
@@ -2222,6 +2336,10 @@ void FtWindow::paintEvent(QPaintEvent *)
             titleBottom = titleBaseY + tfm.descent();
             m_p1MathHelpRect = drawHelpButton(p, mathRect, titleMarginX,
                                               titleMarginY, tfm.height() + 6, 26);
+            // The Math window draws its own header rather than going through
+            // drawToolHelpHeader, so its "E" button is placed here.
+            m_p1ExerciseRect = drawExerciseButton(p, m_p1MathHelpRect,
+                                                  toolExerciseAnchor(false));
         }
 
         // Draw clean equation text centered between title and combo row
@@ -2832,6 +2950,10 @@ void FtWindow::paintEvent(QPaintEvent *)
             titleBottom2 = titleBaseY + tfm.descent();
             m_p2MathHelpRect = drawHelpButton(p, ftMathRect, titleMarginX,
                                               titleMarginY, tfm.height() + 6, 26);
+            // As with the panel-1 Math window, this header is drawn here rather
+            // than by drawToolHelpHeader, so its "E" button is placed here too.
+            m_p2ExerciseRect = drawExerciseButton(p, m_p2MathHelpRect,
+                                                  toolExerciseAnchor(true));
         }
 
         // Draw clean equation text centered between title and combo row
@@ -3103,6 +3225,7 @@ void FtWindow::paintEvent(QPaintEvent *)
             }
 
             m_p2HelpRect = drawToolHelpHeader(p, toolRect, margin, lh, fs2, toolTitle);
+            m_p2ExerciseRect = drawExerciseButton(p, m_p2HelpRect, toolExerciseAnchor(true));
 
             // Draw painted labels inside the rectangle
             p.setFont(sf);
@@ -3310,6 +3433,20 @@ void FtWindow::paintEvent(QPaintEvent *)
         bool p1Tool = p1ToolWindowOpen();
         const QString shiftHint  = "Use the mouse to shift the image";
         const QString rotateHint = "Use the mouse to rotate the image";
+        // Spells out what "Resize image" is about to do, so the user can see
+        // whether the chosen target pads or crops before committing to it.
+        auto padSizeHint = [this]() -> QString {
+            if (m_image.isNull()) return QStringLiteral("No image loaded");
+            int cur = std::max(m_image.width(), m_image.height());
+            int tgt = padTargetSize();
+            if (tgt < 1)
+                return QString("Enter a size from 1 to %1").arg(kMaxPadSize);
+            if (tgt > cur)
+                return QString("Pad %1 → %2 px, grey border").arg(cur).arg(tgt);
+            if (tgt < cur)
+                return QString("Crop %1 → %2 px, centred").arg(cur).arg(tgt);
+            return QString("Image is already %1 px").arg(cur);
+        };
         if (p1Tool) {
             QString toolTitle, toolAnchor;
             toolHelpInfo(false, toolTitle, toolAnchor);
@@ -3340,6 +3477,19 @@ void FtWindow::paintEvent(QPaintEvent *)
                 int r2 = fm.horizontalAdvance("Keep original image size");
                 int r3 = m_applyBinBtn->width();
                 textW = std::max({r1, r2, r3});
+            } else if (m_copyActive) {
+                nRows = 3;
+                int labW = fm.horizontalAdvance("Source buffer: ");
+                int r0 = labW + m_copySrcCombo->width();
+                int r1 = m_copyCancelBtn->width() + 8 + m_copyDuplicateBtn->width();
+                textW = std::max(r0, r1);
+            } else if (m_padActive) {
+                nRows = 3;
+                int r0 = fm.horizontalAdvance("Target size (pixels): ")
+                         + m_padSizeCombo->width() + 8 + m_padCustomEdit->width();
+                int r1 = fm.horizontalAdvance(padSizeHint());
+                int r2 = m_padCancelBtn->width() + 8 + m_applyPadBtn->width();
+                textW = std::max({r0, r1, r2});
             } else if (m_cropActive) {
                 nRows = 3;
                 int labW = std::max(fm.horizontalAdvance("Top left:  "),
@@ -3470,6 +3620,7 @@ void FtWindow::paintEvent(QPaintEvent *)
             }
 
             m_p1HelpRect = drawToolHelpHeader(p, toolRect, margin, lh, fs2, toolTitle);
+            m_p1ExerciseRect = drawExerciseButton(p, m_p1HelpRect, toolExerciseAnchor(false));
 
             p.setFont(sf);
             p.setPen(QColor(60, 60, 60));
@@ -3498,6 +3649,32 @@ void FtWindow::paintEvent(QPaintEvent *)
                 m_binCombo->move(tx, ty);
                 m_binKeepSizeBtn->move(tx, ty + lh);
                 m_applyBinBtn->move(tx, ty + lh * 2);
+            } else if (m_copyActive) {
+                int labW = std::max(fm.horizontalAdvance("Source buffer: "),
+                                    fm.horizontalAdvance("Target buffer: "));
+                drawParamLabel(p, fm, tx, ty, "Source buffer:", m_copySrcCombo->toolTip(),
+                               m_copySrcCombo->height());
+                m_copySrcCombo->move(tx + labW, ty);
+                drawParamLabel(p, fm, tx, ty + lh, "Target buffer:", m_copyTgtCombo->toolTip(),
+                               m_copyTgtCombo->height());
+                m_copyTgtCombo->move(tx + labW, ty + lh);
+                m_copyCancelBtn->move(tx, ty + lh * 2);
+                m_copyDuplicateBtn->move(rx + rw - margin - m_copyDuplicateBtn->width(),
+                                         ty + lh * 2);
+            } else if (m_padActive) {
+                // Row 0: target selector, with the free-text field beside it
+                // (greyed out unless "custom" is chosen).
+                drawParamLabel(p, fm, tx, ty, "Target size (pixels):", m_padSizeCombo->toolTip(),
+                               m_padSizeCombo->height());
+                int cx2 = tx + fm.horizontalAdvance("Target size (pixels): ");
+                m_padSizeCombo->move(cx2, ty);
+                m_padCustomEdit->move(cx2 + m_padSizeCombo->width() + 8,
+                                      ty + (m_padSizeCombo->height() - m_padCustomEdit->height()) / 2);
+                // Row 1: what the current selection will actually do.
+                p.drawText(tx, ty + lh + fm.ascent(), padSizeHint());
+                // Row 2: Cancel left, apply right.
+                m_padCancelBtn->move(tx, ty + lh * 2);
+                m_applyPadBtn->move(rx + rw - margin - m_applyPadBtn->width(), ty + lh * 2);
             } else if (m_cropActive) {
                 int labW = std::max(fm.horizontalAdvance("Top left:  "),
                                     fm.horizontalAdvance("Bottom right:  "));
@@ -4118,6 +4295,12 @@ void FtWindow::paintEvent(QPaintEvent *)
             }
         }
     }
+
+    // ---- Alignment diagnostics overlay in panel 4 -------------------------------
+    // Gated on the tool being open, so it vanishes by every route that closes
+    // the tool, not only via its Cancel button.
+    if (m_alignActive)
+        drawAlignOverlay(p);
 
     // ---- CTF 1D profile overlay in panel 4 --------------------------------------
     if (m_ctfActive && !m_ctfProfile.empty()) {

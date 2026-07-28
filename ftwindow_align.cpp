@@ -204,10 +204,24 @@ void FtWindow::syncAlignCombos()
     update();
 }
 
+// The panel-4 overlay lives exactly as long as the tool does, so every route
+// that closes the tool — the Cancel button, the "X", picking another tool —
+// drops its data. Re-opening the tool therefore starts with a blank overlay
+// rather than the previous run's.
+void FtWindow::clearAlignDiagnostics()
+{
+    m_alignCorrMap.clear();
+    m_alignCorrMap.shrink_to_fit();
+    m_alignCorrD = 0;
+    m_alignRotCurve.clear();
+    m_alignRotCurve.shrink_to_fit();
+}
+
 void FtWindow::onAlignCancel()
 {
     m_alignActive = false;
     m_alignResult.clear();
+    clearAlignDiagnostics();
     m_alignSrcCombo->hide();
     m_alignRefCombo->hide();
     m_alignOutCombo->hide();
@@ -280,8 +294,13 @@ void FtWindow::finishAlign(int outIdx, std::vector<double> result,
     m_pixelSize = m_history[outIdx].pixelSize;
     m_zoom[0].reset(w, h);
 
+    // Transform the aligned image straight away rather than blanking panel 2:
+    // the point of aligning is usually to compare, and leaving the Fourier side
+    // empty would make the user press FT after every run.
     m_ftComputed = false;
-    m_modeBtn->hide();
+    computeFFT();
+    m_modeBtn->setText(modeLabel());
+    m_history[outIdx].powerSpecImg = powerSpecFromCurrentFFT();
 
     saveHistory();
 }
@@ -316,6 +335,14 @@ void FtWindow::onAlignShiftImpl()
     m_toolProgress = 0.05;
     update();
 
+    // Bring both onto a common frame first, so a size mismatch cannot bias the
+    // correlation. Whichever is smaller gains a tapered grey border; an image
+    // already at the target size is left untouched, which keeps the equal-size
+    // case — by far the common one — bit-for-bit as it was.
+    const int W = std::max(w, rw), H = std::max(h, rh);
+    padOrCropCentred(src, w, h, W, H);
+    padOrCropCentred(ref, rw, rh, W, H);
+
     // The images travel in the shared state rather than in the step lambdas, so
     // each can be released the moment it has been folded into the FFT arrays;
     // a lambda capture would keep it alive until the whole chain is destroyed,
@@ -323,7 +350,7 @@ void FtWindow::onAlignShiftImpl()
     struct Work {
         std::vector<Complex> fa, fb;
         std::vector<double>  src, ref;
-        int N = 0, w = 0, h = 0, rw = 0, rh = 0;
+        int N = 0, w = 0, h = 0;
         int srcIdx = 0, refIdx = 0, outIdx = 0;
         double pixelSize = 1.0;
         QString srcPath;
@@ -331,17 +358,16 @@ void FtWindow::onAlignShiftImpl()
     auto st = std::make_shared<Work>();
     st->src = std::move(src);
     st->ref = std::move(ref);
-    st->w = w; st->h = h; st->rw = rw; st->rh = rh;
+    st->w = W; st->h = H;
     st->srcIdx = srcIdx; st->refIdx = refIdx; st->outIdx = outIdx;
     st->pixelSize = alignSlotPixelSize(srcIdx);
     st->srcPath   = alignSlotPath(srcIdx);
 
-    // Both images are mean-subtracted and dropped into the same zero-padded
-    // square grid. Mean subtraction keeps a bright background from swamping the
-    // correlation; the padding is what lets differently sized images (a small
-    // template against a large field, say) still be correlated.
-    int N = nextGoodFFTSize(std::max({w, h, rw, rh}));
-    st->N = N;
+    // Both are now the same size, so they drop into the same square FFT grid at
+    // the same origin and the peak position reads directly as their relative
+    // displacement. Mean subtraction keeps a bright background from swamping
+    // the correlation.
+    st->N = nextGoodFFTSize(std::max(W, H));
 
     chainSteps({
         [this, st]() {
@@ -351,11 +377,11 @@ void FtWindow::onAlignShiftImpl()
             st->fa.assign((size_t)N * N, Complex(0, 0));
             st->fb.assign((size_t)N * N, Complex(0, 0));
             for (int y = 0; y < st->h; y++)
-                for (int x = 0; x < st->w; x++)
-                    st->fa[(size_t)y * N + x] = Complex(st->src[(size_t)y * st->w + x] - mSrc, 0);
-            for (int y = 0; y < st->rh; y++)
-                for (int x = 0; x < st->rw; x++)
-                    st->fb[(size_t)y * N + x] = Complex(st->ref[(size_t)y * st->rw + x] - mRef, 0);
+                for (int x = 0; x < st->w; x++) {
+                    size_t s = (size_t)y * st->w + x, dst = (size_t)y * N + x;
+                    st->fa[dst] = Complex(st->src[s] - mSrc, 0);
+                    st->fb[dst] = Complex(st->ref[s] - mRef, 0);
+                }
             st->ref.clear();
             st->ref.shrink_to_fit();
             m_toolProgress = 0.2;
@@ -388,9 +414,35 @@ void FtWindow::onAlignShiftImpl()
                     double v = st->fa[(size_t)y * N + x].real();
                     if (v > best) { best = v; px = x; py = y; }
                 }
-            st->fa.clear();
             int kx = (px > N / 2) ? px - N : px;
             int ky = (py > N / 2) ? py - N : py;
+
+            // Keep a picture of the correlation for the panel-4 overlay, rolled
+            // so that zero shift lands at the centre — the conventional way to
+            // read such a map. A full-size copy would cost as much as the FFT
+            // itself, so it is reduced to at most kAlignMapDisp across, taking
+            // the maximum of each block rather than the mean: the peak is the
+            // whole point of the picture and averaging would dilute it.
+            {
+                const int D = std::min(N, kAlignMapDisp);
+                m_alignCorrMap.assign((size_t)D * D,
+                                      -std::numeric_limits<double>::infinity());
+                for (int y = 0; y < N; y++) {
+                    int by = ((y + N / 2) % N) * D / N;
+                    for (int x = 0; x < N; x++) {
+                        int bx = ((x + N / 2) % N) * D / N;
+                        double &slot = m_alignCorrMap[(size_t)by * D + bx];
+                        double v = st->fa[(size_t)y * N + x].real();
+                        if (v > slot) slot = v;
+                    }
+                }
+                m_alignCorrD = D;
+                m_alignCrossX = (((px + N / 2) % N) + 0.5) * D / (double)N;
+                m_alignCrossY = (((py + N / 2) % N) + 0.5) * D / (double)N;
+                m_alignShiftX = -kx;
+                m_alignShiftY = -ky;
+            }
+            st->fa.clear();
 
             const int w = st->w, h = st->h;
             std::vector<double> outPix((size_t)w * h);
@@ -443,6 +495,14 @@ void FtWindow::onAlignRotateImpl()
     m_toolProgress = 0.02;
     update();
 
+    // Same common frame as the shift path. Here it matters twice over: without
+    // it the two images would each be resampled onto the working grid from their
+    // own dimensions, which silently magnifies the smaller one's content and
+    // leaves no angle at which the two can agree.
+    const int W = std::max(w, rw), H = std::max(h, rh);
+    padOrCropCentred(src, w, h, W, H);
+    padOrCropCentred(ref, rw, rh, W, H);
+
     // The 720 trial orientations are scored on a square working grid capped at
     // 512 px rather than on the full image: a whole extra rotation of a large
     // image per half-degree would cost minutes, while at 512 px a half-degree
@@ -450,8 +510,8 @@ void FtWindow::onAlignRotateImpl()
     // finds is the same one. Only the winning angle is then applied at full
     // resolution.
     const int kMaxWork = 512;
-    int S = std::min({kMaxWork, std::min(w, h), std::min(rw, rh)});
-    if (S < 16) S = std::min({std::min(w, h), std::min(rw, rh)});
+    int S = std::min(kMaxWork, std::min(W, H));
+    if (S < 16) S = std::min(W, H);
     if (S < 4) {
         m_toolProgress = -1;
         m_alignResult = "Images are too small to align";
@@ -466,18 +526,21 @@ void FtWindow::onAlignRotateImpl()
         std::vector<int>    diskIdx;      // pixels inside the inscribed circle
         double refNorm = 0.0;
         double srcMean = 0.0;
-        int    S = 0, w = 0, h = 0, rw = 0, rh = 0;
+        int    S = 0, w = 0, h = 0;
         int    srcIdx = 0, refIdx = 0, outIdx = 0;
         double pixelSize = 1.0;
         QString srcPath;
         double bestScore = -std::numeric_limits<double>::infinity();
         double bestAngle = 0.0;
+        std::vector<double> scores;   // one per trial angle, for the overlay
     };
     auto st = std::make_shared<Work>();
-    st->S = S; st->w = w; st->h = h; st->rw = rw; st->rh = rh;
+    st->S = S; st->w = W; st->h = H;
     st->srcIdx = srcIdx; st->refIdx = refIdx; st->outIdx = outIdx;
     st->pixelSize = alignSlotPixelSize(srcIdx);
     st->srcPath   = alignSlotPath(srcIdx);
+    // Taken after padding, so the grey the rotation sweeps into the corners is
+    // the same grey the padding already put around the image.
     st->srcMean = meanOf(src);
     st->srcFull = std::move(src);
     st->ref     = std::move(ref);
@@ -491,10 +554,10 @@ void FtWindow::onAlignRotateImpl()
     // Preparation: resample both images onto the working grid, restrict the
     // comparison to the inscribed disk (the only region every rotation keeps
     // inside the frame), and zero-mean the reference over that disk.
-    steps.push_back([this, st]() {
+    steps.push_back([this, st, kAngles]() {
         const int S = st->S;
         st->srcWork = centredSquareToGrid(st->srcFull, st->w, st->h, S);
-        st->refWork = centredSquareToGrid(st->ref, st->rw, st->rh, S);
+        st->refWork = centredSquareToGrid(st->ref, st->w, st->h, S);
         st->ref.clear();
         st->ref.shrink_to_fit();
 
@@ -519,6 +582,7 @@ void FtWindow::onAlignRotateImpl()
             sq += st->refWork[i] * st->refWork[i];
         }
         st->refNorm = std::sqrt(sq);
+        st->scores.assign(kAngles, 0.0);
         m_toolProgress = 0.05;
     });
 
@@ -549,6 +613,7 @@ void FtWindow::onAlignRotateImpl()
                 double var = sumSq - sum * sum / n;
                 double denom = (var > 0.0) ? std::sqrt(var) * st->refNorm : 0.0;
                 double score = (denom > 0.0) ? dot / denom : 0.0;
+                st->scores[a] = score;
                 if (score > st->bestScore) {
                     st->bestScore = score;
                     st->bestAngle = a * kStepDeg;
@@ -578,6 +643,18 @@ void FtWindow::onAlignRotateImpl()
         st->srcFull.clear();
         st->srcWork.clear();
         st->refWork.clear();
+
+        // Hand the search curve to the overlay, reordered from the search's
+        // 0…360 sweep to the −180…+180 the plot reads in. Index j of the search
+        // holds angle j·0.5°, which belongs at display index (j + 360) mod 720.
+        {
+            const int n = (int)st->scores.size();
+            m_alignRotCurve.assign(n, 0.0);
+            for (int j = 0; j < n; j++)
+                m_alignRotCurve[(j + n / 2) % n] = st->scores[j];
+            m_alignRotBestDeg = (st->bestAngle > 180.0) ? st->bestAngle - 360.0
+                                                        : st->bestAngle;
+        }
 
         finishAlign(st->outIdx, std::move(outPix), w, h,
                     st->pixelSize, st->srcPath);

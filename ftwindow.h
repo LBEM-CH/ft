@@ -340,6 +340,18 @@ private:
     QRect drawHelpButton(QPainter &p, const QRect &frame, int marginX,
                          int marginY, int rowH, int maxSize = 20);
 
+    // Shared 3D square button carrying one character.
+    void drawSquareLabelButton(QPainter &p, const QRect &br,
+                               const QString &label, const QString &tip);
+    // "E" button immediately left of `helpRect`. Null rect when `anchor` is
+    // empty, i.e. when no exercise covers the open tool.
+    QRect drawExerciseButton(QPainter &p, const QRect &helpRect,
+                             const QString &anchor);
+    // Exercise anchor for the tool open in this panel, empty if none.
+    QString toolExerciseAnchor(bool panel2) const;
+    // Open manual_exercises.html at `anchor`.
+    void openExercise(const QString &anchor);
+
     // A panel has a "tool window" open when one of its tools draws the
     // parameter window in the panel's bottom corner. A panel has a "function"
     // open when that window, or the centred Math window, is showing — i.e.
@@ -439,6 +451,11 @@ private:
     QRect       m_p2ToolRect;       // current panel-2 tool-dialog rect
     QRect       m_p1HelpRect;       // "?" help button in the panel-1 tool dialog
     QRect       m_p2HelpRect;       // "?" help button in the panel-2 tool dialog
+    // "E" exercise button, drawn left of the "?" in the tools an exercise
+    // covers. One per panel: a panel's tool window and its Math window are
+    // never open at the same time, so they can share the rect.
+    QRect       m_p1ExerciseRect;
+    QRect       m_p2ExerciseRect;
     QRect       m_p1MathHelpRect;   // "?" help button in the panel-1 Math window
     QRect       m_p2MathHelpRect;   // "?" help button in the panel-2 Math window
 
@@ -600,7 +617,7 @@ private:
     // slot each tool id currently occupies (a group face when collapsed, or a
     // popup cell when its group is open), and m_*SlotVisible says whether that
     // tool id is currently drawn / clickable.
-    static constexpr int P1_TOOL_BUTTONS = 19;
+    static constexpr int P1_TOOL_BUTTONS = 21;
     static constexpr int P2_TOOL_BUTTONS = 14;
     QRect       m_p1BtnRects[P1_TOOL_BUTTONS];       // panel 1 left edge
     QRect       m_toolBtnRects[P2_TOOL_BUTTONS];     // panel 2 right edge
@@ -776,6 +793,21 @@ private:
     void onExtractCancel();
     void onExtractCompute();
 
+    // Copy one image buffer into another, leaving the source untouched.
+    bool        m_copyActive = false;
+    QComboBox  *m_copySrcCombo     = nullptr;
+    QComboBox  *m_copyTgtCombo     = nullptr;
+    QPushButton *m_copyCancelBtn   = nullptr;
+    QPushButton *m_copyDuplicateBtn = nullptr;
+    // Seed the two selectors: source = the buffer on display, target = the
+    // first free buffer, or the one after the source when none is free.
+    void syncCopyCombos();
+    void onCopyCancel();
+    void onCopyDuplicate();
+    // True when buffer `idx` holds an image, counting the live one for the
+    // active slot (whose history entry can lag behind what is on screen).
+    bool bufferInUse(int idx) const;
+
     // Align image to reference (cross-correlation shift / rotation search)
     bool        m_alignActive = false;
     QComboBox  *m_alignSrcCombo   = nullptr;   // image to be aligned
@@ -787,6 +819,22 @@ private:
     // Outcome of the last alignment, shown as an extra line in the parameter
     // window. Empty until one of the two buttons has run.
     QString     m_alignResult;
+
+    // ---- diagnostics drawn over panel 4 while the tool is open --------------
+    // Filled by whichever alignment was last run and shown until the tool is
+    // closed, so the user can see *why* a given shift or angle was picked
+    // rather than only what it was. Each half is drawn only once its own
+    // operation has produced data.
+    static constexpr int kAlignMapDisp = 256;   // display size of the map
+    std::vector<double> m_alignCorrMap;         // centred correlation, D×D
+    int    m_alignCorrD  = 0;                   // D, 0 when there is no map
+    double m_alignCrossX = 0, m_alignCrossY = 0;// peak, in map pixels
+    int    m_alignShiftX = 0, m_alignShiftY = 0;// the shift that was applied
+    std::vector<double> m_alignRotCurve;        // correlation per angle,
+                                                // index 0 = -180°, step 0.5°
+    double m_alignRotBestDeg = 0.0;             // chosen angle, in [-180,180)
+    void drawAlignOverlay(QPainter &p);         // panel-4 overlay
+    void clearAlignDiagnostics();
     // Source index the output combo was last kept in step with, so that an
     // output the user picked deliberately is not dragged along by the source.
     int         m_alignPrevSrc = 0;
@@ -856,6 +904,29 @@ private:
     QComboBox  *m_binCombo  = nullptr;
     QPushButton *m_applyBinBtn = nullptr;
     QCheckBox  *m_binKeepSizeBtn = nullptr;
+
+    // Pad image UI — resize the canvas to a chosen square size, keeping the
+    // image centred. Larger targets pad with average grey, smaller ones crop.
+    static constexpr int kMaxPadSize = 8192;
+    bool        m_padActive = false;
+    QComboBox  *m_padSizeCombo   = nullptr;   // 256…4096, or "custom"
+    QLineEdit  *m_padCustomEdit  = nullptr;   // only enabled for "custom"
+    QPushButton *m_padCancelBtn  = nullptr;
+    QPushButton *m_applyPadBtn   = nullptr;
+    // Selected target edge length in pixels, 0 when the entry is unusable.
+    int  padTargetSize() const;
+    void onApplyPad();
+    void onApplyPadImpl();
+    void onPadCancel();
+    // Seed the selector from the image currently loaded, so the window opens
+    // showing the size the image already has.
+    void syncPadSizeCombo();
+    // Resize `pix` about its centre: crop where the target is smaller, pad with
+    // the image's average grey (with a `taper`-pixel Hanning edge) where it is
+    // larger. Shared with the align tool, which uses it to bring two images of
+    // different size onto a common frame.
+    static void padOrCropCentred(std::vector<double> &pix, int &w, int &h,
+                                 int targetW, int targetH, double taper = 10.0);
 
     // Crop UI
     bool        m_cropActive = false;
