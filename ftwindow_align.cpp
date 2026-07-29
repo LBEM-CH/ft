@@ -179,25 +179,30 @@ double FtWindow::alignSlotPixelSize(int idx) const
     return m_history[idx].pixelSize;
 }
 
+bool FtWindow::alignSlotPixelSizeAssumed(int idx) const
+{
+    if (idx < 0 || idx >= HISTORY_SLOTS) return false;
+    if (idx == m_activeSlot && !m_image.isNull()) return m_pixelSizeAssumed;
+    return m_history[idx].pixelSizeAssumed;
+}
+
 bool FtWindow::alignInputsValid() const
 {
     if (!m_alignSrcCombo || !m_alignRefCombo) return false;
     int src = m_alignSrcCombo->currentIndex();
     int ref = m_alignRefCombo->currentIndex();
-    if (src < 0 || ref < 0) return false;
-    return src != ref;
+    // Any buffer may act as source, reference or output — including the same
+    // one for more than one role — so both merely need to be selected.
+    return src >= 0 && ref >= 0;
 }
 
 void FtWindow::syncAlignCombos()
 {
     if (!m_alignRefCombo) return;
-    int src = m_alignSrcCombo->currentIndex();
+    // Every buffer is a valid reference now, so keep the whole list enabled.
     for (int i = 0; i < HISTORY_SLOTS; i++)
-        setComboItemEnabled(m_alignRefCombo, i, i != src);
+        setComboItemEnabled(m_alignRefCombo, i, true);
 
-    // An image cannot serve as its own reference, so when the two selectors
-    // coincide the alignment actions are switched off along with the greyed-out
-    // list entry. Cancel stays live — it is the way out of the window.
     bool ok = alignInputsValid();
     m_alignShiftBtn->setEnabled(ok);
     m_alignRotBtn->setEnabled(ok);
@@ -244,7 +249,8 @@ void FtWindow::onAlignCancel()
 // description of the operation here instead would break reload and would also
 // cost the buffer its place in the saved session, which stores paths.
 void FtWindow::finishAlign(int outIdx, std::vector<double> result,
-                           int w, int h, double pixelSize, const QString &sourcePath)
+                           int w, int h, double pixelSize, const QString &sourcePath,
+                           bool pixelSizeAssumed, const QString &opName)
 {
     if (result.empty() || (int)result.size() != w * h) return;
     double mn = result[0], mx = result[0];
@@ -261,24 +267,33 @@ void FtWindow::finishAlign(int outIdx, std::vector<double> result,
     }
 
     if (m_activeSlot >= 0 && !m_image.isNull()) {
-        m_history[m_activeSlot].image     = m_image;
-        m_history[m_activeSlot].path      = m_imagePath;
-        m_history[m_activeSlot].rawPixels = m_imageRawPixels;
-        m_history[m_activeSlot].minVal    = m_imageMinVal;
-        m_history[m_activeSlot].maxVal    = m_imageMaxVal;
-        m_history[m_activeSlot].pixelSize = m_pixelSize;
-        m_history[m_activeSlot].occupied  = true;
+        m_history[m_activeSlot].image            = m_image;
+        m_history[m_activeSlot].path             = m_imagePath;
+        m_history[m_activeSlot].rawPixels        = m_imageRawPixels;
+        m_history[m_activeSlot].minVal           = m_imageMinVal;
+        m_history[m_activeSlot].maxVal           = m_imageMaxVal;
+        m_history[m_activeSlot].pixelSize        = m_pixelSize;
+        m_history[m_activeSlot].pixelSizeAssumed = m_pixelSizeAssumed;
+        m_history[m_activeSlot].lastOperation    = m_lastOperation;
+        m_history[m_activeSlot].occupied         = true;
     }
 
-    m_history[outIdx].image        = outImg;
-    m_history[outIdx].path         = sourcePath;
-    m_history[outIdx].rawPixels    = std::move(result);
-    m_history[outIdx].minVal       = mn;
-    m_history[outIdx].maxVal       = mx;
-    m_history[outIdx].pixelSize    = pixelSize;
-    m_history[outIdx].powerSpecImg = computePowerSpecMasked(outImg);
-    m_history[outIdx].occupied     = true;
-    m_history[outIdx].ftComputed   = false;
+    m_history[outIdx].image            = outImg;
+    m_history[outIdx].path             = sourcePath;
+    m_history[outIdx].rawPixels        = std::move(result);
+    m_history[outIdx].minVal           = mn;
+    m_history[outIdx].maxVal           = mx;
+    m_history[outIdx].pixelSize        = pixelSize;
+    m_history[outIdx].pixelSizeAssumed = pixelSizeAssumed;
+    m_history[outIdx].lastOperation    = opName;
+    // A derived result is not a re-fetchable example, even though it inherits the
+    // source's file path; clear the flag so WASM session restore does not replace
+    // it with the original image on the next launch.
+    m_history[outIdx].exampleImage     = false;
+    m_history[outIdx].savedSide        = outImg.width();
+    m_history[outIdx].powerSpecImg     = computePowerSpecMasked(outImg);
+    m_history[outIdx].occupied         = true;
+    m_history[outIdx].ftComputed       = false;
     m_history[outIdx].fftData.clear();
 
     m_activeSlot     = outIdx;
@@ -292,6 +307,8 @@ void FtWindow::finishAlign(int outIdx, std::vector<double> result,
         m_imageDispMax = mx;
     }
     m_pixelSize = m_history[outIdx].pixelSize;
+    m_pixelSizeAssumed = m_history[outIdx].pixelSizeAssumed;
+    m_lastOperation = m_history[outIdx].lastOperation;
     m_zoom[0].reset(w, h);
 
     // Transform the aligned image straight away rather than blanking panel 2:
@@ -320,6 +337,7 @@ void FtWindow::onAlignShiftImpl()
     int srcIdx = m_alignSrcCombo->currentIndex();
     int refIdx = m_alignRefCombo->currentIndex();
     int outIdx = m_alignOutCombo->currentIndex();
+    m_alignRefSlot = refIdx;   // remember the reference actually used
 
     int w = 0, h = 0, rw = 0, rh = 0;
     std::vector<double> src = alignSlotPixels(srcIdx, w, h);
@@ -353,6 +371,7 @@ void FtWindow::onAlignShiftImpl()
         int N = 0, w = 0, h = 0;
         int srcIdx = 0, refIdx = 0, outIdx = 0;
         double pixelSize = 1.0;
+        bool pixelSizeAssumed = false;
         QString srcPath;
     };
     auto st = std::make_shared<Work>();
@@ -361,6 +380,7 @@ void FtWindow::onAlignShiftImpl()
     st->w = W; st->h = H;
     st->srcIdx = srcIdx; st->refIdx = refIdx; st->outIdx = outIdx;
     st->pixelSize = alignSlotPixelSize(srcIdx);
+    st->pixelSizeAssumed = alignSlotPixelSizeAssumed(srcIdx);
     st->srcPath   = alignSlotPath(srcIdx);
 
     // Both are now the same size, so they drop into the same square FFT grid at
@@ -456,7 +476,8 @@ void FtWindow::onAlignShiftImpl()
             st->src.clear();
 
             finishAlign(st->outIdx, std::move(outPix), w, h,
-                        st->pixelSize, st->srcPath);
+                        st->pixelSize, st->srcPath, st->pixelSizeAssumed,
+                        tr("Aligned to reference (shift)"));
             // Reported the way a user reads it: how far the image moved, not
             // the index it was read from.
             m_alignResult = QString("Shifted by x = %1, y = %2 pixels").arg(-kx).arg(-ky);
@@ -480,6 +501,7 @@ void FtWindow::onAlignRotateImpl()
     int srcIdx = m_alignSrcCombo->currentIndex();
     int refIdx = m_alignRefCombo->currentIndex();
     int outIdx = m_alignOutCombo->currentIndex();
+    m_alignRefSlot = refIdx;   // remember the reference actually used
 
     int w = 0, h = 0, rw = 0, rh = 0;
     std::vector<double> src = alignSlotPixels(srcIdx, w, h);
@@ -529,6 +551,7 @@ void FtWindow::onAlignRotateImpl()
         int    S = 0, w = 0, h = 0;
         int    srcIdx = 0, refIdx = 0, outIdx = 0;
         double pixelSize = 1.0;
+        bool   pixelSizeAssumed = false;
         QString srcPath;
         double bestScore = -std::numeric_limits<double>::infinity();
         double bestAngle = 0.0;
@@ -538,6 +561,7 @@ void FtWindow::onAlignRotateImpl()
     st->S = S; st->w = W; st->h = H;
     st->srcIdx = srcIdx; st->refIdx = refIdx; st->outIdx = outIdx;
     st->pixelSize = alignSlotPixelSize(srcIdx);
+    st->pixelSizeAssumed = alignSlotPixelSizeAssumed(srcIdx);
     st->srcPath   = alignSlotPath(srcIdx);
     // Taken after padding, so the grey the rotation sweeps into the corners is
     // the same grey the padding already put around the image.
@@ -657,7 +681,8 @@ void FtWindow::onAlignRotateImpl()
         }
 
         finishAlign(st->outIdx, std::move(outPix), w, h,
-                    st->pixelSize, st->srcPath);
+                    st->pixelSize, st->srcPath, st->pixelSizeAssumed,
+                    tr("Aligned to reference (rotate)"));
         m_alignResult = QString("Rotated by %1° (correlation %2)")
                             .arg(st->bestAngle, 0, 'f', 1)
                             .arg(st->bestScore, 0, 'f', 4);

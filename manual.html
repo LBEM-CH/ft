@@ -1515,6 +1515,43 @@ and its Fourier transform more intuitive to visualise and interact with.
           instead plots the <em>CTF Amplitude Profile</em>.</td></tr>
 </table>
 <p>
+Between panels 3 and 4, a strip of four buttons sits in the centre of the
+window. They all act on the <em>active</em> buffer — the one currently on
+display in panel 1:
+</p>
+<table>
+  <tr><th>Button</th><th>Function</th></tr>
+  <tr><td><strong>Copy image</strong></td>
+      <td>Duplicate one image buffer into another, leaving the source
+          untouched — the safe way to try something destructive: copy
+          first, experiment on the copy. Pressing it opens a small
+          parameter window in the bottom-left of panel&nbsp;1 with a
+          <strong>Source buffer</strong> (defaults to the one on display),
+          a <strong>Target buffer</strong> (any existing content is
+          overwritten; defaults to the first free buffer), and
+          <strong>Cancel</strong> / <strong>Duplicate</strong>. The window
+          stays open so several buffers can be copied in a row. Pixel
+          values, display range, pixel size and the source file all travel
+          with the copy, so <em>Reload image</em> on the duplicate still
+          fetches the original; if the source is the buffer on display, its
+          <em>live</em> state (edits included) is what gets copied.</td></tr>
+  <tr><td><strong>Reload image</strong></td>
+      <td>Re-read the active buffer's file from disk (or, in the web
+          version, re-fetch it), discarding any edits made to it.</td></tr>
+  <tr><td><strong>Save image</strong></td>
+      <td>Save the active panel-1 image. A dialog lets you pick the
+          <strong>file format</strong> — MRC (raw float data), PNG, JPEG
+          (50/80/90&nbsp;% quality), PDF or TIFF (only the formats this
+          build can write are listed) — and whether to burn in a
+          <strong>scale bar</strong> (a white bar with its length in nm in
+          the bottom-right; not applicable to the raw MRC export). On the
+          desktop you then choose the file name and location; in the
+          browser you give a file name and it downloads.</td></tr>
+  <tr><td><strong>Empty buffer</strong></td>
+      <td>Clear the active buffer after a confirmation. The file on disk is
+          not touched, and <em>Undo</em> brings the buffer back.</td></tr>
+</table>
+<p>
 The header bar at the top contains two clickable fields: the
 <strong>Fourier Analyzer</strong> title (opens an About dialog with
 contact info) and <strong>Manual</strong> (this page).
@@ -1526,21 +1563,22 @@ contact info) and <strong>Manual</strong> (this page).
 <table>
   <tr><th>Button</th><th>Function</th></tr>
   <tr><td><strong>Load</strong></td>
-      <td>Open an image file (PNG, JPG, BMP, MRC). MRC reads include
-          the pixel size from the header.</td></tr>
-  <tr><td><strong>Save</strong></td>
-      <td>Save the current panel-1 image. The file format follows the
-          extension you choose.</td></tr>
+      <td>Open an image file (PNG, JPG, BMP, MRC). MRC reads take the
+          pixel size from the header; formats that carry no scale (PNG,
+          JPG, TIFF) start with an <em>assumed</em> 1&nbsp;pixel&nbsp;=&nbsp;1&nbsp;Å,
+          flagged as <em>“Assumed:”</em> under panel&nbsp;1 until you set a
+          real value by double-clicking the pixel-size line.</td></tr>
   <tr><td><strong>New</strong></td>
       <td>Create a blank image of a chosen size (512–4096 pixels) in a
           fresh slot.</td></tr>
-  <tr><td><strong>Reload</strong></td>
-      <td>Re-read the current file from disk, discarding any edits.</td></tr>
   <tr><td><strong>Undo</strong> / <strong>Redo</strong></td>
       <td>Step backward or forward through the edit history of the
           current slot. Also bound to <kbd>⌘Z</kbd> and <kbd>⇧⌘Z</kbd>.</td></tr>
   <tr><td><strong>Fullscreen</strong></td>
-      <td>Toggle fullscreen mode.</td></tr>
+      <td>Toggle fullscreen mode. Separately, the little maximize icon
+          below either image opens a display-only full-screen view of that
+          image with no window title bar; see
+          <a href="#maximized">Maximized image view</a>.</td></tr>
   <tr><td><strong>Mode</strong></td>
       <td>Cycle the panel-2 display through cos/sin, amplitude/phase,
           complex (HSV), and power-spectrum modes.</td></tr>
@@ -1646,13 +1684,49 @@ keeps:
 <ul>
   <li>The real-space image and its raw pixel values.</li>
   <li>The file path or generated label (e.g. <em>“phase ramp: N=1024 dir=30° step=10°”</em>).</li>
-  <li>The pixel size in Ångström.</li>
+  <li>The pixel size in Ångström (and whether it is only an assumed
+      1&nbsp;px&nbsp;=&nbsp;1&nbsp;Å).</li>
+  <li>The most recent operation applied to the buffer, shown as a line
+      under the file name in panel&nbsp;1.</li>
   <li>A power-spectrum thumbnail (shown in panel 4).</li>
 </ul>
 <p>
 In the desktop versions of the program, the History is persisted between sessions — you can close the app and pick
 up where you left off. Use the <strong>New</strong> button to start a
 fresh slot, or click an empty thumbnail to begin one.
+</p>
+<p>
+The <strong>web (browser) version</strong> also remembers the last
+session, within the limits of the browser. It stores the <em>identity</em>
+of each example image you had loaded (its path on the server) in the
+browser's local storage, and on the next launch re-fetches the small ones
+automatically; larger images come back as <em>“click to load”</em>
+placeholders, loaded on demand. Images you uploaded from your own computer
+cannot be restored this way — the browser has no access to the original
+file after the page is closed — so those buffers are not remembered.
+</p>
+</details>
+
+<details id="maximized">
+<summary>Maximized image view</summary>
+<p>
+A small <strong>maximize</strong> icon sits just below each image (panel 1
+and panel 2). Clicking it opens a display-only, true full-screen view of
+that image: the top-level window goes fullscreen with <em>no title bar</em>,
+and the image fills the whole screen against a black background. Zoom and
+pan stay live; every other interaction is suppressed. Press <kbd>Esc</kbd>,
+or tap the <strong>✕</strong> in the top-right corner, to leave — the
+window returns to whatever state it was in before.
+</p>
+<p>
+A <strong>scale bar</strong> is drawn in the bottom-right corner: a white
+bar over a faint black shadow, with its length printed above it. The bar
+spans a rounded distance of roughly a tenth to a twentieth of the screen
+width. In the real-space view it is labelled in <strong>nm</strong>
+(pixel sizes are stored in Ångström); in the Fourier view it is a
+reciprocal-space bar labelled in <strong>1/Å</strong>. When the pixel size
+is only assumed, the bar carries a small <em>“(if 1px = 1Å)”</em> note
+underneath, since the whole scale is then conditional.
 </p>
 </details>
 
@@ -1669,9 +1743,10 @@ every tool lives on its own page:
   <a href="manual_panel1.html">
     <strong>Panel 1 — real-space tools</strong>
     <span>Edit (eraser, brush, taper), measure, transform (flip, shift,
-          rotate, invert), symmetrize, redimension (bin, crop), filter
-          (Gabor, Hessian), amyloid, math, particles (peak search,
-          extract).</span>
+          rotate, invert, symmetrize), redimension (bin, crop), filter
+          (Gabor, Hessian), amyloid, math (calculations, average images),
+          copy image, particles (peak search, extract), align to
+          reference.</span>
   </a>
   <a href="manual_panel2.html">
     <strong>Panel 2 — Fourier tools</strong>
