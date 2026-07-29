@@ -163,6 +163,11 @@ public:
     // label tracks fullscreen entered/left by any route (F11, Escape, our
     // own button). A no-op on other platforms and safe to call repeatedly.
     void installFullscreenSync();
+    // WASM only: called from the JS fullscreenchange listener. Keeps the button
+    // label in step and, when the maximized image view was shown full-screen,
+    // leaves that view too — so the single ESC that drops browser fullscreen
+    // also returns to the normal layout instead of stranding the image.
+    void handleBrowserFullscreenChange(bool isFullscreen);
 private slots:
     void onToggleMask(bool checked);
     void onApplyBandpass();
@@ -390,6 +395,10 @@ private:
 
     // ---- loaded image ----
     bool                m_loadingImage = false;
+    // Set just before loadImageData() runs for an example image fetched from the
+    // server, so the slot can be tagged re-fetchable for WASM session
+    // persistence. Cleared by loadImageData(); an upload leaves it false.
+    bool                m_loadingExampleImage = false;
     QImage              m_image;
     QString             m_imagePath;
     std::vector<double> m_imageRawPixels;
@@ -487,6 +496,13 @@ private:
         double  pixelSize = 1.0;
         bool    pixelSizeAssumed = false;   // see FtWindow::m_pixelSizeAssumed
         QString lastOperation;              // see FtWindow::m_lastOperation
+        // WASM session persistence (localStorage): true when this slot's image
+        // came from an example file whose path can be re-fetched from the server,
+        // so its identity is worth remembering across launches. `savedSide` is
+        // the image's square side, kept so a deferred (not-yet-loaded) slot can
+        // still be re-persisted with the size that decides auto-load vs. defer.
+        bool    exampleImage = false;
+        int     savedSide = 0;
         bool    occupied = false;
         // Set when a stored session slot was deliberately NOT loaded at startup
         // (image too large, or the file lives on a network volume). Only
@@ -578,6 +594,10 @@ private:
         bool    ok = false;
     };
     static SlotImageData readSlotImage(const QString &path);
+    // Decode an already-in-memory image (WASM fetches slot images over HTTP and
+    // has no filesystem, so it decodes the fetched bytes with this).
+    static SlotImageData readSlotImageFromData(const QString &name,
+                                               const QByteArray &data);
 
     // Read slot `i` on a worker thread. The slot is marked `loading` and the
     // window keeps processing events meanwhile, so the user can still delete it
@@ -633,7 +653,7 @@ private:
     // slot each tool id currently occupies (a group face when collapsed, or a
     // popup cell when its group is open), and m_*SlotVisible says whether that
     // tool id is currently drawn / clickable.
-    static constexpr int P1_TOOL_BUTTONS = 21;
+    static constexpr int P1_TOOL_BUTTONS = 22;   // ids 0..21 (21 = Average)
     static constexpr int P2_TOOL_BUTTONS = 14;
     QRect       m_p1BtnRects[P1_TOOL_BUTTONS];       // panel 1 left edge
     QRect       m_toolBtnRects[P2_TOOL_BUTTONS];     // panel 2 right edge
@@ -828,6 +848,19 @@ private:
     // True when buffer `idx` holds an image, counting the live one for the
     // active slot (whose history entry can lag behind what is on screen).
     bool bufferInUse(int idx) const;
+
+    // Average several image buffers into one. The user toggles which buffers
+    // (a…p) go into the average, picks a target buffer, and presses Compute.
+    bool        m_averageActive = false;
+    bool        m_averageInclude[HISTORY_SLOTS] = {false};   // which buffers are summed
+    QRect       m_averageBtnRects[HISTORY_SLOTS];            // a…p toggle hit rects
+    QComboBox  *m_averageTargetCombo = nullptr;
+    QPushButton *m_averageCancelBtn  = nullptr;
+    QPushButton *m_averageComputeBtn = nullptr;
+    QString     m_averageResult;                            // status line under the buttons
+    void onAverageCancel();
+    void onAverageCompute();
+    void onAverageComputeImpl();
 
     // Align image to reference (cross-correlation shift / rotation search)
     bool        m_alignActive = false;

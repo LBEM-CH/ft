@@ -29,7 +29,7 @@ void FtWindow::buildToolGroups()
         { "Redimension", {10, 19, 11},  {} }, // bin, pad, crop
         { "Filter",      {12, 13},      {} }, // gabor, hessian
         { "Amyloid",     {14},          {} },
-        { "Math",        {15},          {} }, // math calculations (copy image is a central button)
+        { "Math",        {15, 21},      {} }, // math calculations, average images
         { "Particles",   {16, 17},      {} }, // peak, extract
         // Single-member group: the group face is what the user hovers, so the
         // group name is the tooltip that shows (it overrides the icon's own).
@@ -126,7 +126,7 @@ void FtWindow::deactivateAllP1Tools()
     m_shiftActive = false; m_rotateActive = false;
     m_p1TaperActive = false; m_p1SymmetrizeActive = false;
     m_binActive = false; m_mathActive = false; m_padActive = false;
-    m_copyActive = false;
+    m_copyActive = false; m_averageActive = false;
     m_cropActive = false; m_cropDragging = false; m_cropMoving = false; m_cropHasSelection = false;
     m_peakPickActive = false; m_extractActive = false;
     m_alignActive = false; clearAlignDiagnostics();
@@ -150,6 +150,9 @@ void FtWindow::showP1ToolWidgets()
     m_copyTgtCombo->setVisible(m_copyActive);
     m_copyCancelBtn->setVisible(m_copyActive);
     m_copyDuplicateBtn->setVisible(m_copyActive);
+    m_averageTargetCombo->setVisible(m_averageActive);
+    m_averageCancelBtn->setVisible(m_averageActive);
+    m_averageComputeBtn->setVisible(m_averageActive);
     m_padSizeCombo->setVisible(m_padActive);
     m_padCustomEdit->setVisible(m_padActive);
     m_padCancelBtn->setVisible(m_padActive);
@@ -299,6 +302,19 @@ void FtWindow::activateP1Tool(int toolId)
     case 20: {
         bool was = m_copyActive; deactivateAllP1Tools(); m_copyActive = !was;
         if (m_copyActive) syncCopyCombos();
+        break;
+    }
+    case 21: {
+        bool was = m_averageActive; deactivateAllP1Tools(); m_averageActive = !was;
+        if (m_averageActive) {
+            m_averageResult.clear();
+            // Seed the include set with every buffer that holds an image, and
+            // aim the output at the active buffer.
+            for (int i = 0; i < HISTORY_SLOTS; i++)
+                m_averageInclude[i] = bufferInUse(i);
+            if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS)
+                m_averageTargetCombo->setCurrentIndex(m_activeSlot);
+        }
         break;
     }
     case 19: {
@@ -547,6 +563,14 @@ void FtWindow::openToolHelp(bool panel2)
 {
     QString title, anchor;
     if (!toolHelpInfo(panel2, title, anchor)) return;
+    // The Copy tool is launched from the central button strip, not the panel-1
+    // tool row, and is documented in the main manual's GUI-layout section rather
+    // than on the panel-1 tool page.
+    if (!panel2 && m_copyActive) {
+        QDesktopServices::openUrl(
+            QUrl("https://lbem-status.epfl.ch/ft/manual.html#gui"));
+        return;
+    }
     openManualAnchor(panel2, anchor);
 }
 
@@ -639,6 +663,21 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
     if (!m_p2CloseRect.isNull() && m_p2CloseRect.contains(event->pos())) {
         closeP2Function();
         return;
+    }
+    // Average tool: click an a…p tile to include/exclude that buffer from the
+    // average. Buffers that hold no image are inert.
+    if (m_averageActive) {
+        for (int k = 0; k < HISTORY_SLOTS; k++) {
+            if (!m_averageBtnRects[k].isNull()
+                && m_averageBtnRects[k].contains(event->pos())) {
+                if (bufferInUse(k)) {
+                    m_averageInclude[k] = !m_averageInclude[k];
+                    m_averageResult.clear();
+                    update();
+                }
+                return;
+            }
+        }
     }
     if (!m_p1MathHelpRect.isNull() && m_p1MathHelpRect.contains(event->pos())) {
         openManualAnchor(false, "p1-math");

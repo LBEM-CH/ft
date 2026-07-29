@@ -121,9 +121,18 @@ if [ "$current_user" = "henning" ] || [ "$current_user" = "stahlber" ]; then
         pw=$(cat /Users/stahlber/.pw)
         if command -v sshpass >/dev/null 2>&1; then
             echo "Syncing app and example archives to webserver."
-            sshpass -p "$pw" rsync -a -e "$RSYNC_SSH" \
+            # sshpass must be the DIRECT parent of ssh, so it is placed inside
+            # rsync's transport command (-e) rather than wrapped around rsync.
+            # Wrapping rsync leaves ssh a grandchild with piped stdin, which makes
+            # it fall back to an X11 askpass helper (/usr/X11R6/bin/ssh-askpass)
+            # that does not exist on this Mac — so the password is never supplied
+            # and the connection is refused. The password travels via the SSHPASS
+            # env var (sshpass -e) so it never appears in the process list.
+            export SSHPASS="$pw"
+            rsync -a -e "sshpass -e $RSYNC_SSH" \
                 "$APP_TARBALL" "$EXAMPLES_TARBALL" "$REMOTE_TARGET"
-            sshpass -p "$pw" rsync -a -e "$RSYNC_SSH" "$SCRIPT_DIR/doit" "$REMOTE_TARGET"
+            rsync -a -e "sshpass -e $RSYNC_SSH" "$SCRIPT_DIR/doit" "$REMOTE_TARGET"
+            unset SSHPASS
         else
             echo "sshpass not found (install it with 'brew install sshpass'); falling back to an interactive rsync."
             rsync -a -e "$RSYNC_SSH" \
@@ -140,7 +149,7 @@ if [ "$current_user" = "henning" ] || [ "$current_user" = "stahlber" ]; then
     fi
     
     echo "==============================================================="
-    echo "Run on the webserver: \"doit\" (must extract both $(basename "$APP_TARBALL") and $(basename "$EXAMPLES_TARBALL"))"
+    echo "Run on the webserver:    doit"
     echo "==============================================================="
     echo " "
     #

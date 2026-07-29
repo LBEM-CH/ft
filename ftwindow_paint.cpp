@@ -23,7 +23,7 @@ void FtWindow::drawParamLabel(QPainter &p, const QFontMetrics &fm,
 bool FtWindow::p1ToolWindowOpen() const
 {
     return m_p1EraserActive || m_p1BrushActive || m_p1TaperActive || m_p1SymmetrizeActive
-        || m_binActive || m_padActive || m_copyActive || m_cropActive || m_peakPickActive || m_extractActive
+        || m_binActive || m_padActive || m_copyActive || m_averageActive || m_cropActive || m_peakPickActive || m_extractActive
         || m_gaborActive || m_hessianActive || m_amyloidActive || m_measureActive
         || m_shiftActive || m_rotateActive || m_alignActive
         || m_p1FlipHActive || m_p1FlipVActive || m_p1InvertActive;
@@ -53,6 +53,7 @@ bool FtWindow::toolHelpInfo(bool panel2, QString &title, QString &anchor) const
         { m_binActive,          "Bin image",              "p1-bin"               },
         { m_padActive,          "Pad image",              "p1-pad"               },
         { m_copyActive,         "Copy image buffer",      "p1-copy"              },
+        { m_averageActive,      "Average images",         "p1-average"           },
         { m_cropActive,         "Crop image",             "p1-crop"              },
         { m_peakPickActive,     "Peak search",            "p1-peak-search"       },
         { m_extractActive,      "Extract particles",      "p1-extract-particles" },
@@ -324,7 +325,7 @@ void FtWindow::paintEvent(QPaintEvent *)
                 (i == 12 && m_gaborActive) || (i == 13 && m_hessianActive) ||
                 (i == 14 && m_amyloidActive) || (i == 15 && m_mathActive) ||
                 (i == 16 && m_peakPickActive) || (i == 17 && m_extractActive) ||
-                (i == 18 && m_alignActive))
+                (i == 18 && m_alignActive) || (i == 21 && m_averageActive))
                 p.setBrush(QColor(60, 60, 60));
             else
                 p.setBrush(QColor(0, 0, 0));
@@ -1034,6 +1035,41 @@ void FtWindow::paintEvent(QPaintEvent *)
                     QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
                     QFontMetrics ttfm(ttf);
                     QString tip = "Copy an image buffer to another one";
+                    int ttw = ttfm.horizontalAdvance(tip) + 8;
+                    int tth = ttfm.height() + 4;
+                    pendingTipRect = QRect(r.right() + 4, r.center().y() - tth / 2, ttw, tth);
+                    pendingTipText = tip;
+                }
+            }
+
+            // Average icon (button 21): three numbered white squares stepping
+            // from the top-left to the bottom-right — several images summed and
+            // averaged into one.
+            if (i == 21) {
+                QRectF ir = QRectF(r).adjusted(2, 2, -2, -2);
+                double s   = ir.width() / 2.0;   // three squares stepped by s/2 span 2 sides
+                double off = s * 0.5;
+                QFont nf; nf.setBold(true);
+                nf.setPixelSize(std::max(5, (int)(s * 0.6)));
+                p.setFont(nf);
+                const char *labels[3] = { "1", "2", "3" };
+                for (int k = 0; k < 3; k++) {
+                    QRectF sq(ir.x() + off * k, ir.y() + off * k, s, s);
+                    if (k > 0) {   // drop shadow so the stacking reads
+                        p.setPen(Qt::NoPen);
+                        p.setBrush(QColor(0, 0, 0, 160));
+                        p.drawRect(sq.translated(2, 2));
+                    }
+                    p.setPen(QPen(QColor(50, 50, 50), 1));
+                    p.setBrush(m_averageActive ? QColor(180, 180, 255) : Qt::white);
+                    p.drawRect(sq);
+                    p.setPen(QColor(20, 20, 20));
+                    p.drawText(sq, Qt::AlignCenter, labels[k]);
+                }
+                if (r.contains(m_mousePos)) {
+                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                    QFontMetrics ttfm(ttf);
+                    QString tip = "Average images by summing them up";
                     int ttw = ttfm.horizontalAdvance(tip) + 8;
                     int tth = ttfm.height() + 4;
                     pendingTipRect = QRect(r.right() + 4, r.center().y() - tth / 2, ttw, tth);
@@ -3555,6 +3591,17 @@ void FtWindow::paintEvent(QPaintEvent *)
                 int r0 = labW + m_copySrcCombo->width();
                 int r1 = m_copyCancelBtn->width() + 8 + m_copyDuplicateBtn->width();
                 textW = std::max(r0, r1);
+            } else if (m_averageActive) {
+                // header + instruction + two toggle rows + target row + button row
+                // (+ an optional result line).
+                nRows = m_averageResult.isEmpty() ? 5 : 6;
+                int tbs = std::max(16, lh - 4), tg = 4;
+                int gridW  = 8 * tbs + 7 * tg;                 // 8 toggles per row
+                int chooseW = fm.horizontalAdvance("Choose which images to include in the average");
+                int tgtW   = fm.horizontalAdvance("Target buffer: ") + m_averageTargetCombo->width();
+                int btnW   = m_averageCancelBtn->width() + 8 + m_averageComputeBtn->width();
+                int resW   = m_averageResult.isEmpty() ? 0 : fm.horizontalAdvance(m_averageResult);
+                textW = std::max({ gridW, chooseW, tgtW, btnW, resW });
             } else if (m_padActive) {
                 nRows = 3;
                 int r0 = fm.horizontalAdvance("Target size (pixels): ")
@@ -3740,6 +3787,52 @@ void FtWindow::paintEvent(QPaintEvent *)
                 m_copyCancelBtn->move(tx, ty + lh * 2);
                 m_copyDuplicateBtn->move(rx + rw - margin - m_copyDuplicateBtn->width(),
                                          ty + lh * 2);
+            } else if (m_averageActive) {
+                // Row 0: instruction.
+                p.setPen(QColor(60, 60, 60));
+                p.drawText(tx, ty + fm.ascent(),
+                           "Choose which images to include in the average");
+
+                // Rows 1-2: the a…p include toggles, eight per row. Recorded in
+                // m_averageBtnRects for the click handler; a buffer that holds no
+                // image is drawn dimmed and cannot be toggled on.
+                const int tbs = std::max(16, lh - 4), tg = 4;
+                QFont bf; bf.setBold(true); bf.setPixelSize(std::max(9, tbs * 3 / 5));
+                for (int k = 0; k < HISTORY_SLOTS; k++) {
+                    int col = k % 8, row = k / 8;
+                    int bx = tx + col * (tbs + tg);
+                    int by = ty + lh + row * lh;
+                    QRect br(bx, by, tbs, tbs);
+                    m_averageBtnRects[k] = br;
+
+                    const bool has = bufferInUse(k);
+                    const bool on  = has && m_averageInclude[k];
+                    p.setPen(QPen(QColor(200, 200, 200), 1));
+                    p.setBrush(on ? QColor(70, 150, 90)
+                                  : (has ? QColor(55, 55, 55) : QColor(38, 38, 38)));
+                    p.drawRect(br);
+                    p.setFont(bf);
+                    p.setPen(has ? Qt::white : QColor(120, 120, 120));
+                    p.drawText(br, Qt::AlignCenter, QString(QChar('a' + k)));
+                }
+
+                // Row 3: target buffer selector.
+                int rowTgt = ty + lh * 3;
+                drawParamLabel(p, fm, tx, rowTgt, "Target buffer:",
+                               m_averageTargetCombo->toolTip(),
+                               m_averageTargetCombo->height());
+                m_averageTargetCombo->move(tx + fm.horizontalAdvance("Target buffer: "), rowTgt);
+
+                // Row 4: Cancel (left) and Compute average (right).
+                int rowBtn = ty + lh * 4;
+                m_averageCancelBtn->move(tx, rowBtn);
+                m_averageComputeBtn->move(rx + rw - margin - m_averageComputeBtn->width(), rowBtn);
+
+                // Row 5: status/result line.
+                if (!m_averageResult.isEmpty()) {
+                    p.setPen(QColor(60, 60, 60));
+                    p.drawText(tx, ty + lh * 5 + fm.ascent(), m_averageResult);
+                }
             } else if (m_padActive) {
                 // Row 0: target selector, with the free-text field beside it
                 // (greyed out unless "custom" is chosen).

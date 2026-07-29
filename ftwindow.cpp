@@ -148,9 +148,17 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_fullscreenBtn = new QPushButton("Go fullscreen", this);
     m_fullscreenBtn->setFixedSize(180, 30);
     connect(m_fullscreenBtn, &QPushButton::clicked, this, &FtWindow::onToggleFullscreen);
-    // Start with the label matching reality (the window may already be
-    // fullscreen), and keep it matching from here on.
+    // Start with the label matching reality, and keep it matching from here on.
+#ifdef __EMSCRIPTEN__
+    // In the browser the button tracks real browser fullscreen, which a freshly
+    // loaded page is never in (entering it needs a user gesture). Qt's
+    // isFullScreen() is unreliable here — the canvas-filling window always looks
+    // fullscreen — so start on "Go fullscreen"; the fullscreenchange listener
+    // installed just below keeps the label in step from then on.
+    updateFullscreenButton(false);
+#else
     updateFullscreenButton(isWindow() && isFullScreen());
+#endif
     installFullscreenSync();
 
     // Mode cycle button
@@ -1667,6 +1675,41 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
                 this, [this](int) { if (m_copyActive) update(); });
     }
 
+    // Average-images widgets. The a…p include toggles are custom-painted in the
+    // parameter window (see paintEvent); only the target combo and the two
+    // action buttons are real widgets.
+    {
+        m_averageTargetCombo = new QComboBox(this);
+        for (int i = 0; i < HISTORY_SLOTS; i++)
+            m_averageTargetCombo->addItem(QString(QChar('a' + i)));
+        m_averageTargetCombo->setFixedSize(70, 28);
+        m_averageTargetCombo->setStyleSheet(
+            "QComboBox { background:white; color:black; border:1px solid #888;"
+            "  padding: 2px 8px; }"
+            "QComboBox::drop-down { width: 20px; }"
+            "QComboBox QAbstractItemView { background:white; color:black;"
+            "  selection-background-color:#ccc; min-width: 60px; padding: 4px; }");
+        m_averageTargetCombo->setToolTip("Image buffer (a…p) to write the average into");
+        m_averageTargetCombo->hide();
+
+        const QString avgBtnSS =
+            "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }";
+
+        m_averageCancelBtn = new QPushButton("Cancel", this);
+        m_averageCancelBtn->setFixedSize(80, 26);
+        m_averageCancelBtn->setStyleSheet(avgBtnSS);
+        m_averageCancelBtn->setToolTip("Cancel and close this function");
+        connect(m_averageCancelBtn, &QPushButton::clicked, this, &FtWindow::onAverageCancel);
+        m_averageCancelBtn->hide();
+
+        m_averageComputeBtn = new QPushButton("Compute average", this);
+        m_averageComputeBtn->setFixedSize(140, 26);
+        m_averageComputeBtn->setStyleSheet(avgBtnSS);
+        m_averageComputeBtn->setToolTip("Average the selected images into the target buffer");
+        connect(m_averageComputeBtn, &QPushButton::clicked, this, &FtWindow::onAverageCompute);
+        m_averageComputeBtn->hide();
+    }
+
     // Align-to-reference widgets
     {
         auto makeAlignCombo = [this](const QString &tip) {
@@ -1831,6 +1874,12 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_displayMode = 3;
     m_modeBtn->setText(modeLabel());
     m_activeSlot = -1;
+    // Bring back last session's buffers from localStorage (see restoreHistory).
+    // Small images re-fetch immediately and their active one is pulled into the
+    // panels by finishSlotLoad when the fetch lands; larger ones become deferred
+    // "click to load" placeholders. If nothing was stored, m_activeSlot stays -1
+    // and the default-example fallback below runs exactly as before.
+    restoreHistory();
 #endif
 
     // If no active buffer was restored, select the first occupied slot (if any)
@@ -1885,6 +1934,12 @@ FtWindow::~FtWindow()
 void FtWindow::changeEvent(QEvent *event)
 {
     QWidget::changeEvent(event);
+#ifndef __EMSCRIPTEN__
+    // Desktop: the button follows the window's own fullscreen state. In the
+    // browser it must NOT — Qt's canvas-filling window reads as fullscreen even
+    // when the browser is not, so a WindowStateChange here would wrongly flip the
+    // label to "Leave fullscreen". There the label is driven solely by
+    // handleBrowserFullscreenChange() from the JS fullscreenchange listener.
     if (event->type() == QEvent::WindowStateChange && isWindow()) {
         updateFullscreenButton(isFullScreen());
         // On macOS the native fullscreen transition settles asynchronously, so
@@ -1895,6 +1950,7 @@ void FtWindow::changeEvent(QEvent *event)
             if (isWindow()) updateFullscreenButton(isFullScreen());
         });
     }
+#endif
 }
 
 void FtWindow::resizeEvent(QResizeEvent *)

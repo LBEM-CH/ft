@@ -286,6 +286,11 @@ void FtWindow::finishAlign(int outIdx, std::vector<double> result,
     m_history[outIdx].pixelSize        = pixelSize;
     m_history[outIdx].pixelSizeAssumed = pixelSizeAssumed;
     m_history[outIdx].lastOperation    = opName;
+    // A derived result is not a re-fetchable example, even though it inherits the
+    // source's file path; clear the flag so WASM session restore does not replace
+    // it with the original image on the next launch.
+    m_history[outIdx].exampleImage     = false;
+    m_history[outIdx].savedSide        = outImg.width();
     m_history[outIdx].powerSpecImg     = computePowerSpecMasked(outImg);
     m_history[outIdx].occupied         = true;
     m_history[outIdx].ftComputed       = false;

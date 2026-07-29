@@ -1515,6 +1515,37 @@ and its Fourier transform more intuitive to visualise and interact with.
           instead plots the <em>CTF Amplitude Profile</em>.</td></tr>
 </table>
 <p>
+Between panels 3 and 4, a strip of four buttons sits in the centre of the
+window. They all act on the <em>active</em> buffer — the one currently on
+display in panel 1:
+</p>
+<table>
+  <tr><th>Button</th><th>Function</th></tr>
+  <tr><td><strong>Copy image</strong></td>
+      <td>Duplicate one image buffer into another, leaving the source
+          untouched — the safe way to try something destructive: copy
+          first, experiment on the copy. Pressing it opens a small
+          parameter window in the bottom-left of panel&nbsp;1 with a
+          <strong>Source buffer</strong> (defaults to the one on display),
+          a <strong>Target buffer</strong> (any existing content is
+          overwritten; defaults to the first free buffer), and
+          <strong>Cancel</strong> / <strong>Duplicate</strong>. The window
+          stays open so several buffers can be copied in a row. Pixel
+          values, display range, pixel size and the source file all travel
+          with the copy, so <em>Reload image</em> on the duplicate still
+          fetches the original; if the source is the buffer on display, its
+          <em>live</em> state (edits included) is what gets copied.</td></tr>
+  <tr><td><strong>Reload image</strong></td>
+      <td>Re-read the active buffer's file from disk (or, in the web
+          version, re-fetch it), discarding any edits made to it.</td></tr>
+  <tr><td><strong>Save image</strong></td>
+      <td>Save the active panel-1 image to a file; the format follows the
+          extension you choose.</td></tr>
+  <tr><td><strong>Empty buffer</strong></td>
+      <td>Clear the active buffer after a confirmation. The file on disk is
+          not touched, and <em>Undo</em> brings the buffer back.</td></tr>
+</table>
+<p>
 The header bar at the top contains two clickable fields: the
 <strong>Fourier Analyzer</strong> title (opens an About dialog with
 contact info) and <strong>Manual</strong> (this page).
@@ -1531,18 +1562,9 @@ contact info) and <strong>Manual</strong> (this page).
           JPG, TIFF) start with an <em>assumed</em> 1&nbsp;pixel&nbsp;=&nbsp;1&nbsp;Å,
           flagged as <em>“Assumed:”</em> under panel&nbsp;1 until you set a
           real value by double-clicking the pixel-size line.</td></tr>
-  <tr><td><strong>Save</strong></td>
-      <td>Save the current panel-1 image. The file format follows the
-          extension you choose.</td></tr>
   <tr><td><strong>New</strong></td>
       <td>Create a blank image of a chosen size (512–4096 pixels) in a
           fresh slot.</td></tr>
-  <tr><td><strong>Copy image</strong></td>
-      <td>Central button just above <strong>Reload</strong>. Opens the
-          copy parameter window in the bottom-left of panel&nbsp;1 to
-          duplicate the active buffer into another slot.</td></tr>
-  <tr><td><strong>Reload</strong></td>
-      <td>Re-read the current file from disk, discarding any edits.</td></tr>
   <tr><td><strong>Undo</strong> / <strong>Redo</strong></td>
       <td>Step backward or forward through the edit history of the
           current slot. Also bound to <kbd>⌘Z</kbd> and <kbd>⇧⌘Z</kbd>.</td></tr>
@@ -1667,6 +1689,16 @@ In the desktop versions of the program, the History is persisted between session
 up where you left off. Use the <strong>New</strong> button to start a
 fresh slot, or click an empty thumbnail to begin one.
 </p>
+<p>
+The <strong>web (browser) version</strong> also remembers the last
+session, within the limits of the browser. It stores the <em>identity</em>
+of each example image you had loaded (its path on the server) in the
+browser's local storage, and on the next launch re-fetches the small ones
+automatically; larger images come back as <em>“click to load”</em>
+placeholders, loaded on demand. Images you uploaded from your own computer
+cannot be restored this way — the browser has no access to the original
+file after the page is closed — so those buffers are not remembered.
+</p>
 </details>
 
 <details id="maximized">
@@ -1706,8 +1738,9 @@ every tool lives on its own page:
     <strong>Panel 1 — real-space tools</strong>
     <span>Edit (eraser, brush, taper), measure, transform (flip, shift,
           rotate, invert, symmetrize), redimension (bin, crop), filter
-          (Gabor, Hessian), amyloid, math, copy image, particles (peak
-          search, extract), align to reference.</span>
+          (Gabor, Hessian), amyloid, math (calculations, average images),
+          copy image, particles (peak search, extract), align to
+          reference.</span>
   </a>
   <a href="manual_panel2.html">
     <strong>Panel 2 — Fourier tools</strong>
