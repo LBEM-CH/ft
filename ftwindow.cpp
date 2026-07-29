@@ -1885,8 +1885,16 @@ FtWindow::~FtWindow()
 void FtWindow::changeEvent(QEvent *event)
 {
     QWidget::changeEvent(event);
-    if (event->type() == QEvent::WindowStateChange && isWindow())
+    if (event->type() == QEvent::WindowStateChange && isWindow()) {
         updateFullscreenButton(isFullScreen());
+        // On macOS the native fullscreen transition settles asynchronously, so
+        // isFullScreen() can still report the old state during this event —
+        // most visibly on the way out, leaving the button stuck on "Leave
+        // fullscreen". Re-read once the event loop has caught up.
+        QTimer::singleShot(0, this, [this]() {
+            if (isWindow()) updateFullscreenButton(isFullScreen());
+        });
+    }
 }
 
 void FtWindow::resizeEvent(QResizeEvent *)

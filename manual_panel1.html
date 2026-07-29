@@ -249,6 +249,13 @@ Translate the image by an integer number of pixels in <code>x</code>
 and <code>y</code>. The shift is cyclic (wrap-around), so no pixel
 values are lost.
 </p>
+<p>
+Drag on the image to set the shift. While you drag, a <strong>yellow
+arrow</strong> runs from the point you grabbed to the current cursor
+position, with the displacement in image pixels shown beside it, so you
+can see how far the image will move before you release. The image is
+translated by that amount when you let go.
+</p>
 </details>
 
 <details id="p1-rotate">
@@ -322,7 +329,8 @@ or to give a specimen more empty surround before a Fourier transform.
   <strong>Target size:</strong> the edge length of the result, in pixels.
   Pick one of the standard sizes (256, 512, 1024, 2048, 4096) or
   <em>custom</em>, which enables the field beside it for any value up to
-  8192. The field stays greyed out while a standard size is selected. <br>
+  8192. The field stays greyed out while a standard size is selected. It
+  defaults to the power-of-two size just larger than the current image. <br>
   <strong>Cancel / Resize image:</strong> the line above the buttons says
   in advance whether the current choice will pad or crop, and by how much.
 </div>
@@ -330,11 +338,12 @@ or to give a specimen more empty surround before a Fourier transform.
 <p>
 A target <strong>larger</strong> than the image pads it: the image is
 centred in the new frame and the surrounding border is filled with the
-image's own average grey. The outermost 10 pixels of the original are
-faded into that grey with a Hanning roll-off, so the join carries no
-brightness step — an abrupt edge there would transform into a cross of
-streaks straight through Fourier space, which is exactly what the taper
-exists to prevent.
+average grey of the outer 5-pixel frame of the original, so the fill
+matches the picture's own edge rather than its interior mean. The
+outermost 20 pixels of the original are faded into that grey with a
+Hanning roll-off, so the join carries no brightness step — an abrupt edge
+there would transform into a cross of streaks straight through Fourier
+space, which is exactly what the taper exists to prevent.
 </p>
 <p>
 A target <strong>smaller</strong> than the image crops it instead, again

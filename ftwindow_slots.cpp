@@ -3320,15 +3320,35 @@ void FtWindow::onCropCancel()
 // edge is a plain cut with no new grey beside it to blend into, and is left
 // alone — use the Taper edges tool if it needs softening.
 void FtWindow::padOrCropCentred(std::vector<double> &pix, int &w, int &h,
-                                int targetW, int targetH, double taper)
+                                int targetW, int targetH, double taper,
+                                int greyFrameWidth)
 {
     if (targetW < 1 || targetH < 1) return;
     if (w == targetW && h == targetH) return;
     if ((int)pix.size() != w * h) return;
 
-    double sum = 0.0;
-    for (double v : pix) sum += v;
-    const double grey = pix.empty() ? 0.0 : sum / pix.size();
+    double grey;
+    if (pix.empty()) {
+        grey = 0.0;
+    } else if (greyFrameWidth > 0 && (targetW > w || targetH > h)) {
+        // Fill the new border from the average of the outer `greyFrameWidth`
+        // frame of the source image, so the padding matches the picture's own
+        // edge rather than its (possibly quite different) interior mean.
+        const int fw = std::min({ greyFrameWidth, (w + 1) / 2, (h + 1) / 2 });
+        double s = 0.0;
+        long long n = 0;
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+                if (x < fw || x >= w - fw || y < fw || y >= h - fw) {
+                    s += pix[(size_t)y * w + x];
+                    n++;
+                }
+        grey = (n > 0) ? s / (double)n : 0.0;
+    } else {
+        double sum = 0.0;
+        for (double v : pix) sum += v;
+        grey = sum / pix.size();
+    }
 
     const int  ox = (targetW - w) / 2;      // negative where the image is cropped
     const int  oy = (targetH - h) / 2;
@@ -3465,19 +3485,22 @@ void FtWindow::syncPadSizeCombo()
 {
     if (!m_padSizeCombo || m_image.isNull()) return;
     const int side = std::max(m_image.width(), m_image.height());
+    // Default to the power-of-two size just larger than the current image.
+    int target = 1;
+    while (target <= side) target <<= 1;
     QSignalBlocker b(m_padSizeCombo);
     for (int i = 0; i < m_padSizeCombo->count(); i++) {
         if (m_padSizeCombo->itemData(i).isValid()
-            && m_padSizeCombo->itemData(i).toInt() == side) {
+            && m_padSizeCombo->itemData(i).toInt() == target) {
             m_padSizeCombo->setCurrentIndex(i);
             m_padCustomEdit->setEnabled(false);
             return;
         }
     }
-    // Not one of the presets: show it under "custom" so the window opens
-    // stating the size the image actually has.
+    // No matching preset (the image is already larger than the biggest one):
+    // offer that next power of two under "custom", clamped to the maximum.
     m_padSizeCombo->setCurrentIndex(m_padSizeCombo->count() - 1);
-    m_padCustomEdit->setText(QString::number(std::min(side, kMaxPadSize)));
+    m_padCustomEdit->setText(QString::number(std::min(target, kMaxPadSize)));
     m_padCustomEdit->setEnabled(true);
 }
 
@@ -3506,7 +3529,9 @@ void FtWindow::onApplyPadImpl()
 
     storeUndoSnapshot(tr("Padded"));
 
-    padOrCropCentred(m_imageRawPixels, w, h, target, target);
+    // Pad with grey taken from the outer 5-pixel frame of the image, blended in
+    // over a 20-pixel Hanning taper so the join carries no brightness step.
+    padOrCropCentred(m_imageRawPixels, w, h, target, target, 20.0, 5);
 
     m_imageMinVal = *std::min_element(m_imageRawPixels.begin(), m_imageRawPixels.end());
     m_imageMaxVal = *std::max_element(m_imageRawPixels.begin(), m_imageRawPixels.end());

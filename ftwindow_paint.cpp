@@ -3004,6 +3004,64 @@ void FtWindow::paintEvent(QPaintEvent *)
         m_ftMathComputeBtn->move(fx + fw - btnW - btnMargin, fy + fh - btnH2 - btnMargin);
     }
 
+    // ---- Shift drag overlay (yellow arrow from grab point to cursor) ------------
+    // While dragging with the Shift tool the image itself does not move until the
+    // button is released, so draw an arrow that reports how far it will travel.
+    if (m_p1Dragging && m_shiftActive && !m_image.isNull()) {
+        p.setRenderHint(QPainter::Antialiasing, true);
+        const QPointF a = m_p1DragStart;
+        const QPointF b = m_mousePos;
+        const double dx = b.x() - a.x(), dy = b.y() - a.y();
+        const double len = std::hypot(dx, dy);
+        if (len > 2.0) {
+            const QColor yellow(255, 213, 0);
+
+            // Shaft.
+            QPen pen(yellow, 2.5);
+            pen.setCapStyle(Qt::RoundCap);
+            p.setPen(pen);
+            p.drawLine(a, b);
+
+            // Arrowhead at the cursor end.
+            const double ang    = std::atan2(dy, dx);
+            const double ah     = std::min(18.0, len);
+            const double spread = 0.42;
+            QPointF h1(b.x() - ah * std::cos(ang - spread),
+                       b.y() - ah * std::sin(ang - spread));
+            QPointF h2(b.x() - ah * std::cos(ang + spread),
+                       b.y() - ah * std::sin(ang + spread));
+            QPainterPath head;
+            head.moveTo(b); head.lineTo(h1); head.lineTo(h2); head.closeSubpath();
+            p.setPen(Qt::NoPen);
+            p.setBrush(yellow);
+            p.drawPath(head);
+
+            // A small dot marks where the drag began.
+            p.drawEllipse(a, 3.0, 3.0);
+
+            // Report the displacement in image pixels next to the cursor.
+            for (int i = 0; i < m_numDispItems; i++) {
+                const DisplayItem &di = m_dispItems[i];
+                if (!di.valid || di.zoomIdx != 0 || di.screenRect.width() <= 0) continue;
+                QRectF src = m_zoom[0].visibleRect(di.imgW, di.imgH);
+                int shiftX = (int)std::lround(dx / (double)di.screenRect.width()  * src.width());
+                int shiftY = (int)std::lround(dy / (double)di.screenRect.height() * src.height());
+                QString lbl = QString("Δx = %1, Δy = %2 px").arg(shiftX).arg(shiftY);
+                QFont lf; lf.setBold(true); lf.setPixelSize(13); p.setFont(lf);
+                QFontMetrics lfm(lf);
+                int lw = lfm.horizontalAdvance(lbl), lh2 = lfm.height();
+                QPointF lp(b.x() + 12, b.y() - 12);
+                QRectF pill(lp.x() - 5, lp.y() - lh2 + lfm.descent() - 3, lw + 10, lh2 + 6);
+                p.setPen(Qt::NoPen);
+                p.setBrush(QColor(0, 0, 0, 170));
+                p.drawRoundedRect(pill, 4, 4);
+                p.setPen(yellow);
+                p.drawText(lp, lbl);
+                break;
+            }
+        }
+    }
+
     // ---- Rotation drag overlay (red line + triangle + angle text) ---------------
     if ((m_p1Dragging && m_rotateActive) || (m_p2Dragging && m_ftRotateActive)) {
         p.setRenderHint(QPainter::Antialiasing, true);

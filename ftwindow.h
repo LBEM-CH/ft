@@ -952,9 +952,12 @@ private:
     // Resize `pix` about its centre: crop where the target is smaller, pad with
     // the image's average grey (with a `taper`-pixel Hanning edge) where it is
     // larger. Shared with the align tool, which uses it to bring two images of
-    // different size onto a common frame.
+    // different size onto a common frame. When `greyFrameWidth` > 0 the fill
+    // grey is taken from the average of that outer frame of the source image
+    // instead of the whole-image mean (used by Pad image).
     static void padOrCropCentred(std::vector<double> &pix, int &w, int &h,
-                                 int targetW, int targetH, double taper = 10.0);
+                                 int targetW, int targetH, double taper = 10.0,
+                                 int greyFrameWidth = 0);
 
     // Crop UI
     bool        m_cropActive = false;
