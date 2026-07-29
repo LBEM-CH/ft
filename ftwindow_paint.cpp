@@ -23,7 +23,7 @@ void FtWindow::drawParamLabel(QPainter &p, const QFontMetrics &fm,
 bool FtWindow::p1ToolWindowOpen() const
 {
     return m_p1EraserActive || m_p1BrushActive || m_p1TaperActive || m_p1SymmetrizeActive
-        || m_binActive || m_padActive || m_copyActive || m_cropActive || m_peakPickActive || m_extractActive
+        || m_binActive || m_padActive || m_copyActive || m_averageActive || m_cropActive || m_peakPickActive || m_extractActive
         || m_gaborActive || m_hessianActive || m_amyloidActive || m_measureActive
         || m_shiftActive || m_rotateActive || m_alignActive
         || m_p1FlipHActive || m_p1FlipVActive || m_p1InvertActive;
@@ -53,6 +53,7 @@ bool FtWindow::toolHelpInfo(bool panel2, QString &title, QString &anchor) const
         { m_binActive,          "Bin image",              "p1-bin"               },
         { m_padActive,          "Pad image",              "p1-pad"               },
         { m_copyActive,         "Copy image buffer",      "p1-copy"              },
+        { m_averageActive,      "Average images",         "p1-average"           },
         { m_cropActive,         "Crop image",             "p1-crop"              },
         { m_peakPickActive,     "Peak search",            "p1-peak-search"       },
         { m_extractActive,      "Extract particles",      "p1-extract-particles" },
@@ -324,7 +325,7 @@ void FtWindow::paintEvent(QPaintEvent *)
                 (i == 12 && m_gaborActive) || (i == 13 && m_hessianActive) ||
                 (i == 14 && m_amyloidActive) || (i == 15 && m_mathActive) ||
                 (i == 16 && m_peakPickActive) || (i == 17 && m_extractActive) ||
-                (i == 18 && m_alignActive))
+                (i == 18 && m_alignActive) || (i == 21 && m_averageActive))
                 p.setBrush(QColor(60, 60, 60));
             else
                 p.setBrush(QColor(0, 0, 0));
@@ -562,45 +563,50 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Shift image icon (button 4): arrow pointing right
+            // Shift image icon (button 5): the classic four-way move glyph — a
+            // plus of shafts with an arrowhead on each end, reading clearly as
+            // "drag to shift in any direction".
             if (i == 5) {
                 p.setRenderHint(QPainter::Antialiasing, true);
-                double cx2 = r.x() + r.width() / 2.0;
-                double cy2 = r.y() + r.height() / 2.0;
-                double hw = r.width() * 0.35;
-                double hh = r.height() * 0.22;
+                const double cx2 = r.x() + r.width() / 2.0;
+                const double cy2 = r.y() + r.height() / 2.0;
+                const QColor col = m_shiftActive ? QColor(180, 180, 255) : Qt::white;
+                const double reach = r.width()  * 0.40;   // arrow tip from centre
+                const double head  = r.width()  * 0.18;   // arrowhead length
+                const double half  = r.height() * 0.15;   // arrowhead half-width
+                const double shaftW = std::max(1.5, r.width() / 9.0);
 
+                // Shafts: a plus reaching out to where each head begins.
+                p.setPen(QPen(col, shaftW, Qt::SolidLine, Qt::RoundCap));
+                p.drawLine(QPointF(cx2 - (reach - head), cy2),
+                           QPointF(cx2 + (reach - head), cy2));
+                p.drawLine(QPointF(cx2, cy2 - (reach - head)),
+                           QPointF(cx2, cy2 + (reach - head)));
+
+                // Four arrowheads at the tips.
                 p.setPen(Qt::NoPen);
-                p.setBrush(m_shiftActive ? QColor(180, 180, 255) : Qt::white);
-                // Four-direction arrow
-                // Right
-                QPainterPath ar;
-                ar.moveTo(cx2 + hw, cy2);
-                ar.lineTo(cx2 + hw * 0.4, cy2 - hh);
-                ar.lineTo(cx2 + hw * 0.4, cy2 + hh);
+                p.setBrush(col);
+                QPainterPath ar;   // right
+                ar.moveTo(cx2 + reach, cy2);
+                ar.lineTo(cx2 + reach - head, cy2 - half);
+                ar.lineTo(cx2 + reach - head, cy2 + half);
                 ar.closeSubpath();
-                p.drawPath(ar);
-                // Left
-                QPainterPath al;
-                al.moveTo(cx2 - hw, cy2);
-                al.lineTo(cx2 - hw * 0.4, cy2 - hh);
-                al.lineTo(cx2 - hw * 0.4, cy2 + hh);
+                QPainterPath al;   // left
+                al.moveTo(cx2 - reach, cy2);
+                al.lineTo(cx2 - reach + head, cy2 - half);
+                al.lineTo(cx2 - reach + head, cy2 + half);
                 al.closeSubpath();
-                p.drawPath(al);
-                // Up
-                QPainterPath au;
-                au.moveTo(cx2, cy2 - hw);
-                au.lineTo(cx2 - hh, cy2 - hw * 0.4);
-                au.lineTo(cx2 + hh, cy2 - hw * 0.4);
+                QPainterPath au;   // up
+                au.moveTo(cx2, cy2 - reach);
+                au.lineTo(cx2 - half, cy2 - reach + head);
+                au.lineTo(cx2 + half, cy2 - reach + head);
                 au.closeSubpath();
-                p.drawPath(au);
-                // Down
-                QPainterPath ad;
-                ad.moveTo(cx2, cy2 + hw);
-                ad.lineTo(cx2 - hh, cy2 + hw * 0.4);
-                ad.lineTo(cx2 + hh, cy2 + hw * 0.4);
+                QPainterPath ad;   // down
+                ad.moveTo(cx2, cy2 + reach);
+                ad.lineTo(cx2 - half, cy2 + reach - head);
+                ad.lineTo(cx2 + half, cy2 + reach - head);
                 ad.closeSubpath();
-                p.drawPath(ad);
+                p.drawPath(ar); p.drawPath(al); p.drawPath(au); p.drawPath(ad);
 
                 p.setRenderHint(QPainter::Antialiasing, false);
 
@@ -1041,6 +1047,41 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
+            // Average icon (button 21): three numbered white squares stepping
+            // from the top-left to the bottom-right — several images summed and
+            // averaged into one.
+            if (i == 21) {
+                QRectF ir = QRectF(r).adjusted(2, 2, -2, -2);
+                double s   = ir.width() / 2.0;   // three squares stepped by s/2 span 2 sides
+                double off = s * 0.5;
+                QFont nf; nf.setBold(true);
+                nf.setPixelSize(std::max(5, (int)(s * 0.6)));
+                p.setFont(nf);
+                const char *labels[3] = { "1", "2", "3" };
+                for (int k = 0; k < 3; k++) {
+                    QRectF sq(ir.x() + off * k, ir.y() + off * k, s, s);
+                    if (k > 0) {   // drop shadow so the stacking reads
+                        p.setPen(Qt::NoPen);
+                        p.setBrush(QColor(0, 0, 0, 160));
+                        p.drawRect(sq.translated(2, 2));
+                    }
+                    p.setPen(QPen(QColor(50, 50, 50), 1));
+                    p.setBrush(m_averageActive ? QColor(180, 180, 255) : Qt::white);
+                    p.drawRect(sq);
+                    p.setPen(QColor(20, 20, 20));
+                    p.drawText(sq, Qt::AlignCenter, labels[k]);
+                }
+                if (r.contains(m_mousePos)) {
+                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                    QFontMetrics ttfm(ttf);
+                    QString tip = "Average images by summing them up";
+                    int ttw = ttfm.horizontalAdvance(tip) + 8;
+                    int tth = ttfm.height() + 4;
+                    pendingTipRect = QRect(r.right() + 4, r.center().y() - tth / 2, ttw, tth);
+                    pendingTipText = tip;
+                }
+            }
+
             // Pad-image icon (button 19): a small white square centred on the
             // black face, a third of its width — the original image sitting
             // inside the larger canvas it is padded out to.
@@ -1055,7 +1096,7 @@ void FtWindow::paintEvent(QPaintEvent *)
                 if (r.contains(m_mousePos)) {
                     QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
                     QFontMetrics ttfm(ttf);
-                    QString tip = "pad image to larger image dimensions";
+                    QString tip = "pad image to larger or crop to smaller image dimensions";
                     int ttw = ttfm.horizontalAdvance(tip) + 8;
                     int tth = ttfm.height() + 4;
                     pendingTipRect = QRect(r.right() + 4, r.center().y() - tth / 2, ttw, tth);
@@ -2169,7 +2210,10 @@ void FtWindow::paintEvent(QPaintEvent *)
             p.setFont(pf);
             p.setPen(Qt::white);
             QFontMetrics pfm(pf);
-            QString psLabel = QString("1 pixel = %1 %2")
+            // When the file carried no scale we are only assuming 1 px = 1 \u00C5;
+            // flag that so the numbers below are not mistaken for a measured size.
+            QString psLabel = QString("%1pixel = %2 %3")
+                                  .arg(m_pixelSizeAssumed ? "Assumed: 1 " : "1 ")
                                   .arg(m_pixelSize, 0, 'g', 4)
                                   .arg(QString::fromUtf8("\u00C5"));
 
@@ -2197,6 +2241,17 @@ void FtWindow::paintEvent(QPaintEvent *)
                 infoY += pfm.height() + 1;
                 QString fname = QFileInfo(m_imagePath).fileName();
                 p.drawText(infoX - pfm.horizontalAdvance(fname), infoY + pfm.ascent(), fname);
+            }
+
+            // Most recent operation applied to this buffer, one line below the
+            // file name. Drawn a touch dimmer so it reads as a status note.
+            if (!m_lastOperation.isEmpty()) {
+                infoY += pfm.height() + 1;
+                p.setPen(QColor(180, 180, 180));
+                QString opLabel = QString::fromUtf8("↳ ") + m_lastOperation;
+                p.drawText(infoX - pfm.horizontalAdvance(opLabel),
+                           infoY + pfm.ascent(), opLabel);
+                p.setPen(Qt::white);
             }
         }
 
@@ -2990,6 +3045,64 @@ void FtWindow::paintEvent(QPaintEvent *)
         m_ftMathComputeBtn->move(fx + fw - btnW - btnMargin, fy + fh - btnH2 - btnMargin);
     }
 
+    // ---- Shift drag overlay (yellow arrow from grab point to cursor) ------------
+    // While dragging with the Shift tool the image itself does not move until the
+    // button is released, so draw an arrow that reports how far it will travel.
+    if (m_p1Dragging && m_shiftActive && !m_image.isNull()) {
+        p.setRenderHint(QPainter::Antialiasing, true);
+        const QPointF a = m_p1DragStart;
+        const QPointF b = m_mousePos;
+        const double dx = b.x() - a.x(), dy = b.y() - a.y();
+        const double len = std::hypot(dx, dy);
+        if (len > 2.0) {
+            const QColor yellow(255, 213, 0);
+
+            // Shaft.
+            QPen pen(yellow, 2.5);
+            pen.setCapStyle(Qt::RoundCap);
+            p.setPen(pen);
+            p.drawLine(a, b);
+
+            // Arrowhead at the cursor end.
+            const double ang    = std::atan2(dy, dx);
+            const double ah     = std::min(18.0, len);
+            const double spread = 0.42;
+            QPointF h1(b.x() - ah * std::cos(ang - spread),
+                       b.y() - ah * std::sin(ang - spread));
+            QPointF h2(b.x() - ah * std::cos(ang + spread),
+                       b.y() - ah * std::sin(ang + spread));
+            QPainterPath head;
+            head.moveTo(b); head.lineTo(h1); head.lineTo(h2); head.closeSubpath();
+            p.setPen(Qt::NoPen);
+            p.setBrush(yellow);
+            p.drawPath(head);
+
+            // A small dot marks where the drag began.
+            p.drawEllipse(a, 3.0, 3.0);
+
+            // Report the displacement in image pixels next to the cursor.
+            for (int i = 0; i < m_numDispItems; i++) {
+                const DisplayItem &di = m_dispItems[i];
+                if (!di.valid || di.zoomIdx != 0 || di.screenRect.width() <= 0) continue;
+                QRectF src = m_zoom[0].visibleRect(di.imgW, di.imgH);
+                int shiftX = (int)std::lround(dx / (double)di.screenRect.width()  * src.width());
+                int shiftY = (int)std::lround(dy / (double)di.screenRect.height() * src.height());
+                QString lbl = QString("Δx = %1, Δy = %2 px").arg(shiftX).arg(shiftY);
+                QFont lf; lf.setBold(true); lf.setPixelSize(13); p.setFont(lf);
+                QFontMetrics lfm(lf);
+                int lw = lfm.horizontalAdvance(lbl), lh2 = lfm.height();
+                QPointF lp(b.x() + 12, b.y() - 12);
+                QRectF pill(lp.x() - 5, lp.y() - lh2 + lfm.descent() - 3, lw + 10, lh2 + 6);
+                p.setPen(Qt::NoPen);
+                p.setBrush(QColor(0, 0, 0, 170));
+                p.drawRoundedRect(pill, 4, 4);
+                p.setPen(yellow);
+                p.drawText(lp, lbl);
+                break;
+            }
+        }
+    }
+
     // ---- Rotation drag overlay (red line + triangle + angle text) ---------------
     if ((m_p1Dragging && m_rotateActive) || (m_p2Dragging && m_ftRotateActive)) {
         p.setRenderHint(QPainter::Antialiasing, true);
@@ -3483,6 +3596,17 @@ void FtWindow::paintEvent(QPaintEvent *)
                 int r0 = labW + m_copySrcCombo->width();
                 int r1 = m_copyCancelBtn->width() + 8 + m_copyDuplicateBtn->width();
                 textW = std::max(r0, r1);
+            } else if (m_averageActive) {
+                // header + instruction + two toggle rows + target row + button row
+                // (+ an optional result line).
+                nRows = m_averageResult.isEmpty() ? 5 : 6;
+                int tbs = std::max(16, lh - 4), tg = 4;
+                int gridW  = 8 * tbs + 7 * tg;                 // 8 toggles per row
+                int chooseW = fm.horizontalAdvance("Choose which images to include in the average");
+                int tgtW   = fm.horizontalAdvance("Target buffer: ") + m_averageTargetCombo->width();
+                int btnW   = m_averageCancelBtn->width() + 8 + m_averageComputeBtn->width();
+                int resW   = m_averageResult.isEmpty() ? 0 : fm.horizontalAdvance(m_averageResult);
+                textW = std::max({ gridW, chooseW, tgtW, btnW, resW });
             } else if (m_padActive) {
                 nRows = 3;
                 int r0 = fm.horizontalAdvance("Target size (pixels): ")
@@ -3532,12 +3656,19 @@ void FtWindow::paintEvent(QPaintEvent *)
                     textW = std::max({r0, r1, r2, r3});
                 }
             } else if (m_alignActive) {
-                nRows = m_alignResult.isEmpty() ? 4 : 5;
-                int r0 = fm.horizontalAdvance("Alignment reference: ") + m_alignRefCombo->width();
-                int r1 = m_alignCancelBtn->width() + 8 + m_alignShiftBtn->width()
-                         + 8 + m_alignRotBtn->width();
-                int r2 = m_alignResult.isEmpty() ? 0 : fm.horizontalAdvance(m_alignResult);
-                textW = std::max({r0, r1, r2});
+                // Three selectors laid out side by side: a header row, the
+                // pulldowns beneath, then the button row (and an optional result).
+                nRows = m_alignResult.isEmpty() ? 3 : 4;
+                const int comboW = m_alignSrcCombo->width();
+                const int colGap = 14;
+                int c0 = std::max(fm.horizontalAdvance("Image source"), comboW);
+                int c1 = std::max(fm.horizontalAdvance("Alignment reference"), comboW);
+                int c2 = std::max(fm.horizontalAdvance("Output buffer"), comboW);
+                int rCols = c0 + c1 + c2 + 2 * colGap;
+                int rBtns = m_alignCancelBtn->width() + 8 + m_alignShiftBtn->width()
+                            + 8 + m_alignRotBtn->width();
+                int rRes  = m_alignResult.isEmpty() ? 0 : fm.horizontalAdvance(m_alignResult);
+                textW = std::max({rCols, rBtns, rRes});
             } else if (m_gaborActive) {
                 nRows = 5;
                 int r0 = fm.horizontalAdvance("Sigma (envelope): ")     + m_gaborSigmaEdit->width();
@@ -3661,6 +3792,52 @@ void FtWindow::paintEvent(QPaintEvent *)
                 m_copyCancelBtn->move(tx, ty + lh * 2);
                 m_copyDuplicateBtn->move(rx + rw - margin - m_copyDuplicateBtn->width(),
                                          ty + lh * 2);
+            } else if (m_averageActive) {
+                // Row 0: instruction.
+                p.setPen(QColor(60, 60, 60));
+                p.drawText(tx, ty + fm.ascent(),
+                           "Choose which images to include in the average");
+
+                // Rows 1-2: the a…p include toggles, eight per row. Recorded in
+                // m_averageBtnRects for the click handler; a buffer that holds no
+                // image is drawn dimmed and cannot be toggled on.
+                const int tbs = std::max(16, lh - 4), tg = 4;
+                QFont bf; bf.setBold(true); bf.setPixelSize(std::max(9, tbs * 3 / 5));
+                for (int k = 0; k < HISTORY_SLOTS; k++) {
+                    int col = k % 8, row = k / 8;
+                    int bx = tx + col * (tbs + tg);
+                    int by = ty + lh + row * lh;
+                    QRect br(bx, by, tbs, tbs);
+                    m_averageBtnRects[k] = br;
+
+                    const bool has = bufferInUse(k);
+                    const bool on  = has && m_averageInclude[k];
+                    p.setPen(QPen(QColor(200, 200, 200), 1));
+                    p.setBrush(on ? QColor(70, 150, 90)
+                                  : (has ? QColor(55, 55, 55) : QColor(38, 38, 38)));
+                    p.drawRect(br);
+                    p.setFont(bf);
+                    p.setPen(has ? Qt::white : QColor(120, 120, 120));
+                    p.drawText(br, Qt::AlignCenter, QString(QChar('a' + k)));
+                }
+
+                // Row 3: target buffer selector.
+                int rowTgt = ty + lh * 3;
+                drawParamLabel(p, fm, tx, rowTgt, "Target buffer:",
+                               m_averageTargetCombo->toolTip(),
+                               m_averageTargetCombo->height());
+                m_averageTargetCombo->move(tx + fm.horizontalAdvance("Target buffer: "), rowTgt);
+
+                // Row 4: Cancel (left) and Compute average (right).
+                int rowBtn = ty + lh * 4;
+                m_averageCancelBtn->move(tx, rowBtn);
+                m_averageComputeBtn->move(rx + rw - margin - m_averageComputeBtn->width(), rowBtn);
+
+                // Row 5: status/result line.
+                if (!m_averageResult.isEmpty()) {
+                    p.setPen(QColor(60, 60, 60));
+                    p.drawText(tx, ty + lh * 5 + fm.ascent(), m_averageResult);
+                }
             } else if (m_padActive) {
                 // Row 0: target selector, with the free-text field beside it
                 // (greyed out unless "custom" is chosen).
@@ -3735,26 +3912,43 @@ void FtWindow::paintEvent(QPaintEvent *)
                     m_extractComputeBtn->move(rx + rw - margin - m_extractComputeBtn->width(), ty + lh * 3);
                 }
             } else if (m_alignActive) {
-                int labW = std::max({fm.horizontalAdvance("Image source: "),
-                                     fm.horizontalAdvance("Alignment reference: "),
-                                     fm.horizontalAdvance("Output buffer: ")});
-                drawParamLabel(p, fm, tx, ty, "Image source:", m_alignSrcCombo->toolTip(),
-                               m_alignSrcCombo->height());
-                m_alignSrcCombo->move(tx + labW, ty);
-                drawParamLabel(p, fm, tx, ty + lh, "Alignment reference:", m_alignRefCombo->toolTip(),
-                               m_alignRefCombo->height());
-                m_alignRefCombo->move(tx + labW, ty + lh);
-                drawParamLabel(p, fm, tx, ty + lh * 2, "Output buffer:", m_alignOutCombo->toolTip(),
-                               m_alignOutCombo->height());
-                m_alignOutCombo->move(tx + labW, ty + lh * 2);
+                // Three columns side by side: a bold header on top, the pulldown
+                // for that buffer role directly beneath it.
+                const int comboW = m_alignSrcCombo->width();
+                const int colGap = 14;
+                int c0 = std::max(fm.horizontalAdvance("Image source"), comboW);
+                int c1 = std::max(fm.horizontalAdvance("Alignment reference"), comboW);
+                int c2 = std::max(fm.horizontalAdvance("Output buffer"), comboW);
+                int x0 = tx;
+                int x1 = x0 + c0 + colGap;
+                int x2 = x1 + c1 + colGap;
+
+                struct Col { int x; const char *head; QComboBox *cb; };
+                const Col cols[3] = {
+                    { x0, "Image source",        m_alignSrcCombo },
+                    { x1, "Alignment reference",  m_alignRefCombo },
+                    { x2, "Output buffer",        m_alignOutCombo },
+                };
+                QFont hf = sf; hf.setBold(true);
+                for (const Col &c : cols) {
+                    p.setFont(hf);
+                    p.setPen(QColor(60, 60, 60));
+                    p.drawText(c.x, ty + fm.ascent(), QString::fromLatin1(c.head));
+                    QRect hr(c.x, ty, QFontMetrics(hf).horizontalAdvance(c.head), fm.height());
+                    if (!c.cb->toolTip().isEmpty())
+                        m_paramLabelTips.emplace_back(hr, c.cb->toolTip());
+                    c.cb->move(c.x, ty + lh);
+                }
+                p.setFont(sf);
+
                 // Cancel on the left, the two alignment actions right-aligned.
-                m_alignCancelBtn->move(tx, ty + lh * 3);
+                m_alignCancelBtn->move(tx, ty + lh * 2);
                 int bRight = rx + rw - margin;
-                m_alignRotBtn->move(bRight - m_alignRotBtn->width(), ty + lh * 3);
+                m_alignRotBtn->move(bRight - m_alignRotBtn->width(), ty + lh * 2);
                 bRight -= m_alignRotBtn->width() + 8;
-                m_alignShiftBtn->move(bRight - m_alignShiftBtn->width(), ty + lh * 3);
+                m_alignShiftBtn->move(bRight - m_alignShiftBtn->width(), ty + lh * 2);
                 if (!m_alignResult.isEmpty())
-                    p.drawText(tx, ty + lh * 4 + fm.ascent(), m_alignResult);
+                    p.drawText(tx, ty + lh * 3 + fm.ascent(), m_alignResult);
             } else if (m_gaborActive) {
                 drawParamLabel(p, fm, tx, ty, "Sigma (envelope):", m_gaborSigmaEdit->toolTip());
                 m_gaborSigmaEdit->move(tx + fm.horizontalAdvance("Sigma (envelope): "), ty);
@@ -5149,6 +5343,38 @@ void FtWindow::enterMaximized(int panel)
     }
 
     m_maxPanel = panel;
+
+    // Take the top-level window truly fullscreen so no title bar remains — the
+    // maximized view is meant to fill the whole screen with the image.
+#ifdef __EMSCRIPTEN__
+    installFullscreenSync();
+    m_maxDidFullScreen = EM_ASM_INT({
+        var fs = document.fullscreenElement ||
+                 document.webkitFullscreenElement ||
+                 document.webkitCurrentFullScreenElement;
+        if (fs) return 0;   // already fullscreen — leave it be
+        var target = document.getElementById('screen') || document.documentElement;
+        var req = target.requestFullscreen ||
+                  target.webkitRequestFullscreen ||
+                  target.webkitRequestFullScreen;
+        if (!req) return 0;
+        try {
+            var p = req.call(target);
+            if (p && p.then) p.then(null, function(e) {});
+        } catch (e) { return 0; }
+        return 1;
+    });
+#else
+    m_maxDidFullScreen = false;
+    if (QWidget *top = window()) {
+        if (!top->isFullScreen()) {
+            m_maxPrevWindowState = top->windowState();
+            m_maxDidFullScreen = true;
+            top->showFullScreen();
+        }
+    }
+#endif
+
     setFocus(Qt::OtherFocusReason);   // so ESC reaches keyPressEvent
     update();
 }
@@ -5158,6 +5384,23 @@ void FtWindow::exitMaximized()
     if (m_maxPanel == 0) return;
     m_maxPanel = 0;
     m_maxCloseRect = QRect();
+
+    // Restore the window if it was us that took it fullscreen on the way in.
+    if (m_maxDidFullScreen) {
+        m_maxDidFullScreen = false;
+#ifdef __EMSCRIPTEN__
+        EM_ASM({
+            var exit = document.exitFullscreen ||
+                       document.webkitExitFullscreen ||
+                       document.webkitCancelFullScreen;
+            if (exit) exit.call(document);
+        });
+#else
+        if (QWidget *top = window())
+            top->setWindowState(m_maxPrevWindowState);
+#endif
+    }
+
     for (const QPointer<QWidget> &w : m_maxHiddenWidgets)
         if (w) w->show();
     m_maxHiddenWidgets.clear();
@@ -5234,6 +5477,101 @@ void FtWindow::paintMaximized(QPainter &p)
 
         p.fillRect(QRect(area.x() + halfW, rect().top(), divider, height()),
                    Qt::black);
+    }
+
+    // Scale bar, bottom-right corner. Its length is a "nice" round physical
+    // distance spanning roughly 1/14 of the screen width (kept within about
+    // 1/20..1/10). White bar and label sit over a faint black shadow so they
+    // stay legible on a bright image. Panel 1 is real space (nm); the Fourier
+    // panel is reciprocal space (1/Å). Pixel size is stored in Ångström.
+    if (m_numDispItems > 0 && m_pixelSize > 0.0) {
+        const DisplayItem &di = m_dispItems[m_numDispItems - 1];
+        QRectF src = itemSrcRect(di);
+        if (src.width() > 0.0 && di.screenRect.width() > 0 && di.imgW > 0) {
+            const double imgPxPerScreenPx = src.width() / di.screenRect.width();
+            const double targetScreenLen  = width() / 14.0;
+            const bool   reciprocal       = (m_maxPanel != 1);
+
+            // Physical length one screen pixel spans, and the unit to print.
+            double  physPerScreenPx;
+            QString unit;
+            if (!reciprocal) {
+                // Real space: pixel size in Å, reported in nm (1 nm = 10 Å).
+                physPerScreenPx = imgPxPerScreenPx * m_pixelSize / 10.0;
+                unit = "nm";
+            } else {
+                // Reciprocal space: one FFT pixel = 1/(N·pixelSize) in 1/Å.
+                physPerScreenPx = imgPxPerScreenPx / (di.imgW * m_pixelSize);
+                unit = QString::fromUtf8("1/Å");
+            }
+
+            const double rawPhys = physPerScreenPx * targetScreenLen;
+            if (rawPhys > 0.0 && std::isfinite(rawPhys)) {
+                // Round to the nearest 1 / 2 / 5 × 10^k.
+                double e    = std::floor(std::log10(rawPhys));
+                double base = std::pow(10.0, e);
+                double f    = rawPhys / base;
+                double nf   = (f < 1.5) ? 1.0 : (f < 3.5) ? 2.0 : (f < 7.5) ? 5.0 : 10.0;
+                double nicePhys = nf * base;
+                double barLen   = nicePhys / physPerScreenPx;   // screen pixels
+
+                if (barLen > 4.0 && barLen < width()) {
+                    const int iBarLen = (int)std::lround(barLen);
+                    const int barH = std::max(4, height() / 200);
+                    const int pad  = std::max(14, width() / 90);
+                    const int bx   = width()  - pad - iBarLen;
+                    const int by   = height() - pad - barH;
+
+                    const QString label =
+                        QString("%1 %2").arg(QString::number(nicePhys, 'g', 3), unit);
+                    QFont sf; sf.setPixelSize(std::max(12, height() / 45)); sf.setBold(true);
+                    p.setFont(sf);
+                    QFontMetrics sfm(sf);
+                    const int tw = sfm.horizontalAdvance(label);
+                    const int tx = bx + iBarLen - tw;   // label right-aligned to the bar
+                    const int ty = by - 6;              // baseline just above the bar
+
+                    p.save();
+                    // Faint black shadow underlaid behind the bar (a soft halo).
+                    p.setRenderHint(QPainter::Antialiasing, false);
+                    p.setPen(Qt::NoPen);
+                    p.setBrush(QColor(0, 0, 0, 130));
+                    p.drawRect(bx - 2, by - 2, iBarLen + 4, barH + 4);
+                    // Shadow for the text (drawn slightly offset in four directions).
+                    p.setRenderHint(QPainter::Antialiasing, true);
+                    p.setPen(QColor(0, 0, 0, 150));
+                    for (const QPoint &d : { QPoint(1, 1), QPoint(-1, 1),
+                                             QPoint(1, -1), QPoint(-1, -1) })
+                        p.drawText(tx + d.x(), ty + d.y(), label);
+                    // White bar and label on top.
+                    p.setRenderHint(QPainter::Antialiasing, false);
+                    p.fillRect(QRect(bx, by, iBarLen, barH), Qt::white);
+                    p.setRenderHint(QPainter::Antialiasing, true);
+                    p.setPen(Qt::white);
+                    p.drawText(tx, ty, label);
+
+                    // When the pixel size is only assumed, the whole scale is
+                    // conditional — note that under the bar so it is not read as
+                    // a calibrated distance.
+                    if (m_pixelSizeAssumed) {
+                        const QString note = QString::fromUtf8("(if 1px = 1Å)");
+                        QFont nf; nf.setPixelSize(std::max(10, height() / 65));
+                        p.setFont(nf);
+                        QFontMetrics nfm(nf);
+                        const int ntw = nfm.horizontalAdvance(note);
+                        const int ntx = bx + iBarLen - ntw;          // right-aligned to bar
+                        const int nty = by + barH + 2 + nfm.ascent(); // just below the bar
+                        p.setPen(QColor(0, 0, 0, 150));
+                        for (const QPoint &d : { QPoint(1, 1), QPoint(-1, 1),
+                                                 QPoint(1, -1), QPoint(-1, -1) })
+                            p.drawText(ntx + d.x(), nty + d.y(), note);
+                        p.setPen(Qt::white);
+                        p.drawText(ntx, nty, note);
+                    }
+                    p.restore();
+                }
+            }
+        }
     }
 
     // Close button, top right. This is the only way out on a touch device —

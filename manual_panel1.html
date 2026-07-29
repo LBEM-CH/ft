@@ -243,11 +243,18 @@ operations, lossless. The Fourier transform updates accordingly.
 </details>
 
 <details id="p1-shift">
-<summary>Shift image<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><polygon points="20.4,12 15.36,6.72 15.36,17.28" fill="#fff"/><polygon points="3.6,12 8.64,6.72 8.64,17.28" fill="#fff"/><polygon points="12,3.6 6.72,8.64 17.28,8.64" fill="#fff"/><polygon points="12,20.4 6.72,15.36 17.28,15.36" fill="#fff"/></svg></span></summary>
+<summary>Shift image<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><g stroke="#fff" stroke-width="2.6" stroke-linecap="round"><line x1="6.72" y1="12" x2="17.28" y2="12"/><line x1="12" y1="6.72" x2="12" y2="17.28"/></g><polygon points="21.6,12 17.28,8.4 17.28,15.6" fill="#fff"/><polygon points="2.4,12 6.72,8.4 6.72,15.6" fill="#fff"/><polygon points="12,2.4 8.4,6.72 15.6,6.72" fill="#fff"/><polygon points="12,21.6 8.4,17.28 15.6,17.28" fill="#fff"/></svg></span></summary>
 <p>
 Translate the image by an integer number of pixels in <code>x</code>
 and <code>y</code>. The shift is cyclic (wrap-around), so no pixel
 values are lost.
+</p>
+<p>
+Drag on the image to set the shift. While you drag, a <strong>yellow
+arrow</strong> runs from the point you grabbed to the current cursor
+position, with the displacement in image pixels shown beside it, so you
+can see how far the image will move before you release. The image is
+translated by that amount when you let go.
 </p>
 </details>
 
@@ -268,8 +275,6 @@ useful for cryo-EM data where particles are darker than background and
 you want a positive-contrast view.
 </p>
 </details>
-
-<h2 class="group" id="p1-group-symmetrize">Symmetrize</h2>
 
 <details id="p1-symmetrize">
 <summary>Symmetrize image<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><polygon points="12,1.92 14.37,8.74 21.59,8.89 15.83,13.25 17.93,20.16 12,16.03 6.07,20.16 8.17,13.25 2.41,8.89 9.63,8.74" fill="#fff"/></svg></span></summary>
@@ -324,7 +329,8 @@ or to give a specimen more empty surround before a Fourier transform.
   <strong>Target size:</strong> the edge length of the result, in pixels.
   Pick one of the standard sizes (256, 512, 1024, 2048, 4096) or
   <em>custom</em>, which enables the field beside it for any value up to
-  8192. The field stays greyed out while a standard size is selected. <br>
+  8192. The field stays greyed out while a standard size is selected. It
+  defaults to the power-of-two size just larger than the current image. <br>
   <strong>Cancel / Resize image:</strong> the line above the buttons says
   in advance whether the current choice will pad or crop, and by how much.
 </div>
@@ -332,11 +338,12 @@ or to give a specimen more empty surround before a Fourier transform.
 <p>
 A target <strong>larger</strong> than the image pads it: the image is
 centred in the new frame and the surrounding border is filled with the
-image's own average grey. The outermost 10 pixels of the original are
-faded into that grey with a Hanning roll-off, so the join carries no
-brightness step — an abrupt edge there would transform into a cross of
-streaks straight through Fourier space, which is exactly what the taper
-exists to prevent.
+average grey of the outer 5-pixel frame of the original, so the fill
+matches the picture's own edge rather than its interior mean. The
+outermost 20 pixels of the original are faded into that grey with a
+Hanning roll-off, so the join carries no brightness step — an abrupt edge
+there would transform into a cross of streaks straight through Fourier
+space, which is exactly what the taper exists to prevent.
 </p>
 <p>
 A target <strong>smaller</strong> than the image crops it instead, again
@@ -681,37 +688,45 @@ Alternatively, multiply their Fourier transforms with the <em>Math</em> tool in 
 result to the convolution or correlation in real space. 
 </p><p> 
 Explicit convolution and correlation in real space are computationally very expensive.
-The Fourier-space multiplication is much faster. So this is a good way to get a visual 
+The Fourier-space multiplication is much faster. So this is a good way to get a visual
 intuition for why the convolution and correlation theorems are so useful in practice.
 </p>
 </details>
 
-<details id="p1-copy">
-<summary>Copy image buffer<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><rect x="3" y="3" width="11" height="11" fill="#fff" stroke="#464646" stroke-width="0.8"/><text x="8.5" y="11.5" font-family="sans-serif" font-size="8" font-weight="bold" text-anchor="middle" fill="#141414">1</text><rect x="11.6" y="11.6" width="11" height="11" fill="#000" opacity="0.6"/><rect x="10.6" y="10.6" width="11" height="11" fill="#fff" stroke="#282828" stroke-width="0.8"/><text x="16.1" y="19.1" font-family="sans-serif" font-size="8" font-weight="bold" text-anchor="middle" fill="#141414">2</text></svg></span></summary>
+<details id="p1-average">
+<summary>Average images<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><rect x="2.5" y="2.5" width="9" height="9" fill="#fff" stroke="#464646" stroke-width="0.7"/><text x="7" y="9.6" font-family="sans-serif" font-size="6.5" font-weight="bold" text-anchor="middle" fill="#141414">1</text><rect x="7.25" y="7.25" width="9" height="9" fill="#000" opacity="0.55"/><rect x="6.75" y="6.75" width="9" height="9" fill="#fff" stroke="#282828" stroke-width="0.7"/><text x="11.25" y="13.85" font-family="sans-serif" font-size="6.5" font-weight="bold" text-anchor="middle" fill="#141414">2</text><rect x="11.5" y="11.5" width="9" height="9" fill="#000" opacity="0.55"/><rect x="11" y="11" width="9" height="9" fill="#fff" stroke="#282828" stroke-width="0.7"/><text x="15.5" y="18.1" font-family="sans-serif" font-size="6.5" font-weight="bold" text-anchor="middle" fill="#141414">3</text></svg></span></summary>
 <p>
-Duplicate one image buffer into another. The source is left exactly as
-it was, so this is the safe way to try something destructive: copy
-first, experiment on the copy.
+Average several image buffers into one, by summing them up. Useful for
+raising the signal-to-noise ratio of repeated exposures of the same
+specimen, or for combining aligned particles.
 </p>
 <div class="controls">
-  <strong>Source buffer:</strong> the buffer (a…p) to copy from.
-  Defaults to the one on display. <br>
-  <strong>Target buffer:</strong> where the copy is written; any content
-  it had is overwritten. Defaults to the first buffer that is still
-  empty, falling back to the one after the source when every buffer is
-  taken. <br>
-  <strong>Cancel / Duplicate:</strong> Duplicate performs the copy. The
-  window stays open, so several buffers can be copied one after another.
+  <strong>Choose which images to include:</strong> a row of clickable
+  <code>a…p</code> tiles, one per buffer. Click a tile to include or
+  exclude that buffer; buffers that hold no image are dimmed and inert.
+  On opening, every occupied buffer starts selected. <br>
+  <strong>Target buffer:</strong> the buffer (a…p) the average is written
+  to; any content it held is overwritten. Defaults to the buffer on
+  display. <br>
+  <strong>Cancel / Compute average:</strong> Compute builds the average
+  and shows it in the target buffer.
 </div>
 <BR>
 <p>
-The copy is complete: pixel values, display range, pixel size and the
-file the image came from all travel with it, so <em>Reload image</em> on
-the duplicate still fetches the original from disk. The copy does not
-become the displayed buffer — the view stays where it is, and the new
-buffer simply appears in the thumbnail row. Note that if the source is
-the buffer currently on display, it is its <em>live</em> state that gets
-copied, edits included, not the version last written to its slot.
+<strong>How the average is formed.</strong> Each selected image is first
+brought onto a common intensity scale so that no single exposure dominates:
+working in floating point, its <em>median</em> is subtracted (so the
+background sits at zero) and it is divided by its <em>standard deviation</em>
+(so the contrast has unit spread). The normalised images are then summed and
+divided by their count. Finally the resulting mean image is scaled from its
+own minimum…maximum onto the 0…255 grey range for display.
+</p>
+<p>
+<strong>Images of different size</strong> are handled the same way as
+<em>Pad image</em>: the output takes the largest input size, and each
+smaller image is centred and padded out to it, its new border filled with
+the average grey of the image's own rim and blended in over a 20-pixel
+Hanning taper so the join carries no brightness step.
 </p>
 </details>
 
@@ -846,14 +861,20 @@ the result are chosen independently, so you can align <em>a</em> onto
 <em>b</em> and drop the answer into <em>c</em> without disturbing
 either input. The reference itself is never modified.
 </p>
+<p>
+The three buffer selectors sit side by side, each under its own heading —
+<em>Image source</em>, <em>Alignment reference</em> and <em>Output
+buffer</em> — with the pulldown directly beneath the heading.
+</p>
 <div class="controls">
   <strong>Image source:</strong> the buffer (a…p) holding the image that
   moves. Defaults to the buffer on display. <br>
   <strong>Alignment reference:</strong> the buffer the image is aligned
-  onto. The source's own letter is greyed out — an image cannot be
-  aligned to itself — and if the two selectors ever end up on the same
-  buffer, both alignment buttons go grey and stop responding until you
-  pick a different one. <br>
+  onto. Every buffer is selectable — including the current source or
+  output — and the choice is <em>sticky</em>: it stays on whichever buffer
+  you last aligned onto and is never changed automatically, so opening the
+  tool again restores your previous reference. Change it only by picking a
+  different one from the pulldown. <br>
   <strong>Output buffer:</strong> where the aligned image is written. It
   defaults to the source, i.e. the image is replaced in place, and it has
   no exclusions: writing over the reference is allowed if you want it.

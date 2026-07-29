@@ -1,0 +1,23 @@
+cd 4d-manual; 
+cp *.html *.css *.png /srv/4d-manual/
+cp images/*.png /srv/4d-manual/images
+cp 4d-apache.conf /etc/apache2/conf-available/4d-manual.conf
+cd ..
+systemctl reload apache2
+
+\rm -rf /srv/ft
+mkdir -p /srv/ft
+tar xzf  ft-wasm.tar.gz -C /srv/ft
+# The example images ship in a separate archive (see build_webserver.sh) so they
+# are only re-uploaded when they actually change. It persists on the server
+# between deploys, so it is unpacked here even on builds that only changed the
+# app. /srv/ft was just wiped, so both archives must be extracted.
+if [ -f ft-examples.tar.gz ]; then
+    tar xzf ft-examples.tar.gz -C /srv/ft
+else
+    echo "warning: ft-examples.tar.gz not found — example images will be missing" >&2
+fi
+systemctl reload apache2
+
+echo "All done."
+

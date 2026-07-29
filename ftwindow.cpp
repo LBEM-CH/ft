@@ -121,6 +121,15 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_reloadBtn->setFixedSize(130, 30);
     connect(m_reloadBtn, &QPushButton::clicked, this, &FtWindow::onReloadImage);
 
+    // Copy image button — sits just above Reload in the central gutter. It opens
+    // the same copy-buffer parameter window (bottom-left of panel 1) that the
+    // panel-1 tool menu used to host under "Math".
+    m_copyImageBtn = new QPushButton("Copy image", this);
+    m_copyImageBtn->setFixedSize(130, 30);
+    m_copyImageBtn->setToolTip("Copy the active image into another buffer");
+    connect(m_copyImageBtn, &QPushButton::clicked, this,
+            [this]() { activateP1Tool(20); });
+
     // Empty-buffer button (clears the active buffer after a confirmation dialog)
     m_deleteBtn = new QPushButton("Empty buffer", this);
     m_deleteBtn->setFixedSize(130, 30);
@@ -139,9 +148,17 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_fullscreenBtn = new QPushButton("Go fullscreen", this);
     m_fullscreenBtn->setFixedSize(180, 30);
     connect(m_fullscreenBtn, &QPushButton::clicked, this, &FtWindow::onToggleFullscreen);
-    // Start with the label matching reality (the window may already be
-    // fullscreen), and keep it matching from here on.
+    // Start with the label matching reality, and keep it matching from here on.
+#ifdef __EMSCRIPTEN__
+    // In the browser the button tracks real browser fullscreen, which a freshly
+    // loaded page is never in (entering it needs a user gesture). Qt's
+    // isFullScreen() is unreliable here — the canvas-filling window always looks
+    // fullscreen — so start on "Go fullscreen"; the fullscreenchange listener
+    // installed just below keeps the label in step from then on.
+    updateFullscreenButton(false);
+#else
     updateFullscreenButton(isWindow() && isFullScreen());
+#endif
     installFullscreenSync();
 
     // Mode cycle button
@@ -158,7 +175,7 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     // Any top-level button click should dismiss the "New image" popup
     // (these buttons intercept mouse events, so mousePressEvent does not run).
     auto dismissNewImg = [this]() { if (m_newImageActive) onNewImageCancel(); };
-    for (QPushButton *b : {m_loadBtn, m_saveBtn, m_reloadBtn, m_deleteBtn,
+    for (QPushButton *b : {m_loadBtn, m_saveBtn, m_reloadBtn, m_copyImageBtn, m_deleteBtn,
                            m_undoBtn, m_redoBtn, m_fullscreenBtn, m_modeBtn}) {
         connect(b, &QPushButton::pressed, this, dismissNewImg);
     }
@@ -1658,6 +1675,41 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
                 this, [this](int) { if (m_copyActive) update(); });
     }
 
+    // Average-images widgets. The a…p include toggles are custom-painted in the
+    // parameter window (see paintEvent); only the target combo and the two
+    // action buttons are real widgets.
+    {
+        m_averageTargetCombo = new QComboBox(this);
+        for (int i = 0; i < HISTORY_SLOTS; i++)
+            m_averageTargetCombo->addItem(QString(QChar('a' + i)));
+        m_averageTargetCombo->setFixedSize(70, 28);
+        m_averageTargetCombo->setStyleSheet(
+            "QComboBox { background:white; color:black; border:1px solid #888;"
+            "  padding: 2px 8px; }"
+            "QComboBox::drop-down { width: 20px; }"
+            "QComboBox QAbstractItemView { background:white; color:black;"
+            "  selection-background-color:#ccc; min-width: 60px; padding: 4px; }");
+        m_averageTargetCombo->setToolTip("Image buffer (a…p) to write the average into");
+        m_averageTargetCombo->hide();
+
+        const QString avgBtnSS =
+            "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }";
+
+        m_averageCancelBtn = new QPushButton("Cancel", this);
+        m_averageCancelBtn->setFixedSize(80, 26);
+        m_averageCancelBtn->setStyleSheet(avgBtnSS);
+        m_averageCancelBtn->setToolTip("Cancel and close this function");
+        connect(m_averageCancelBtn, &QPushButton::clicked, this, &FtWindow::onAverageCancel);
+        m_averageCancelBtn->hide();
+
+        m_averageComputeBtn = new QPushButton("Compute average", this);
+        m_averageComputeBtn->setFixedSize(140, 26);
+        m_averageComputeBtn->setStyleSheet(avgBtnSS);
+        m_averageComputeBtn->setToolTip("Average the selected images into the target buffer");
+        connect(m_averageComputeBtn, &QPushButton::clicked, this, &FtWindow::onAverageCompute);
+        m_averageComputeBtn->hide();
+    }
+
     // Align-to-reference widgets
     {
         auto makeAlignCombo = [this](const QString &tip) {
@@ -1700,8 +1752,9 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
                     m_alignPrevSrc = idx;
                     syncAlignCombos();
                 });
+        // A manual pick becomes the remembered reference for next time.
         connect(m_alignRefCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
-                this, [this](int) { syncAlignCombos(); });
+                this, [this](int idx) { m_alignRefSlot = idx; syncAlignCombos(); });
 
         const QString alignBtnSS =
             "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }"
@@ -1803,6 +1856,8 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
         m_imageDispMin   = m_history[m_activeSlot].minVal;
         m_imageDispMax   = m_history[m_activeSlot].maxVal;
         m_pixelSize      = m_history[m_activeSlot].pixelSize;
+        m_pixelSizeAssumed = m_history[m_activeSlot].pixelSizeAssumed;
+        m_lastOperation  = m_history[m_activeSlot].lastOperation;
         if (!m_image.isNull()) {
             m_zoom[0].reset(m_image.width(), m_image.height());
             computeFFT();
@@ -1819,6 +1874,12 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_displayMode = 3;
     m_modeBtn->setText(modeLabel());
     m_activeSlot = -1;
+    // Bring back last session's buffers from localStorage (see restoreHistory).
+    // Small images re-fetch immediately and their active one is pulled into the
+    // panels by finishSlotLoad when the fetch lands; larger ones become deferred
+    // "click to load" placeholders. If nothing was stored, m_activeSlot stays -1
+    // and the default-example fallback below runs exactly as before.
+    restoreHistory();
 #endif
 
     // If no active buffer was restored, select the first occupied slot (if any)
@@ -1834,6 +1895,8 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
                 m_imageDispMin  = m_history[i].minVal;
                 m_imageDispMax  = m_history[i].maxVal;
                 m_pixelSize     = m_history[i].pixelSize;
+                m_pixelSizeAssumed = m_history[i].pixelSizeAssumed;
+                m_lastOperation = m_history[i].lastOperation;
                 if (!m_image.isNull()) {
                     m_zoom[0].reset(m_image.width(), m_image.height());
                     computeFFT();
@@ -1871,8 +1934,23 @@ FtWindow::~FtWindow()
 void FtWindow::changeEvent(QEvent *event)
 {
     QWidget::changeEvent(event);
-    if (event->type() == QEvent::WindowStateChange && isWindow())
+#ifndef __EMSCRIPTEN__
+    // Desktop: the button follows the window's own fullscreen state. In the
+    // browser it must NOT — Qt's canvas-filling window reads as fullscreen even
+    // when the browser is not, so a WindowStateChange here would wrongly flip the
+    // label to "Leave fullscreen". There the label is driven solely by
+    // handleBrowserFullscreenChange() from the JS fullscreenchange listener.
+    if (event->type() == QEvent::WindowStateChange && isWindow()) {
         updateFullscreenButton(isFullScreen());
+        // On macOS the native fullscreen transition settles asynchronously, so
+        // isFullScreen() can still report the old state during this event —
+        // most visibly on the way out, leaving the button stuck on "Leave
+        // fullscreen". Re-read once the event loop has caught up.
+        QTimer::singleShot(0, this, [this]() {
+            if (isWindow()) updateFullscreenButton(isFullScreen());
+        });
+    }
+#endif
 }
 
 void FtWindow::resizeEvent(QResizeEvent *)
@@ -1881,20 +1959,21 @@ void FtWindow::resizeEvent(QResizeEvent *)
     m_createBtn->move(8 + m_loadBtn->width() + 4, 8);
     int hy0 = height() - height() / 5;
 
-    // Reload / Save / Delete sit stacked in the gutter between the two history
-    // panels (3 and 4). paintEvent keeps the thumbnail grids clear of the same
-    // gutter — both sides derive its width from historyButtonGutter().
+    // Copy image / Reload / Save / Delete sit stacked in the gutter between the
+    // two history panels (3 and 4). paintEvent keeps the thumbnail grids clear of
+    // the same gutter — both sides derive its width from historyButtonGutter().
     {
         int bw   = m_reloadBtn->width();
         int bh   = m_reloadBtn->height();
         int gap  = 6;
         int bx   = width() / 2 - bw / 2;
         int top  = hy0 + 2;
-        int by   = top + ((height() - top) - (3 * bh + 2 * gap)) / 2;
+        int by   = top + ((height() - top) - (4 * bh + 3 * gap)) / 2;
         if (by < top + 4) by = top + 4;
-        m_reloadBtn->move(bx, by);
-        m_saveBtn  ->move(bx, by + (bh + gap));
-        m_deleteBtn->move(bx, by + 2 * (bh + gap));
+        m_copyImageBtn->move(bx, by);
+        m_reloadBtn->move(bx, by + (bh + gap));
+        m_saveBtn  ->move(bx, by + 2 * (bh + gap));
+        m_deleteBtn->move(bx, by + 3 * (bh + gap));
     }
     // When running standalone, the "Fourier Analyzer" title and the "Manual"
     // button below it occupy the top-center area, so push undo/redo below

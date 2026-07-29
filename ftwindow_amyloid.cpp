@@ -120,7 +120,7 @@ void FtWindow::onAmyloidComputeImpl()
         mapStructR = std::sqrt(maxR2) + 1.0; // small margin in map pixels
     }
 
-    storeUndoSnapshot();
+    storeUndoSnapshot(tr("Amyloid projection"));
 
     // ---- Create fresh output image at the size selected in the pulldown ----
     int outSz = m_amyloidSizeCombo->currentText().toInt();
@@ -142,6 +142,7 @@ void FtWindow::onAmyloidComputeImpl()
     m_image.fill(0);
     m_imageRawPixels.assign((size_t)outSz * outSz, 0.0);
     m_pixelSize = 1.0;  // 1 Å/pixel for the synthetic image
+    m_pixelSizeAssumed = false;  // sampling is defined for the synthetic projection
 
     if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS) {
         m_zoom[0].reset(outSz, outSz);
@@ -473,6 +474,8 @@ void FtWindow::onAmyloidComputeImpl()
                 m_history[m_activeSlot].minVal    = m_imageMinVal;
                 m_history[m_activeSlot].maxVal    = m_imageMaxVal;
                 m_history[m_activeSlot].pixelSize = m_pixelSize;
+                m_history[m_activeSlot].pixelSizeAssumed = m_pixelSizeAssumed;
+                m_history[m_activeSlot].lastOperation    = m_lastOperation;
                 m_history[m_activeSlot].occupied  = true;
                 if (m_ftComputed)
                     m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);

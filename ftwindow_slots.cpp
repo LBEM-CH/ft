@@ -2,8 +2,21 @@
 #include <cstdlib>   // std::malloc / std::free (allocation preflight probe)
 #include <QFileInfo>
 #include <QImageReader>
+#include <QImageWriter>
+#include <QComboBox>
+#include <QCheckBox>
+#include <QLabel>
+#include <QLineEdit>
+#include <QHBoxLayout>
+#include <QPdfWriter>
+#include <QPageSize>
+#include <QPageLayout>
 #ifndef __EMSCRIPTEN__
 #include <QStorageInfo>   // network-volume check for the startup history restore
+#else
+#include <QJsonDocument>  // WASM session history is persisted as JSON in localStorage
+#include <QJsonObject>
+#include <QJsonArray>
 #endif
 
 // Probe whether `bytes` can currently be allocated. The WASM build links with
@@ -61,7 +74,60 @@ static void parallelFor(int begin, int end, F &&body)
 static FtWindow *g_fsWindow = nullptr;
 extern "C" EMSCRIPTEN_KEEPALIVE void ft_on_fullscreen_change(int isFs)
 {
-    if (g_fsWindow) g_fsWindow->updateFullscreenButton(isFs != 0);
+    if (g_fsWindow) g_fsWindow->handleBrowserFullscreenChange(isFs != 0);
+}
+
+// ---- WASM session-history persistence (localStorage) ----------------------
+// The browser has no filesystem, so the last session's buffers are remembered
+// by their re-fetchable identity (the example-image path) rather than by data.
+// On the next launch small images are re-fetched automatically; larger ones
+// become "click to load" placeholders. See save/restoreHistory() below.
+
+// localStorage key holding the session history JSON. The "v1" suffix lets a
+// future format change be recognised and ignored rather than mis-parsed.
+static const char *const kWasmHistoryKey = "ftHistoryV1";
+
+// Square side (px) up to which a remembered image is re-fetched automatically at
+// launch; anything larger is left as a deferred "click to load" placeholder.
+static constexpr int kWasmAutoRestoreMaxSide = 1024;
+
+// Only paths that look like an actual image file can be re-fetched from the
+// server. Generated results (math/align/phase-ramp) carry a human label as
+// their "path" and must never be persisted as if they were fetchable.
+static bool wasmIsRefetchablePath(const QString &path)
+{
+    if (path.isEmpty()) return false;
+    static const char *const exts[] =
+        { ".png", ".tif", ".tiff", ".jpg", ".jpeg", ".mrc" };
+    for (const char *e : exts)
+        if (path.endsWith(QLatin1String(e), Qt::CaseInsensitive)) return true;
+    return false;
+}
+
+static void wasmLocalStorageSet(const char *key, const QByteArray &value)
+{
+    EM_ASM({
+        try { localStorage.setItem(UTF8ToString($0), UTF8ToString($1)); }
+        catch (e) { console.warn('ft: localStorage write failed', e); }
+    }, key, value.constData());
+}
+
+static QByteArray wasmLocalStorageGet(const char *key)
+{
+    // Copy the stored value into a caller-owned buffer, avoiding any dependency
+    // on _malloc being reachable from JS. The history JSON is ~1 KB, so 64 KB is
+    // ample; a value that somehow exceeds it is treated as absent.
+    QByteArray buf(64 * 1024, '\0');
+    const int n = EM_ASM_INT({
+        var v;
+        try { v = localStorage.getItem(UTF8ToString($0)); } catch (e) { v = null; }
+        if (v === null || v === undefined) return -1;
+        stringToUTF8(v, $1, $2);      // truncates to $2 bytes (incl. null)
+        return lengthBytesUTF8(v);
+    }, key, buf.data(), buf.size());
+    if (n < 0 || n >= buf.size()) return QByteArray();
+    buf.resize(n);
+    return buf;
 }
 
 // Largest source-image dimension permitted in the 32-bit WASM build. Bigger
@@ -253,29 +319,284 @@ void FtWindow::onLoadImage()
 #endif
 }
 
+QImage FtWindow::renderSaveImage(bool withScaleBar) const
+{
+    if (m_image.isNull()) return QImage();
+    QImage img = m_image.convertToFormat(QImage::Format_RGB32);
+    if (!withScaleBar || !(m_pixelSize > 0.0)) return img;
+
+    const int W = img.width(), H = img.height();
+    // Physical length one image pixel spans, reported in nm (pixel size is Å).
+    const double nmPerPx  = m_pixelSize / 10.0;
+    const double targetPx = W / 8.0;                    // aim for ~1/8 of the width
+    const double rawNm    = nmPerPx * targetPx;
+    if (!(rawNm > 0.0) || !std::isfinite(rawNm)) return img;
+
+    // Round to the nearest 1 / 2 / 5 × 10^k.
+    const double e    = std::floor(std::log10(rawNm));
+    const double base = std::pow(10.0, e);
+    const double f    = rawNm / base;
+    const double nf   = (f < 1.5) ? 1.0 : (f < 3.5) ? 2.0 : (f < 7.5) ? 5.0 : 10.0;
+    const double niceNm = nf * base;
+    const double barPx  = niceNm / nmPerPx;
+    if (!(barPx > 2.0) || barPx > W) return img;
+
+    QPainter p(&img);
+    const int iBar = (int)std::lround(barPx);
+    const int barH = std::max(3, H / 120);
+    const int pad  = std::max(8, W / 40);
+    const int bx   = W - pad - iBar;
+    const int by   = H - pad - barH;
+
+    const QString label = QString("%1 nm").arg(QString::number(niceNm, 'g', 3));
+    QFont sf; sf.setPixelSize(std::max(11, H / 32)); sf.setBold(true);
+    p.setFont(sf);
+    QFontMetrics sfm(sf);
+    const int tw = sfm.horizontalAdvance(label);
+    const int tx = bx + iBar - tw;
+    const int ty = by - 6;
+
+    p.setRenderHint(QPainter::Antialiasing, false);
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(0, 0, 0, 140));                    // faint shadow behind the bar
+    p.drawRect(bx - 2, by - 2, iBar + 4, barH + 4);
+
+    p.setRenderHint(QPainter::Antialiasing, true);
+    p.setPen(QColor(0, 0, 0, 160));                      // text shadow
+    for (const QPoint &d : { QPoint(1, 1), QPoint(-1, 1), QPoint(1, -1), QPoint(-1, -1) })
+        p.drawText(tx + d.x(), ty + d.y(), label);
+
+    p.setRenderHint(QPainter::Antialiasing, false);
+    p.fillRect(QRect(bx, by, iBar, barH), Qt::white);    // the bar
+    p.setRenderHint(QPainter::Antialiasing, true);
+    p.setPen(Qt::white);
+    p.drawText(tx, ty, label);
+
+    if (m_pixelSizeAssumed) {
+        const QString note = QString::fromUtf8("(if 1px = 1Å)");
+        QFont nfo; nfo.setPixelSize(std::max(9, H / 48));
+        p.setFont(nfo);
+        QFontMetrics nfm(nfo);
+        const int ntw = nfm.horizontalAdvance(note);
+        const int ntx = bx + iBar - ntw;
+        const int nty = by + barH + 2 + nfm.ascent();
+        p.setPen(QColor(0, 0, 0, 160));
+        for (const QPoint &d : { QPoint(1, 1), QPoint(-1, 1), QPoint(1, -1), QPoint(-1, -1) })
+            p.drawText(ntx + d.x(), nty + d.y(), note);
+        p.setPen(Qt::white);
+        p.drawText(ntx, nty, note);
+    }
+    p.end();
+    return img;
+}
+
+// One entry per offered export format. `ext` is the file suffix; `qtFormat` is
+// the QImageWriter format (null for the MRC and PDF special cases).
+namespace {
+struct SaveFormat {
+    const char *label;
+    const char *ext;
+    const char *qtFormat;
+    int quality;      // JPEG quality, else -1
+    bool isMrc;
+    bool isPdf;
+};
+const SaveFormat kSaveFormats[] = {
+    { "MRC (raw float data)", "mrc",  nullptr, -1, true,  false },
+    { "PNG",                  "png",  "PNG",   -1, false, false },
+    { "JPEG (90% quality)",   "jpg",  "JPEG",  90, false, false },
+    { "JPEG (80% quality)",   "jpg",  "JPEG",  80, false, false },
+    { "JPEG (50% quality)",   "jpg",  "JPEG",  50, false, false },
+    { "PDF",                  "pdf",  nullptr, -1, false, true  },
+    { "TIFF",                 "tif",  "TIFF",  -1, false, false },
+};
+const int kNumSaveFormats = (int)(sizeof(kSaveFormats) / sizeof(kSaveFormats[0]));
+}
+
+// Encode the current image in the chosen format. Returns empty on failure.
+static QByteArray encodeSaveBytes(const SaveFormat &fmt, const QImage &rgb,
+                                  const std::vector<double> &rawPixels,
+                                  int w, int h, double pixelSize)
+{
+    if (fmt.isMrc) {
+        // Raw data export: the scale bar does not apply. Use the float pixels
+        // when they match the image, else fall back to the 8-bit greys.
+        if ((qint64)rawPixels.size() == (qint64)w * h)
+            return saveMrcToData(rawPixels, w, h, pixelSize);
+        std::vector<double> px((size_t)w * h);
+        for (int y = 0; y < h; y++) {
+            const uchar *row = rgb.constScanLine(y);
+            for (int x = 0; x < w; x++)
+                px[(size_t)y * w + x] = qGray(reinterpret_cast<const QRgb *>(row)[x]);
+        }
+        return saveMrcToData(px, w, h, pixelSize);
+    }
+
+    if (fmt.isPdf) {
+        QByteArray out;
+        QBuffer buf(&out);
+        buf.open(QIODevice::WriteOnly);
+        QPdfWriter writer(&buf);
+        writer.setPageSize(QPageSize(QPageSize::A4));
+        writer.setPageMargins(QMarginsF(0, 0, 0, 0));
+        writer.setResolution(150);
+        QPainter pp(&writer);
+        QRect page = pp.viewport();
+        QSize sz = rgb.size();
+        sz.scale(page.size(), Qt::KeepAspectRatio);      // fit, preserve aspect
+        QRect target((page.width()  - sz.width())  / 2,
+                     (page.height() - sz.height()) / 2,
+                     sz.width(), sz.height());
+        pp.drawImage(target, rgb);
+        pp.end();
+        buf.close();
+        return out;
+    }
+
+    QByteArray out;
+    QBuffer buf(&out);
+    buf.open(QIODevice::WriteOnly);
+    if (!rgb.save(&buf, fmt.qtFormat, fmt.quality))
+        out.clear();
+    buf.close();
+    return out;
+}
+
+// Give `name` the format's canonical extension, first stripping any recognised
+// trailing extension for that format so it is never doubled — e.g. a JPEG named
+// "photo.jpeg" becomes "photo.jpg", not "photo.jpeg.jpg", and a TIFF named
+// "img.tiff" becomes "img.tif", not "img.tiff.tif".
+static QString applySaveExtension(QString name, const SaveFormat &fmt)
+{
+    const QString canon = QString::fromLatin1(fmt.ext);
+    QStringList exts;
+    exts << canon;
+    if (canon == "jpg") exts << "jpeg";
+    if (canon == "tif") exts << "tiff";
+    for (const QString &e : exts) {
+        if (name.endsWith("." + e, Qt::CaseInsensitive)) {
+            name.chop(e.size() + 1);
+            break;
+        }
+    }
+    return name + "." + canon;
+}
+
 void FtWindow::onSaveImage()
 {
     if (m_image.isNull()) return;
 
+    // ---- format / scale-bar chooser --------------------------------------
+    auto *dlg = new QDialog(this);
+    dlg->setAttribute(Qt::WA_DeleteOnClose);
+    dlg->setModal(true);
+    dlg->setWindowTitle(tr("Save image"));
+    dlg->setMinimumWidth(420);
+    dlg->setStyleSheet("QDialog { background:#333; } QLabel { color:#eee; font-size:14px; }");
+
+    auto *layout = new QVBoxLayout(dlg);
+    layout->setContentsMargins(18, 18, 18, 18);
+    layout->setSpacing(10);
+
 #ifdef __EMSCRIPTEN__
-    // In WASM, save image via browser download
-    QByteArray pngData;
-    QBuffer buf(&pngData);
-    buf.open(QIODevice::WriteOnly);
-    m_image.save(&buf, "PNG");
-    buf.close();
-    QFileDialog::saveFileContent(pngData, "image.png");
-#else
-    QString path = QFileDialog::getSaveFileName(
-        this, "Save image as PNG", QString(),
-        "PNG Image (*.png)");
-    if (path.isEmpty()) return;
-
-    if (!path.endsWith(".png", Qt::CaseInsensitive))
-        path += ".png";
-
-    m_image.save(path, "PNG");
+    // The browser cannot pick a save location, only a file name.
+    auto *nameLabel = new QLabel(tr("File name:"), dlg);
+    layout->addWidget(nameLabel);
+    auto *nameEdit = new QLineEdit("image", dlg);
+    nameEdit->setStyleSheet("background:#222; color:white; border:1px solid #888;"
+                            " padding:6px; font-size:14px;");
+    layout->addWidget(nameEdit);
 #endif
+
+    auto *fmtLabel = new QLabel(tr("File format:"), dlg);
+    layout->addWidget(fmtLabel);
+    auto *fmtCombo = new QComboBox(dlg);
+    fmtCombo->setMinimumWidth(320);
+    fmtCombo->setMinimumHeight(30);
+    fmtCombo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    fmtCombo->setStyleSheet(
+        "QComboBox { background:white; color:black; border:1px solid #888;"
+        "  padding:6px 10px; font-size:14px; }"
+        "QComboBox::drop-down { width:24px; }"
+        "QComboBox QAbstractItemView { background:white; color:black; font-size:14px;"
+        "  padding:4px; outline:0; selection-background-color:#cce4ff;"
+        "  selection-color:black; }");
+    // Only offer QImage formats this Qt build can actually write (TIFF, for
+    // instance, needs a plugin that is not always shipped). MRC and PDF are
+    // produced by our own code, so they are always available. Each item carries
+    // its index into kSaveFormats as user data.
+    const QList<QByteArray> writable = QImageWriter::supportedImageFormats();
+    for (int i = 0; i < kNumSaveFormats; i++) {
+        const SaveFormat &f = kSaveFormats[i];
+        bool ok = f.isMrc || f.isPdf;
+        if (!ok && f.qtFormat)
+            ok = writable.contains(QByteArray(f.qtFormat).toLower());
+        if (ok)
+            fmtCombo->addItem(QString::fromLatin1(f.label), i);
+    }
+    // Default to PNG when present.
+    for (int i = 0; i < fmtCombo->count(); i++)
+        if (fmtCombo->itemData(i).toInt() == 1) { fmtCombo->setCurrentIndex(i); break; }
+    layout->addWidget(fmtCombo);
+
+    auto *scaleBarCheck = new QCheckBox(tr("Include scale bar"), dlg);
+    scaleBarCheck->setStyleSheet("color:#eee; font-size:14px; padding:4px 0;");
+    scaleBarCheck->setChecked(true);
+    layout->addWidget(scaleBarCheck);
+
+    // The scale bar is meaningless for the raw-data MRC export.
+    auto syncScaleBar = [scaleBarCheck, fmtCombo](int comboIdx) {
+        const int fi = fmtCombo->itemData(comboIdx).toInt();
+        const bool isMrc = (fi >= 0 && fi < kNumSaveFormats && kSaveFormats[fi].isMrc);
+        scaleBarCheck->setEnabled(!isMrc);
+    };
+    connect(fmtCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), dlg, syncScaleBar);
+    syncScaleBar(fmtCombo->currentIndex());
+
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, dlg);
+    buttons->setStyleSheet(
+        "QPushButton { background-color:#888; border:2px outset #aaa; color:#eee; padding:2px 12px; }");
+    layout->addWidget(buttons);
+    connect(buttons, &QDialogButtonBox::accepted, dlg, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, dlg, &QDialog::reject);
+
+    connect(dlg, &QDialog::accepted, this, [=]() {
+        const int idx = fmtCombo->currentData().toInt();
+        if (idx < 0 || idx >= kNumSaveFormats) return;
+        const SaveFormat &fmt = kSaveFormats[idx];
+        const bool withBar = scaleBarCheck->isChecked() && scaleBarCheck->isEnabled();
+
+        const QImage rgb = renderSaveImage(withBar);
+        const int w = m_image.width(), h = m_image.height();
+        const QByteArray bytes =
+            encodeSaveBytes(fmt, rgb, m_imageRawPixels, w, h, m_pixelSize);
+        if (bytes.isEmpty()) {
+            QMessageBox::warning(this, tr("Save image"),
+                tr("Could not encode the image as %1.").arg(QString::fromLatin1(fmt.label)));
+            return;
+        }
+
+#ifdef __EMSCRIPTEN__
+        QString name = nameEdit->text().trimmed();
+        if (name.isEmpty()) name = "image";
+        name = applySaveExtension(name, fmt);
+        QFileDialog::saveFileContent(bytes, name);
+#else
+        const QString filter =
+            QString("%1 (*.%2)").arg(QString::fromLatin1(fmt.label), fmt.ext);
+        QString path = QFileDialog::getSaveFileName(this, tr("Save image"), QString(), filter);
+        if (path.isEmpty()) return;
+        path = applySaveExtension(path, fmt);
+        QFile f(path);
+        if (!f.open(QIODevice::WriteOnly) || f.write(bytes) != bytes.size()) {
+            QMessageBox::warning(this, tr("Save image"),
+                tr("Could not write %1.").arg(path));
+        }
+        f.close();
+#endif
+    });
+
+    dlg->show();
 }
 
 void FtWindow::onCreateImage()
@@ -394,6 +715,8 @@ void FtWindow::onNewImageCreateImpl()
     m_imageDispMin   = m_imageMinVal;
     m_imageDispMax   = m_imageMaxVal;
     m_pixelSize      = m_history[tgtIdx].pixelSize;
+    m_pixelSizeAssumed = m_history[tgtIdx].pixelSizeAssumed;
+    m_lastOperation  = m_history[tgtIdx].lastOperation;
     m_zoom[0].reset(m_image.width(), m_image.height());
 
     m_ftComputed = false;
@@ -431,15 +754,19 @@ void FtWindow::onCreateImageSized(int sz)
     m_imageDispMin = 0;
     m_imageDispMax = 0;
     m_pixelSize = 1.0;
+    m_pixelSizeAssumed = true;   // synthetic pattern has no physical scale
+    m_lastOperation.clear();
     m_imagePath.clear();
 
-    m_history[m_activeSlot].image     = m_image;
+    m_history[m_activeSlot].image            = m_image;
     m_history[m_activeSlot].path.clear();
-    m_history[m_activeSlot].rawPixels = m_imageRawPixels;
-    m_history[m_activeSlot].minVal    = 0;
-    m_history[m_activeSlot].maxVal    = 0;
-    m_history[m_activeSlot].pixelSize = 1.0;
-    m_history[m_activeSlot].occupied  = true;
+    m_history[m_activeSlot].rawPixels        = m_imageRawPixels;
+    m_history[m_activeSlot].minVal           = 0;
+    m_history[m_activeSlot].maxVal           = 0;
+    m_history[m_activeSlot].pixelSize        = 1.0;
+    m_history[m_activeSlot].pixelSizeAssumed = true;
+    m_history[m_activeSlot].lastOperation.clear();
+    m_history[m_activeSlot].occupied         = true;
 
     m_ftComputed = false;
     m_modeBtn->setText(modeLabel());
@@ -497,16 +824,19 @@ void FtWindow::onReloadImage()
         m_imageDispMin = r.minVal;
         m_imageDispMax = r.maxVal;
         m_pixelSize = r.pixelSize;
+        m_pixelSizeAssumed = !r.pixelSizeKnown;
         if (!m_image.isNull())
             padImageToSquare();
     } else {
         m_image = QImage(m_imagePath);
         m_pixelSize = 1.0;
+        m_pixelSizeAssumed = true;   // no scale in a PNG/TIFF/JPG — assume 1 px = 1 Å
         if (!m_image.isNull()) {
             padImageToSquare();
             extractImageData();
         }
     }
+    m_lastOperation.clear();
 
     m_ftComputed = false;
     m_modeBtn->setText(modeLabel());
@@ -568,6 +898,8 @@ void FtWindow::onDeleteImage()
         m_imageMinVal = m_imageMaxVal = 0;
         m_imageDispMin = m_imageDispMax = 0;
         m_pixelSize = 1.0;
+        m_pixelSizeAssumed = false;
+        m_lastOperation.clear();
         m_fftData.clear();
         m_fftData.shrink_to_fit();
         m_ftComputed = false;
@@ -723,6 +1055,21 @@ void FtWindow::updateFullscreenButton(bool isFullscreen)
 {
     if (m_fullscreenBtn)
         m_fullscreenBtn->setText(isFullscreen ? "Leave fullscreen" : "Go fullscreen");
+}
+
+void FtWindow::handleBrowserFullscreenChange(bool isFullscreen)
+{
+    updateFullscreenButton(isFullscreen);
+
+    // In the browser, the maximized image view is shown by requesting real
+    // fullscreen. The browser eats the first ESC to drop fullscreen and never
+    // forwards it to the app, so without this the image would stay maximized
+    // until a second ESC. Leaving fullscreen while the maximized view is up
+    // therefore also closes that view — one ESC returns straight to normal.
+    // exitMaximized() clears m_maxPanel before it asks the browser to leave
+    // fullscreen, so the explicit-close path does not re-enter here.
+    if (!isFullscreen && m_maxPanel != 0)
+        exitMaximized();
 }
 
 void FtWindow::onToggleMask(bool checked)
@@ -937,6 +1284,7 @@ void FtWindow::loadImageFile(const QString &path)
         m_imageDispMin = r.minVal;
         m_imageDispMax = r.maxVal;
         m_pixelSize = r.pixelSize;
+        m_pixelSizeAssumed = !r.pixelSizeKnown;
 
         if (m_image.isNull())
             qDebug() << "MRC load FAILED – image is null";
@@ -948,6 +1296,7 @@ void FtWindow::loadImageFile(const QString &path)
     } else {
         m_image = QImage(path);
         m_pixelSize = 1.0;
+        m_pixelSizeAssumed = true;   // no scale in a PNG/TIFF/JPG — assume 1 px = 1 Å
         if (m_image.isNull()) {
             qDebug() << "Image load FAILED for:" << path;
         } else {
@@ -960,16 +1309,19 @@ void FtWindow::loadImageFile(const QString &path)
     }
 
     m_imagePath = path;
+    m_lastOperation.clear();
 
     // Store in the active slot
     if (!m_image.isNull()) {
-        m_history[m_activeSlot].image        = m_image;
-        m_history[m_activeSlot].path         = path;
-        m_history[m_activeSlot].rawPixels    = m_imageRawPixels;
-        m_history[m_activeSlot].minVal       = m_imageMinVal;
-        m_history[m_activeSlot].maxVal       = m_imageMaxVal;
-        m_history[m_activeSlot].pixelSize    = m_pixelSize;
-        m_history[m_activeSlot].occupied     = true;
+        m_history[m_activeSlot].image            = m_image;
+        m_history[m_activeSlot].path             = path;
+        m_history[m_activeSlot].rawPixels        = m_imageRawPixels;
+        m_history[m_activeSlot].minVal           = m_imageMinVal;
+        m_history[m_activeSlot].maxVal           = m_imageMaxVal;
+        m_history[m_activeSlot].pixelSize        = m_pixelSize;
+        m_history[m_activeSlot].pixelSizeAssumed = m_pixelSizeAssumed;
+        m_history[m_activeSlot].lastOperation.clear();
+        m_history[m_activeSlot].occupied         = true;
     }
 
 #ifndef __EMSCRIPTEN__
@@ -1022,6 +1374,7 @@ void FtWindow::loadImageData(const QString &fileName, const QByteArray &fileData
         m_imageDispMin = r.minVal;
         m_imageDispMax = r.maxVal;
         m_pixelSize = r.pixelSize;
+        m_pixelSizeAssumed = !r.pixelSizeKnown;
 
         if (m_image.isNull())
             qDebug() << "MRC load FAILED – image is null";
@@ -1033,6 +1386,7 @@ void FtWindow::loadImageData(const QString &fileName, const QByteArray &fileData
     } else {
         m_image.loadFromData(fileData);
         m_pixelSize = 1.0;
+        m_pixelSizeAssumed = true;   // no scale in a PNG/TIFF/JPG — assume 1 px = 1 Å
         if (m_image.isNull()) {
             qDebug() << "Image load FAILED for:" << fileName;
         } else {
@@ -1045,16 +1399,25 @@ void FtWindow::loadImageData(const QString &fileName, const QByteArray &fileData
     }
 
     m_imagePath = fileName;
+    m_lastOperation.clear();
+    // Consume the "loaded from the example set" hint set by fetchAndLoadImage;
+    // an upload leaves it false, so its slot is not persisted as re-fetchable.
+    const bool wasExample = m_loadingExampleImage;
+    m_loadingExampleImage = false;
 
     // Store in the active slot
     if (!m_image.isNull()) {
-        m_history[m_activeSlot].image        = m_image;
-        m_history[m_activeSlot].path         = fileName;
-        m_history[m_activeSlot].rawPixels    = m_imageRawPixels;
-        m_history[m_activeSlot].minVal       = m_imageMinVal;
-        m_history[m_activeSlot].maxVal       = m_imageMaxVal;
-        m_history[m_activeSlot].pixelSize    = m_pixelSize;
-        m_history[m_activeSlot].occupied     = true;
+        m_history[m_activeSlot].image            = m_image;
+        m_history[m_activeSlot].path             = fileName;
+        m_history[m_activeSlot].rawPixels        = m_imageRawPixels;
+        m_history[m_activeSlot].minVal           = m_imageMinVal;
+        m_history[m_activeSlot].maxVal           = m_imageMaxVal;
+        m_history[m_activeSlot].pixelSize        = m_pixelSize;
+        m_history[m_activeSlot].pixelSizeAssumed = m_pixelSizeAssumed;
+        m_history[m_activeSlot].lastOperation.clear();
+        m_history[m_activeSlot].exampleImage     = wasExample;
+        m_history[m_activeSlot].savedSide        = m_image.width();
+        m_history[m_activeSlot].occupied         = true;
     }
 
     m_ftComputed = false;
@@ -1106,6 +1469,7 @@ void FtWindow::fetchAndLoadImage(const QString &relativePath)
             if (c->self->m_reloadAnimTimer) c->self->m_reloadAnimTimer->stop();
             c->self->m_reloadBtn->setStyleSheet("");
             c->self->m_reloadProgress = -1;
+            c->self->m_loadingExampleImage = true;   // fetched from the server → re-fetchable
             c->self->loadImageData(c->path, data);
             delete c;
         },
@@ -1134,6 +1498,7 @@ void FtWindow::fetchAndLoadImage(const QString &relativePath)
     }
     QByteArray data = file.readAll();
     file.close();
+    m_loadingExampleImage = true;   // from the example set → re-fetchable identity
     loadImageData(relativePath, data);
 }
 #endif
@@ -2043,6 +2408,29 @@ void FtWindow::saveHistory()
             settings.remove(key);
     }
     settings.setValue("activeSlot", m_activeSlot);
+#else
+    // WASM: remember only the re-fetchable identity (path + size) of each buffer
+    // that came from an example image. Uploads and generated results have no
+    // server-side source, so they are not persisted — see wasmIsRefetchablePath.
+    QJsonArray slotArr;
+    for (int i = 0; i < HISTORY_SLOTS; i++) {
+        const HistoryEntry &e = m_history[i];
+        const bool remembered = e.occupied || e.deferred || e.loading;
+        if (!remembered || !e.exampleImage || !wasmIsRefetchablePath(e.path))
+            continue;
+        int side = e.image.isNull() ? e.savedSide : e.image.width();
+        QJsonObject o;
+        o["slot"] = i;
+        o["path"] = e.path;
+        o["side"] = side;
+        slotArr.append(o);
+    }
+    QJsonObject root;
+    root["v"]          = 1;
+    root["activeSlot"] = m_activeSlot;
+    root["slots"]      = slotArr;
+    const QByteArray json = QJsonDocument(root).toJson(QJsonDocument::Compact);
+    wasmLocalStorageSet(kWasmHistoryKey, json);
 #endif
 }
 
@@ -2112,8 +2500,52 @@ FtWindow::SlotImageData FtWindow::readSlotImage(const QString &path)
         d.minVal     = r.minVal;
         d.maxVal     = r.maxVal;
         d.pixelSize  = r.pixelSize;
+        d.pixelSizeAssumed = !r.pixelSizeKnown;
     } else {
         d.image = QImage(path);
+        d.pixelSizeAssumed = true;   // no scale in a PNG/TIFF/JPG — assume 1 px = 1 Å
+        if (!d.image.isNull()) {
+            QImage gray = d.image.convertToFormat(QImage::Format_Grayscale8);
+            int w = gray.width(), h = gray.height();
+            d.rawPixels.resize((size_t)w * h);
+            for (int y = 0; y < h; y++) {
+                const uchar *row = gray.constScanLine(y);
+                for (int x = 0; x < w; x++)
+                    d.rawPixels[(size_t)y * w + x] = row[x];
+            }
+            d.minVal = *std::min_element(d.rawPixels.begin(), d.rawPixels.end());
+            d.maxVal = *std::max_element(d.rawPixels.begin(), d.rawPixels.end());
+        }
+    }
+
+    if (d.image.isNull()) return d;
+
+    padSlotImageToSquare(d.image, d.rawPixels, d.minVal, d.maxVal);
+    d.powerSpec = computePowerSpecMasked(d.image);
+    d.ok = true;
+    return d;
+}
+
+// Same as readSlotImage(), but from bytes already in memory rather than a file
+// on disk. The WASM build fetches slot images over HTTP and has no filesystem,
+// so it decodes the fetched bytes here.
+FtWindow::SlotImageData FtWindow::readSlotImageFromData(const QString &name,
+                                                        const QByteArray &data)
+{
+    SlotImageData d;
+    if (data.isEmpty()) return d;
+
+    if (name.endsWith(".mrc", Qt::CaseInsensitive)) {
+        MrcResult r  = loadMrcFromData(data);
+        d.image      = r.image;
+        d.rawPixels  = std::move(r.rawPixels);
+        d.minVal     = r.minVal;
+        d.maxVal     = r.maxVal;
+        d.pixelSize  = r.pixelSize;
+        d.pixelSizeAssumed = !r.pixelSizeKnown;
+    } else {
+        d.image.loadFromData(data);
+        d.pixelSizeAssumed = true;   // no scale in a PNG/TIFF/JPG — assume 1 px = 1 Å
         if (!d.image.isNull()) {
             QImage gray = d.image.convertToFormat(QImage::Format_Grayscale8);
             int w = gray.width(), h = gray.height();
@@ -2155,15 +2587,16 @@ bool FtWindow::loadHistorySlotFromDisk(int i)
         return false;
     }
 
-    m_history[i].image        = d.image;
-    m_history[i].rawPixels    = std::move(d.rawPixels);
-    m_history[i].minVal       = d.minVal;
-    m_history[i].maxVal       = d.maxVal;
-    m_history[i].pixelSize    = d.pixelSize;
-    m_history[i].powerSpecImg = d.powerSpec;
-    m_history[i].occupied     = true;
-    m_history[i].deferred     = false;
-    m_history[i].loading      = false;
+    m_history[i].image            = d.image;
+    m_history[i].rawPixels        = std::move(d.rawPixels);
+    m_history[i].minVal           = d.minVal;
+    m_history[i].maxVal           = d.maxVal;
+    m_history[i].pixelSize        = d.pixelSize;
+    m_history[i].pixelSizeAssumed = d.pixelSizeAssumed;
+    m_history[i].powerSpecImg     = d.powerSpec;
+    m_history[i].occupied         = true;
+    m_history[i].deferred         = false;
+    m_history[i].loading          = false;
     return true;
 #endif
 }
@@ -2204,8 +2637,42 @@ void FtWindow::startSlotLoad(int i)
     finishSlotLoad(i, m_slotLoadToken[i], readSlotImage(path));
 #endif
     update();
-#else
-    Q_UNUSED(i);
+#else  // __EMSCRIPTEN__
+    // WASM has no filesystem: fetch the slot's image from the server, decode it,
+    // and install it exactly as the desktop worker thread would. Used both when
+    // a deferred placeholder is clicked and when restoreHistory() brings small
+    // images back at launch.
+    if (i < 0 || i >= HISTORY_SLOTS) return;
+    if (m_history[i].loading) return;                 // already on its way
+    const QString path = m_history[i].path;
+    if (path.isEmpty()) return;
+
+    m_history[i].deferred = false;
+    m_history[i].loading  = true;
+    const quint64 token = ++m_slotLoadToken[i];
+
+    struct SlotFetchCtx { FtWindow *self; int slot; quint64 token; QString name; };
+    auto *ctx = new SlotFetchCtx{ this, i, token, path };
+
+    const QString url = QStringLiteral("images/") + path;
+    emscripten_async_wget_data(
+        url.toUtf8().constData(), ctx,
+        // onload
+        [](void *arg, void *buf, int sz) {
+            auto *c = static_cast<SlotFetchCtx *>(arg);
+            QByteArray data(static_cast<const char *>(buf), sz);
+            FtWindow::SlotImageData d = FtWindow::readSlotImageFromData(c->name, data);
+            c->self->finishSlotLoad(c->slot, c->token, std::move(d));
+            delete c;
+        },
+        // onerror: install a not-ok result, which finishSlotLoad() turns into
+        // dropping the slot (e.g. the example was removed from the server).
+        [](void *arg) {
+            auto *c = static_cast<SlotFetchCtx *>(arg);
+            c->self->finishSlotLoad(c->slot, c->token, FtWindow::SlotImageData{});
+            delete c;
+        });
+    update();
 #endif
 }
 
@@ -2239,14 +2706,15 @@ void FtWindow::finishSlotLoad(int i, quint64 token, SlotImageData data)
         return;
     }
 
-    m_history[i].image        = data.image;
-    m_history[i].rawPixels    = data.rawPixels;
-    m_history[i].minVal       = data.minVal;
-    m_history[i].maxVal       = data.maxVal;
-    m_history[i].pixelSize    = data.pixelSize;
-    m_history[i].powerSpecImg = data.powerSpec;
-    m_history[i].occupied     = true;
-    m_history[i].deferred     = false;
+    m_history[i].image            = data.image;
+    m_history[i].rawPixels        = data.rawPixels;
+    m_history[i].minVal           = data.minVal;
+    m_history[i].maxVal           = data.maxVal;
+    m_history[i].pixelSize        = data.pixelSize;
+    m_history[i].pixelSizeAssumed = data.pixelSizeAssumed;
+    m_history[i].powerSpecImg     = data.powerSpec;
+    m_history[i].occupied         = true;
+    m_history[i].deferred         = false;
 
     // Only pull it into the panels if it is still the buffer the user is on;
     // they may have clicked elsewhere while it was reading.
@@ -2259,6 +2727,8 @@ void FtWindow::finishSlotLoad(int i, quint64 token, SlotImageData data)
         m_imageDispMin   = m_history[i].minVal;
         m_imageDispMax   = m_history[i].maxVal;
         m_pixelSize      = m_history[i].pixelSize;
+        m_pixelSizeAssumed = m_history[i].pixelSizeAssumed;
+        m_lastOperation  = m_history[i].lastOperation;
         if (!m_image.isNull()) {
             m_zoom[0].reset(m_image.width(), m_image.height());
             computeFFT(true);
@@ -2272,7 +2742,45 @@ void FtWindow::finishSlotLoad(int i, quint64 token, SlotImageData data)
 void FtWindow::restoreHistory()
 {
 #ifdef __EMSCRIPTEN__
-    // In WASM there is no filesystem to restore history from
+    // Rebuild last session's buffers from the identities saved in localStorage.
+    // Small images are re-fetched now; larger ones become deferred "click to
+    // load" placeholders. The active slot's image, once fetched, is pulled into
+    // the panels by finishSlotLoad() (which runs when the fetch completes).
+    const QByteArray json = wasmLocalStorageGet(kWasmHistoryKey);
+    if (json.isEmpty()) return;
+
+    QJsonParseError perr{};
+    const QJsonDocument doc = QJsonDocument::fromJson(json, &perr);
+    if (perr.error != QJsonParseError::NoError || !doc.isObject()) return;
+    const QJsonObject root = doc.object();
+    if (root.value("v").toInt() != 1) return;   // unknown format: ignore
+
+    for (const QJsonValue &v : root.value("slots").toArray()) {
+        const QJsonObject o = v.toObject();
+        const int i = o.value("slot").toInt(-1);
+        const QString path = o.value("path").toString();
+        const int side = o.value("side").toInt(0);
+        if (i < 0 || i >= HISTORY_SLOTS || !wasmIsRefetchablePath(path)) continue;
+
+        m_history[i].path         = path;
+        m_history[i].exampleImage = true;
+        m_history[i].savedSide    = side;
+        m_history[i].occupied     = false;
+
+        if (side > 0 && side <= kWasmAutoRestoreMaxSide) {
+            // Small enough to bring back automatically.
+            startSlotLoad(i);
+        } else {
+            // Large: leave a placeholder the user can click to load.
+            m_history[i].deferred = true;
+        }
+    }
+
+    int active = root.value("activeSlot").toInt(-1);
+    if (active >= 0 && active < HISTORY_SLOTS
+        && (m_history[active].occupied || m_history[active].deferred
+            || m_history[active].loading))
+        m_activeSlot = active;
     return;
 #else
     QSettings settings("ft", "ft");
@@ -2327,6 +2835,8 @@ FtWindow::BufferSnapshot FtWindow::captureCurrentState() const
     snapshot.imageDispMin = m_imageDispMin;
     snapshot.imageDispMax = m_imageDispMax;
     snapshot.pixelSize = m_pixelSize;
+    snapshot.pixelSizeAssumed = m_pixelSizeAssumed;
+    snapshot.lastOperation = m_lastOperation;
     snapshot.ftComputed = m_ftComputed;
     snapshot.fftN = m_fftN;
     snapshot.origW = m_origW;
@@ -2356,6 +2866,8 @@ void FtWindow::applySnapshot(const BufferSnapshot &snapshot, bool keepZoom)
     m_imageDispMin = snapshot.imageDispMin;
     m_imageDispMax = snapshot.imageDispMax;
     m_pixelSize = snapshot.pixelSize;
+    m_pixelSizeAssumed = snapshot.pixelSizeAssumed;
+    m_lastOperation = snapshot.lastOperation;
     m_ftComputed = snapshot.ftComputed;
     m_fftN = snapshot.fftN;
     m_origW = snapshot.origW;
@@ -2416,8 +2928,18 @@ void FtWindow::trimUndoMemory()
         m_undoStack.pop_front();
 }
 
-void FtWindow::storeUndoSnapshot()
+void FtWindow::storeUndoSnapshot(const QString &opName)
 {
+    // Record the operation label on the current buffer *after* the snapshot is
+    // captured, so the captured (pre-op) state keeps the previous label and Undo
+    // restores it. The new label describes the operation about to run.
+    auto stampOperation = [this, &opName]() {
+        if (opName.isNull()) return;
+        m_lastOperation = opName;
+        if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS)
+            m_history[m_activeSlot].lastOperation = opName;
+    };
+
     // Probe first: if there isn't room to copy the current state, drop the
     // undo history rather than risk an allocation that would abort the app.
     // The calculation that requested the snapshot still runs, just without an
@@ -2426,6 +2948,7 @@ void FtWindow::storeUndoSnapshot()
         m_undoStack.clear();
         m_redoStack.clear();
         updateUndoRedoButtons();
+        stampOperation();
         qWarning() << "Undo history dropped – insufficient memory for snapshot";
         return;
     }
@@ -2435,6 +2958,7 @@ void FtWindow::storeUndoSnapshot()
     clearRedoStack();
     trimUndoMemory();
     updateUndoRedoButtons();
+    stampOperation();
 }
 
 void FtWindow::updateUndoRedoButtons()
@@ -2956,7 +3480,7 @@ void FtWindow::onApplyBandpass()
 void FtWindow::onApplyBandpassImpl()
 {
     if (!m_ftComputed || m_fftN == 0) return;
-    storeUndoSnapshot();
+    storeUndoSnapshot(tr("Band-pass filter"));
 
     int N = m_fftN;
     int half = N / 2;
@@ -3031,7 +3555,7 @@ void FtWindow::onApplyLattice()
 void FtWindow::onApplyLatticeImpl()
 {
     if (!m_ftComputed || m_fftN == 0) return;
-    storeUndoSnapshot();
+    storeUndoSnapshot(tr("Lattice filter"));
 
     int N = m_fftN;
     int half = N / 2;
@@ -3113,7 +3637,7 @@ void FtWindow::onApplyBinning()
 void FtWindow::onApplyBinningImpl()
 {
     if (m_image.isNull()) return;
-    storeUndoSnapshot();
+    storeUndoSnapshot(tr("Binned"));
 
     int binFactor = m_binCombo->currentData().toInt();
     if (binFactor <= 1) return;
@@ -3277,15 +3801,35 @@ void FtWindow::onCropCancel()
 // edge is a plain cut with no new grey beside it to blend into, and is left
 // alone — use the Taper edges tool if it needs softening.
 void FtWindow::padOrCropCentred(std::vector<double> &pix, int &w, int &h,
-                                int targetW, int targetH, double taper)
+                                int targetW, int targetH, double taper,
+                                int greyFrameWidth)
 {
     if (targetW < 1 || targetH < 1) return;
     if (w == targetW && h == targetH) return;
     if ((int)pix.size() != w * h) return;
 
-    double sum = 0.0;
-    for (double v : pix) sum += v;
-    const double grey = pix.empty() ? 0.0 : sum / pix.size();
+    double grey;
+    if (pix.empty()) {
+        grey = 0.0;
+    } else if (greyFrameWidth > 0 && (targetW > w || targetH > h)) {
+        // Fill the new border from the average of the outer `greyFrameWidth`
+        // frame of the source image, so the padding matches the picture's own
+        // edge rather than its (possibly quite different) interior mean.
+        const int fw = std::min({ greyFrameWidth, (w + 1) / 2, (h + 1) / 2 });
+        double s = 0.0;
+        long long n = 0;
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+                if (x < fw || x >= w - fw || y < fw || y >= h - fw) {
+                    s += pix[(size_t)y * w + x];
+                    n++;
+                }
+        grey = (n > 0) ? s / (double)n : 0.0;
+    } else {
+        double sum = 0.0;
+        for (double v : pix) sum += v;
+        grey = sum / pix.size();
+    }
 
     const int  ox = (targetW - w) / 2;      // negative where the image is cropped
     const int  oy = (targetH - h) / 2;
@@ -3388,7 +3932,7 @@ void FtWindow::onCopyDuplicate()
         return;                                  // source holds nothing
     }
 
-    storeUndoSnapshot();
+    storeUndoSnapshot(tr("Duplicated buffer"));
 
     // A copy is the same picture, so it keeps the source's path: "Reload image"
     // on the duplicate then still finds the original file. The cached FFT is
@@ -3400,6 +3944,180 @@ void FtWindow::onCopyDuplicate()
     m_history[tgtIdx].ftComputed = false;
     m_history[tgtIdx].fftData.clear();
 
+    saveHistory();
+    update();
+}
+
+// ---------------------------------------------------------------------------
+//  Average images — sum several buffers into one mean image
+// ---------------------------------------------------------------------------
+void FtWindow::onAverageCancel()
+{
+    m_averageActive = false;
+    m_averageResult.clear();
+    showP1ToolWidgets();
+    update();
+}
+
+void FtWindow::onAverageCompute()
+{
+    if (!ensureCalcHeadroom(tr("average the images"))) return;
+    onAverageComputeImpl();
+}
+
+void FtWindow::onAverageComputeImpl()
+{
+    // Which buffers go into the average.
+    std::vector<int> sel;
+    for (int i = 0; i < HISTORY_SLOTS; i++)
+        if (m_averageInclude[i] && bufferInUse(i)) sel.push_back(i);
+    if (sel.empty()) {
+        m_averageResult = tr("Select at least one image to average");
+        update();
+        return;
+    }
+
+    const int tgtIdx = m_averageTargetCombo->currentIndex();
+    if (tgtIdx < 0 || tgtIdx >= HISTORY_SLOTS) return;
+
+    // Pull each selected image and find the largest side. Images are square, but
+    // guard for non-square just in case a restored slot is odd.
+    struct Img { std::vector<double> pix; int w = 0, h = 0; };
+    std::vector<Img> imgs;
+    int maxSide = 0;
+    for (int idx : sel) {
+        Img im;
+        im.pix = alignSlotPixels(idx, im.w, im.h);
+        if (im.pix.empty() || im.w <= 0 || im.h <= 0) continue;
+        maxSide = std::max({ maxSide, im.w, im.h });
+        imgs.push_back(std::move(im));
+    }
+    if (imgs.empty() || maxSide <= 0) {
+        m_averageResult = tr("No usable images in the selection");
+        update();
+        return;
+    }
+
+    // Normalise each image (median → 0, standard deviation → 1) in floating
+    // point, then pad the smaller ones out to the common size with the same
+    // rim-grey Hanning taper as Pad image, and accumulate.
+    std::vector<double> acc((size_t)maxSide * maxSide, 0.0);
+    int n = 0;
+    for (Img &im : imgs) {
+        const size_t m = im.pix.size();
+
+        // Median via nth_element on a scratch copy.
+        std::vector<double> scratch = im.pix;
+        std::nth_element(scratch.begin(), scratch.begin() + m / 2, scratch.end());
+        const double median = scratch[m / 2];
+
+        // Standard deviation about the mean.
+        double sum = 0.0;
+        for (double v : im.pix) sum += v;
+        const double mean = sum / (double)m;
+        double var = 0.0;
+        for (double v : im.pix) { const double d = v - mean; var += d * d; }
+        var /= (double)m;
+        const double sd  = std::sqrt(var);
+        const double inv = (sd > 1e-12) ? 1.0 / sd : 1.0;
+
+        for (double &v : im.pix) v = (v - median) * inv;
+
+        // Bring up to the common size (background sits at ~0 after the shift, so
+        // the padded border blends into the images' own background level).
+        if (im.w != maxSide || im.h != maxSide)
+            padOrCropCentred(im.pix, im.w, im.h, maxSide, maxSide, 20.0, 5);
+
+        const size_t lim = std::min(acc.size(), im.pix.size());
+        for (size_t k = 0; k < lim; k++) acc[k] += im.pix[k];
+        n++;
+    }
+    if (n == 0) { m_averageResult = tr("No usable images in the selection"); update(); return; }
+
+    // Average the sum, then rescale the whole image so its min…max maps onto the
+    // 0…255 grey range. That scaled image is the result: its raw pixels are the
+    // 0…255 values (not the intermediate floating-point mean).
+    for (double &v : acc) v /= (double)n;
+    double srcMin = acc[0], srcMax = acc[0];
+    for (double v : acc) { srcMin = std::min(srcMin, v); srcMax = std::max(srcMax, v); }
+    const double range = srcMax - srcMin;
+    const double scale = (range > 0) ? 255.0 / range : 1.0;
+    for (double &v : acc)
+        v = std::clamp((v - srcMin) * scale, 0.0, 255.0);
+
+    // Raw pixels now span 0…255 exactly (0 and 255 unless the image was flat).
+    const double mn = 0.0;
+    const double mx = (range > 0) ? 255.0 : 0.0;
+
+    QImage outImg(maxSide, maxSide, QImage::Format_Grayscale8);
+    for (int y = 0; y < maxSide; y++) {
+        uchar *row = outImg.scanLine(y);
+        for (int x = 0; x < maxSide; x++)
+            row[x] = static_cast<uchar>(std::clamp(
+                acc[(size_t)y * maxSide + x], 0.0, 255.0));
+    }
+
+    // The average inherits the first selected image's sampling.
+    const double  outPixelSize    = alignSlotPixelSize(sel.front());
+    const bool    outPixelAssumed = alignSlotPixelSizeAssumed(sel.front());
+
+    storeUndoSnapshot(tr("Averaged images"));
+
+    // Save the buffer currently on display back to its slot so switching away
+    // does not lose unsaved edits (unless the target is that same buffer, which
+    // we are about to overwrite anyway).
+    if (m_activeSlot >= 0 && m_activeSlot != tgtIdx && !m_image.isNull()) {
+        m_history[m_activeSlot].image            = m_image;
+        m_history[m_activeSlot].path             = m_imagePath;
+        m_history[m_activeSlot].rawPixels        = m_imageRawPixels;
+        m_history[m_activeSlot].minVal           = m_imageMinVal;
+        m_history[m_activeSlot].maxVal           = m_imageMaxVal;
+        m_history[m_activeSlot].pixelSize        = m_pixelSize;
+        m_history[m_activeSlot].pixelSizeAssumed = m_pixelSizeAssumed;
+        m_history[m_activeSlot].lastOperation    = m_lastOperation;
+        m_history[m_activeSlot].powerSpecImg     = computePowerSpecMasked(m_image);
+        m_history[m_activeSlot].occupied         = true;
+    }
+
+    m_history[tgtIdx].image            = outImg;
+    m_history[tgtIdx].rawPixels        = acc;
+    m_history[tgtIdx].minVal           = mn;
+    m_history[tgtIdx].maxVal           = mx;
+    m_history[tgtIdx].pixelSize        = outPixelSize;
+    m_history[tgtIdx].pixelSizeAssumed = outPixelAssumed;
+    m_history[tgtIdx].lastOperation    = tr("Averaged images");
+    m_history[tgtIdx].exampleImage     = false;
+    m_history[tgtIdx].savedSide        = maxSide;
+    m_history[tgtIdx].path.clear();
+    m_history[tgtIdx].occupied         = true;
+    m_history[tgtIdx].deferred         = false;
+    m_history[tgtIdx].loading          = false;
+    m_history[tgtIdx].ftComputed       = false;
+    m_history[tgtIdx].fftData.clear();
+    m_history[tgtIdx].powerSpecImg     = computePowerSpecMasked(outImg);
+
+    // Show the result.
+    m_activeSlot       = tgtIdx;
+    m_image            = m_history[tgtIdx].image;
+    m_imagePath.clear();
+    m_imageRawPixels   = acc;
+    m_imageMinVal      = mn;
+    m_imageMaxVal      = mx;
+    if (!m_imageContrastLocked) { m_imageDispMin = mn; m_imageDispMax = mx; }
+    m_pixelSize        = outPixelSize;
+    m_pixelSizeAssumed = outPixelAssumed;
+    m_lastOperation    = tr("Averaged images");
+    m_zoom[0].reset(maxSide, maxSide);
+    m_ftComputed = false;
+    m_modeBtn->setText(modeLabel());
+    m_modeBtn->hide();
+    m_maskBtnVisible = false;
+
+    computeFFT();
+    m_history[tgtIdx].powerSpecImg = computePowerSpecMasked(m_image);
+
+    m_averageResult = tr("Averaged %1 image%2 into buffer %3")
+                          .arg(n).arg(n == 1 ? "" : "s").arg(QChar('a' + tgtIdx));
     saveHistory();
     update();
 }
@@ -3422,19 +4140,22 @@ void FtWindow::syncPadSizeCombo()
 {
     if (!m_padSizeCombo || m_image.isNull()) return;
     const int side = std::max(m_image.width(), m_image.height());
+    // Default to the power-of-two size just larger than the current image.
+    int target = 1;
+    while (target <= side) target <<= 1;
     QSignalBlocker b(m_padSizeCombo);
     for (int i = 0; i < m_padSizeCombo->count(); i++) {
         if (m_padSizeCombo->itemData(i).isValid()
-            && m_padSizeCombo->itemData(i).toInt() == side) {
+            && m_padSizeCombo->itemData(i).toInt() == target) {
             m_padSizeCombo->setCurrentIndex(i);
             m_padCustomEdit->setEnabled(false);
             return;
         }
     }
-    // Not one of the presets: show it under "custom" so the window opens
-    // stating the size the image actually has.
+    // No matching preset (the image is already larger than the biggest one):
+    // offer that next power of two under "custom", clamped to the maximum.
     m_padSizeCombo->setCurrentIndex(m_padSizeCombo->count() - 1);
-    m_padCustomEdit->setText(QString::number(std::min(side, kMaxPadSize)));
+    m_padCustomEdit->setText(QString::number(std::min(target, kMaxPadSize)));
     m_padCustomEdit->setEnabled(true);
 }
 
@@ -3461,9 +4182,11 @@ void FtWindow::onApplyPadImpl()
     if ((int)m_imageRawPixels.size() != w * h) return;
     if (w == target && h == target) return;          // already that size
 
-    storeUndoSnapshot();
+    storeUndoSnapshot(tr("Padded"));
 
-    padOrCropCentred(m_imageRawPixels, w, h, target, target);
+    // Pad with grey taken from the outer 5-pixel frame of the image, blended in
+    // over a 20-pixel Hanning taper so the join carries no brightness step.
+    padOrCropCentred(m_imageRawPixels, w, h, target, target, 20.0, 5);
 
     m_imageMinVal = *std::min_element(m_imageRawPixels.begin(), m_imageRawPixels.end());
     m_imageMaxVal = *std::max_element(m_imageRawPixels.begin(), m_imageRawPixels.end());
@@ -3502,7 +4225,7 @@ void FtWindow::onApplyCrop()
     std::vector<double> &pix = m_imageRawPixels;
     if ((int)pix.size() != W * H) return;
 
-    storeUndoSnapshot();
+    storeUndoSnapshot(tr("Cropped"));
 
     int newW = side, newH = side;
     std::vector<double> newPix((size_t)newW * newH);
@@ -3567,7 +4290,7 @@ void FtWindow::onInvertContrast()
 void FtWindow::onInvertContrastImpl()
 {
     if (m_image.isNull()) return;
-    storeUndoSnapshot();
+    storeUndoSnapshot(tr("Inverted contrast"));
 
     int w = m_image.width();
     int h = m_image.height();
@@ -3622,7 +4345,7 @@ void FtWindow::onApplyEdgeTaper()
 void FtWindow::onApplyEdgeTaperImpl()
 {
     if (m_image.isNull()) return;
-    storeUndoSnapshot();
+    storeUndoSnapshot(tr("Edge taper"));
 
     int w = m_image.width();
     int h = m_image.height();
@@ -3717,7 +4440,7 @@ void FtWindow::onApplySymmetryImpl()
     if (order > 64) order = 64;   // sanity clamp
     if (order == 1) return;       // nothing to do
 
-    storeUndoSnapshot();
+    storeUndoSnapshot(tr("Symmetrized"));
 
     // Mean pixel value used to fill samples that fall outside the image
     double meanVal = 0.0;
@@ -3817,7 +4540,7 @@ void FtWindow::onApplyFtSymmetryImpl()
     if (order > 64) order = 64;
     if (order == 1) return;
 
-    storeUndoSnapshot();
+    storeUndoSnapshot(tr("Fourier symmetrized"));
 
     const int N = m_fftN;
     const int halfN = N / 2;
@@ -3927,7 +4650,7 @@ void FtWindow::onApplyGaborFilterImpl()
     const double theta = thetaDeg * M_PI / 180.0;
     const double psi   = 0.0;
 
-    storeUndoSnapshot();
+    storeUndoSnapshot(tr("Gabor filter"));
 
     int w = m_image.width();
     int h = m_image.height();
@@ -4048,7 +4771,7 @@ void FtWindow::onApplyHessianFilterImpl()
     if (!okP || polarity == 0.0) polarity = 1.0;
     polarity = (polarity > 0.0) ? 1.0 : -1.0;
 
-    storeUndoSnapshot();
+    storeUndoSnapshot(tr("Hessian filter"));
 
     int w = m_image.width();
     int h = m_image.height();
@@ -4212,7 +4935,7 @@ void FtWindow::onApplyFtCrop()
 void FtWindow::onApplyFtCropImpl()
 {
     if (!m_ftComputed || m_fftN == 0) return;
-    storeUndoSnapshot();
+    storeUndoSnapshot(tr("Fourier crop"));
 
     int factor = m_ftCropCombo->currentData().toInt();
     if (factor <= 1) return;
@@ -4294,7 +5017,7 @@ void FtWindow::onApplyFtPadImpl()
     if (adjN <= FT_PAD_MAX) newN = adjN;
     if (newN <= N) return;  // nothing to do
 
-    storeUndoSnapshot();
+    storeUndoSnapshot(tr("Fourier pad"));
 
     m_toolProgress = 0.1;
     update();
@@ -4341,7 +5064,7 @@ void FtWindow::onApplyDirectional()
 void FtWindow::onApplyDirectionalImpl()
 {
     if (!m_ftComputed || m_fftN == 0) return;
-    storeUndoSnapshot();
+    storeUndoSnapshot(tr("Directional filter"));
 
     int N = m_fftN;
     int half = N / 2;
@@ -4426,7 +5149,7 @@ void FtWindow::onApplyLineFilter()
 void FtWindow::onApplyLineFilterImpl()
 {
     if (!m_ftComputed || m_fftN == 0) return;
-    storeUndoSnapshot();
+    storeUndoSnapshot(tr("Line filter"));
 
     bool okWidth = false;
     bool okAngle = false;
@@ -4753,14 +5476,16 @@ void FtWindow::onFtMathComputeImpl()
             }
 
             if (m_activeSlot >= 0 && !m_image.isNull()) {
-                m_history[m_activeSlot].image        = m_image;
-                m_history[m_activeSlot].path         = m_imagePath;
-                m_history[m_activeSlot].rawPixels    = m_imageRawPixels;
-                m_history[m_activeSlot].minVal       = m_imageMinVal;
-                m_history[m_activeSlot].maxVal       = m_imageMaxVal;
-                m_history[m_activeSlot].pixelSize    = m_pixelSize;
-                m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
-                m_history[m_activeSlot].occupied     = true;
+                m_history[m_activeSlot].image            = m_image;
+                m_history[m_activeSlot].path             = m_imagePath;
+                m_history[m_activeSlot].rawPixels        = m_imageRawPixels;
+                m_history[m_activeSlot].minVal           = m_imageMinVal;
+                m_history[m_activeSlot].maxVal           = m_imageMaxVal;
+                m_history[m_activeSlot].pixelSize        = m_pixelSize;
+                m_history[m_activeSlot].pixelSizeAssumed = m_pixelSizeAssumed;
+                m_history[m_activeSlot].lastOperation    = m_lastOperation;
+                m_history[m_activeSlot].powerSpecImg     = computePowerSpecMasked(m_image);
+                m_history[m_activeSlot].occupied         = true;
             }
 
             int outIdx = st->outIdx;
@@ -4773,6 +5498,8 @@ void FtWindow::onFtMathComputeImpl()
             m_history[outIdx].minVal    = minVal;
             m_history[outIdx].maxVal    = maxVal;
             m_history[outIdx].pixelSize = st->pxTarget;
+            m_history[outIdx].pixelSizeAssumed = m_pixelSizeAssumed;
+            m_history[outIdx].lastOperation    = tr("Fourier math");
             m_history[outIdx].powerSpecImg = computePowerSpecMasked(outImg);
             m_history[outIdx].occupied  = true;
 
@@ -4783,6 +5510,8 @@ void FtWindow::onFtMathComputeImpl()
             m_imageMinVal    = m_history[outIdx].minVal;
             m_imageMaxVal    = m_history[outIdx].maxVal;
             m_pixelSize      = m_history[outIdx].pixelSize;
+            m_pixelSizeAssumed = m_history[outIdx].pixelSizeAssumed;
+            m_lastOperation  = m_history[outIdx].lastOperation;
             m_zoom[0].reset(m_image.width(), m_image.height());
 
             m_ftComputed  = false;
@@ -4968,14 +5697,16 @@ void FtWindow::onMathComputeImpl()
                     (result[y * S + x] - minVal) * scale, 0.0, 255.0));
         }
         if (m_activeSlot >= 0 && !m_image.isNull()) {
-            m_history[m_activeSlot].image        = m_image;
-            m_history[m_activeSlot].path         = m_imagePath;
-            m_history[m_activeSlot].rawPixels    = m_imageRawPixels;
-            m_history[m_activeSlot].minVal       = m_imageMinVal;
-            m_history[m_activeSlot].maxVal       = m_imageMaxVal;
-            m_history[m_activeSlot].pixelSize    = m_pixelSize;
-            m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
-            m_history[m_activeSlot].occupied     = true;
+            m_history[m_activeSlot].image            = m_image;
+            m_history[m_activeSlot].path             = m_imagePath;
+            m_history[m_activeSlot].rawPixels        = m_imageRawPixels;
+            m_history[m_activeSlot].minVal           = m_imageMinVal;
+            m_history[m_activeSlot].maxVal           = m_imageMaxVal;
+            m_history[m_activeSlot].pixelSize        = m_pixelSize;
+            m_history[m_activeSlot].pixelSizeAssumed = m_pixelSizeAssumed;
+            m_history[m_activeSlot].lastOperation    = m_lastOperation;
+            m_history[m_activeSlot].powerSpecImg     = computePowerSpecMasked(m_image);
+            m_history[m_activeSlot].occupied         = true;
         }
         int outIdx = st->outIdx;
         m_history[outIdx].image     = outImg;
@@ -4987,6 +5718,8 @@ void FtWindow::onMathComputeImpl()
         m_history[outIdx].minVal    = minVal;
         m_history[outIdx].maxVal    = maxVal;
         m_history[outIdx].pixelSize = 1.0;
+        m_history[outIdx].pixelSizeAssumed = m_pixelSizeAssumed;
+        m_history[outIdx].lastOperation    = tr("Image math");
         m_history[outIdx].powerSpecImg = computePowerSpecMasked(outImg);
         m_history[outIdx].occupied  = true;
 
@@ -4997,6 +5730,8 @@ void FtWindow::onMathComputeImpl()
         m_imageMinVal    = m_history[outIdx].minVal;
         m_imageMaxVal    = m_history[outIdx].maxVal;
         m_pixelSize      = m_history[outIdx].pixelSize;
+        m_pixelSizeAssumed = m_history[outIdx].pixelSizeAssumed;
+        m_lastOperation  = m_history[outIdx].lastOperation;
         m_zoom[0].reset(m_image.width(), m_image.height());
 
         m_ftComputed  = false;
@@ -5351,6 +6086,8 @@ void FtWindow::onExtractComputeImpl()
     m_history[tgtIdx].minVal    = mn;
     m_history[tgtIdx].maxVal    = mx;
     m_history[tgtIdx].pixelSize = srcEntry.pixelSize;
+    m_history[tgtIdx].pixelSizeAssumed = srcEntry.pixelSizeAssumed;
+    m_history[tgtIdx].lastOperation    = tr("Extracted region");
     m_history[tgtIdx].path.clear();
     m_history[tgtIdx].occupied  = true;
     m_history[tgtIdx].powerSpecImg = computePowerSpecMasked(outImg);
@@ -5367,6 +6104,8 @@ void FtWindow::onExtractComputeImpl()
         m_imageDispMax   = mx;
     }
     m_pixelSize      = m_history[tgtIdx].pixelSize;
+    m_pixelSizeAssumed = m_history[tgtIdx].pixelSizeAssumed;
+    m_lastOperation  = m_history[tgtIdx].lastOperation;
     m_zoom[0].reset(outSize, outSize);
     m_ftComputed = false;
             m_toolProgress = 0.5;
@@ -5589,7 +6328,7 @@ void FtWindow::onCtfComputeImpl()
     int N = 1024;
     double dxA = (m_pixelSize > 0) ? m_pixelSize : 1.0;
 
-    storeUndoSnapshot();
+    storeUndoSnapshot(tr("CTF"));
 
     // Build 1D profile: from r = 0 (center) to r = (N/2)*sqrt(2) (corners)
     double maxR = (N / 2.0) * std::sqrt(2.0);
@@ -6338,6 +7077,7 @@ void FtWindow::onCtfFitExecuteImpl()
     m_imageDispMin   = inMin;
     m_imageDispMax   = inMax;
     m_pixelSize      = dxA;                 // sampled like the input image
+    m_lastOperation  = tr("CTF model");     // pixelSizeAssumed inherited unchanged
     m_origW          = inImage.width();
     m_origH          = inImage.height();
     m_zoom[0].reset(inImage.width(), inImage.height());
@@ -6476,8 +7216,11 @@ void FtWindow::onEditPixelSize()
         double v = edit->text().toDouble(&ok);
         if (ok && v > 0.0) {
             m_pixelSize = v;
-            if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS)
+            m_pixelSizeAssumed = false;   // user supplied it — no longer an assumption
+            if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS) {
                 m_history[m_activeSlot].pixelSize = v;
+                m_history[m_activeSlot].pixelSizeAssumed = false;
+            }
             saveHistory();
             update();
         }
@@ -6514,7 +7257,7 @@ void FtWindow::onPhaseRampComputeImpl()
     if (!okDir)  dirDeg  = 30.0;
     if (!okStep) stepDeg = 10.0;
 
-    storeUndoSnapshot();
+    storeUndoSnapshot(tr("Phase ramp"));
 
     // Pick or create an active history slot, allocate a real-space buffer.
     if (m_activeSlot < 0) {
