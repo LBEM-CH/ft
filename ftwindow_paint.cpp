@@ -2169,7 +2169,10 @@ void FtWindow::paintEvent(QPaintEvent *)
             p.setFont(pf);
             p.setPen(Qt::white);
             QFontMetrics pfm(pf);
-            QString psLabel = QString("1 pixel = %1 %2")
+            // When the file carried no scale we are only assuming 1 px = 1 \u00C5;
+            // flag that so the numbers below are not mistaken for a measured size.
+            QString psLabel = QString("%1pixel = %2 %3")
+                                  .arg(m_pixelSizeAssumed ? "Assumed: 1 " : "1 ")
                                   .arg(m_pixelSize, 0, 'g', 4)
                                   .arg(QString::fromUtf8("\u00C5"));
 
@@ -2197,6 +2200,17 @@ void FtWindow::paintEvent(QPaintEvent *)
                 infoY += pfm.height() + 1;
                 QString fname = QFileInfo(m_imagePath).fileName();
                 p.drawText(infoX - pfm.horizontalAdvance(fname), infoY + pfm.ascent(), fname);
+            }
+
+            // Most recent operation applied to this buffer, one line below the
+            // file name. Drawn a touch dimmer so it reads as a status note.
+            if (!m_lastOperation.isEmpty()) {
+                infoY += pfm.height() + 1;
+                p.setPen(QColor(180, 180, 180));
+                QString opLabel = QString::fromUtf8("↳ ") + m_lastOperation;
+                p.drawText(infoX - pfm.horizontalAdvance(opLabel),
+                           infoY + pfm.ascent(), opLabel);
+                p.setPen(Qt::white);
             }
         }
 
@@ -3532,12 +3546,19 @@ void FtWindow::paintEvent(QPaintEvent *)
                     textW = std::max({r0, r1, r2, r3});
                 }
             } else if (m_alignActive) {
-                nRows = m_alignResult.isEmpty() ? 4 : 5;
-                int r0 = fm.horizontalAdvance("Alignment reference: ") + m_alignRefCombo->width();
-                int r1 = m_alignCancelBtn->width() + 8 + m_alignShiftBtn->width()
-                         + 8 + m_alignRotBtn->width();
-                int r2 = m_alignResult.isEmpty() ? 0 : fm.horizontalAdvance(m_alignResult);
-                textW = std::max({r0, r1, r2});
+                // Three selectors laid out side by side: a header row, the
+                // pulldowns beneath, then the button row (and an optional result).
+                nRows = m_alignResult.isEmpty() ? 3 : 4;
+                const int comboW = m_alignSrcCombo->width();
+                const int colGap = 14;
+                int c0 = std::max(fm.horizontalAdvance("Image source"), comboW);
+                int c1 = std::max(fm.horizontalAdvance("Alignment reference"), comboW);
+                int c2 = std::max(fm.horizontalAdvance("Output buffer"), comboW);
+                int rCols = c0 + c1 + c2 + 2 * colGap;
+                int rBtns = m_alignCancelBtn->width() + 8 + m_alignShiftBtn->width()
+                            + 8 + m_alignRotBtn->width();
+                int rRes  = m_alignResult.isEmpty() ? 0 : fm.horizontalAdvance(m_alignResult);
+                textW = std::max({rCols, rBtns, rRes});
             } else if (m_gaborActive) {
                 nRows = 5;
                 int r0 = fm.horizontalAdvance("Sigma (envelope): ")     + m_gaborSigmaEdit->width();
@@ -3735,26 +3756,43 @@ void FtWindow::paintEvent(QPaintEvent *)
                     m_extractComputeBtn->move(rx + rw - margin - m_extractComputeBtn->width(), ty + lh * 3);
                 }
             } else if (m_alignActive) {
-                int labW = std::max({fm.horizontalAdvance("Image source: "),
-                                     fm.horizontalAdvance("Alignment reference: "),
-                                     fm.horizontalAdvance("Output buffer: ")});
-                drawParamLabel(p, fm, tx, ty, "Image source:", m_alignSrcCombo->toolTip(),
-                               m_alignSrcCombo->height());
-                m_alignSrcCombo->move(tx + labW, ty);
-                drawParamLabel(p, fm, tx, ty + lh, "Alignment reference:", m_alignRefCombo->toolTip(),
-                               m_alignRefCombo->height());
-                m_alignRefCombo->move(tx + labW, ty + lh);
-                drawParamLabel(p, fm, tx, ty + lh * 2, "Output buffer:", m_alignOutCombo->toolTip(),
-                               m_alignOutCombo->height());
-                m_alignOutCombo->move(tx + labW, ty + lh * 2);
+                // Three columns side by side: a bold header on top, the pulldown
+                // for that buffer role directly beneath it.
+                const int comboW = m_alignSrcCombo->width();
+                const int colGap = 14;
+                int c0 = std::max(fm.horizontalAdvance("Image source"), comboW);
+                int c1 = std::max(fm.horizontalAdvance("Alignment reference"), comboW);
+                int c2 = std::max(fm.horizontalAdvance("Output buffer"), comboW);
+                int x0 = tx;
+                int x1 = x0 + c0 + colGap;
+                int x2 = x1 + c1 + colGap;
+
+                struct Col { int x; const char *head; QComboBox *cb; };
+                const Col cols[3] = {
+                    { x0, "Image source",        m_alignSrcCombo },
+                    { x1, "Alignment reference",  m_alignRefCombo },
+                    { x2, "Output buffer",        m_alignOutCombo },
+                };
+                QFont hf = sf; hf.setBold(true);
+                for (const Col &c : cols) {
+                    p.setFont(hf);
+                    p.setPen(QColor(60, 60, 60));
+                    p.drawText(c.x, ty + fm.ascent(), QString::fromLatin1(c.head));
+                    QRect hr(c.x, ty, QFontMetrics(hf).horizontalAdvance(c.head), fm.height());
+                    if (!c.cb->toolTip().isEmpty())
+                        m_paramLabelTips.emplace_back(hr, c.cb->toolTip());
+                    c.cb->move(c.x, ty + lh);
+                }
+                p.setFont(sf);
+
                 // Cancel on the left, the two alignment actions right-aligned.
-                m_alignCancelBtn->move(tx, ty + lh * 3);
+                m_alignCancelBtn->move(tx, ty + lh * 2);
                 int bRight = rx + rw - margin;
-                m_alignRotBtn->move(bRight - m_alignRotBtn->width(), ty + lh * 3);
+                m_alignRotBtn->move(bRight - m_alignRotBtn->width(), ty + lh * 2);
                 bRight -= m_alignRotBtn->width() + 8;
-                m_alignShiftBtn->move(bRight - m_alignShiftBtn->width(), ty + lh * 3);
+                m_alignShiftBtn->move(bRight - m_alignShiftBtn->width(), ty + lh * 2);
                 if (!m_alignResult.isEmpty())
-                    p.drawText(tx, ty + lh * 4 + fm.ascent(), m_alignResult);
+                    p.drawText(tx, ty + lh * 3 + fm.ascent(), m_alignResult);
             } else if (m_gaborActive) {
                 drawParamLabel(p, fm, tx, ty, "Sigma (envelope):", m_gaborSigmaEdit->toolTip());
                 m_gaborSigmaEdit->move(tx + fm.horizontalAdvance("Sigma (envelope): "), ty);
@@ -5149,6 +5187,38 @@ void FtWindow::enterMaximized(int panel)
     }
 
     m_maxPanel = panel;
+
+    // Take the top-level window truly fullscreen so no title bar remains — the
+    // maximized view is meant to fill the whole screen with the image.
+#ifdef __EMSCRIPTEN__
+    installFullscreenSync();
+    m_maxDidFullScreen = EM_ASM_INT({
+        var fs = document.fullscreenElement ||
+                 document.webkitFullscreenElement ||
+                 document.webkitCurrentFullScreenElement;
+        if (fs) return 0;   // already fullscreen — leave it be
+        var target = document.getElementById('screen') || document.documentElement;
+        var req = target.requestFullscreen ||
+                  target.webkitRequestFullscreen ||
+                  target.webkitRequestFullScreen;
+        if (!req) return 0;
+        try {
+            var p = req.call(target);
+            if (p && p.then) p.then(null, function(e) {});
+        } catch (e) { return 0; }
+        return 1;
+    });
+#else
+    m_maxDidFullScreen = false;
+    if (QWidget *top = window()) {
+        if (!top->isFullScreen()) {
+            m_maxPrevWindowState = top->windowState();
+            m_maxDidFullScreen = true;
+            top->showFullScreen();
+        }
+    }
+#endif
+
     setFocus(Qt::OtherFocusReason);   // so ESC reaches keyPressEvent
     update();
 }
@@ -5158,6 +5228,23 @@ void FtWindow::exitMaximized()
     if (m_maxPanel == 0) return;
     m_maxPanel = 0;
     m_maxCloseRect = QRect();
+
+    // Restore the window if it was us that took it fullscreen on the way in.
+    if (m_maxDidFullScreen) {
+        m_maxDidFullScreen = false;
+#ifdef __EMSCRIPTEN__
+        EM_ASM({
+            var exit = document.exitFullscreen ||
+                       document.webkitExitFullscreen ||
+                       document.webkitCancelFullScreen;
+            if (exit) exit.call(document);
+        });
+#else
+        if (QWidget *top = window())
+            top->setWindowState(m_maxPrevWindowState);
+#endif
+    }
+
     for (const QPointer<QWidget> &w : m_maxHiddenWidgets)
         if (w) w->show();
     m_maxHiddenWidgets.clear();
@@ -5234,6 +5321,101 @@ void FtWindow::paintMaximized(QPainter &p)
 
         p.fillRect(QRect(area.x() + halfW, rect().top(), divider, height()),
                    Qt::black);
+    }
+
+    // Scale bar, bottom-right corner. Its length is a "nice" round physical
+    // distance spanning roughly 1/14 of the screen width (kept within about
+    // 1/20..1/10). White bar and label sit over a faint black shadow so they
+    // stay legible on a bright image. Panel 1 is real space (nm); the Fourier
+    // panel is reciprocal space (1/Å). Pixel size is stored in Ångström.
+    if (m_numDispItems > 0 && m_pixelSize > 0.0) {
+        const DisplayItem &di = m_dispItems[m_numDispItems - 1];
+        QRectF src = itemSrcRect(di);
+        if (src.width() > 0.0 && di.screenRect.width() > 0 && di.imgW > 0) {
+            const double imgPxPerScreenPx = src.width() / di.screenRect.width();
+            const double targetScreenLen  = width() / 14.0;
+            const bool   reciprocal       = (m_maxPanel != 1);
+
+            // Physical length one screen pixel spans, and the unit to print.
+            double  physPerScreenPx;
+            QString unit;
+            if (!reciprocal) {
+                // Real space: pixel size in Å, reported in nm (1 nm = 10 Å).
+                physPerScreenPx = imgPxPerScreenPx * m_pixelSize / 10.0;
+                unit = "nm";
+            } else {
+                // Reciprocal space: one FFT pixel = 1/(N·pixelSize) in 1/Å.
+                physPerScreenPx = imgPxPerScreenPx / (di.imgW * m_pixelSize);
+                unit = QString::fromUtf8("1/Å");
+            }
+
+            const double rawPhys = physPerScreenPx * targetScreenLen;
+            if (rawPhys > 0.0 && std::isfinite(rawPhys)) {
+                // Round to the nearest 1 / 2 / 5 × 10^k.
+                double e    = std::floor(std::log10(rawPhys));
+                double base = std::pow(10.0, e);
+                double f    = rawPhys / base;
+                double nf   = (f < 1.5) ? 1.0 : (f < 3.5) ? 2.0 : (f < 7.5) ? 5.0 : 10.0;
+                double nicePhys = nf * base;
+                double barLen   = nicePhys / physPerScreenPx;   // screen pixels
+
+                if (barLen > 4.0 && barLen < width()) {
+                    const int iBarLen = (int)std::lround(barLen);
+                    const int barH = std::max(4, height() / 200);
+                    const int pad  = std::max(14, width() / 90);
+                    const int bx   = width()  - pad - iBarLen;
+                    const int by   = height() - pad - barH;
+
+                    const QString label =
+                        QString("%1 %2").arg(QString::number(nicePhys, 'g', 3), unit);
+                    QFont sf; sf.setPixelSize(std::max(12, height() / 45)); sf.setBold(true);
+                    p.setFont(sf);
+                    QFontMetrics sfm(sf);
+                    const int tw = sfm.horizontalAdvance(label);
+                    const int tx = bx + iBarLen - tw;   // label right-aligned to the bar
+                    const int ty = by - 6;              // baseline just above the bar
+
+                    p.save();
+                    // Faint black shadow underlaid behind the bar (a soft halo).
+                    p.setRenderHint(QPainter::Antialiasing, false);
+                    p.setPen(Qt::NoPen);
+                    p.setBrush(QColor(0, 0, 0, 130));
+                    p.drawRect(bx - 2, by - 2, iBarLen + 4, barH + 4);
+                    // Shadow for the text (drawn slightly offset in four directions).
+                    p.setRenderHint(QPainter::Antialiasing, true);
+                    p.setPen(QColor(0, 0, 0, 150));
+                    for (const QPoint &d : { QPoint(1, 1), QPoint(-1, 1),
+                                             QPoint(1, -1), QPoint(-1, -1) })
+                        p.drawText(tx + d.x(), ty + d.y(), label);
+                    // White bar and label on top.
+                    p.setRenderHint(QPainter::Antialiasing, false);
+                    p.fillRect(QRect(bx, by, iBarLen, barH), Qt::white);
+                    p.setRenderHint(QPainter::Antialiasing, true);
+                    p.setPen(Qt::white);
+                    p.drawText(tx, ty, label);
+
+                    // When the pixel size is only assumed, the whole scale is
+                    // conditional — note that under the bar so it is not read as
+                    // a calibrated distance.
+                    if (m_pixelSizeAssumed) {
+                        const QString note = QString::fromUtf8("(if 1px = 1Å)");
+                        QFont nf; nf.setPixelSize(std::max(10, height() / 65));
+                        p.setFont(nf);
+                        QFontMetrics nfm(nf);
+                        const int ntw = nfm.horizontalAdvance(note);
+                        const int ntx = bx + iBarLen - ntw;          // right-aligned to bar
+                        const int nty = by + barH + 2 + nfm.ascent(); // just below the bar
+                        p.setPen(QColor(0, 0, 0, 150));
+                        for (const QPoint &d : { QPoint(1, 1), QPoint(-1, 1),
+                                                 QPoint(1, -1), QPoint(-1, -1) })
+                            p.drawText(ntx + d.x(), nty + d.y(), note);
+                        p.setPen(Qt::white);
+                        p.drawText(ntx, nty, note);
+                    }
+                    p.restore();
+                }
+            }
+        }
     }
 
     // Close button, top right. This is the only way out on a touch device —

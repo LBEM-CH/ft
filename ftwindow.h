@@ -377,6 +377,7 @@ private:
     QPushButton *m_saveBtn   = nullptr;
     QPushButton *m_createBtn = nullptr;
     QPushButton *m_reloadBtn = nullptr;
+    QPushButton *m_copyImageBtn = nullptr;
     QPushButton *m_deleteBtn = nullptr;
     QPushButton *m_undoBtn   = nullptr;
     QPushButton *m_redoBtn   = nullptr;
@@ -394,6 +395,13 @@ private:
     std::vector<double> m_imageRawPixels;
     double              m_imageMinVal = 0, m_imageMaxVal = 0;
     double              m_pixelSize = 1.0;  // in Angstrom
+    // True when the pixel size was not supplied by the file (e.g. a PNG/TIFF/JPG
+    // with no scale) and we are only assuming 1 pixel = 1 Å. Panel 1 flags this,
+    // and the maximized-view scale bar notes it is conditional.
+    bool                m_pixelSizeAssumed = false;
+    // Short label for the most recent image-modifying operation (bin, crop,
+    // taper, align, …). Shown under the file name in panel 1. Empty = none yet.
+    QString             m_lastOperation;
 
     // ---- FFT state ----
     bool  m_ftComputed  = false;
@@ -477,6 +485,8 @@ private:
         std::vector<double> rawPixels;
         double  minVal = 0, maxVal = 0;
         double  pixelSize = 1.0;
+        bool    pixelSizeAssumed = false;   // see FtWindow::m_pixelSizeAssumed
+        QString lastOperation;              // see FtWindow::m_lastOperation
         bool    occupied = false;
         // Set when a stored session slot was deliberately NOT loaded at startup
         // (image too large, or the file lives on a network volume). Only
@@ -514,6 +524,8 @@ private:
         double imageMinVal = 0, imageMaxVal = 0;
         double imageDispMin = 0, imageDispMax = 0;
         double pixelSize = 1.0;
+        bool pixelSizeAssumed = false;
+        QString lastOperation;
         bool ftComputed = false;
         int fftN = 0;
         int origW = 0;
@@ -561,6 +573,7 @@ private:
         std::vector<double> rawPixels;
         double  minVal = 0, maxVal = 0;
         double  pixelSize = 1.0;
+        bool    pixelSizeAssumed = false;
         QImage  powerSpec;
         bool    ok = false;
     };
@@ -588,7 +601,10 @@ private:
     std::shared_ptr<LifeGuard> m_life = std::make_shared<LifeGuard>();
     BufferSnapshot captureCurrentState() const;
     void applySnapshot(const BufferSnapshot &snapshot, bool keepZoom = false);
-    void storeUndoSnapshot();
+    // Capture the pre-operation state for Undo. `opName`, when given, becomes the
+    // "most recent operation" label shown under the file name in panel 1 (and is
+    // stored on the active slot so it survives buffer switches).
+    void storeUndoSnapshot(const QString &opName = QString());
     void clearRedoStack();
     void updateUndoRedoButtons();
     // Approximate heap footprint of one snapshot (raw pixels + images + FFT).
@@ -667,6 +683,11 @@ private:
     // display fills it (side by side when panel 2 shows two images). Zoom and
     // pan stay live; every other interaction is suppressed. ESC returns.
     int         m_maxPanel = 0;
+    // While the maximized view is up we drive the top-level window into real
+    // fullscreen (no title bar). Remember what to restore, and whether it was
+    // us that made the switch (so we don't yank a user's own fullscreen away).
+    Qt::WindowStates m_maxPrevWindowState = Qt::WindowNoState;
+    bool        m_maxDidFullScreen = false;
     // Click targets for the maximize icons, below each Zoom/Pan overlay.
     // Repopulated every paintEvent; null while the view is maximized.
     QRect       m_p1MaxRect;
@@ -838,10 +859,14 @@ private:
     // Source index the output combo was last kept in step with, so that an
     // output the user picked deliberately is not dragged along by the source.
     int         m_alignPrevSrc = 0;
-    // Source and reference must differ, so the source's own letter is disabled
-    // in the reference list. Whenever the two coincide anyway (the user moved
-    // the source onto the reference) the alignment buttons are disabled too.
-    // Called on every combo change and when the tool opens.
+    // The alignment reference is sticky: it stays on whichever buffer the user
+    // last aligned onto and is never retargeted automatically. Remembered here
+    // across opening/closing the tool; -1 until the user picks one. Any buffer
+    // may serve as reference, including the current source or output.
+    int         m_alignRefSlot = -1;
+    // Re-enables every reference entry and keeps the alignment buttons live
+    // whenever both a source and a reference are selected. Called on every combo
+    // change and when the tool opens.
     void syncAlignCombos();
     // Popup delegate that greys out the disabled entry. Shared by the three
     // align combos and re-applied whenever their stylesheet is set.
@@ -854,11 +879,14 @@ private:
     std::vector<double> alignSlotPixels(int idx, int &w, int &h) const;
     QString alignSlotPath(int idx) const;
     double  alignSlotPixelSize(int idx) const;
+    bool    alignSlotPixelSizeAssumed(int idx) const;
     // Store an aligned result in buffer `outIdx` and make it the displayed one.
     // `sourcePath` is the source buffer's file, which the output inherits so
-    // that "Reload image" still finds the original on disk.
+    // that "Reload image" still finds the original on disk. `pixelSizeAssumed`
+    // and `opName` likewise carry over from the source / describe the operation.
     void finishAlign(int outIdx, std::vector<double> result, int w, int h,
-                     double pixelSize, const QString &sourcePath);
+                     double pixelSize, const QString &sourcePath,
+                     bool pixelSizeAssumed, const QString &opName);
     void onAlignCancel();
     void onAlignShift();
     void onAlignRotate();

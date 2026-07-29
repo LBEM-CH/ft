@@ -394,6 +394,8 @@ void FtWindow::onNewImageCreateImpl()
     m_imageDispMin   = m_imageMinVal;
     m_imageDispMax   = m_imageMaxVal;
     m_pixelSize      = m_history[tgtIdx].pixelSize;
+    m_pixelSizeAssumed = m_history[tgtIdx].pixelSizeAssumed;
+    m_lastOperation  = m_history[tgtIdx].lastOperation;
     m_zoom[0].reset(m_image.width(), m_image.height());
 
     m_ftComputed = false;
@@ -431,15 +433,19 @@ void FtWindow::onCreateImageSized(int sz)
     m_imageDispMin = 0;
     m_imageDispMax = 0;
     m_pixelSize = 1.0;
+    m_pixelSizeAssumed = true;   // synthetic pattern has no physical scale
+    m_lastOperation.clear();
     m_imagePath.clear();
 
-    m_history[m_activeSlot].image     = m_image;
+    m_history[m_activeSlot].image            = m_image;
     m_history[m_activeSlot].path.clear();
-    m_history[m_activeSlot].rawPixels = m_imageRawPixels;
-    m_history[m_activeSlot].minVal    = 0;
-    m_history[m_activeSlot].maxVal    = 0;
-    m_history[m_activeSlot].pixelSize = 1.0;
-    m_history[m_activeSlot].occupied  = true;
+    m_history[m_activeSlot].rawPixels        = m_imageRawPixels;
+    m_history[m_activeSlot].minVal           = 0;
+    m_history[m_activeSlot].maxVal           = 0;
+    m_history[m_activeSlot].pixelSize        = 1.0;
+    m_history[m_activeSlot].pixelSizeAssumed = true;
+    m_history[m_activeSlot].lastOperation.clear();
+    m_history[m_activeSlot].occupied         = true;
 
     m_ftComputed = false;
     m_modeBtn->setText(modeLabel());
@@ -497,16 +503,19 @@ void FtWindow::onReloadImage()
         m_imageDispMin = r.minVal;
         m_imageDispMax = r.maxVal;
         m_pixelSize = r.pixelSize;
+        m_pixelSizeAssumed = !r.pixelSizeKnown;
         if (!m_image.isNull())
             padImageToSquare();
     } else {
         m_image = QImage(m_imagePath);
         m_pixelSize = 1.0;
+        m_pixelSizeAssumed = true;   // no scale in a PNG/TIFF/JPG — assume 1 px = 1 Å
         if (!m_image.isNull()) {
             padImageToSquare();
             extractImageData();
         }
     }
+    m_lastOperation.clear();
 
     m_ftComputed = false;
     m_modeBtn->setText(modeLabel());
@@ -568,6 +577,8 @@ void FtWindow::onDeleteImage()
         m_imageMinVal = m_imageMaxVal = 0;
         m_imageDispMin = m_imageDispMax = 0;
         m_pixelSize = 1.0;
+        m_pixelSizeAssumed = false;
+        m_lastOperation.clear();
         m_fftData.clear();
         m_fftData.shrink_to_fit();
         m_ftComputed = false;
@@ -937,6 +948,7 @@ void FtWindow::loadImageFile(const QString &path)
         m_imageDispMin = r.minVal;
         m_imageDispMax = r.maxVal;
         m_pixelSize = r.pixelSize;
+        m_pixelSizeAssumed = !r.pixelSizeKnown;
 
         if (m_image.isNull())
             qDebug() << "MRC load FAILED – image is null";
@@ -948,6 +960,7 @@ void FtWindow::loadImageFile(const QString &path)
     } else {
         m_image = QImage(path);
         m_pixelSize = 1.0;
+        m_pixelSizeAssumed = true;   // no scale in a PNG/TIFF/JPG — assume 1 px = 1 Å
         if (m_image.isNull()) {
             qDebug() << "Image load FAILED for:" << path;
         } else {
@@ -960,16 +973,19 @@ void FtWindow::loadImageFile(const QString &path)
     }
 
     m_imagePath = path;
+    m_lastOperation.clear();
 
     // Store in the active slot
     if (!m_image.isNull()) {
-        m_history[m_activeSlot].image        = m_image;
-        m_history[m_activeSlot].path         = path;
-        m_history[m_activeSlot].rawPixels    = m_imageRawPixels;
-        m_history[m_activeSlot].minVal       = m_imageMinVal;
-        m_history[m_activeSlot].maxVal       = m_imageMaxVal;
-        m_history[m_activeSlot].pixelSize    = m_pixelSize;
-        m_history[m_activeSlot].occupied     = true;
+        m_history[m_activeSlot].image            = m_image;
+        m_history[m_activeSlot].path             = path;
+        m_history[m_activeSlot].rawPixels        = m_imageRawPixels;
+        m_history[m_activeSlot].minVal           = m_imageMinVal;
+        m_history[m_activeSlot].maxVal           = m_imageMaxVal;
+        m_history[m_activeSlot].pixelSize        = m_pixelSize;
+        m_history[m_activeSlot].pixelSizeAssumed = m_pixelSizeAssumed;
+        m_history[m_activeSlot].lastOperation.clear();
+        m_history[m_activeSlot].occupied         = true;
     }
 
 #ifndef __EMSCRIPTEN__
@@ -1022,6 +1038,7 @@ void FtWindow::loadImageData(const QString &fileName, const QByteArray &fileData
         m_imageDispMin = r.minVal;
         m_imageDispMax = r.maxVal;
         m_pixelSize = r.pixelSize;
+        m_pixelSizeAssumed = !r.pixelSizeKnown;
 
         if (m_image.isNull())
             qDebug() << "MRC load FAILED – image is null";
@@ -1033,6 +1050,7 @@ void FtWindow::loadImageData(const QString &fileName, const QByteArray &fileData
     } else {
         m_image.loadFromData(fileData);
         m_pixelSize = 1.0;
+        m_pixelSizeAssumed = true;   // no scale in a PNG/TIFF/JPG — assume 1 px = 1 Å
         if (m_image.isNull()) {
             qDebug() << "Image load FAILED for:" << fileName;
         } else {
@@ -1045,16 +1063,19 @@ void FtWindow::loadImageData(const QString &fileName, const QByteArray &fileData
     }
 
     m_imagePath = fileName;
+    m_lastOperation.clear();
 
     // Store in the active slot
     if (!m_image.isNull()) {
-        m_history[m_activeSlot].image        = m_image;
-        m_history[m_activeSlot].path         = fileName;
-        m_history[m_activeSlot].rawPixels    = m_imageRawPixels;
-        m_history[m_activeSlot].minVal       = m_imageMinVal;
-        m_history[m_activeSlot].maxVal       = m_imageMaxVal;
-        m_history[m_activeSlot].pixelSize    = m_pixelSize;
-        m_history[m_activeSlot].occupied     = true;
+        m_history[m_activeSlot].image            = m_image;
+        m_history[m_activeSlot].path             = fileName;
+        m_history[m_activeSlot].rawPixels        = m_imageRawPixels;
+        m_history[m_activeSlot].minVal           = m_imageMinVal;
+        m_history[m_activeSlot].maxVal           = m_imageMaxVal;
+        m_history[m_activeSlot].pixelSize        = m_pixelSize;
+        m_history[m_activeSlot].pixelSizeAssumed = m_pixelSizeAssumed;
+        m_history[m_activeSlot].lastOperation.clear();
+        m_history[m_activeSlot].occupied         = true;
     }
 
     m_ftComputed = false;
@@ -2112,8 +2133,10 @@ FtWindow::SlotImageData FtWindow::readSlotImage(const QString &path)
         d.minVal     = r.minVal;
         d.maxVal     = r.maxVal;
         d.pixelSize  = r.pixelSize;
+        d.pixelSizeAssumed = !r.pixelSizeKnown;
     } else {
         d.image = QImage(path);
+        d.pixelSizeAssumed = true;   // no scale in a PNG/TIFF/JPG — assume 1 px = 1 Å
         if (!d.image.isNull()) {
             QImage gray = d.image.convertToFormat(QImage::Format_Grayscale8);
             int w = gray.width(), h = gray.height();
@@ -2155,15 +2178,16 @@ bool FtWindow::loadHistorySlotFromDisk(int i)
         return false;
     }
 
-    m_history[i].image        = d.image;
-    m_history[i].rawPixels    = std::move(d.rawPixels);
-    m_history[i].minVal       = d.minVal;
-    m_history[i].maxVal       = d.maxVal;
-    m_history[i].pixelSize    = d.pixelSize;
-    m_history[i].powerSpecImg = d.powerSpec;
-    m_history[i].occupied     = true;
-    m_history[i].deferred     = false;
-    m_history[i].loading      = false;
+    m_history[i].image            = d.image;
+    m_history[i].rawPixels        = std::move(d.rawPixels);
+    m_history[i].minVal           = d.minVal;
+    m_history[i].maxVal           = d.maxVal;
+    m_history[i].pixelSize        = d.pixelSize;
+    m_history[i].pixelSizeAssumed = d.pixelSizeAssumed;
+    m_history[i].powerSpecImg     = d.powerSpec;
+    m_history[i].occupied         = true;
+    m_history[i].deferred         = false;
+    m_history[i].loading          = false;
     return true;
 #endif
 }
@@ -2239,14 +2263,15 @@ void FtWindow::finishSlotLoad(int i, quint64 token, SlotImageData data)
         return;
     }
 
-    m_history[i].image        = data.image;
-    m_history[i].rawPixels    = data.rawPixels;
-    m_history[i].minVal       = data.minVal;
-    m_history[i].maxVal       = data.maxVal;
-    m_history[i].pixelSize    = data.pixelSize;
-    m_history[i].powerSpecImg = data.powerSpec;
-    m_history[i].occupied     = true;
-    m_history[i].deferred     = false;
+    m_history[i].image            = data.image;
+    m_history[i].rawPixels        = data.rawPixels;
+    m_history[i].minVal           = data.minVal;
+    m_history[i].maxVal           = data.maxVal;
+    m_history[i].pixelSize        = data.pixelSize;
+    m_history[i].pixelSizeAssumed = data.pixelSizeAssumed;
+    m_history[i].powerSpecImg     = data.powerSpec;
+    m_history[i].occupied         = true;
+    m_history[i].deferred         = false;
 
     // Only pull it into the panels if it is still the buffer the user is on;
     // they may have clicked elsewhere while it was reading.
@@ -2259,6 +2284,8 @@ void FtWindow::finishSlotLoad(int i, quint64 token, SlotImageData data)
         m_imageDispMin   = m_history[i].minVal;
         m_imageDispMax   = m_history[i].maxVal;
         m_pixelSize      = m_history[i].pixelSize;
+        m_pixelSizeAssumed = m_history[i].pixelSizeAssumed;
+        m_lastOperation  = m_history[i].lastOperation;
         if (!m_image.isNull()) {
             m_zoom[0].reset(m_image.width(), m_image.height());
             computeFFT(true);
@@ -2327,6 +2354,8 @@ FtWindow::BufferSnapshot FtWindow::captureCurrentState() const
     snapshot.imageDispMin = m_imageDispMin;
     snapshot.imageDispMax = m_imageDispMax;
     snapshot.pixelSize = m_pixelSize;
+    snapshot.pixelSizeAssumed = m_pixelSizeAssumed;
+    snapshot.lastOperation = m_lastOperation;
     snapshot.ftComputed = m_ftComputed;
     snapshot.fftN = m_fftN;
     snapshot.origW = m_origW;
@@ -2356,6 +2385,8 @@ void FtWindow::applySnapshot(const BufferSnapshot &snapshot, bool keepZoom)
     m_imageDispMin = snapshot.imageDispMin;
     m_imageDispMax = snapshot.imageDispMax;
     m_pixelSize = snapshot.pixelSize;
+    m_pixelSizeAssumed = snapshot.pixelSizeAssumed;
+    m_lastOperation = snapshot.lastOperation;
     m_ftComputed = snapshot.ftComputed;
     m_fftN = snapshot.fftN;
     m_origW = snapshot.origW;
@@ -2416,8 +2447,18 @@ void FtWindow::trimUndoMemory()
         m_undoStack.pop_front();
 }
 
-void FtWindow::storeUndoSnapshot()
+void FtWindow::storeUndoSnapshot(const QString &opName)
 {
+    // Record the operation label on the current buffer *after* the snapshot is
+    // captured, so the captured (pre-op) state keeps the previous label and Undo
+    // restores it. The new label describes the operation about to run.
+    auto stampOperation = [this, &opName]() {
+        if (opName.isNull()) return;
+        m_lastOperation = opName;
+        if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS)
+            m_history[m_activeSlot].lastOperation = opName;
+    };
+
     // Probe first: if there isn't room to copy the current state, drop the
     // undo history rather than risk an allocation that would abort the app.
     // The calculation that requested the snapshot still runs, just without an
@@ -2426,6 +2467,7 @@ void FtWindow::storeUndoSnapshot()
         m_undoStack.clear();
         m_redoStack.clear();
         updateUndoRedoButtons();
+        stampOperation();
         qWarning() << "Undo history dropped – insufficient memory for snapshot";
         return;
     }
@@ -2435,6 +2477,7 @@ void FtWindow::storeUndoSnapshot()
     clearRedoStack();
     trimUndoMemory();
     updateUndoRedoButtons();
+    stampOperation();
 }
 
 void FtWindow::updateUndoRedoButtons()
@@ -2956,7 +2999,7 @@ void FtWindow::onApplyBandpass()
 void FtWindow::onApplyBandpassImpl()
 {
     if (!m_ftComputed || m_fftN == 0) return;
-    storeUndoSnapshot();
+    storeUndoSnapshot(tr("Band-pass filter"));
 
     int N = m_fftN;
     int half = N / 2;
@@ -3031,7 +3074,7 @@ void FtWindow::onApplyLattice()
 void FtWindow::onApplyLatticeImpl()
 {
     if (!m_ftComputed || m_fftN == 0) return;
-    storeUndoSnapshot();
+    storeUndoSnapshot(tr("Lattice filter"));
 
     int N = m_fftN;
     int half = N / 2;
@@ -3113,7 +3156,7 @@ void FtWindow::onApplyBinning()
 void FtWindow::onApplyBinningImpl()
 {
     if (m_image.isNull()) return;
-    storeUndoSnapshot();
+    storeUndoSnapshot(tr("Binned"));
 
     int binFactor = m_binCombo->currentData().toInt();
     if (binFactor <= 1) return;
@@ -3388,7 +3431,7 @@ void FtWindow::onCopyDuplicate()
         return;                                  // source holds nothing
     }
 
-    storeUndoSnapshot();
+    storeUndoSnapshot(tr("Duplicated buffer"));
 
     // A copy is the same picture, so it keeps the source's path: "Reload image"
     // on the duplicate then still finds the original file. The cached FFT is
@@ -3461,7 +3504,7 @@ void FtWindow::onApplyPadImpl()
     if ((int)m_imageRawPixels.size() != w * h) return;
     if (w == target && h == target) return;          // already that size
 
-    storeUndoSnapshot();
+    storeUndoSnapshot(tr("Padded"));
 
     padOrCropCentred(m_imageRawPixels, w, h, target, target);
 
@@ -3502,7 +3545,7 @@ void FtWindow::onApplyCrop()
     std::vector<double> &pix = m_imageRawPixels;
     if ((int)pix.size() != W * H) return;
 
-    storeUndoSnapshot();
+    storeUndoSnapshot(tr("Cropped"));
 
     int newW = side, newH = side;
     std::vector<double> newPix((size_t)newW * newH);
@@ -3567,7 +3610,7 @@ void FtWindow::onInvertContrast()
 void FtWindow::onInvertContrastImpl()
 {
     if (m_image.isNull()) return;
-    storeUndoSnapshot();
+    storeUndoSnapshot(tr("Inverted contrast"));
 
     int w = m_image.width();
     int h = m_image.height();
@@ -3622,7 +3665,7 @@ void FtWindow::onApplyEdgeTaper()
 void FtWindow::onApplyEdgeTaperImpl()
 {
     if (m_image.isNull()) return;
-    storeUndoSnapshot();
+    storeUndoSnapshot(tr("Edge taper"));
 
     int w = m_image.width();
     int h = m_image.height();
@@ -3717,7 +3760,7 @@ void FtWindow::onApplySymmetryImpl()
     if (order > 64) order = 64;   // sanity clamp
     if (order == 1) return;       // nothing to do
 
-    storeUndoSnapshot();
+    storeUndoSnapshot(tr("Symmetrized"));
 
     // Mean pixel value used to fill samples that fall outside the image
     double meanVal = 0.0;
@@ -3817,7 +3860,7 @@ void FtWindow::onApplyFtSymmetryImpl()
     if (order > 64) order = 64;
     if (order == 1) return;
 
-    storeUndoSnapshot();
+    storeUndoSnapshot(tr("Fourier symmetrized"));
 
     const int N = m_fftN;
     const int halfN = N / 2;
@@ -3927,7 +3970,7 @@ void FtWindow::onApplyGaborFilterImpl()
     const double theta = thetaDeg * M_PI / 180.0;
     const double psi   = 0.0;
 
-    storeUndoSnapshot();
+    storeUndoSnapshot(tr("Gabor filter"));
 
     int w = m_image.width();
     int h = m_image.height();
@@ -4048,7 +4091,7 @@ void FtWindow::onApplyHessianFilterImpl()
     if (!okP || polarity == 0.0) polarity = 1.0;
     polarity = (polarity > 0.0) ? 1.0 : -1.0;
 
-    storeUndoSnapshot();
+    storeUndoSnapshot(tr("Hessian filter"));
 
     int w = m_image.width();
     int h = m_image.height();
@@ -4212,7 +4255,7 @@ void FtWindow::onApplyFtCrop()
 void FtWindow::onApplyFtCropImpl()
 {
     if (!m_ftComputed || m_fftN == 0) return;
-    storeUndoSnapshot();
+    storeUndoSnapshot(tr("Fourier crop"));
 
     int factor = m_ftCropCombo->currentData().toInt();
     if (factor <= 1) return;
@@ -4294,7 +4337,7 @@ void FtWindow::onApplyFtPadImpl()
     if (adjN <= FT_PAD_MAX) newN = adjN;
     if (newN <= N) return;  // nothing to do
 
-    storeUndoSnapshot();
+    storeUndoSnapshot(tr("Fourier pad"));
 
     m_toolProgress = 0.1;
     update();
@@ -4341,7 +4384,7 @@ void FtWindow::onApplyDirectional()
 void FtWindow::onApplyDirectionalImpl()
 {
     if (!m_ftComputed || m_fftN == 0) return;
-    storeUndoSnapshot();
+    storeUndoSnapshot(tr("Directional filter"));
 
     int N = m_fftN;
     int half = N / 2;
@@ -4426,7 +4469,7 @@ void FtWindow::onApplyLineFilter()
 void FtWindow::onApplyLineFilterImpl()
 {
     if (!m_ftComputed || m_fftN == 0) return;
-    storeUndoSnapshot();
+    storeUndoSnapshot(tr("Line filter"));
 
     bool okWidth = false;
     bool okAngle = false;
@@ -4753,14 +4796,16 @@ void FtWindow::onFtMathComputeImpl()
             }
 
             if (m_activeSlot >= 0 && !m_image.isNull()) {
-                m_history[m_activeSlot].image        = m_image;
-                m_history[m_activeSlot].path         = m_imagePath;
-                m_history[m_activeSlot].rawPixels    = m_imageRawPixels;
-                m_history[m_activeSlot].minVal       = m_imageMinVal;
-                m_history[m_activeSlot].maxVal       = m_imageMaxVal;
-                m_history[m_activeSlot].pixelSize    = m_pixelSize;
-                m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
-                m_history[m_activeSlot].occupied     = true;
+                m_history[m_activeSlot].image            = m_image;
+                m_history[m_activeSlot].path             = m_imagePath;
+                m_history[m_activeSlot].rawPixels        = m_imageRawPixels;
+                m_history[m_activeSlot].minVal           = m_imageMinVal;
+                m_history[m_activeSlot].maxVal           = m_imageMaxVal;
+                m_history[m_activeSlot].pixelSize        = m_pixelSize;
+                m_history[m_activeSlot].pixelSizeAssumed = m_pixelSizeAssumed;
+                m_history[m_activeSlot].lastOperation    = m_lastOperation;
+                m_history[m_activeSlot].powerSpecImg     = computePowerSpecMasked(m_image);
+                m_history[m_activeSlot].occupied         = true;
             }
 
             int outIdx = st->outIdx;
@@ -4773,6 +4818,8 @@ void FtWindow::onFtMathComputeImpl()
             m_history[outIdx].minVal    = minVal;
             m_history[outIdx].maxVal    = maxVal;
             m_history[outIdx].pixelSize = st->pxTarget;
+            m_history[outIdx].pixelSizeAssumed = m_pixelSizeAssumed;
+            m_history[outIdx].lastOperation    = tr("Fourier math");
             m_history[outIdx].powerSpecImg = computePowerSpecMasked(outImg);
             m_history[outIdx].occupied  = true;
 
@@ -4783,6 +4830,8 @@ void FtWindow::onFtMathComputeImpl()
             m_imageMinVal    = m_history[outIdx].minVal;
             m_imageMaxVal    = m_history[outIdx].maxVal;
             m_pixelSize      = m_history[outIdx].pixelSize;
+            m_pixelSizeAssumed = m_history[outIdx].pixelSizeAssumed;
+            m_lastOperation  = m_history[outIdx].lastOperation;
             m_zoom[0].reset(m_image.width(), m_image.height());
 
             m_ftComputed  = false;
@@ -4968,14 +5017,16 @@ void FtWindow::onMathComputeImpl()
                     (result[y * S + x] - minVal) * scale, 0.0, 255.0));
         }
         if (m_activeSlot >= 0 && !m_image.isNull()) {
-            m_history[m_activeSlot].image        = m_image;
-            m_history[m_activeSlot].path         = m_imagePath;
-            m_history[m_activeSlot].rawPixels    = m_imageRawPixels;
-            m_history[m_activeSlot].minVal       = m_imageMinVal;
-            m_history[m_activeSlot].maxVal       = m_imageMaxVal;
-            m_history[m_activeSlot].pixelSize    = m_pixelSize;
-            m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
-            m_history[m_activeSlot].occupied     = true;
+            m_history[m_activeSlot].image            = m_image;
+            m_history[m_activeSlot].path             = m_imagePath;
+            m_history[m_activeSlot].rawPixels        = m_imageRawPixels;
+            m_history[m_activeSlot].minVal           = m_imageMinVal;
+            m_history[m_activeSlot].maxVal           = m_imageMaxVal;
+            m_history[m_activeSlot].pixelSize        = m_pixelSize;
+            m_history[m_activeSlot].pixelSizeAssumed = m_pixelSizeAssumed;
+            m_history[m_activeSlot].lastOperation    = m_lastOperation;
+            m_history[m_activeSlot].powerSpecImg     = computePowerSpecMasked(m_image);
+            m_history[m_activeSlot].occupied         = true;
         }
         int outIdx = st->outIdx;
         m_history[outIdx].image     = outImg;
@@ -4987,6 +5038,8 @@ void FtWindow::onMathComputeImpl()
         m_history[outIdx].minVal    = minVal;
         m_history[outIdx].maxVal    = maxVal;
         m_history[outIdx].pixelSize = 1.0;
+        m_history[outIdx].pixelSizeAssumed = m_pixelSizeAssumed;
+        m_history[outIdx].lastOperation    = tr("Image math");
         m_history[outIdx].powerSpecImg = computePowerSpecMasked(outImg);
         m_history[outIdx].occupied  = true;
 
@@ -4997,6 +5050,8 @@ void FtWindow::onMathComputeImpl()
         m_imageMinVal    = m_history[outIdx].minVal;
         m_imageMaxVal    = m_history[outIdx].maxVal;
         m_pixelSize      = m_history[outIdx].pixelSize;
+        m_pixelSizeAssumed = m_history[outIdx].pixelSizeAssumed;
+        m_lastOperation  = m_history[outIdx].lastOperation;
         m_zoom[0].reset(m_image.width(), m_image.height());
 
         m_ftComputed  = false;
@@ -5351,6 +5406,8 @@ void FtWindow::onExtractComputeImpl()
     m_history[tgtIdx].minVal    = mn;
     m_history[tgtIdx].maxVal    = mx;
     m_history[tgtIdx].pixelSize = srcEntry.pixelSize;
+    m_history[tgtIdx].pixelSizeAssumed = srcEntry.pixelSizeAssumed;
+    m_history[tgtIdx].lastOperation    = tr("Extracted region");
     m_history[tgtIdx].path.clear();
     m_history[tgtIdx].occupied  = true;
     m_history[tgtIdx].powerSpecImg = computePowerSpecMasked(outImg);
@@ -5367,6 +5424,8 @@ void FtWindow::onExtractComputeImpl()
         m_imageDispMax   = mx;
     }
     m_pixelSize      = m_history[tgtIdx].pixelSize;
+    m_pixelSizeAssumed = m_history[tgtIdx].pixelSizeAssumed;
+    m_lastOperation  = m_history[tgtIdx].lastOperation;
     m_zoom[0].reset(outSize, outSize);
     m_ftComputed = false;
             m_toolProgress = 0.5;
@@ -5589,7 +5648,7 @@ void FtWindow::onCtfComputeImpl()
     int N = 1024;
     double dxA = (m_pixelSize > 0) ? m_pixelSize : 1.0;
 
-    storeUndoSnapshot();
+    storeUndoSnapshot(tr("CTF"));
 
     // Build 1D profile: from r = 0 (center) to r = (N/2)*sqrt(2) (corners)
     double maxR = (N / 2.0) * std::sqrt(2.0);
@@ -6338,6 +6397,7 @@ void FtWindow::onCtfFitExecuteImpl()
     m_imageDispMin   = inMin;
     m_imageDispMax   = inMax;
     m_pixelSize      = dxA;                 // sampled like the input image
+    m_lastOperation  = tr("CTF model");     // pixelSizeAssumed inherited unchanged
     m_origW          = inImage.width();
     m_origH          = inImage.height();
     m_zoom[0].reset(inImage.width(), inImage.height());
@@ -6476,8 +6536,11 @@ void FtWindow::onEditPixelSize()
         double v = edit->text().toDouble(&ok);
         if (ok && v > 0.0) {
             m_pixelSize = v;
-            if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS)
+            m_pixelSizeAssumed = false;   // user supplied it — no longer an assumption
+            if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS) {
                 m_history[m_activeSlot].pixelSize = v;
+                m_history[m_activeSlot].pixelSizeAssumed = false;
+            }
             saveHistory();
             update();
         }
@@ -6514,7 +6577,7 @@ void FtWindow::onPhaseRampComputeImpl()
     if (!okDir)  dirDeg  = 30.0;
     if (!okStep) stepDeg = 10.0;
 
-    storeUndoSnapshot();
+    storeUndoSnapshot(tr("Phase ramp"));
 
     // Pick or create an active history slot, allocate a real-space buffer.
     if (m_activeSlot < 0) {

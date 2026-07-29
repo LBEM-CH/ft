@@ -121,6 +121,15 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_reloadBtn->setFixedSize(130, 30);
     connect(m_reloadBtn, &QPushButton::clicked, this, &FtWindow::onReloadImage);
 
+    // Copy image button — sits just above Reload in the central gutter. It opens
+    // the same copy-buffer parameter window (bottom-left of panel 1) that the
+    // panel-1 tool menu used to host under "Math".
+    m_copyImageBtn = new QPushButton("Copy image", this);
+    m_copyImageBtn->setFixedSize(130, 30);
+    m_copyImageBtn->setToolTip("Copy the active image into another buffer");
+    connect(m_copyImageBtn, &QPushButton::clicked, this,
+            [this]() { activateP1Tool(20); });
+
     // Empty-buffer button (clears the active buffer after a confirmation dialog)
     m_deleteBtn = new QPushButton("Empty buffer", this);
     m_deleteBtn->setFixedSize(130, 30);
@@ -158,7 +167,7 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     // Any top-level button click should dismiss the "New image" popup
     // (these buttons intercept mouse events, so mousePressEvent does not run).
     auto dismissNewImg = [this]() { if (m_newImageActive) onNewImageCancel(); };
-    for (QPushButton *b : {m_loadBtn, m_saveBtn, m_reloadBtn, m_deleteBtn,
+    for (QPushButton *b : {m_loadBtn, m_saveBtn, m_reloadBtn, m_copyImageBtn, m_deleteBtn,
                            m_undoBtn, m_redoBtn, m_fullscreenBtn, m_modeBtn}) {
         connect(b, &QPushButton::pressed, this, dismissNewImg);
     }
@@ -1700,8 +1709,9 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
                     m_alignPrevSrc = idx;
                     syncAlignCombos();
                 });
+        // A manual pick becomes the remembered reference for next time.
         connect(m_alignRefCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
-                this, [this](int) { syncAlignCombos(); });
+                this, [this](int idx) { m_alignRefSlot = idx; syncAlignCombos(); });
 
         const QString alignBtnSS =
             "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }"
@@ -1803,6 +1813,8 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
         m_imageDispMin   = m_history[m_activeSlot].minVal;
         m_imageDispMax   = m_history[m_activeSlot].maxVal;
         m_pixelSize      = m_history[m_activeSlot].pixelSize;
+        m_pixelSizeAssumed = m_history[m_activeSlot].pixelSizeAssumed;
+        m_lastOperation  = m_history[m_activeSlot].lastOperation;
         if (!m_image.isNull()) {
             m_zoom[0].reset(m_image.width(), m_image.height());
             computeFFT();
@@ -1834,6 +1846,8 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
                 m_imageDispMin  = m_history[i].minVal;
                 m_imageDispMax  = m_history[i].maxVal;
                 m_pixelSize     = m_history[i].pixelSize;
+                m_pixelSizeAssumed = m_history[i].pixelSizeAssumed;
+                m_lastOperation = m_history[i].lastOperation;
                 if (!m_image.isNull()) {
                     m_zoom[0].reset(m_image.width(), m_image.height());
                     computeFFT();
@@ -1881,20 +1895,21 @@ void FtWindow::resizeEvent(QResizeEvent *)
     m_createBtn->move(8 + m_loadBtn->width() + 4, 8);
     int hy0 = height() - height() / 5;
 
-    // Reload / Save / Delete sit stacked in the gutter between the two history
-    // panels (3 and 4). paintEvent keeps the thumbnail grids clear of the same
-    // gutter — both sides derive its width from historyButtonGutter().
+    // Copy image / Reload / Save / Delete sit stacked in the gutter between the
+    // two history panels (3 and 4). paintEvent keeps the thumbnail grids clear of
+    // the same gutter — both sides derive its width from historyButtonGutter().
     {
         int bw   = m_reloadBtn->width();
         int bh   = m_reloadBtn->height();
         int gap  = 6;
         int bx   = width() / 2 - bw / 2;
         int top  = hy0 + 2;
-        int by   = top + ((height() - top) - (3 * bh + 2 * gap)) / 2;
+        int by   = top + ((height() - top) - (4 * bh + 3 * gap)) / 2;
         if (by < top + 4) by = top + 4;
-        m_reloadBtn->move(bx, by);
-        m_saveBtn  ->move(bx, by + (bh + gap));
-        m_deleteBtn->move(bx, by + 2 * (bh + gap));
+        m_copyImageBtn->move(bx, by);
+        m_reloadBtn->move(bx, by + (bh + gap));
+        m_saveBtn  ->move(bx, by + 2 * (bh + gap));
+        m_deleteBtn->move(bx, by + 3 * (bh + gap));
     }
     // When running standalone, the "Fourier Analyzer" title and the "Manual"
     // button below it occupy the top-center area, so push undo/redo below

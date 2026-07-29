@@ -184,9 +184,11 @@ MrcResult loadMrcFromData(const QByteArray &fileData)
 
     if (mx > 0 && cellA > 0) {
         result.pixelSize = cellA / mx;
+        result.pixelSizeKnown = true;
         // qDebug() << "MRC:  pixel size X =" << result.pixelSize << "Angstrom";
     } else if (nx > 0 && cellA > 0) {
         result.pixelSize = cellA / nx;
+        result.pixelSizeKnown = true;
         qDebug() << "MRC:  pixel size X (from cellA/nx) =" << result.pixelSize << "Angstrom";
     } else {
         result.pixelSize = 1.0;

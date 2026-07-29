@@ -11,6 +11,7 @@ struct MrcResult {
     double minVal = 0;
     double maxVal = 0;
     double pixelSize = 1.0;         // in Angstrom (default 1.0 if not in header)
+    bool pixelSizeKnown = false;    // true only when the header actually gave one
     int nx = 0;
     int ny = 0;
     bool valid = false;

@@ -269,8 +269,6 @@ you want a positive-contrast view.
 </p>
 </details>
 
-<h2 class="group" id="p1-group-symmetrize">Symmetrize</h2>
-
 <details id="p1-symmetrize">
 <summary>Symmetrize image<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><polygon points="12,1.92 14.37,8.74 21.59,8.89 15.83,13.25 17.93,20.16 12,16.03 6.07,20.16 8.17,13.25 2.41,8.89 9.63,8.74" fill="#fff"/></svg></span></summary>
 <p>
@@ -686,8 +684,16 @@ intuition for why the convolution and correlation theorems are so useful in prac
 </p>
 </details>
 
+<h2 class="group" id="p1-group-copy">Copy image</h2>
+
 <details id="p1-copy">
 <summary>Copy image buffer<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><rect x="3" y="3" width="11" height="11" fill="#fff" stroke="#464646" stroke-width="0.8"/><text x="8.5" y="11.5" font-family="sans-serif" font-size="8" font-weight="bold" text-anchor="middle" fill="#141414">1</text><rect x="11.6" y="11.6" width="11" height="11" fill="#000" opacity="0.6"/><rect x="10.6" y="10.6" width="11" height="11" fill="#fff" stroke="#282828" stroke-width="0.8"/><text x="16.1" y="19.1" font-family="sans-serif" font-size="8" font-weight="bold" text-anchor="middle" fill="#141414">2</text></svg></span></summary>
+<p>
+Opened from the <strong>Copy image</strong> button in the centre of the
+window, just above <em>Reload image</em> — not from the panel-1 tool row.
+Pressing it brings up the copy parameter window in the bottom-left corner
+of panel 1.
+</p>
 <p>
 Duplicate one image buffer into another. The source is left exactly as
 it was, so this is the safe way to try something destructive: copy
@@ -846,14 +852,20 @@ the result are chosen independently, so you can align <em>a</em> onto
 <em>b</em> and drop the answer into <em>c</em> without disturbing
 either input. The reference itself is never modified.
 </p>
+<p>
+The three buffer selectors sit side by side, each under its own heading —
+<em>Image source</em>, <em>Alignment reference</em> and <em>Output
+buffer</em> — with the pulldown directly beneath the heading.
+</p>
 <div class="controls">
   <strong>Image source:</strong> the buffer (a…p) holding the image that
   moves. Defaults to the buffer on display. <br>
   <strong>Alignment reference:</strong> the buffer the image is aligned
-  onto. The source's own letter is greyed out — an image cannot be
-  aligned to itself — and if the two selectors ever end up on the same
-  buffer, both alignment buttons go grey and stop responding until you
-  pick a different one. <br>
+  onto. Every buffer is selectable — including the current source or
+  output — and the choice is <em>sticky</em>: it stays on whichever buffer
+  you last aligned onto and is never changed automatically, so opening the
+  tool again restores your previous reference. Change it only by picking a
+  different one from the pulldown. <br>
   <strong>Output buffer:</strong> where the aligned image is written. It
   defaults to the source, i.e. the image is replaced in place, and it has
   no exclusions: writing over the reference is allowed if you want it.

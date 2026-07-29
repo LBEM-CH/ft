@@ -25,12 +25,11 @@ void FtWindow::buildToolGroups()
     m_p1Groups = {
         { "Edit",        {0, 1, 8},     {} }, // eraser, paint brush, taper edges
         { "Measure",     {2},           {} },
-        { "Transform",   {3, 4, 5, 6, 7}, {} }, // flip H/V, shift, rotate, invert
-        { "Symmetrize",  {9},           {} },
+        { "Transform",   {3, 4, 5, 6, 7, 9}, {} }, // flip H/V, shift, rotate, invert, symmetrize
         { "Redimension", {10, 19, 11},  {} }, // bin, pad, crop
         { "Filter",      {12, 13},      {} }, // gabor, hessian
         { "Amyloid",     {14},          {} },
-        { "Math",        {15, 20},      {} }, // math calculations, copy buffer
+        { "Math",        {15},          {} }, // math calculations (copy image is a central button)
         { "Particles",   {16, 17},      {} }, // peak, extract
         // Single-member group: the group face is what the user hovers, so the
         // group name is the tooltip that shows (it overrides the icon's own).
@@ -269,7 +268,7 @@ void FtWindow::activateP1Tool(int toolId)
     case 3: {
         if (m_image.isNull()) return;
         bool was = m_p1FlipHActive;
-        deactivateAllP1Tools(); storeUndoSnapshot();
+        deactivateAllP1Tools(); storeUndoSnapshot(tr("Flipped horizontally"));
         m_image = flipImage(m_image, Qt::Horizontal);
         extractImageData(); if (m_ftComputed) computeFFT();
         m_p1FlipHActive = !was;
@@ -278,7 +277,7 @@ void FtWindow::activateP1Tool(int toolId)
     case 4: {
         if (m_image.isNull()) return;
         bool was = m_p1FlipVActive;
-        deactivateAllP1Tools(); storeUndoSnapshot();
+        deactivateAllP1Tools(); storeUndoSnapshot(tr("Flipped vertically"));
         m_image = flipImage(m_image, Qt::Vertical);
         extractImageData(); if (m_ftComputed) computeFFT();
         m_p1FlipVActive = !was;
@@ -351,13 +350,19 @@ void FtWindow::activateP1Tool(int toolId)
             }
             m_alignPrevSrc = src;
             m_alignOutCombo->setCurrentIndex(src);
-            // A reference equal to the source is not a usable starting point;
-            // prefer another buffer that actually holds an image.
-            if (m_alignRefCombo->currentIndex() == src) {
+            // The reference is sticky: restore whichever buffer was last used as
+            // a reference and never retarget it automatically. On first use fall
+            // back to another occupied buffer, else buffer a.
+            if (m_alignRefSlot < 0 || m_alignRefSlot >= HISTORY_SLOTS) {
                 int alt = -1;
                 for (int i = 0; i < HISTORY_SLOTS; i++)
                     if (i != src && m_history[i].occupied) { alt = i; break; }
-                m_alignRefCombo->setCurrentIndex(alt >= 0 ? alt : (src + 1) % HISTORY_SLOTS);
+                m_alignRefSlot = (alt >= 0) ? alt : 0;
+            }
+            {   // Setting it manually here should not itself be treated as a
+                // fresh user pick, so block the change handler.
+                QSignalBlocker b(m_alignRefCombo);
+                m_alignRefCombo->setCurrentIndex(m_alignRefSlot);
             }
             syncAlignCombos();
         }
@@ -776,6 +781,8 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
                 cur.minVal       = m_imageMinVal;
                 cur.maxVal       = m_imageMaxVal;
                 cur.pixelSize    = m_pixelSize;
+                cur.pixelSizeAssumed = m_pixelSizeAssumed;
+                cur.lastOperation = m_lastOperation;
                 cur.ftComputed   = m_ftComputed;
                 if (m_ftComputed) {
                     cur.fftData      = m_fftData;
@@ -814,6 +821,8 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
                 m_imageDispMin   = m_history[i].minVal;
                 m_imageDispMax   = m_history[i].maxVal;
                 m_pixelSize      = m_history[i].pixelSize;
+                m_pixelSizeAssumed = m_history[i].pixelSizeAssumed;
+                m_lastOperation  = m_history[i].lastOperation;
             } else {
                 // Empty slot – clear panel 1
                 m_image          = QImage();
@@ -824,6 +833,8 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
                 m_imageDispMin   = 0;
                 m_imageDispMax   = 0;
                 m_pixelSize      = 1.0;
+                m_pixelSizeAssumed = false;
+                m_lastOperation.clear();
             }
 
             m_modeBtn->setText(modeLabel());
@@ -1105,7 +1116,8 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         for (int i = 0; i < m_numDispItems; i++) {
             const DisplayItem &di = m_dispItems[i];
             if (di.valid && di.zoomIdx == 0 && di.screenRect.contains(event->pos())) {
-                storeUndoSnapshot();
+                storeUndoSnapshot(m_p1EraserActive ? tr("Erased region")
+                                                   : tr("Brush edit"));
                 if (m_p1EraserActive) p1EraserApply(event->pos());
                 else                  p1BrushApply(event->pos());
                 m_p1ToolDragging = true;
@@ -1120,7 +1132,8 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         for (int i = 0; i < m_numDispItems; i++) {
             const DisplayItem &di = m_dispItems[i];
             if (di.valid && di.zoomIdx == 0 && di.screenRect.contains(event->pos())) {
-                storeUndoSnapshot();
+                storeUndoSnapshot(m_shiftActive ? tr("Shifted image")
+                                                : tr("Rotated image"));
                 m_p1Dragging = true;
                 m_p1DragStart = event->pos();
                 return;
@@ -1235,7 +1248,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         for (int i = 0; i < m_numDispItems; i++) {
             const DisplayItem &di = m_dispItems[i];
             if (di.valid && di.zoomIdx >= 1 && di.screenRect.contains(event->pos())) {
-                storeUndoSnapshot();
+                storeUndoSnapshot(tr("Rotated in Fourier space"));
                 m_p2Dragging = true;
                 m_p2DragStart = event->pos();
                 return;
@@ -1351,7 +1364,8 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         for (int i = 0; i < m_numDispItems; i++) {
             const DisplayItem &di = m_dispItems[i];
             if (di.valid && di.zoomIdx >= 1 && di.screenRect.contains(event->pos())) {
-                storeUndoSnapshot();
+                storeUndoSnapshot(m_eraserActive ? tr("Erased in Fourier space")
+                                                 : tr("Painted in Fourier space"));
                 if (m_eraserActive) eraserApply(event->pos());
                 else                brushApply(event->pos());
                 m_toolDragging = true;
