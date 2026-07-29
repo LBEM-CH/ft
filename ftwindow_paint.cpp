@@ -563,45 +563,50 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Shift image icon (button 4): arrow pointing right
+            // Shift image icon (button 5): the classic four-way move glyph — a
+            // plus of shafts with an arrowhead on each end, reading clearly as
+            // "drag to shift in any direction".
             if (i == 5) {
                 p.setRenderHint(QPainter::Antialiasing, true);
-                double cx2 = r.x() + r.width() / 2.0;
-                double cy2 = r.y() + r.height() / 2.0;
-                double hw = r.width() * 0.35;
-                double hh = r.height() * 0.22;
+                const double cx2 = r.x() + r.width() / 2.0;
+                const double cy2 = r.y() + r.height() / 2.0;
+                const QColor col = m_shiftActive ? QColor(180, 180, 255) : Qt::white;
+                const double reach = r.width()  * 0.40;   // arrow tip from centre
+                const double head  = r.width()  * 0.18;   // arrowhead length
+                const double half  = r.height() * 0.15;   // arrowhead half-width
+                const double shaftW = std::max(1.5, r.width() / 9.0);
 
+                // Shafts: a plus reaching out to where each head begins.
+                p.setPen(QPen(col, shaftW, Qt::SolidLine, Qt::RoundCap));
+                p.drawLine(QPointF(cx2 - (reach - head), cy2),
+                           QPointF(cx2 + (reach - head), cy2));
+                p.drawLine(QPointF(cx2, cy2 - (reach - head)),
+                           QPointF(cx2, cy2 + (reach - head)));
+
+                // Four arrowheads at the tips.
                 p.setPen(Qt::NoPen);
-                p.setBrush(m_shiftActive ? QColor(180, 180, 255) : Qt::white);
-                // Four-direction arrow
-                // Right
-                QPainterPath ar;
-                ar.moveTo(cx2 + hw, cy2);
-                ar.lineTo(cx2 + hw * 0.4, cy2 - hh);
-                ar.lineTo(cx2 + hw * 0.4, cy2 + hh);
+                p.setBrush(col);
+                QPainterPath ar;   // right
+                ar.moveTo(cx2 + reach, cy2);
+                ar.lineTo(cx2 + reach - head, cy2 - half);
+                ar.lineTo(cx2 + reach - head, cy2 + half);
                 ar.closeSubpath();
-                p.drawPath(ar);
-                // Left
-                QPainterPath al;
-                al.moveTo(cx2 - hw, cy2);
-                al.lineTo(cx2 - hw * 0.4, cy2 - hh);
-                al.lineTo(cx2 - hw * 0.4, cy2 + hh);
+                QPainterPath al;   // left
+                al.moveTo(cx2 - reach, cy2);
+                al.lineTo(cx2 - reach + head, cy2 - half);
+                al.lineTo(cx2 - reach + head, cy2 + half);
                 al.closeSubpath();
-                p.drawPath(al);
-                // Up
-                QPainterPath au;
-                au.moveTo(cx2, cy2 - hw);
-                au.lineTo(cx2 - hh, cy2 - hw * 0.4);
-                au.lineTo(cx2 + hh, cy2 - hw * 0.4);
+                QPainterPath au;   // up
+                au.moveTo(cx2, cy2 - reach);
+                au.lineTo(cx2 - half, cy2 - reach + head);
+                au.lineTo(cx2 + half, cy2 - reach + head);
                 au.closeSubpath();
-                p.drawPath(au);
-                // Down
-                QPainterPath ad;
-                ad.moveTo(cx2, cy2 + hw);
-                ad.lineTo(cx2 - hh, cy2 + hw * 0.4);
-                ad.lineTo(cx2 + hh, cy2 + hw * 0.4);
+                QPainterPath ad;   // down
+                ad.moveTo(cx2, cy2 + reach);
+                ad.lineTo(cx2 - half, cy2 + reach - head);
+                ad.lineTo(cx2 + half, cy2 + reach - head);
                 ad.closeSubpath();
-                p.drawPath(ad);
+                p.drawPath(ar); p.drawPath(al); p.drawPath(au); p.drawPath(ad);
 
                 p.setRenderHint(QPainter::Antialiasing, false);
 

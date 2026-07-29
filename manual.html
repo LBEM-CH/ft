@@ -1539,8 +1539,14 @@ display in panel 1:
       <td>Re-read the active buffer's file from disk (or, in the web
           version, re-fetch it), discarding any edits made to it.</td></tr>
   <tr><td><strong>Save image</strong></td>
-      <td>Save the active panel-1 image to a file; the format follows the
-          extension you choose.</td></tr>
+      <td>Save the active panel-1 image. A dialog lets you pick the
+          <strong>file format</strong> — MRC (raw float data), PNG, JPEG
+          (50/80/90&nbsp;% quality), PDF or TIFF (only the formats this
+          build can write are listed) — and whether to burn in a
+          <strong>scale bar</strong> (a white bar with its length in nm in
+          the bottom-right; not applicable to the raw MRC export). On the
+          desktop you then choose the file name and location; in the
+          browser you give a file name and it downloads.</td></tr>
   <tr><td><strong>Empty buffer</strong></td>
       <td>Clear the active buffer after a confirmation. The file on disk is
           not touched, and <em>Undo</em> brings the buffer back.</td></tr>

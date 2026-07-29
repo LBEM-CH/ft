@@ -151,6 +151,9 @@ protected:
 private slots:
     void onLoadImage();
     void onSaveImage();
+    // Build an RGB copy of the panel-1 image for export, optionally with a burnt
+    // in scale bar (bottom-right, real-space nm; notes an assumed pixel size).
+    QImage renderSaveImage(bool withScaleBar) const;
     void onCreateImage();
     void onCreateImageSized(int sz);
     void onReloadImage();
@@ -478,7 +481,7 @@ private:
 
     // ---- mark image center toggle (custom-painted) ----
     QRect       m_markImageCenterRect;
-    bool         m_imageCenterMarked = false;
+    bool         m_imageCenterMarked = true;   // on by default
 
     // ---- panel-1 image size / pixel size info (double-click to edit) ----
     QRect       m_pixelSizeInfoRect;   // clickable region under panel 1

@@ -5,6 +5,91 @@
 #include <cstring>
 #include <algorithm>
 #include <cmath>
+#include <vector>
+
+QByteArray saveMrcToData(const std::vector<double> &pixels,
+                         int nx, int ny, double pixelSize)
+{
+    if (nx <= 0 || ny <= 0 || (qint64)pixels.size() < (qint64)nx * ny)
+        return QByteArray();
+    if (!(pixelSize > 0.0)) pixelSize = 1.0;
+
+    const qint64 count = (qint64)nx * ny;
+
+    // Gather statistics for the header (order-independent).
+    float dmin = (float)pixels[0], dmax = (float)pixels[0];
+    double dsum = 0.0;
+    for (qint64 i = 0; i < count; i++) {
+        const float v = (float)pixels[(size_t)i];
+        dmin = std::min(dmin, v);
+        dmax = std::max(dmax, v);
+        dsum += v;
+    }
+    const float dmean = (float)(dsum / (double)count);
+
+    // 1024-byte header, zero-filled. All little-endian (the only byte order this
+    // build runs on); loadMrcFromData() reads it back via the MAP/machine stamp.
+    QByteArray hdr(1024, '\0');
+    char *h = hdr.data();
+    auto putI32 = [&](int off, qint32 v) {
+        v = qToLittleEndian(v);
+        memcpy(h + off, &v, 4);
+    };
+    auto putF32 = [&](int off, float f) {
+        quint32 bits;
+        memcpy(&bits, &f, 4);
+        bits = qToLittleEndian(bits);
+        memcpy(h + off, &bits, 4);
+    };
+
+    putI32(0,  nx);           // columns
+    putI32(4,  ny);           // rows
+    putI32(8,  1);            // sections (single slice)
+    putI32(12, 2);            // mode 2 = 32-bit float
+    putI32(16, 0);            // nxStart
+    putI32(20, 0);            // nyStart
+    putI32(24, 0);            // nzStart
+    putI32(28, nx);           // mx (sampling) — cellA/mx recovers the pixel size
+    putI32(32, ny);           // my
+    putI32(36, 1);            // mz
+    putF32(40, (float)(nx * pixelSize));   // cellA (Å)
+    putF32(44, (float)(ny * pixelSize));   // cellB (Å)
+    putF32(48, (float)pixelSize);          // cellC (Å)
+    putF32(52, 90.0f);        // cellAlpha
+    putF32(56, 90.0f);        // cellBeta
+    putF32(60, 90.0f);        // cellGamma
+    putI32(64, 1);            // mapc (columns = x)
+    putI32(68, 2);            // mapr (rows = y)
+    putI32(72, 3);            // maps (sections = z)
+    putF32(76, dmin);
+    putF32(80, dmax);
+    putF32(84, dmean);
+    putI32(88, 0);            // ispg (image / stack of images)
+    putI32(92, 0);            // nsymbt (no extended header)
+    // "MAP " stamp at 208 and little-endian machine stamp at 212.
+    h[208] = 'M'; h[209] = 'A'; h[210] = 'P'; h[211] = ' ';
+    h[212] = 0x44; h[213] = 0x41; h[214] = 0x00; h[215] = 0x00;
+
+    // Serialise the float data little-endian, bottom-up: MRC stores row 0 at the
+    // bottom, and loadMrc*() flips rows back to top-down on read, so `pixels`
+    // (top-down display order) must be written with the row order reversed to
+    // round-trip correctly.
+    QByteArray body((int)(count * 4), '\0');
+    char *b = body.data();
+    for (int y = 0; y < ny; y++) {
+        const double *srcRow = pixels.data() + (qint64)(ny - 1 - y) * nx;
+        char *dstRow = b + (qint64)y * nx * 4;
+        for (int x = 0; x < nx; x++) {
+            float f = (float)srcRow[x];
+            quint32 bits;
+            memcpy(&bits, &f, 4);
+            bits = qToLittleEndian(bits);
+            memcpy(dstRow + x * 4, &bits, 4);
+        }
+    }
+
+    return hdr + body;
+}
 
 MrcResult loadMrc(const QString &path)
 {

@@ -2,6 +2,15 @@
 #include <cstdlib>   // std::malloc / std::free (allocation preflight probe)
 #include <QFileInfo>
 #include <QImageReader>
+#include <QImageWriter>
+#include <QComboBox>
+#include <QCheckBox>
+#include <QLabel>
+#include <QLineEdit>
+#include <QHBoxLayout>
+#include <QPdfWriter>
+#include <QPageSize>
+#include <QPageLayout>
 #ifndef __EMSCRIPTEN__
 #include <QStorageInfo>   // network-volume check for the startup history restore
 #else
@@ -310,29 +319,284 @@ void FtWindow::onLoadImage()
 #endif
 }
 
+QImage FtWindow::renderSaveImage(bool withScaleBar) const
+{
+    if (m_image.isNull()) return QImage();
+    QImage img = m_image.convertToFormat(QImage::Format_RGB32);
+    if (!withScaleBar || !(m_pixelSize > 0.0)) return img;
+
+    const int W = img.width(), H = img.height();
+    // Physical length one image pixel spans, reported in nm (pixel size is Å).
+    const double nmPerPx  = m_pixelSize / 10.0;
+    const double targetPx = W / 8.0;                    // aim for ~1/8 of the width
+    const double rawNm    = nmPerPx * targetPx;
+    if (!(rawNm > 0.0) || !std::isfinite(rawNm)) return img;
+
+    // Round to the nearest 1 / 2 / 5 × 10^k.
+    const double e    = std::floor(std::log10(rawNm));
+    const double base = std::pow(10.0, e);
+    const double f    = rawNm / base;
+    const double nf   = (f < 1.5) ? 1.0 : (f < 3.5) ? 2.0 : (f < 7.5) ? 5.0 : 10.0;
+    const double niceNm = nf * base;
+    const double barPx  = niceNm / nmPerPx;
+    if (!(barPx > 2.0) || barPx > W) return img;
+
+    QPainter p(&img);
+    const int iBar = (int)std::lround(barPx);
+    const int barH = std::max(3, H / 120);
+    const int pad  = std::max(8, W / 40);
+    const int bx   = W - pad - iBar;
+    const int by   = H - pad - barH;
+
+    const QString label = QString("%1 nm").arg(QString::number(niceNm, 'g', 3));
+    QFont sf; sf.setPixelSize(std::max(11, H / 32)); sf.setBold(true);
+    p.setFont(sf);
+    QFontMetrics sfm(sf);
+    const int tw = sfm.horizontalAdvance(label);
+    const int tx = bx + iBar - tw;
+    const int ty = by - 6;
+
+    p.setRenderHint(QPainter::Antialiasing, false);
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(0, 0, 0, 140));                    // faint shadow behind the bar
+    p.drawRect(bx - 2, by - 2, iBar + 4, barH + 4);
+
+    p.setRenderHint(QPainter::Antialiasing, true);
+    p.setPen(QColor(0, 0, 0, 160));                      // text shadow
+    for (const QPoint &d : { QPoint(1, 1), QPoint(-1, 1), QPoint(1, -1), QPoint(-1, -1) })
+        p.drawText(tx + d.x(), ty + d.y(), label);
+
+    p.setRenderHint(QPainter::Antialiasing, false);
+    p.fillRect(QRect(bx, by, iBar, barH), Qt::white);    // the bar
+    p.setRenderHint(QPainter::Antialiasing, true);
+    p.setPen(Qt::white);
+    p.drawText(tx, ty, label);
+
+    if (m_pixelSizeAssumed) {
+        const QString note = QString::fromUtf8("(if 1px = 1Å)");
+        QFont nfo; nfo.setPixelSize(std::max(9, H / 48));
+        p.setFont(nfo);
+        QFontMetrics nfm(nfo);
+        const int ntw = nfm.horizontalAdvance(note);
+        const int ntx = bx + iBar - ntw;
+        const int nty = by + barH + 2 + nfm.ascent();
+        p.setPen(QColor(0, 0, 0, 160));
+        for (const QPoint &d : { QPoint(1, 1), QPoint(-1, 1), QPoint(1, -1), QPoint(-1, -1) })
+            p.drawText(ntx + d.x(), nty + d.y(), note);
+        p.setPen(Qt::white);
+        p.drawText(ntx, nty, note);
+    }
+    p.end();
+    return img;
+}
+
+// One entry per offered export format. `ext` is the file suffix; `qtFormat` is
+// the QImageWriter format (null for the MRC and PDF special cases).
+namespace {
+struct SaveFormat {
+    const char *label;
+    const char *ext;
+    const char *qtFormat;
+    int quality;      // JPEG quality, else -1
+    bool isMrc;
+    bool isPdf;
+};
+const SaveFormat kSaveFormats[] = {
+    { "MRC (raw float data)", "mrc",  nullptr, -1, true,  false },
+    { "PNG",                  "png",  "PNG",   -1, false, false },
+    { "JPEG (90% quality)",   "jpg",  "JPEG",  90, false, false },
+    { "JPEG (80% quality)",   "jpg",  "JPEG",  80, false, false },
+    { "JPEG (50% quality)",   "jpg",  "JPEG",  50, false, false },
+    { "PDF",                  "pdf",  nullptr, -1, false, true  },
+    { "TIFF",                 "tif",  "TIFF",  -1, false, false },
+};
+const int kNumSaveFormats = (int)(sizeof(kSaveFormats) / sizeof(kSaveFormats[0]));
+}
+
+// Encode the current image in the chosen format. Returns empty on failure.
+static QByteArray encodeSaveBytes(const SaveFormat &fmt, const QImage &rgb,
+                                  const std::vector<double> &rawPixels,
+                                  int w, int h, double pixelSize)
+{
+    if (fmt.isMrc) {
+        // Raw data export: the scale bar does not apply. Use the float pixels
+        // when they match the image, else fall back to the 8-bit greys.
+        if ((qint64)rawPixels.size() == (qint64)w * h)
+            return saveMrcToData(rawPixels, w, h, pixelSize);
+        std::vector<double> px((size_t)w * h);
+        for (int y = 0; y < h; y++) {
+            const uchar *row = rgb.constScanLine(y);
+            for (int x = 0; x < w; x++)
+                px[(size_t)y * w + x] = qGray(reinterpret_cast<const QRgb *>(row)[x]);
+        }
+        return saveMrcToData(px, w, h, pixelSize);
+    }
+
+    if (fmt.isPdf) {
+        QByteArray out;
+        QBuffer buf(&out);
+        buf.open(QIODevice::WriteOnly);
+        QPdfWriter writer(&buf);
+        writer.setPageSize(QPageSize(QPageSize::A4));
+        writer.setPageMargins(QMarginsF(0, 0, 0, 0));
+        writer.setResolution(150);
+        QPainter pp(&writer);
+        QRect page = pp.viewport();
+        QSize sz = rgb.size();
+        sz.scale(page.size(), Qt::KeepAspectRatio);      // fit, preserve aspect
+        QRect target((page.width()  - sz.width())  / 2,
+                     (page.height() - sz.height()) / 2,
+                     sz.width(), sz.height());
+        pp.drawImage(target, rgb);
+        pp.end();
+        buf.close();
+        return out;
+    }
+
+    QByteArray out;
+    QBuffer buf(&out);
+    buf.open(QIODevice::WriteOnly);
+    if (!rgb.save(&buf, fmt.qtFormat, fmt.quality))
+        out.clear();
+    buf.close();
+    return out;
+}
+
+// Give `name` the format's canonical extension, first stripping any recognised
+// trailing extension for that format so it is never doubled — e.g. a JPEG named
+// "photo.jpeg" becomes "photo.jpg", not "photo.jpeg.jpg", and a TIFF named
+// "img.tiff" becomes "img.tif", not "img.tiff.tif".
+static QString applySaveExtension(QString name, const SaveFormat &fmt)
+{
+    const QString canon = QString::fromLatin1(fmt.ext);
+    QStringList exts;
+    exts << canon;
+    if (canon == "jpg") exts << "jpeg";
+    if (canon == "tif") exts << "tiff";
+    for (const QString &e : exts) {
+        if (name.endsWith("." + e, Qt::CaseInsensitive)) {
+            name.chop(e.size() + 1);
+            break;
+        }
+    }
+    return name + "." + canon;
+}
+
 void FtWindow::onSaveImage()
 {
     if (m_image.isNull()) return;
 
+    // ---- format / scale-bar chooser --------------------------------------
+    auto *dlg = new QDialog(this);
+    dlg->setAttribute(Qt::WA_DeleteOnClose);
+    dlg->setModal(true);
+    dlg->setWindowTitle(tr("Save image"));
+    dlg->setMinimumWidth(420);
+    dlg->setStyleSheet("QDialog { background:#333; } QLabel { color:#eee; font-size:14px; }");
+
+    auto *layout = new QVBoxLayout(dlg);
+    layout->setContentsMargins(18, 18, 18, 18);
+    layout->setSpacing(10);
+
 #ifdef __EMSCRIPTEN__
-    // In WASM, save image via browser download
-    QByteArray pngData;
-    QBuffer buf(&pngData);
-    buf.open(QIODevice::WriteOnly);
-    m_image.save(&buf, "PNG");
-    buf.close();
-    QFileDialog::saveFileContent(pngData, "image.png");
-#else
-    QString path = QFileDialog::getSaveFileName(
-        this, "Save image as PNG", QString(),
-        "PNG Image (*.png)");
-    if (path.isEmpty()) return;
-
-    if (!path.endsWith(".png", Qt::CaseInsensitive))
-        path += ".png";
-
-    m_image.save(path, "PNG");
+    // The browser cannot pick a save location, only a file name.
+    auto *nameLabel = new QLabel(tr("File name:"), dlg);
+    layout->addWidget(nameLabel);
+    auto *nameEdit = new QLineEdit("image", dlg);
+    nameEdit->setStyleSheet("background:#222; color:white; border:1px solid #888;"
+                            " padding:6px; font-size:14px;");
+    layout->addWidget(nameEdit);
 #endif
+
+    auto *fmtLabel = new QLabel(tr("File format:"), dlg);
+    layout->addWidget(fmtLabel);
+    auto *fmtCombo = new QComboBox(dlg);
+    fmtCombo->setMinimumWidth(320);
+    fmtCombo->setMinimumHeight(30);
+    fmtCombo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    fmtCombo->setStyleSheet(
+        "QComboBox { background:white; color:black; border:1px solid #888;"
+        "  padding:6px 10px; font-size:14px; }"
+        "QComboBox::drop-down { width:24px; }"
+        "QComboBox QAbstractItemView { background:white; color:black; font-size:14px;"
+        "  padding:4px; outline:0; selection-background-color:#cce4ff;"
+        "  selection-color:black; }");
+    // Only offer QImage formats this Qt build can actually write (TIFF, for
+    // instance, needs a plugin that is not always shipped). MRC and PDF are
+    // produced by our own code, so they are always available. Each item carries
+    // its index into kSaveFormats as user data.
+    const QList<QByteArray> writable = QImageWriter::supportedImageFormats();
+    for (int i = 0; i < kNumSaveFormats; i++) {
+        const SaveFormat &f = kSaveFormats[i];
+        bool ok = f.isMrc || f.isPdf;
+        if (!ok && f.qtFormat)
+            ok = writable.contains(QByteArray(f.qtFormat).toLower());
+        if (ok)
+            fmtCombo->addItem(QString::fromLatin1(f.label), i);
+    }
+    // Default to PNG when present.
+    for (int i = 0; i < fmtCombo->count(); i++)
+        if (fmtCombo->itemData(i).toInt() == 1) { fmtCombo->setCurrentIndex(i); break; }
+    layout->addWidget(fmtCombo);
+
+    auto *scaleBarCheck = new QCheckBox(tr("Include scale bar"), dlg);
+    scaleBarCheck->setStyleSheet("color:#eee; font-size:14px; padding:4px 0;");
+    scaleBarCheck->setChecked(true);
+    layout->addWidget(scaleBarCheck);
+
+    // The scale bar is meaningless for the raw-data MRC export.
+    auto syncScaleBar = [scaleBarCheck, fmtCombo](int comboIdx) {
+        const int fi = fmtCombo->itemData(comboIdx).toInt();
+        const bool isMrc = (fi >= 0 && fi < kNumSaveFormats && kSaveFormats[fi].isMrc);
+        scaleBarCheck->setEnabled(!isMrc);
+    };
+    connect(fmtCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), dlg, syncScaleBar);
+    syncScaleBar(fmtCombo->currentIndex());
+
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, dlg);
+    buttons->setStyleSheet(
+        "QPushButton { background-color:#888; border:2px outset #aaa; color:#eee; padding:2px 12px; }");
+    layout->addWidget(buttons);
+    connect(buttons, &QDialogButtonBox::accepted, dlg, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, dlg, &QDialog::reject);
+
+    connect(dlg, &QDialog::accepted, this, [=]() {
+        const int idx = fmtCombo->currentData().toInt();
+        if (idx < 0 || idx >= kNumSaveFormats) return;
+        const SaveFormat &fmt = kSaveFormats[idx];
+        const bool withBar = scaleBarCheck->isChecked() && scaleBarCheck->isEnabled();
+
+        const QImage rgb = renderSaveImage(withBar);
+        const int w = m_image.width(), h = m_image.height();
+        const QByteArray bytes =
+            encodeSaveBytes(fmt, rgb, m_imageRawPixels, w, h, m_pixelSize);
+        if (bytes.isEmpty()) {
+            QMessageBox::warning(this, tr("Save image"),
+                tr("Could not encode the image as %1.").arg(QString::fromLatin1(fmt.label)));
+            return;
+        }
+
+#ifdef __EMSCRIPTEN__
+        QString name = nameEdit->text().trimmed();
+        if (name.isEmpty()) name = "image";
+        name = applySaveExtension(name, fmt);
+        QFileDialog::saveFileContent(bytes, name);
+#else
+        const QString filter =
+            QString("%1 (*.%2)").arg(QString::fromLatin1(fmt.label), fmt.ext);
+        QString path = QFileDialog::getSaveFileName(this, tr("Save image"), QString(), filter);
+        if (path.isEmpty()) return;
+        path = applySaveExtension(path, fmt);
+        QFile f(path);
+        if (!f.open(QIODevice::WriteOnly) || f.write(bytes) != bytes.size()) {
+            QMessageBox::warning(this, tr("Save image"),
+                tr("Could not write %1.").arg(path));
+        }
+        f.close();
+#endif
+    });
+
+    dlg->show();
 }
 
 void FtWindow::onCreateImage()

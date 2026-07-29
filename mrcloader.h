@@ -20,6 +20,12 @@ struct MrcResult {
 MrcResult loadMrc(const QString &path);
 MrcResult loadMrcFromData(const QByteArray &fileData);
 
+// Encode `pixels` (row-major, size nx*ny) as a little-endian MRC mode-2 (float32)
+// file, storing `pixelSize` (Ångström) in the cell dimensions so it round-trips
+// through loadMrc*(). Returns the complete file bytes (1024-byte header + data).
+QByteArray saveMrcToData(const std::vector<double> &pixels,
+                         int nx, int ny, double pixelSize);
+
 // Read only the 1024-byte MRC header to obtain the image dimensions, without
 // reading the (potentially huge) pixel data. Returns false if the file cannot
 // be opened or does not carry a usable header.
