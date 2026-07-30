@@ -220,10 +220,16 @@ void FtWindow::paintEvent(QPaintEvent *)
     QRect   pendingTipRect;
     QString pendingTipText;
 
+    // Label size for the custom-painted toggles beside the histograms. They
+    // shrink with the window like the real buttons do (chromeScale()), and both
+    // the rects computed further down and the painter below must use the same
+    // number or the text would no longer fit the box it is drawn in.
+    const int toggleFontPx = std::max(7, (int)std::lround(11 * chromeScale()));
+
     // Helper to paint a 3D-look toggle button (raised when up, sunken when
     // down). Shared by all panel-1 / panel-2 toggle buttons.
     auto paintToggleButton = [&](const QRect &br, const QString &text, bool down) {
-        QFont bf; bf.setPixelSize(11);
+        QFont bf; bf.setPixelSize(toggleFontPx);
         p.save();
         p.fillRect(br, down ? QColor(0xb8, 0xb8, 0xb8) : QColor(0xdc, 0xdc, 0xdc));
         QColor lite(0xff, 0xff, 0xff), dark(0x60, 0x60, 0x60);
@@ -300,14 +306,14 @@ void FtWindow::paintEvent(QPaintEvent *)
         int btnSide = m_toolBtnSide;
 
         // Floating popup panel background, under the member cells drawn below.
-        if (m_openMenuPanel == 1 && !m_p1PopupRect.isNull()) {
+        // layoutToolSlots() sets the rect for whichever group is showing its
+        // members — clicked open or previewed on hover — and clears it otherwise,
+        // so its emptiness is the test.
+        for (const QRect &popup : { m_p1PopupRect, m_p2PopupRect }) {
+            if (popup.isNull()) continue;
             p.setPen(QPen(QColor(200, 200, 200), 1));
             p.setBrush(QColor(30, 30, 30));
-            p.drawRect(m_p1PopupRect);
-        } else if (m_openMenuPanel == 2 && !m_p2PopupRect.isNull()) {
-            p.setPen(QPen(QColor(200, 200, 200), 1));
-            p.setBrush(QColor(30, 30, 30));
-            p.drawRect(m_p2PopupRect);
+            p.drawRect(popup);
         }
 
         // Panel 1: left edge
@@ -1800,7 +1806,11 @@ void FtWindow::paintEvent(QPaintEvent *)
             for (int g = 0; g < groups.size(); g++) {
                 const QRect &G = groupRects[g];
                 bool multi = groups[g].members.size() > 1;
-                bool open  = (m_openMenuPanel == panel && m_openMenuGroup == g);
+                // "Showing" covers both ways a group's members can be on screen:
+                // clicked open, or previewed while the mouse rests on the square.
+                // Either way the face has been vacated and needs standing in for.
+                bool open  = (m_openMenuPanel  == panel && m_openMenuGroup  == g)
+                          || (m_hoverMenuPanel == panel && m_hoverMenuGroup == g);
 
                 // Collapsed group with a custom text face (e.g. "CTF"): a plain
                 // black square with the text, in place of the first member icon.
@@ -1842,17 +1852,16 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
 
                 // Hovering a group face shows the group name (overriding any
-                // per-icon tip the representative may have set).
+                // per-icon tip the representative may have set). groupTipRect()
+                // decides where: beside the square normally, but out at the top
+                // corner of the member column while that is previewed, so it
+                // leaves the way to the icons clear.
                 if (G.contains(m_mousePos)) {
-                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
-                    QFontMetrics ttfm(ttf);
-                    QString tip = groups[g].name;
-                    int ttw = ttfm.horizontalAdvance(tip) + 8;
-                    int tth = ttfm.height() + 4;
-                    int ttx = (panel == 1) ? (G.right() + 4) : (G.left() - ttw - 4);
-                    int tty = G.center().y() - tth / 2;
-                    pendingTipRect = QRect(ttx, tty, ttw, tth);
-                    pendingTipText = tip;
+                    QRect tr = groupTipRect(panel, g);
+                    if (!tr.isNull()) {
+                        pendingTipRect = tr;
+                        pendingTipText = groups[g].name;
+                    }
                 }
             }
         };
@@ -2187,13 +2196,17 @@ void FtWindow::paintEvent(QPaintEvent *)
             // the left of the histogram, both at the same fixed size. These
             // are custom-painted (before any panel-1 tool dialog) so that
             // the dialog overpaints them, leaving them visually behind it.
-            QFont bf; bf.setPixelSize(11);
+            QFont bf; bf.setPixelSize(toggleFontPx);
             QFontMetrics bfm(bf);
             const QString markText = "mark image center";
             const QString freezeText = "freeze display contrast";
+            // Padding scales with the label, so the boxes keep their proportions
+            // instead of turning into wide slabs around shrunken text.
+            const double cs = chromeScale();
             int w = std::max(bfm.horizontalAdvance(markText),
-                             bfm.horizontalAdvance(freezeText)) + 16;
-            int h = bfm.height() + 8;
+                             bfm.horizontalAdvance(freezeText))
+                    + (int)std::lround(16 * cs);
+            int h = bfm.height() + (int)std::lround(8 * cs);
             const int gap = 4;
             int x = hr.left() - 6 - w;
             int cy = hr.center().y();
@@ -2658,13 +2671,15 @@ void FtWindow::paintEvent(QPaintEvent *)
             // covers them, leaving them visually behind it.
             if (!m_histRects[HIST_POWER].isNull()) {
                 QRect hr = m_histRects[HIST_POWER];
-                QFont bf; bf.setPixelSize(11);
+                QFont bf; bf.setPixelSize(toggleFontPx);
                 QFontMetrics bfm(bf);
                 const QString maskText   = "mask center for display";
                 const QString freezeText = "freeze display contrast";
+                const double cs = chromeScale();
                 int bw = std::max(bfm.horizontalAdvance(maskText),
-                                  bfm.horizontalAdvance(freezeText)) + 16;
-                int bh = bfm.height() + 8;
+                                  bfm.horizontalAdvance(freezeText))
+                         + (int)std::lround(16 * cs);
+                int bh = bfm.height() + (int)std::lround(8 * cs);
                 const int gap = 4;
                 int x = hr.right() + 6;
                 int cy = hr.center().y();
@@ -3661,12 +3676,12 @@ void FtWindow::paintEvent(QPaintEvent *)
                 nRows = m_alignResult.isEmpty() ? 3 : 4;
                 const int comboW = m_alignSrcCombo->width();
                 const int colGap = 14;
-                int c0 = std::max(fm.horizontalAdvance("Image source"), comboW);
-                int c1 = std::max(fm.horizontalAdvance("Alignment reference"), comboW);
+                int c0 = std::max(fm.horizontalAdvance("Alignment reference"), comboW);
+                int c1 = std::max(fm.horizontalAdvance("Image source"), comboW);
                 int c2 = std::max(fm.horizontalAdvance("Output buffer"), comboW);
                 int rCols = c0 + c1 + c2 + 2 * colGap;
                 int rBtns = m_alignCancelBtn->width() + 8 + m_alignShiftBtn->width()
-                            + 8 + m_alignRotBtn->width();
+                            + 8 + m_alignRotBtn->width() + 8 + m_alignFullBtn->width();
                 int rRes  = m_alignResult.isEmpty() ? 0 : fm.horizontalAdvance(m_alignResult);
                 textW = std::max({rCols, rBtns, rRes});
             } else if (m_gaborActive) {
@@ -3913,11 +3928,13 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             } else if (m_alignActive) {
                 // Three columns side by side: a bold header on top, the pulldown
-                // for that buffer role directly beneath it.
+                // for that buffer role directly beneath it. Reading order follows
+                // the workflow — the sticky reference first, then the image that
+                // moves, then where the answer lands.
                 const int comboW = m_alignSrcCombo->width();
                 const int colGap = 14;
-                int c0 = std::max(fm.horizontalAdvance("Image source"), comboW);
-                int c1 = std::max(fm.horizontalAdvance("Alignment reference"), comboW);
+                int c0 = std::max(fm.horizontalAdvance("Alignment reference"), comboW);
+                int c1 = std::max(fm.horizontalAdvance("Image source"), comboW);
                 int c2 = std::max(fm.horizontalAdvance("Output buffer"), comboW);
                 int x0 = tx;
                 int x1 = x0 + c0 + colGap;
@@ -3925,9 +3942,9 @@ void FtWindow::paintEvent(QPaintEvent *)
 
                 struct Col { int x; const char *head; QComboBox *cb; };
                 const Col cols[3] = {
-                    { x0, "Image source",        m_alignSrcCombo },
-                    { x1, "Alignment reference",  m_alignRefCombo },
-                    { x2, "Output buffer",        m_alignOutCombo },
+                    { x0, "Alignment reference", m_alignRefCombo },
+                    { x1, "Image source",        m_alignSrcCombo },
+                    { x2, "Output buffer",       m_alignOutCombo },
                 };
                 QFont hf = sf; hf.setBold(true);
                 for (const Col &c : cols) {
@@ -3941,12 +3958,14 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
                 p.setFont(sf);
 
-                // Cancel on the left, the two alignment actions right-aligned.
+                // Cancel on the left, the three alignment actions right-aligned in
+                // increasing thoroughness: shift, rotation, then both at once.
                 m_alignCancelBtn->move(tx, ty + lh * 2);
                 int bRight = rx + rw - margin;
-                m_alignRotBtn->move(bRight - m_alignRotBtn->width(), ty + lh * 2);
-                bRight -= m_alignRotBtn->width() + 8;
-                m_alignShiftBtn->move(bRight - m_alignShiftBtn->width(), ty + lh * 2);
+                for (QPushButton *b : { m_alignFullBtn, m_alignRotBtn, m_alignShiftBtn }) {
+                    b->move(bRight - b->width(), ty + lh * 2);
+                    bRight -= b->width() + 8;
+                }
                 if (!m_alignResult.isEmpty())
                     p.drawText(tx, ty + lh * 3 + fm.ascent(), m_alignResult);
             } else if (m_gaborActive) {
@@ -4837,9 +4856,17 @@ void FtWindow::paintEvent(QPaintEvent *)
     // still drawn (at the top, in place of the title) so users can access the
     // manual in any build mode.
     {
+        // Both boxes shrink with the window, on the same scale as the labelled
+        // buttons around them (chromeScale()) — left at a fixed size they became
+        // the largest thing on the top row once those buttons could shrink.
+        // Everything about them is derived from the font and the padding, so
+        // scaling those two carries the boxes, the text and the click regions
+        // (m_titleRect / m_manualRect) with it. resizeEvent() scales the
+        // Undo/Redo offset below them by the same factor.
+        const double cs = chromeScale();
         QFont titleFont;
         titleFont.setBold(true);
-        titleFont.setPixelSize(18);
+        titleFont.setPixelSize(std::max(9, (int)std::lround(18 * cs)));
         p.setFont(titleFont);
         QFontMetrics tfm(titleFont);
         // Size the boxes from the longer of the two labels so the Manual
@@ -4847,7 +4874,7 @@ void FtWindow::paintEvent(QPaintEvent *)
         QString refLabel = "Fourier Analyzer";
         int tw = tfm.horizontalAdvance(refLabel);
         int th = tfm.height();
-        int pad = 8;
+        int pad = std::max(3, (int)std::lround(8 * cs));
         int tx = (width() - tw) / 2 - pad;
         int ty = 4;
         int boxW = tw + 2 * pad;
@@ -4869,7 +4896,7 @@ void FtWindow::paintEvent(QPaintEvent *)
             p.drawText(titleRect, Qt::AlignCenter, "Fourier Analyzer");
 
             // Manual button sits just below the title with a small gap.
-            manualRect = QRect(titleRect.x(), titleRect.bottom() + 8,
+            manualRect = QRect(titleRect.x(), titleRect.bottom() + pad,
                                titleRect.width(), titleRect.height());
         } else {
             m_titleRect = QRect();

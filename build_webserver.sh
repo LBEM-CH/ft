@@ -9,17 +9,22 @@
 #     /etc/apache2/conf-available/ft-wasm.conf and Include'd from that vhost.
 #     The snippet adds `Alias /ft /srv/ft`, so the WASM app is served at
 #     https://<host>/ft/ without disturbing the main site.
-# See ft-apache.conf for the one-time Apache setup.
+#   - The snippet ft-manual-apache.conf installed the same way, which adds
+#     `Alias /ft-manual /srv/ft-manual` and serves the manual pages at
+#     https://<host>/ft-manual/. The app links to them there.
+# See ft-apache.conf and ft-manual-apache.conf for the one-time Apache setup.
 #
 # Usage:
-#   ./build_webserver.sh                              # create ft-wasm.tar.gz + ft-examples.tar.gz
+#   ./build_webserver.sh                              # create the three tarballs
 #   ./build_webserver.sh user@host                    # deploy to /srv/ft and reload apache2
 #   ./build_webserver.sh user@host /custom/path       # deploy to a custom path
 #
-# The payload is split into two archives — the app (ft-wasm.tar.gz) and the
-# example images (ft-examples.tar.gz) — and uploaded with rsync, which skips
-# whichever archive has not changed since the last deploy. The examples archive
-# is only re-packed when an image under EXAMPLE_IMAGES actually changed.
+# The payload is split into three archives — the app (ft-wasm.tar.gz), the
+# manual pages (ft-manual.tar.gz) and the example images (ft-examples.tar.gz) —
+# and uploaded with rsync, which skips whichever archive has not changed since
+# the last deploy. The manual and examples archives are only re-packed when one
+# of their files actually changed, which is what leaves their bytes identical
+# for rsync to recognise.
 #
 # The remote path defaults to /srv/ft (matches the Alias in ft-apache.conf).
 # The script uses sudo on the remote to write into /srv and to reload apache2 —
@@ -29,34 +34,48 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BUILD_DIR="$SCRIPT_DIR/build_wasm"
-# The payload is split into two archives so the large, rarely-changing example
-# images are not re-packed and re-uploaded on every app rebuild:
-#   - APP_TARBALL      the WASM app + manual pages, rebuilt every run
+# The payload is split into three archives so that neither the large,
+# rarely-changing example images nor the manual are re-packed and re-uploaded on
+# every app rebuild:
+#   - APP_TARBALL      the WASM app, rebuilt every run
+#   - MANUAL_TARBALL   the ft-manual pages, rebuilt only when a page changed
 #   - EXAMPLES_TARBALL the "images" tree, rebuilt only when an image changed
 # rsync (below) then skips whichever archive is byte-for-byte unchanged.
 #
 # The archives live in DIST_DIR, NOT in build_wasm: build_wasm.sh wipes its
 # whole build directory each run, so a tarball kept there could never be reused
-# across builds. DIST_DIR persists, so the examples archive survives and rsync
-# can recognise it as unchanged.
+# across builds. DIST_DIR persists, so the manual and examples archives survive
+# and rsync can recognise them as unchanged.
 DIST_DIR="$SCRIPT_DIR/dist"
 mkdir -p "$DIST_DIR"
 APP_TARBALL="$DIST_DIR/ft-wasm.tar.gz"
+MANUAL_TARBALL="$DIST_DIR/ft-manual.tar.gz"
 EXAMPLES_TARBALL="$DIST_DIR/ft-examples.tar.gz"
 REMOTE="${1:-}"
 REMOTE_DIR="${2:-/srv/ft}"
 
 # ft.worker.js is the pthread worker bootstrap emitted by the multithreaded
 # (-pthread) build; it is required at runtime or the worker pool fails to load.
-# "images" is packed separately (EXAMPLES_TARBALL), not with the app.
-APP_ARTIFACTS=(ft.html ft.js ft.wasm ft.worker.js qtloader.js icon-ft.png
-               manual.html manual_panel1.html manual_panel2.html manual_exercises.html)
+# "images" is packed separately (EXAMPLES_TARBALL), and so are the manual pages
+# (MANUAL_TARBALL) — they are served from /ft-manual/, not from inside the app.
+APP_ARTIFACTS=(ft.html ft.js ft.wasm ft.worker.js qtloader.js icon-ft.png)
 IMAGES_DIR="images"
+# Taken from the source tree, not from the build: nothing is generated from them,
+# and packing the originals keeps the manual deployable without a WASM build.
+MANUAL_DIR="$SCRIPT_DIR/ft-manual"
+MANUAL_PAGES=(manual.html manual_panel1.html manual_panel2.html manual_exercises.html)
 
 if [[ ! -d "$BUILD_DIR" ]]; then
     echo "error: $BUILD_DIR not found — run the WASM build first (see WASM_SERVER.txt)" >&2
     exit 1
 fi
+
+for f in "${MANUAL_PAGES[@]}"; do
+    if [[ ! -e "$MANUAL_DIR/$f" ]]; then
+        echo "error: missing manual page: $MANUAL_DIR/$f" >&2
+        exit 1
+    fi
+done
 
 cd "$BUILD_DIR"
 for f in "${APP_ARTIFACTS[@]}" "$IMAGES_DIR"; do
@@ -89,6 +108,31 @@ done
 echo "Packing $APP_TARBALL (dereferencing symlinks)…"
 tar czhf "$APP_TARBALL" ${TAR_OPTS[@]+"${TAR_OPTS[@]}"} "${APP_ARTIFACTS[@]}"
 echo "Created $APP_TARBALL ($(du -h "$APP_TARBALL" | cut -f1))"
+
+# ---- Manual archive: rebuilt only when one of the pages changed ----
+# The whole directory is packed rather than the four names checked above, so that
+# an asset added to it later (a stylesheet, a figure) reaches the server without
+# this script having to be edited. -C makes the entries relative to the directory,
+# so doit can unpack it straight into /srv/ft-manual and match the Alias in
+# ft-manual-apache.conf. Skipping the repack keeps the archive's bytes stable,
+# which is what lets rsync recognise it as unchanged.
+repack_manual=0
+if [[ ! -e "$MANUAL_TARBALL" ]]; then
+    repack_manual=1
+elif [[ -n "$(find -L "$MANUAL_DIR" -type f -newer "$MANUAL_TARBALL" -print -quit 2>/dev/null)" ]]; then
+    repack_manual=1
+fi
+if [[ "$repack_manual" -eq 1 ]]; then
+    # Note the word between the variable and the ellipsis: bash 3.2 (macOS) reads
+    # the multibyte "…" as part of the variable name if it abuts it, and `set -u`
+    # then aborts the script on an "unbound variable".
+    echo "Packing $MANUAL_TARBALL (manual pages)…"
+    tar czhf "$MANUAL_TARBALL" ${TAR_OPTS[@]+"${TAR_OPTS[@]}"} \
+        --exclude '.DS_Store' -C "$MANUAL_DIR" .
+    echo "Created $MANUAL_TARBALL ($(du -h "$MANUAL_TARBALL" | cut -f1))"
+else
+    echo "Reusing $MANUAL_TARBALL (no manual page changed)"
+fi
 
 # ---- Examples archive: rebuilt only when an image actually changed ----
 # "images" is a symlink into EXAMPLE_IMAGES, so -L follows it to test the real
@@ -130,20 +174,20 @@ if [ "$current_user" = "henning" ] || [ "$current_user" = "stahlber" ]; then
             # env var (sshpass -e) so it never appears in the process list.
             export SSHPASS="$pw"
             rsync -a -e "sshpass -e $RSYNC_SSH" \
-                "$APP_TARBALL" "$EXAMPLES_TARBALL" "$REMOTE_TARGET"
+                "$APP_TARBALL" "$MANUAL_TARBALL" "$EXAMPLES_TARBALL" "$REMOTE_TARGET"
             rsync -a -e "sshpass -e $RSYNC_SSH" "$SCRIPT_DIR/doit" "$REMOTE_TARGET"
             unset SSHPASS
         else
             echo "sshpass not found (install it with 'brew install sshpass'); falling back to an interactive rsync."
             rsync -a -e "$RSYNC_SSH" \
-                "$APP_TARBALL" "$EXAMPLES_TARBALL" "$REMOTE_TARGET"
+                "$APP_TARBALL" "$MANUAL_TARBALL" "$EXAMPLES_TARBALL" "$REMOTE_TARGET"
             rsync -a -e "$RSYNC_SSH" "$SCRIPT_DIR/doit" "$REMOTE_TARGET"
         fi
     else
         echo "Password file /Users/stahlber/.pw not found. Please copy the archives manually."
         echo "To update the web deployment, run this locally:"
         echo " "
-        echo "rsync -a \"$APP_TARBALL\" \"$EXAMPLES_TARBALL\" \"$REMOTE_TARGET\""
+        echo "rsync -a \"$APP_TARBALL\" \"$MANUAL_TARBALL\" \"$EXAMPLES_TARBALL\" \"$REMOTE_TARGET\""
         echo "rsync -a -e \"$RSYNC_SSH\" \"$SCRIPT_DIR/doit\" \"$REMOTE_TARGET\""
             echo " "
     fi
@@ -154,7 +198,8 @@ if [ "$current_user" = "henning" ] || [ "$current_user" = "stahlber" ]; then
     echo " "
     #
     cat <<EOF
-One-time Apache setup: see ft-apache.conf for the snippet and instructions.
+One-time Apache setup: see ft-apache.conf (app, /ft/) and ft-manual-apache.conf
+(manual pages, /ft-manual/) for the snippets and instructions.
 To evaluate website usage, copy ft-report.sh to the target. Run on the local machine:
     scp ft-report.sh henning@lbem-status:/home/henning
 Then run on the target:

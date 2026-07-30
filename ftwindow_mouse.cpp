@@ -53,25 +53,39 @@ void FtWindow::buildToolGroups()
 void FtWindow::layoutToolSlots()
 {
     int hy = height() - height() / 5;
-    int btnSide = std::max(width() * 5 / 400, 20);
     int gap = 2;
+    // Half again the size the squares used to be — the icons in them are drawn
+    // relative to the square, so they grow with it.
+    int btnSide = std::max(width() * 5 / 400, 20) * 3 / 2;
+    // …but never taller than the column of groups has room for. At this size a
+    // short window would otherwise push the squares off the top of the panel,
+    // taking the close button — half a square above them again — with them. The
+    // longer of the two panels' group lists sets the limit, since both columns
+    // share this one size, and the +3 leaves the close button its space.
+    const int nGroupsMax = std::max(m_p1Groups.size(), m_p2Groups.size());
+    if (nGroupsMax > 0) {
+        int fits = (hy - (nGroupsMax - 1) * gap) / (nGroupsMax + 3);
+        btnSide = std::max(8, std::min(btnSide, fits));
+    }
     int offset = btnSide / 2;
     m_toolBtnSide = btnSide;
     m_toolBtnGap = gap;
     m_toolBtnOffset = offset;
 
-    auto layoutPanel = [&](int panel) {
+    // The group squares themselves, plus the close button. Split out from the
+    // member placement below because the hover preview has to know where the
+    // squares are before the members can be placed: which group is previewed
+    // depends on which square the mouse is over.
+    auto layoutGroupFaces = [&](int panel) {
         const QVector<ToolGroup> &groups = (panel == 1) ? m_p1Groups : m_p2Groups;
         QRect *groupRects = (panel == 1) ? m_p1GroupRects : m_p2GroupRects;
-        QRect *slotRects  = (panel == 1) ? m_p1BtnRects   : m_toolBtnRects;
-        bool  *slotVis    = (panel == 1) ? m_p1SlotVisible : m_p2SlotVisible;
-        int nTools = (panel == 1) ? P1_TOOL_BUTTONS : P2_TOOL_BUTTONS;
-        for (int i = 0; i < nTools; i++) { slotVis[i] = false; slotRects[i] = QRect(); }
-
         int nG = groups.size();
         int totalH = nG * btnSide + (nG - 1) * gap;
         int startY = (hy - totalH) / 2;
         int gx = (panel == 1) ? offset : (width() - btnSide - offset);
+
+        for (int g = 0; g < nG; g++)
+            groupRects[g] = QRect(gx, startY + g * (btnSide + gap), btnSide, btnSide);
 
         // Close button: same size as a function button, sitting half a square
         // above the column. Only offered while this panel has a function open.
@@ -79,32 +93,63 @@ void FtWindow::layoutToolSlots()
         QRect &closeRect = (panel == 1) ? m_p1CloseRect : m_p2CloseRect;
         closeRect = funcOpen ? QRect(gx, startY - btnSide - btnSide / 2, btnSide, btnSide)
                              : QRect();
+    };
+    layoutGroupFaces(1);
+    layoutGroupFaces(2);
 
-        for (int g = 0; g < nG; g++) {
-            int by = startY + g * (btnSide + gap);
-            QRect G(gx, by, btnSide, btnSide);
-            groupRects[g] = G;
+    // Reads the popup rect from the previous layout to tell whether the pointer
+    // is resting on the previewed row, so the rects are only cleared afterwards.
+    updateGroupHoverPreview();
+    m_p1PopupRect = QRect();
+    m_p2PopupRect = QRect();
+
+    auto layoutPanel = [&](int panel) {
+        const QVector<ToolGroup> &groups = (panel == 1) ? m_p1Groups : m_p2Groups;
+        const QRect *groupRects = (panel == 1) ? m_p1GroupRects : m_p2GroupRects;
+        QRect *slotRects  = (panel == 1) ? m_p1BtnRects   : m_toolBtnRects;
+        bool  *slotVis    = (panel == 1) ? m_p1SlotVisible : m_p2SlotVisible;
+        int nTools = (panel == 1) ? P1_TOOL_BUTTONS : P2_TOOL_BUTTONS;
+        for (int i = 0; i < nTools; i++) { slotVis[i] = false; slotRects[i] = QRect(); }
+
+        for (int g = 0; g < groups.size(); g++) {
+            const QRect &G = groupRects[g];
             const QVector<int> &mem = groups[g].members;
 
-            bool open = (m_openMenuPanel == panel && m_openMenuGroup == g);
-            if (open && mem.size() > 1) {
-                // Members fan out into a single floating vertical column beside
-                // the group square; the group face itself is left empty (drawn
-                // as a highlighted anchor in paint).
+            bool open    = (m_openMenuPanel  == panel && m_openMenuGroup  == g);
+            bool preview = (m_hoverMenuPanel == panel && m_hoverMenuGroup == g);
+            if ((open || preview) && mem.size() > 1) {
+                // Members fan out into a single floating vertical column immediately
+                // beside the group square and level with it, so the first member's
+                // icon touches the square: reaching it is one short sideways move,
+                // with no diagonal and no gap to fall out of. The square itself is
+                // left empty (drawn as a highlighted anchor in paint), and the
+                // group's mouse-over text is written over that first icon rather
+                // than between the two — see groupTipRect(). The text therefore
+                // costs the column no room, which is what lets it sit this high;
+                // hanging it below the text pushed the icons clear of the square
+                // on a short window, where they could not be reached at all.
+                //
+                // One column wide, and deliberately so: the icons are painted
+                // before the image displays are, so anything reaching past the
+                // narrow gutter beside the button column disappears behind panel
+                // 1 / panel 2. A horizontal row of six would.
                 int n = mem.size();
-                int pad = 4;
-                int panelW = btnSide + 2 * pad;
-                int panelH = n * btnSide + (n - 1) * gap + 2 * pad;
-                int px = (panel == 1) ? (G.right() + 6) : (G.left() - 6 - panelW);
+                int panelW = btnSide;
+                int panelH = n * btnSide + (n - 1) * gap;
+                int px = (panel == 1) ? (G.right() + 1) : (G.left() - 1 - panelW);
                 int py = G.top();
-                if (py + panelH > height()) py = height() - panelH;
+                // Keep the column on screen. If it will not fit below the square,
+                // it grows upwards from the square's foot instead of being pushed
+                // off it — sliding it up the window would break the very adjacency
+                // the layout is built around. Only a very short window gets here.
+                if (py + panelH > height()) py = G.bottom() + 1 - panelH;
                 if (py < 0) py = 0;
+                if (px + panelW > width()) px = width() - panelW;
+                if (px < 0) px = 0;
                 QRect popup(px, py, panelW, panelH);
                 if (panel == 1) m_p1PopupRect = popup; else m_p2PopupRect = popup;
                 for (int k = 0; k < n; k++) {
-                    QRect cell(px + pad,
-                               py + pad + k * (btnSide + gap),
-                               btnSide, btnSide);
+                    QRect cell(px, py + k * (btnSide + gap), btnSide, btnSide);
                     slotRects[mem[k]] = cell;
                     slotVis[mem[k]] = true;
                 }
@@ -118,6 +163,80 @@ void FtWindow::layoutToolSlots()
     };
     layoutPanel(1);
     layoutPanel(2);
+}
+
+QRect FtWindow::groupTipRect(int panel, int g) const
+{
+    const QVector<ToolGroup> &groups = (panel == 1) ? m_p1Groups : m_p2Groups;
+    if (g < 0 || g >= groups.size()) return QRect();
+    const QRect &G = (panel == 1) ? m_p1GroupRects[g] : m_p2GroupRects[g];
+    if (G.isNull()) return QRect();
+    QFont ttf; ttf.setPixelSize(11);
+    QFontMetrics ttfm(ttf);
+    int ttw = ttfm.horizontalAdvance(groups[g].name) + 8;
+    int tth = ttfm.height() + 4;
+
+    // While this group's members are previewed, the text is written over the
+    // first member's icon instead of beside the group square. That way it takes
+    // no room of its own, which is what lets the column sit tight against the
+    // square: put the text between them and the icons are pushed away from the
+    // square by its whole height, far enough on a short window that the pointer
+    // cannot get across. The icon it covers is the one the pointer is on its way
+    // to; arriving there replaces this text with that tool's own.
+    const QRect &popup = (panel == 1) ? m_p1PopupRect : m_p2PopupRect;
+    if (m_hoverMenuPanel == panel && m_hoverMenuGroup == g && !popup.isNull()) {
+        QRect first(popup.left(), popup.top(), m_toolBtnSide, m_toolBtnSide);
+        int ttx = (panel == 1) ? first.left() : (first.right() + 1 - ttw);
+        int tty = first.center().y() - tth / 2;
+        return QRect(ttx, tty, ttw, tth);
+    }
+
+    int ttx = (panel == 1) ? (G.right() + 4) : (G.left() - ttw - 4);
+    int tty = G.center().y() - tth / 2;
+    return QRect(ttx, tty, ttw, tth);
+}
+
+// Which group, if any, is showing its contents on hover. Called from
+// layoutToolSlots() on every paint, and mouse moves repaint, so the preview
+// follows the pointer without any state of its own to keep in step.
+void FtWindow::updateGroupHoverPreview()
+{
+    // A clicked-open menu owns the space beside the column while it is up; a
+    // second popup there would only fight with it.
+    if (m_openMenuPanel != 0) {
+        m_hoverMenuPanel = 0;
+        m_hoverMenuGroup = -1;
+        return;
+    }
+
+    // A group square under the pointer wins, so that running down the column
+    // hands the preview from one group to the next.
+    for (int panel = 1; panel <= 2; panel++) {
+        const QVector<ToolGroup> &groups = (panel == 1) ? m_p1Groups : m_p2Groups;
+        const QRect *groupRects = (panel == 1) ? m_p1GroupRects : m_p2GroupRects;
+        for (int g = 0; g < groups.size(); g++) {
+            // A one-member group has nothing hidden to reveal: its square
+            // already shows the only icon it has.
+            if (groups[g].members.size() < 2) continue;
+            if (!groupRects[g].contains(m_mousePos)) continue;
+            m_hoverMenuPanel = panel;
+            m_hoverMenuGroup = g;
+            return;
+        }
+    }
+
+    // Otherwise hold the current preview open while the pointer is on the icons
+    // themselves: they sit outside the square that summoned them, and without
+    // this they would vanish from under the pointer on the way over. The column
+    // is laid out flush against the square, so there is nothing in between to
+    // fall through.
+    if (m_hoverMenuPanel != 0) {
+        const QRect &popup = (m_hoverMenuPanel == 1) ? m_p1PopupRect : m_p2PopupRect;
+        if (popup.contains(m_mousePos)) return;
+    }
+
+    m_hoverMenuPanel = 0;
+    m_hoverMenuGroup = -1;
 }
 
 void FtWindow::deactivateAllP1Tools()
@@ -218,6 +337,7 @@ void FtWindow::showP1ToolWidgets()
     m_alignCancelBtn->setVisible(m_alignActive);
     m_alignShiftBtn->setVisible(m_alignActive);
     m_alignRotBtn->setVisible(m_alignActive);
+    m_alignFullBtn->setVisible(m_alignActive);
 }
 
 void FtWindow::closeP1Function()
@@ -359,13 +479,7 @@ void FtWindow::activateP1Tool(int toolId)
         if (m_alignActive) {
             m_alignResult.clear();
             int src = (m_activeSlot >= 0) ? m_activeSlot : 0;
-            {   // Seed source + output together without the source's own
-                // currentIndexChanged handler dragging the output along.
-                QSignalBlocker b(m_alignSrcCombo);
-                m_alignSrcCombo->setCurrentIndex(src);
-            }
-            m_alignPrevSrc = src;
-            m_alignOutCombo->setCurrentIndex(src);
+            alignSeedSourceAndOutput(src);
             // The reference is sticky: restore whichever buffer was last used as
             // a reference and never retarget it automatically. On first use fall
             // back to another occupied buffer, else buffer a.
@@ -545,18 +659,21 @@ void FtWindow::activateP2Tool(int toolId)
 // ---------------------------------------------------------------------------
 //  Mouse
 // ---------------------------------------------------------------------------
+// The manual is hosted beside the app rather than inside it — /ft-manual/ next
+// to /ft/ — so its pages can be corrected and re-indexed without re-deploying
+// the WASM build. Every link out of the app goes through this one base.
+static const QString kManualBase = QStringLiteral("https://lbem-status.epfl.ch/ft-manual/");
+
 void FtWindow::openManualAnchor(bool panel2, const QString &anchor)
 {
     const QString page = panel2 ? "manual_panel2.html" : "manual_panel1.html";
-    QDesktopServices::openUrl(
-        QUrl("https://lbem-status.epfl.ch/ft/" + page + "#" + anchor));
+    QDesktopServices::openUrl(QUrl(kManualBase + page + "#" + anchor));
 }
 
 void FtWindow::openExercise(const QString &anchor)
 {
     if (anchor.isEmpty()) return;
-    QDesktopServices::openUrl(
-        QUrl("https://lbem-status.epfl.ch/ft/manual_exercises.html#" + anchor));
+    QDesktopServices::openUrl(QUrl(kManualBase + "manual_exercises.html#" + anchor));
 }
 
 void FtWindow::openToolHelp(bool panel2)
@@ -567,8 +684,7 @@ void FtWindow::openToolHelp(bool panel2)
     // tool row, and is documented in the main manual's GUI-layout section rather
     // than on the panel-1 tool page.
     if (!panel2 && m_copyActive) {
-        QDesktopServices::openUrl(
-            QUrl("https://lbem-status.epfl.ch/ft/manual.html#gui"));
+        QDesktopServices::openUrl(QUrl(kManualBase + "manual.html#gui"));
         return;
     }
     openManualAnchor(panel2, anchor);
@@ -634,6 +750,36 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
             update();   // just close the popup
         }
         return;
+    }
+
+    // The hover preview floats over the image in the same way, so it too has to
+    // claim a click on one of its cells before any image-area handler sees it.
+    // Clicking a previewed icon starts that function directly — having looked
+    // inside the group, there is no reason to make the user open it first.
+    if (m_hoverMenuPanel != 0) {
+        int panel = m_hoverMenuPanel;
+        const QVector<ToolGroup> &groups = (panel == 1) ? m_p1Groups : m_p2Groups;
+        const QRect *slotRects = (panel == 1) ? m_p1BtnRects : m_toolBtnRects;
+        int hitTool = -1;
+        if (m_hoverMenuGroup >= 0 && m_hoverMenuGroup < groups.size()) {
+            for (int id : groups[m_hoverMenuGroup].members) {
+                if (slotRects[id].contains(event->pos())) { hitTool = id; break; }
+            }
+        }
+        if (hitTool >= 0) {
+            // Drop the preview: the pointer is left standing where the row was,
+            // and it must not keep the row alive over the function just opened.
+            m_hoverMenuPanel = 0;
+            m_hoverMenuGroup = -1;
+            m_p1PopupRect = QRect();
+            m_p2PopupRect = QRect();
+            if (panel == 1) activateP1Tool(hitTool);
+            else            activateP2Tool(hitTool);
+            return;
+        }
+        // A click anywhere else is not the preview's business — it falls through
+        // to the normal handlers, and the row closes on its own as soon as the
+        // pointer leaves it.
     }
 
     // "?" help button in a tool parameter window – open that function's entry
@@ -714,7 +860,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
     //   * "Search Google" runs a site-restricted Google query. Only returns
     //     hits once Google has crawled/indexed the manual pages.
     if (!m_manualRect.isNull() && m_manualRect.contains(event->pos())) {
-        const QString manualUrl = "https://lbem-status.epfl.ch/ft/manual.html";
+        const QString manualUrl = kManualBase + "manual.html";
 
         auto *dlg = new QDialog(this);
         dlg->setAttribute(Qt::WA_DeleteOnClose);
@@ -765,13 +911,14 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
             QDesktopServices::openUrl(QUrl::fromEncoded(full.toUtf8()));
         };
 
-        // Site-restricted Google query. The prefix (no scheme, no ".html")
-        // covers manual.html *and* manual_exercises.html, manual_panel1.html, ...
+        // Site-restricted Google query. Restricting to the manual's own path
+        // covers manual.html *and* manual_exercises.html, manual_panel1.html, …
+        // while keeping the app itself out of the results.
         auto searchGoogle = [edit]() {
             const QString question = edit->text().trimmed();
             if (question.isEmpty()) return;
             const QString query =
-                question + " site:lbem-status.epfl.ch/ft/manual";
+                question + " site:lbem-status.epfl.ch/ft-manual";
             QUrl url("https://www.google.com/search");
             QUrlQuery uq;
             uq.addQueryItem("q", query);
@@ -798,6 +945,18 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         }
     }
     if (clickedSlot >= 0) {
+        // With the Align tool open, picking a buffer retargets what it works on:
+        // the clicked buffer becomes both the image that moves and the buffer the
+        // result lands in, so the tool keeps acting on what is being looked at
+        // instead of on whichever buffer happened to be shown when it opened. The
+        // reference is left as it is — that one is chosen once and stays put.
+        // Done before the early-outs below, so it applies even when the clicked
+        // buffer is already the active one (there the display does not change but
+        // the pulldowns may still be pointing somewhere else).
+        if (m_alignActive) {
+            alignSeedSourceAndOutput(clickedSlot);
+            syncAlignCombos();      // repaints the parameter window
+        }
         int i = clickedSlot;
         {
             // A slot the startup restore skipped (large image, or file on a
