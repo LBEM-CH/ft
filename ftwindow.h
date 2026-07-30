@@ -683,6 +683,19 @@ private:
     int         m_openMenuGroup = -1;  // index into the open panel's group list
     QRect       m_p1PopupRect;         // floating popup panel background rect
     QRect       m_p2PopupRect;
+    // Hover preview of a group's contents. Resting the mouse on a group square
+    // shows the group's name; the members are laid out in a row just below that
+    // text at the same time, so what a group holds can be seen without opening
+    // it. It uses the same slot mechanism as the clicked-open popup, so the
+    // member icons are drawn — and can be clicked — exactly as they are there.
+    // Never both at once: a clicked-open menu suppresses the preview.
+    int         m_hoverMenuPanel = 0;  // 0 = none, 1 = panel 1, 2 = panel 2
+    int         m_hoverMenuGroup = -1; // index into that panel's group list
+    // Geometry of a group square's mouse-over text. The preview hangs under it,
+    // so the two are placed from one shared calculation.
+    QRect       groupTipRect(int panel, int g) const;
+    // Picks the group whose contents are previewed, from the mouse position.
+    void        updateGroupHoverPreview();
     // Metrics of the last laid-out tool column (shared by paint + mouse).
     int         m_toolBtnSide = 20;
     int         m_toolBtnGap  = 2;
@@ -873,8 +886,9 @@ private:
     QPushButton *m_alignCancelBtn = nullptr;
     QPushButton *m_alignShiftBtn  = nullptr;
     QPushButton *m_alignRotBtn    = nullptr;
+    QPushButton *m_alignFullBtn   = nullptr;   // joint rotation + shift search
     // Outcome of the last alignment, shown as an extra line in the parameter
-    // window. Empty until one of the two buttons has run.
+    // window. Empty until one of the three buttons has run.
     QString     m_alignResult;
 
     // ---- diagnostics drawn over panel 4 while the tool is open --------------
@@ -890,6 +904,9 @@ private:
     std::vector<double> m_alignRotCurve;        // correlation per angle,
                                                 // index 0 = -180°, step 0.5°
     double m_alignRotBestDeg = 0.0;             // chosen angle, in [-180,180)
+    // True when the curve came from Full align, where every angle was scored at
+    // its own best shift rather than as it lay. Only the caption differs.
+    bool   m_alignRotCurveJoint = false;
     void drawAlignOverlay(QPainter &p);         // panel-4 overlay
     void clearAlignDiagnostics();
     // Source index the output combo was last kept in step with, so that an
@@ -904,6 +921,11 @@ private:
     // whenever both a source and a reference are selected. Called on every combo
     // change and when the tool opens.
     void syncAlignCombos();
+    // Point the source and output pulldowns at buffer `slot`, leaving the sticky
+    // reference untouched. Called when the tool opens and again whenever the user
+    // picks another buffer in panel 3 / 4 while it is open, so the tool always
+    // acts on the buffer being looked at.
+    void alignSeedSourceAndOutput(int slot);
     // Popup delegate that greys out the disabled entry. Shared by the three
     // align combos and re-applied whenever their stylesheet is set.
     QAbstractItemDelegate *m_alignItemDelegate = nullptr;
@@ -926,8 +948,10 @@ private:
     void onAlignCancel();
     void onAlignShift();
     void onAlignRotate();
+    void onAlignFull();
     void onAlignShiftImpl();
     void onAlignRotateImpl();
+    void onAlignFullImpl();
 
     // Panel 2 tools
     bool        m_eraserActive = false;

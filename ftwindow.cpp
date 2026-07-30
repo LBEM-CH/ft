@@ -1780,6 +1780,16 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
         m_alignRotBtn->setToolTip("Align image onto reference by rotating the image");
         connect(m_alignRotBtn, &QPushButton::clicked, this, &FtWindow::onAlignRotate);
         m_alignRotBtn->hide();
+
+        m_alignFullBtn = new QPushButton("Full align", this);
+        m_alignFullBtn->setFixedSize(100, 26);
+        m_alignFullBtn->setStyleSheet(alignBtnSS);
+        m_alignFullBtn->setToolTip(
+            "Exhaustive search: every 0.5° rotation, each scored at its own\n"
+            "best shift. The winning rotation and shift are applied together.\n"
+            "Slower than the other two buttons, but needs no iteration.");
+        connect(m_alignFullBtn, &QPushButton::clicked, this, &FtWindow::onAlignFull);
+        m_alignFullBtn->hide();
     }
 
     // All four toggle buttons next to the histograms ("freeze display
@@ -2241,6 +2251,8 @@ void FtWindow::resizeEvent(QResizeEvent *)
         m_alignShiftBtn->setStyleSheet(alignBtnSS);
         m_alignRotBtn->setFixedSize(static_cast<int>(120 * sc), btnH);
         m_alignRotBtn->setStyleSheet(alignBtnSS);
+        m_alignFullBtn->setFixedSize(static_cast<int>(100 * sc), btnH);
+        m_alignFullBtn->setStyleSheet(alignBtnSS);
     }
 
     // Binning widgets (sizes only)

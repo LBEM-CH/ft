@@ -300,14 +300,14 @@ void FtWindow::paintEvent(QPaintEvent *)
         int btnSide = m_toolBtnSide;
 
         // Floating popup panel background, under the member cells drawn below.
-        if (m_openMenuPanel == 1 && !m_p1PopupRect.isNull()) {
+        // layoutToolSlots() sets the rect for whichever group is showing its
+        // members — clicked open or previewed on hover — and clears it otherwise,
+        // so its emptiness is the test.
+        for (const QRect &popup : { m_p1PopupRect, m_p2PopupRect }) {
+            if (popup.isNull()) continue;
             p.setPen(QPen(QColor(200, 200, 200), 1));
             p.setBrush(QColor(30, 30, 30));
-            p.drawRect(m_p1PopupRect);
-        } else if (m_openMenuPanel == 2 && !m_p2PopupRect.isNull()) {
-            p.setPen(QPen(QColor(200, 200, 200), 1));
-            p.setBrush(QColor(30, 30, 30));
-            p.drawRect(m_p2PopupRect);
+            p.drawRect(popup);
         }
 
         // Panel 1: left edge
@@ -1800,7 +1800,11 @@ void FtWindow::paintEvent(QPaintEvent *)
             for (int g = 0; g < groups.size(); g++) {
                 const QRect &G = groupRects[g];
                 bool multi = groups[g].members.size() > 1;
-                bool open  = (m_openMenuPanel == panel && m_openMenuGroup == g);
+                // "Showing" covers both ways a group's members can be on screen:
+                // clicked open, or previewed while the mouse rests on the square.
+                // Either way the face has been vacated and needs standing in for.
+                bool open  = (m_openMenuPanel  == panel && m_openMenuGroup  == g)
+                          || (m_hoverMenuPanel == panel && m_hoverMenuGroup == g);
 
                 // Collapsed group with a custom text face (e.g. "CTF"): a plain
                 // black square with the text, in place of the first member icon.
@@ -3661,12 +3665,12 @@ void FtWindow::paintEvent(QPaintEvent *)
                 nRows = m_alignResult.isEmpty() ? 3 : 4;
                 const int comboW = m_alignSrcCombo->width();
                 const int colGap = 14;
-                int c0 = std::max(fm.horizontalAdvance("Image source"), comboW);
-                int c1 = std::max(fm.horizontalAdvance("Alignment reference"), comboW);
+                int c0 = std::max(fm.horizontalAdvance("Alignment reference"), comboW);
+                int c1 = std::max(fm.horizontalAdvance("Image source"), comboW);
                 int c2 = std::max(fm.horizontalAdvance("Output buffer"), comboW);
                 int rCols = c0 + c1 + c2 + 2 * colGap;
                 int rBtns = m_alignCancelBtn->width() + 8 + m_alignShiftBtn->width()
-                            + 8 + m_alignRotBtn->width();
+                            + 8 + m_alignRotBtn->width() + 8 + m_alignFullBtn->width();
                 int rRes  = m_alignResult.isEmpty() ? 0 : fm.horizontalAdvance(m_alignResult);
                 textW = std::max({rCols, rBtns, rRes});
             } else if (m_gaborActive) {
@@ -3913,11 +3917,13 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             } else if (m_alignActive) {
                 // Three columns side by side: a bold header on top, the pulldown
-                // for that buffer role directly beneath it.
+                // for that buffer role directly beneath it. Reading order follows
+                // the workflow — the sticky reference first, then the image that
+                // moves, then where the answer lands.
                 const int comboW = m_alignSrcCombo->width();
                 const int colGap = 14;
-                int c0 = std::max(fm.horizontalAdvance("Image source"), comboW);
-                int c1 = std::max(fm.horizontalAdvance("Alignment reference"), comboW);
+                int c0 = std::max(fm.horizontalAdvance("Alignment reference"), comboW);
+                int c1 = std::max(fm.horizontalAdvance("Image source"), comboW);
                 int c2 = std::max(fm.horizontalAdvance("Output buffer"), comboW);
                 int x0 = tx;
                 int x1 = x0 + c0 + colGap;
@@ -3925,9 +3931,9 @@ void FtWindow::paintEvent(QPaintEvent *)
 
                 struct Col { int x; const char *head; QComboBox *cb; };
                 const Col cols[3] = {
-                    { x0, "Image source",        m_alignSrcCombo },
-                    { x1, "Alignment reference",  m_alignRefCombo },
-                    { x2, "Output buffer",        m_alignOutCombo },
+                    { x0, "Alignment reference", m_alignRefCombo },
+                    { x1, "Image source",        m_alignSrcCombo },
+                    { x2, "Output buffer",       m_alignOutCombo },
                 };
                 QFont hf = sf; hf.setBold(true);
                 for (const Col &c : cols) {
@@ -3941,12 +3947,14 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
                 p.setFont(sf);
 
-                // Cancel on the left, the two alignment actions right-aligned.
+                // Cancel on the left, the three alignment actions right-aligned in
+                // increasing thoroughness: shift, rotation, then both at once.
                 m_alignCancelBtn->move(tx, ty + lh * 2);
                 int bRight = rx + rw - margin;
-                m_alignRotBtn->move(bRight - m_alignRotBtn->width(), ty + lh * 2);
-                bRight -= m_alignRotBtn->width() + 8;
-                m_alignShiftBtn->move(bRight - m_alignShiftBtn->width(), ty + lh * 2);
+                for (QPushButton *b : { m_alignFullBtn, m_alignRotBtn, m_alignShiftBtn }) {
+                    b->move(bRight - b->width(), ty + lh * 2);
+                    bRight -= b->width() + 8;
+                }
                 if (!m_alignResult.isEmpty())
                     p.drawText(tx, ty + lh * 3 + fm.ascent(), m_alignResult);
             } else if (m_gaborActive) {

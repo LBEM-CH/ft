@@ -109,12 +109,14 @@ if [ -d "$SCRIPT_DIR/EXAMPLE_IMAGES" ]; then
     ln -sfn "$SCRIPT_DIR/EXAMPLE_IMAGES" images
 fi
 
-# Symlink the static manual pages so build_webserver.sh can pack them.
-for f in manual.html manual_panel1.html manual_panel2.html manual_exercises.html; do
-    if [ -e "$SCRIPT_DIR/$f" ]; then
-        ln -sfn "$SCRIPT_DIR/$f" "$f"
-    fi
-done
+# The manual is no longer part of the app payload — it is deployed on its own
+# path (/ft-manual/, see ft-manual-apache.conf) and packed by build_webserver.sh
+# straight out of the source tree. It is symlinked in here all the same, under
+# the name it has in production, so that a locally served build reaches its
+# pages at the same relative path the deployed app uses.
+if [ -d "$SCRIPT_DIR/ft-manual" ]; then
+    ln -sfn "$SCRIPT_DIR/ft-manual" ft-manual
+fi
 
 echo ""
 echo "=== Build complete ==="
