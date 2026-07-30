@@ -224,7 +224,7 @@ void FtWindow::paintEvent(QPaintEvent *)
     // shrink with the window like the real buttons do (chromeScale()), and both
     // the rects computed further down and the painter below must use the same
     // number or the text would no longer fit the box it is drawn in.
-    const int toggleFontPx = std::max(7, (int)std::lround(11 * chromeScale()));
+    const int toggleFontPx = std::max(9, (int)std::lround(11 * chromeScale()));
 
     // Helper to paint a 3D-look toggle button (raised when up, sunken when
     // down). Shared by all panel-1 / panel-2 toggle buttons.
@@ -4866,7 +4866,7 @@ void FtWindow::paintEvent(QPaintEvent *)
         const double cs = chromeScale();
         QFont titleFont;
         titleFont.setBold(true);
-        titleFont.setPixelSize(std::max(9, (int)std::lround(18 * cs)));
+        titleFont.setPixelSize(std::max(12, (int)std::lround(18 * cs)));
         p.setFont(titleFont);
         QFontMetrics tfm(titleFont);
         // Size the boxes from the longer of the two labels so the Manual
