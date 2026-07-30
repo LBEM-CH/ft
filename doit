@@ -14,8 +14,23 @@ tar xzf  ft-wasm.tar.gz -C /srv/ft
 # app. /srv/ft was just wiped, so both archives must be extracted.
 if [ -f ft-examples.tar.gz ]; then
     tar xzf ft-examples.tar.gz -C /srv/ft
+    cp ft-apache.conf /etc/apache2/conf-available/ft-wasm.conf
 else
     echo "warning: ft-examples.tar.gz not found — example images will be missing" >&2
+fi
+
+# The manual is served from its own path (/ft-manual/, Alias in
+# ft-manual-apache.conf) rather than from inside the app, so that a correction to
+# a page does not mean re-deploying the WASM build. Like the examples it is only
+# re-uploaded when a page changed, but the copy on the server persists, so it is
+# unpacked on every run.
+if [ -f ft-manual.tar.gz ]; then
+    \rm -rf /srv/ft-manual
+    mkdir -p /srv/ft-manual
+    tar xzf ft-manual.tar.gz -C /srv/ft-manual
+    cp ft-manual-apache.conf /etc/apache2/conf-available/ft-manual.conf
+else
+    echo "warning: ft-manual.tar.gz not found — the manual was not updated" >&2
 fi
 systemctl reload apache2
 

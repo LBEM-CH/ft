@@ -802,7 +802,12 @@ void FtWindow::drawAlignOverlay(QPainter &p)
                 p.drawText((int)xOf(d) - lfm.horizontalAdvance(lbl) / 2,
                            plotY + plotH + lfm.ascent() + 2, lbl);
             }
-            QString cap = QString("Correlation vs rotation (°) — best %1°")
+            // Full align scores each angle at its own best shift, so say so:
+            // the curve then means something different from the rotation-only
+            // sweep, which scores every angle where the image happens to lie.
+            QString cap = (m_alignRotCurveJoint
+                               ? QString("Correlation vs rotation (°), best shift — best %1°")
+                               : QString("Correlation vs rotation (°) — best %1°"))
                               .arg(m_alignRotBestDeg, 0, 'f', 1);
             if (lfm.horizontalAdvance(cap) > rightW)
                 cap = QString("best %1°").arg(m_alignRotBestDeg, 0, 'f', 1);

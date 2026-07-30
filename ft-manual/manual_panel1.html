@@ -129,6 +129,10 @@ left edge of the panel, organised into <strong>groups</strong>. Each
 square is a group. Clicking a group that holds several tools opens a
 small pop-up column of sub-squares beside it; you then click a sub-square
 to activate that tool. A group with only one tool activates it directly.
+You do not have to click to find out what a group holds: resting the
+pointer on the square opens the icons of the tools inside in a column
+beside it, with the group's name written across the first of them. They
+can be clicked from there directly.
 Click an active tool again to deactivate it. While a tool is active a
 parameter window appears at the bottom of the panel; hover any parameter
 label for an inline tooltip. The sections below are arranged by group,
@@ -863,31 +867,40 @@ either input. The reference itself is never modified.
 </p>
 <p>
 The three buffer selectors sit side by side, each under its own heading —
-<em>Image source</em>, <em>Alignment reference</em> and <em>Output
-buffer</em> — with the pulldown directly beneath the heading.
+<em>Alignment reference</em>, <em>Image source</em> and <em>Output
+buffer</em> — with the pulldown directly beneath the heading. They are in
+that order because that is the order in which they settle: the reference
+is the one you choose once and keep, while the other two follow the buffer
+you happen to be looking at.
 </p>
 <div class="controls">
-  <strong>Image source:</strong> the buffer (a…p) holding the image that
-  moves. Defaults to the buffer on display. <br>
   <strong>Alignment reference:</strong> the buffer the image is aligned
   onto. Every buffer is selectable — including the current source or
   output — and the choice is <em>sticky</em>: it stays on whichever buffer
   you last aligned onto and is never changed automatically, so opening the
   tool again restores your previous reference. Change it only by picking a
   different one from the pulldown. <br>
+  <strong>Image source:</strong> the buffer (a…p) holding the image that
+  moves. Follows the buffer on display: it starts on whichever buffer was
+  shown when the tool opened, and clicking another buffer in panel 3 or
+  panel 4 while the tool is open moves it — and the output buffer with it —
+  onto that buffer. So the way to align several images onto one reference is
+  simply to click each of them in turn. <br>
   <strong>Output buffer:</strong> where the aligned image is written. It
-  defaults to the source, i.e. the image is replaced in place, and it has
-  no exclusions: writing over the reference is allowed if you want it.
-  The output buffer becomes the displayed one when the alignment
-  finishes. <br>
-  <strong>Cancel / Shift align / Rotation align:</strong> Cancel closes
-  the window; the other two run the two kinds of alignment described
-  below. The window stays open afterwards, and the shift or angle that
-  was found is reported on the line underneath.
+  follows the source, so by default the image is replaced in place, and it
+  has no exclusions: writing over the reference is allowed if you want it.
+  Choosing a different one from the pulldown keeps it there until you click
+  another buffer. The output buffer becomes the displayed one when the
+  alignment finishes. <br>
+  <strong>Cancel / Shift align / Rotation align / Full align:</strong>
+  Cancel closes the window; the other three run the kinds of alignment
+  described below, in increasing thoroughness. The window stays open
+  afterwards, and the shift or angle that was found is reported on the
+  line underneath.
 </div>
 <BR>
 <p>
-<strong>Images of different size</strong> are matched up before either
+<strong>Images of different size</strong> are matched up before any
 alignment runs. The smaller one is centred in a frame the size of the
 larger and the surrounding border is filled with that image's own average
 grey, with its outermost 10 pixels faded into that grey by a Hanning
@@ -904,19 +917,21 @@ and its Fourier transform is computed straight away, so panel 2 is never
 left blank waiting for you to press <em>FT</em>.
 </p>
 <p>
-<strong>The diagnostics panel.</strong> Running either alignment opens a
-white overlay across panel 4 that stays until the tool is closed. It
+<strong>The diagnostics panel.</strong> Running any of the alignments opens
+a white overlay across panel 4 that stays until the tool is closed. It
 shows <em>why</em> a particular answer was chosen, which the number alone
 cannot: on the left, the cross-correlation map with zero shift at its
 centre and a yellow cross on the peak that was taken; on the right, the
 correlation of every trial orientation from −180° to +180°, with a red
-arrow on the angle that won. Read them for confidence, not just for the
-answer. A peak that stands clear of its surroundings, or a single sharp
-maximum in the angle curve, means an unambiguous match; a peak lost among
-others of similar height, or a curve with several rival humps, means the
-alignment is a guess between near-equal options and deserves a second
-look. The map is reduced to at most 256 pixels across for display, taking
-each block's maximum so the peak is never averaged away.
+arrow on the angle that won. A shift alignment fills the left half, a
+rotation alignment the right half, and <em>Full align</em> both at once.
+Read them for confidence, not just for the answer. A peak that stands
+clear of its surroundings, or a single sharp maximum in the angle curve,
+means an unambiguous match; a peak lost among others of similar height, or
+a curve with several rival humps, means the alignment is a guess between
+near-equal options and deserves a second look. The map is reduced to at
+most 256 pixels across for display, taking each block's maximum so the
+peak is never averaged away.
 </p>
 <p>
 <strong>Shift align</strong> cross-correlates the image with the
@@ -943,12 +958,53 @@ image mean.
 <p>
 Two things are worth knowing about the rotation search. It compares the
 two images <em>as they lie</em>, without trying any shifts, so if the
-object is also displaced, run <em>Shift align</em> first and then rotate.
-And the 720 trial orientations are scored on a working grid capped at
-512 pixels rather than at full resolution: half a degree still moves the
-outermost pixels of such a grid by more than two pixels, so the angle
-found is the same one, and only that winning angle is then applied to
-the full-resolution image.
+object is also displaced, run <em>Shift align</em> first and then rotate —
+or reach for <em>Full align</em>, which does not need the two to be
+separated at all. And the 720 trial orientations are scored on a working
+grid capped at 512 pixels rather than at full resolution: half a degree
+still moves the outermost pixels of such a grid by more than two pixels,
+so the angle found is the same one, and only that winning angle is then
+applied to the full-resolution image.
+</p>
+<p>
+<strong>Full align</strong> searches for the rotation and the shift
+together instead of one after the other. It walks the same 720
+orientations in 0.5° steps, but scores each one not as it lands: at every
+angle the rotated image is cross-correlated with the reference and the
+<em>height</em> of the correlation peak — that angle's score at its own
+best shift — is what is recorded. The angle with the highest score wins,
+its shift is then measured again on the full-resolution image, and the
+rotation and the shift are applied together in one operation. The reported
+correlation belongs to that final result, and the angle curve in the
+diagnostics panel is labelled <em>best shift</em> to mark that every point
+on it was scored at its own displacement.
+</p>
+<p>
+That joint search is what the other two buttons cannot do between them. A
+rotation turns the image about the <em>frame centre</em>, so it moves an
+off-centre object as well as turning it, and it therefore spoils the shift
+that <em>Shift align</em> had just found; alternating the two converges
+only when it converges at all. Because a rotation about the centre
+followed by a translation can express <em>any</em> rigid movement of the
+image, one pass of <em>Full align</em> covers every position and
+orientation at once, and there is nothing left for a second pass to find.
+It is the button to use when an object is both displaced and turned, which
+is the ordinary case.
+</p>
+<p>
+The price is time. Asking for the best shift at an angle instead of the
+score as it lies costs a forward and an inverse Fourier transform per
+angle, so the sweep is scored on a grid of at most 256 pixels — half a
+degree still moves the rim of such a grid by more than one pixel, and only
+the winner is treated at full resolution. That keeps the whole thing to
+roughly twice what <em>Rotation align</em> costs: about a second for a
+1024-pixel image in the desktop build, several times that in the browser,
+with the progress bar filling across the parameter window as the sweep
+runs. The scoring is normalised
+over the largest circle that fits inside the frame, exactly as in the
+rotation-only search, so the number it reports is comparable with the one
+<em>Rotation align</em> gives; the reference is masked to that circle,
+since it is the only region the image can still fill at every angle.
 </p>
 </details>
 

@@ -264,7 +264,7 @@ artificial background was added around the viruses.
 <p>
 Start with a control. Load <code>Phage1</code> and <code>Phage1b</code> into two
 buffers and use <strong>Align to reference</strong> to align one onto the other.
-Both buttons should report essentially nothing to do — zero shift, zero rotation —
+Every button should report essentially nothing to do — zero shift, zero rotation —
 because the two images differ only in their redundant background. Note the correlation value that
 <strong>Rotation align</strong> reports; it is your yardstick for a good match.
 </p>
@@ -286,6 +286,19 @@ Then run
 cyclically repeat Shift align and Rotation align until the aligned virus does not move any longer.
 Does it work better now? What does that tell you about where a feature has to lie before a
 rotation search can find it?
+</p>
+<p>
+Now go back to the untouched <code>Phage1</code> and <code>Phage2</code> and press
+<strong>Full align</strong> instead. It takes a moment longer than the other buttons,
+because it tries the best shift at each of the 720 orientations rather than one shift for
+all of them, and it should land the second phage on the first in a single step — no
+centring beforehand, no alternating, and this time the particle really does end up turned
+the same way as the reference. Compare its reported correlation with the best you reached
+by hand. Then
+look at the angle curve in the diagnostics panel and compare it with the one
+<strong>Rotation align</strong> drew: the same 720 angles, but each scored where it fits
+best rather than where it happens to lie. Which of the two curves has a peak you would
+trust?
 </p>
 <p>
 With two or three phages aligned, sum them with <strong>Math calculation</strong>

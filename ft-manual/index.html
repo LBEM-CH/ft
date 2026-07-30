@@ -1,0 +1,20 @@
+<meta charset="utf-8">
+<title>Fourier Analyzer Manual</title>
+<!--
+  A second entry point that forwards to manual.html, the real first page.
+
+  It is NOT what makes https://lbem-status.epfl.ch/ft-manual/ work. That needs a
+  line in the Apache config (see the RedirectMatch in ft-manual-apache.conf),
+  because the DirectoryIndex list in force for this directory is inherited from
+  the vhost of the PHP site around it and names index.php — so the server never
+  looks for index.html here, and answers the bare directory URL with 403.
+
+  Kept anyway: it costs nothing, gives /ft-manual/index.html a sensible answer,
+  and would serve the directory URL on a server with Apache's stock index list.
+
+  manual.html stays the page everything links to: the app, the other manual
+  pages, and any bookmark anyone already has.
+-->
+<meta http-equiv="refresh" content="0; url=manual.html">
+<link rel="canonical" href="manual.html">
+<p>The Fourier Analyzer manual is at <a href="manual.html">manual.html</a>.</p>

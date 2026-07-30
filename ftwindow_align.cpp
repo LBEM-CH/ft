@@ -8,7 +8,7 @@
 // ---------------------------------------------------------------------------
 //  Align image to reference
 //
-//  Two ways to move an image onto a reference image held in another buffer:
+//  Three ways to move an image onto a reference image held in another buffer:
 //
 //    * Shift align    — cross-correlates the two through the Fourier domain,
 //                       takes the position of the correlation maximum as the
@@ -16,9 +16,17 @@
 //    * Rotation align — turns the image through a full circle in 0.5° steps
 //                       and keeps the orientation whose correlation with the
 //                       reference is highest.
+//    * Full align     — the two above are each blind to the other: a rotation
+//                       about the frame centre swings an off-centre feature
+//                       away again, so neither alone can settle a displaced
+//                       *and* turned image, and running them in turn only
+//                       converges if it converges at all. Full align therefore
+//                       searches the pair jointly — every 0.5° orientation
+//                       scored at its own best shift — and applies the winning
+//                       combination in one go.
 //
-//  Neither touches the reference; the result goes to the chosen output buffer,
-//  which then becomes the displayed one.
+//  None of them touches the reference; the result goes to the chosen output
+//  buffer, which then becomes the displayed one.
 // ---------------------------------------------------------------------------
 
 namespace {
@@ -206,7 +214,26 @@ void FtWindow::syncAlignCombos()
     bool ok = alignInputsValid();
     m_alignShiftBtn->setEnabled(ok);
     m_alignRotBtn->setEnabled(ok);
+    m_alignFullBtn->setEnabled(ok);
     update();
+}
+
+// Both roles that describe *this* image — the one that moves and the one that
+// receives the result — follow the buffer in question; the reference is left
+// alone, being the choice the user makes once and keeps.
+void FtWindow::alignSeedSourceAndOutput(int slot)
+{
+    if (!m_alignSrcCombo || !m_alignOutCombo) return;
+    if (slot < 0 || slot >= HISTORY_SLOTS) return;
+    {   // Seed source and output together without the source's own
+        // currentIndexChanged handler dragging the output along: it is being set
+        // explicitly here, and that handler would only re-derive the same value
+        // on the paths where they agree while overriding this one where they do not.
+        QSignalBlocker b(m_alignSrcCombo);
+        m_alignSrcCombo->setCurrentIndex(slot);
+    }
+    m_alignPrevSrc = slot;
+    m_alignOutCombo->setCurrentIndex(slot);
 }
 
 // The panel-4 overlay lives exactly as long as the tool does, so every route
@@ -220,6 +247,7 @@ void FtWindow::clearAlignDiagnostics()
     m_alignCorrD = 0;
     m_alignRotCurve.clear();
     m_alignRotCurve.shrink_to_fit();
+    m_alignRotCurveJoint = false;
 }
 
 void FtWindow::onAlignCancel()
@@ -233,6 +261,7 @@ void FtWindow::onAlignCancel()
     m_alignCancelBtn->hide();
     m_alignShiftBtn->hide();
     m_alignRotBtn->hide();
+    m_alignFullBtn->hide();
     update();
 }
 
@@ -678,6 +707,7 @@ void FtWindow::onAlignRotateImpl()
                 m_alignRotCurve[(j + n / 2) % n] = st->scores[j];
             m_alignRotBestDeg = (st->bestAngle > 180.0) ? st->bestAngle - 360.0
                                                         : st->bestAngle;
+            m_alignRotCurveJoint = false;   // scored as the image lay, no shifts
         }
 
         finishAlign(st->outIdx, std::move(outPix), w, h,
@@ -686,6 +716,389 @@ void FtWindow::onAlignRotateImpl()
         m_alignResult = QString("Rotated by %1° (correlation %2)")
                             .arg(st->bestAngle, 0, 'f', 1)
                             .arg(st->bestScore, 0, 'f', 4);
+        m_toolProgress = -1;
+    });
+
+    chainSteps(std::move(steps));
+}
+
+// ---------------------------------------------------------------------------
+//  Full align — joint rotation and shift search
+// ---------------------------------------------------------------------------
+//  Every 0.5° orientation is tried, and each one is scored not as it lands but
+//  at its own best shift: the rotated image is cross-correlated with the
+//  reference, and the height of the correlation peak — normalised, so the
+//  scores of different orientations are comparable — is that angle's score. The
+//  angle with the best score wins, and its shift is then re-measured on the
+//  full-resolution image before both are applied. Rotation about the frame
+//  centre followed by a translation covers every rigid movement, so nothing is
+//  left for a second pass to find; the search cannot be led astray the way
+//  alternating Shift align and Rotation align can be.
+//
+//  It costs a pair of transforms per angle, which is why the sweep is scored on
+//  a small grid and only the winner is treated at full resolution.
+// ---------------------------------------------------------------------------
+void FtWindow::onAlignFull()
+{
+    if (!ensureCalcHeadroom(tr("align the image by rotating and shifting"))) return;
+    onAlignFullImpl();
+}
+
+void FtWindow::onAlignFullImpl()
+{
+    if (!alignInputsValid()) return;
+    int srcIdx = m_alignSrcCombo->currentIndex();
+    int refIdx = m_alignRefCombo->currentIndex();
+    int outIdx = m_alignOutCombo->currentIndex();
+    m_alignRefSlot = refIdx;   // remember the reference actually used
+
+    int w = 0, h = 0, rw = 0, rh = 0;
+    std::vector<double> src = alignSlotPixels(srcIdx, w, h);
+    std::vector<double> ref = alignSlotPixels(refIdx, rw, rh);
+    if (src.empty() || ref.empty()) {
+        m_alignResult = "Source and reference must both hold an image";
+        update();
+        return;
+    }
+
+    storeUndoSnapshot();
+    m_alignResult.clear();
+    m_toolProgress = 0.01;
+    update();
+
+    // Same common frame as the other two paths, and needed here for both of
+    // their reasons at once.
+    const int W = std::max(w, rw), H = std::max(h, rh);
+    padOrCropCentred(src, w, h, W, H);
+    padOrCropCentred(ref, rw, rh, W, H);
+
+    // The grid the sweep is scored on. Asking for the best shift at an angle
+    // instead of the score as it lies costs a forward and an inverse transform
+    // per angle, so 720 of them at the 512 px the rotation-only search affords
+    // would run into minutes; 256 px keeps the whole sweep to seconds and still
+    // tells neighbouring angles apart, half a degree moving the rim of such a
+    // grid by more than a pixel. Powers of two only: at any other size the FFT
+    // falls back to Bluestein's algorithm, which costs several times more than
+    // the wider grid would have gained.
+    const int kSearchGrid = 256;
+    const int S = std::min(kSearchGrid, nextPow2(std::min(W, H)));
+    if (S < 16) {
+        m_toolProgress = -1;
+        m_alignResult = "Images are too small to align";
+        update();
+        return;
+    }
+
+    struct Work {
+        std::vector<double>  srcFull, ref;   // full-frame inputs
+        std::vector<double>  srcWork;        // source on the search grid
+        std::vector<Complex> refF;           // conj FFT of the masked reference
+        std::vector<Complex> buf;            // reused for each angle's transform
+        std::vector<double>  rotated;        // winner, at full resolution
+        std::vector<Complex> fa, fb;         // full-resolution shift search
+        double refNorm  = 0.0;               // over the search grid's disk
+        double srcMean  = 0.0;
+        int    diskCount = 0;
+        int    S = 0, w = 0, h = 0, N = 0;
+        int    srcIdx = 0, refIdx = 0, outIdx = 0;
+        double pixelSize = 1.0;
+        bool   pixelSizeAssumed = false;
+        QString srcPath;
+        double bestScore = -std::numeric_limits<double>::infinity();
+        double bestAngle = 0.0;
+        double finalScore = 0.0;             // correlation of what was applied
+        std::vector<double> scores;          // one per trial angle, for the overlay
+    };
+    auto st = std::make_shared<Work>();
+    st->S = S; st->w = W; st->h = H;
+    st->srcIdx = srcIdx; st->refIdx = refIdx; st->outIdx = outIdx;
+    st->pixelSize = alignSlotPixelSize(srcIdx);
+    st->pixelSizeAssumed = alignSlotPixelSizeAssumed(srcIdx);
+    st->srcPath   = alignSlotPath(srcIdx);
+    // Taken after padding, so the grey a rotation sweeps into the corners is the
+    // grey the padding already put around the image.
+    st->srcMean = meanOf(src);
+    st->srcFull = std::move(src);
+    st->ref     = std::move(ref);
+
+    const double kStepDeg = 0.5;
+    const int    kAngles  = (int)std::lround(360.0 / kStepDeg);   // 720
+    const int    kChunks  = 24;   // ~30 angles per event-loop slice
+
+    std::vector<std::function<void()>> steps;
+
+    // Preparation: both images onto the search grid, and the reference into a
+    // conjugated spectrum that every angle then multiplies against.
+    steps.push_back([this, st, kAngles]() {
+        const int S = st->S;
+        st->srcWork = centredSquareToGrid(st->srcFull, st->w, st->h, S);
+        std::vector<double> refWork = centredSquareToGrid(st->ref, st->w, st->h, S);
+
+        // The reference is masked to the inscribed disk — the one region the
+        // source can still fill at every angle. Left whole, its corners would be
+        // matched against the grey a rotation sweeps in and would mark the
+        // oblique angles down for nothing they did. The source is *not* masked:
+        // it is the one being shifted, and clipping it to a disk as well would
+        // make every large displacement score badly for the trivial reason that
+        // two disks overlap less the further apart they lie.
+        const double c = (S - 1) / 2.0;
+        const double rad = S / 2.0 - 1.0, rad2 = rad * rad;
+        double sum = 0.0;
+        int cnt = 0;
+        for (int y = 0; y < S; y++) {
+            double dy = y - c;
+            for (int x = 0; x < S; x++) {
+                double dx = x - c;
+                if (dx * dx + dy * dy <= rad2) {
+                    sum += refWork[(size_t)y * S + x];
+                    cnt++;
+                }
+            }
+        }
+        st->diskCount = cnt;
+        const double mean = (cnt > 0) ? sum / cnt : 0.0;
+        double sq = 0.0;
+        st->refF.assign((size_t)S * S, Complex(0, 0));
+        for (int y = 0; y < S; y++) {
+            double dy = y - c;
+            for (int x = 0; x < S; x++) {
+                double dx = x - c;
+                if (dx * dx + dy * dy > rad2) continue;
+                double v = refWork[(size_t)y * S + x] - mean;
+                sq += v * v;
+                st->refF[(size_t)y * S + x] = Complex(v, 0);
+            }
+        }
+        st->refNorm = std::sqrt(sq);
+        fft2d(st->refF, S, false);
+        // Conjugated once here rather than 720 times below. A zero-mean masked
+        // reference also makes the correlation blind to the source's own offset,
+        // since a constant added to it meets a sum of zero.
+        for (Complex &z : st->refF) z = std::conj(z);
+
+        st->buf.assign((size_t)S * S, Complex(0, 0));
+        st->scores.assign(kAngles, 0.0);
+        m_toolProgress = 0.04;
+    });
+
+    for (int chunk = 0; chunk < kChunks; chunk++) {
+        int a0 = kAngles * chunk / kChunks;
+        int a1 = kAngles * (chunk + 1) / kChunks;
+        steps.push_back([this, st, a0, a1, kStepDeg, chunk, kChunks]() {
+            const int S = st->S;
+            const double c = (S - 1) / 2.0;
+            const double rad = S / 2.0 - 1.0, rad2 = rad * rad;
+            const double n = (double)st->diskCount;
+            for (int a = a0; a < a1; a++) {
+                double ang = a * kStepDeg * M_PI / 180.0;
+                // Inverse map, as in the rotation-only search: a positive angle
+                // turns the image clockwise on screen.
+                double ca = std::cos(ang), sa = std::sin(ang);
+                double sum = 0.0, sumSq = 0.0;
+                for (int y = 0; y < S; y++) {
+                    double dy = y - c;
+                    for (int x = 0; x < S; x++) {
+                        double dx = x - c;
+                        double sx = c + ca * dx + sa * dy;
+                        double sy = c - sa * dx + ca * dy;
+                        double v = sampleBilinear(st->srcWork, S, S, sx, sy,
+                                                  st->srcMean) - st->srcMean;
+                        st->buf[(size_t)y * S + x] = Complex(v, 0);
+                        // The denominator is the source's spread over the same
+                        // disk the reference was measured on, so that the score
+                        // reads as a correlation coefficient.
+                        if (dx * dx + dy * dy <= rad2) { sum += v; sumSq += v * v; }
+                    }
+                }
+                double var = sumSq - sum * sum / n;
+                double denom = (var > 0.0) ? std::sqrt(var) * st->refNorm : 0.0;
+
+                fft2d(st->buf, S, false);
+                for (size_t i = 0; i < st->buf.size(); i++)
+                    st->buf[i] *= st->refF[i];
+                fft2d(st->buf, S, true);
+
+                // Only the height of the peak matters here — where it sits is
+                // re-measured at full resolution once the angle is settled.
+                double peak = -std::numeric_limits<double>::infinity();
+                for (const Complex &z : st->buf)
+                    if (z.real() > peak) peak = z.real();
+
+                double score = (denom > 0.0) ? peak / denom : 0.0;
+                st->scores[a] = score;
+                if (score > st->bestScore) {
+                    st->bestScore = score;
+                    st->bestAngle = a * kStepDeg;
+                }
+            }
+            m_toolProgress = 0.04 + 0.74 * (chunk + 1) / kChunks;
+        });
+    }
+
+    // Apply the winning angle at full resolution, and release the search grid.
+    steps.push_back([this, st]() {
+        const int w = st->w, h = st->h;
+        double ang = st->bestAngle * M_PI / 180.0;
+        double ca = std::cos(ang), sa = std::sin(ang);
+        double cx = (w - 1) / 2.0, cy = (h - 1) / 2.0;
+        st->rotated.assign((size_t)w * h, 0.0);
+        for (int y = 0; y < h; y++) {
+            double dy = y - cy;
+            for (int x = 0; x < w; x++) {
+                double dx = x - cx;
+                double sx = cx + ca * dx + sa * dy;
+                double sy = cy - sa * dx + ca * dy;
+                st->rotated[(size_t)y * w + x] =
+                    sampleBilinear(st->srcFull, w, h, sx, sy, st->srcMean);
+            }
+        }
+        st->srcFull.clear();  st->srcFull.shrink_to_fit();
+        st->srcWork.clear();  st->srcWork.shrink_to_fit();
+        st->refF.clear();     st->refF.shrink_to_fit();
+        st->buf.clear();      st->buf.shrink_to_fit();
+        m_toolProgress = 0.80;
+    });
+
+    // The shift, measured at full resolution on the same quantity the sweep
+    // maximised: the rotated image against the disk-masked reference. Scoring
+    // the sweep on a 256 px grid places the peak only to within a few
+    // full-resolution pixels, and there is no reason to hand back a coarse
+    // answer when one transform pair settles it exactly.
+    steps.push_back([this, st]() {
+        const int W = st->w, H = st->h;
+        st->N = nextGoodFFTSize(std::max(W, H));
+        const int N = st->N;
+        const double rad = std::min(W, H) / 2.0 - 1.0;
+        const double rad2 = rad * rad;
+        const double cx = (W - 1) / 2.0, cy = (H - 1) / 2.0;
+
+        double sum = 0.0;
+        int cnt = 0;
+        for (int y = 0; y < H; y++) {
+            double dy = y - cy;
+            for (int x = 0; x < W; x++) {
+                double dx = x - cx;
+                if (dx * dx + dy * dy <= rad2) { sum += st->ref[(size_t)y * W + x]; cnt++; }
+            }
+        }
+        const double refMean = (cnt > 0) ? sum / cnt : 0.0;
+        const double srcMean = meanOf(st->rotated);
+
+        double sq = 0.0, ssum = 0.0, ssq = 0.0;
+        st->fa.assign((size_t)N * N, Complex(0, 0));
+        st->fb.assign((size_t)N * N, Complex(0, 0));
+        for (int y = 0; y < H; y++) {
+            double dy = y - cy;
+            for (int x = 0; x < W; x++) {
+                double dx = x - cx;
+                size_t s = (size_t)y * W + x, dst = (size_t)y * N + x;
+                double sv = st->rotated[s] - srcMean;
+                st->fa[dst] = Complex(sv, 0);
+                if (dx * dx + dy * dy > rad2) continue;
+                double rv = st->ref[(size_t)y * W + x] - refMean;
+                sq += rv * rv;
+                st->fb[dst] = Complex(rv, 0);
+                ssum += sv;
+                ssq  += sv * sv;
+            }
+        }
+        st->refNorm = std::sqrt(sq);
+        double var = ssq - ssum * ssum / (double)std::max(1, cnt);
+        // Stashed in finalScore as the denominator for now; the peak arrives two
+        // steps later and turns it into the correlation that was achieved.
+        st->finalScore = (var > 0.0) ? std::sqrt(var) * st->refNorm : 0.0;
+        st->ref.clear();
+        st->ref.shrink_to_fit();
+        m_toolProgress = 0.84;
+    });
+    steps.push_back([this, st]() {
+        fft2d(st->fa, st->N, false);
+        m_toolProgress = 0.89;
+    });
+    steps.push_back([this, st]() {
+        fft2d(st->fb, st->N, false);
+        m_toolProgress = 0.94;
+    });
+    steps.push_back([this, st]() {
+        const size_t n = st->fa.size();
+        for (size_t i = 0; i < n; i++)
+            st->fa[i] *= std::conj(st->fb[i]);
+        st->fb.clear();
+        st->fb.shrink_to_fit();
+        fft2d(st->fa, st->N, true);
+        m_toolProgress = 0.97;
+    });
+
+    steps.push_back([this, st]() {
+        const int N = st->N;
+        // As in Shift align: c[k] = Σ src[n+k]·ref[n], so the peak index is what
+        // the source must be read ahead by, and the move is its negative.
+        int px = 0, py = 0;
+        double peak = -std::numeric_limits<double>::infinity();
+        for (int y = 0; y < N; y++)
+            for (int x = 0; x < N; x++) {
+                double v = st->fa[(size_t)y * N + x].real();
+                if (v > peak) { peak = v; px = x; py = y; }
+            }
+        int kx = (px > N / 2) ? px - N : px;
+        int ky = (py > N / 2) ? py - N : py;
+
+        // Both halves of the panel-4 overlay come from this one run: the map of
+        // the winning angle's correlation on the left, the sweep on the right.
+        {
+            const int D = std::min(N, kAlignMapDisp);
+            m_alignCorrMap.assign((size_t)D * D,
+                                  -std::numeric_limits<double>::infinity());
+            for (int y = 0; y < N; y++) {
+                int by = ((y + N / 2) % N) * D / N;
+                for (int x = 0; x < N; x++) {
+                    int bx = ((x + N / 2) % N) * D / N;
+                    double &slot = m_alignCorrMap[(size_t)by * D + bx];
+                    double v = st->fa[(size_t)y * N + x].real();
+                    if (v > slot) slot = v;
+                }
+            }
+            m_alignCorrD = D;
+            m_alignCrossX = (((px + N / 2) % N) + 0.5) * D / (double)N;
+            m_alignCrossY = (((py + N / 2) % N) + 0.5) * D / (double)N;
+            m_alignShiftX = -kx;
+            m_alignShiftY = -ky;
+        }
+        st->fa.clear();
+        st->fa.shrink_to_fit();
+
+        st->finalScore = (st->finalScore > 0.0) ? peak / st->finalScore : 0.0;
+
+        const int w = st->w, h = st->h;
+        std::vector<double> outPix((size_t)w * h);
+        for (int y = 0; y < h; y++) {
+            int sy = ((y + ky) % h + h) % h;
+            for (int x = 0; x < w; x++) {
+                int sx = ((x + kx) % w + w) % w;
+                outPix[(size_t)y * w + x] = st->rotated[(size_t)sy * w + sx];
+            }
+        }
+        st->rotated.clear();
+        st->rotated.shrink_to_fit();
+
+        // The sweep, reordered from 0…360 into the −180…+180 the plot reads in.
+        {
+            const int n = (int)st->scores.size();
+            m_alignRotCurve.assign(n, 0.0);
+            for (int j = 0; j < n; j++)
+                m_alignRotCurve[(j + n / 2) % n] = st->scores[j];
+            m_alignRotBestDeg = (st->bestAngle > 180.0) ? st->bestAngle - 360.0
+                                                        : st->bestAngle;
+            m_alignRotCurveJoint = true;   // every angle at its own best shift
+        }
+
+        finishAlign(st->outIdx, std::move(outPix), w, h,
+                    st->pixelSize, st->srcPath, st->pixelSizeAssumed,
+                    tr("Aligned to reference (full)"));
+        m_alignResult = QString("Rotated by %1°, shifted by x = %2, y = %3 (correlation %4)")
+                            .arg(m_alignRotBestDeg, 0, 'f', 1)
+                            .arg(m_alignShiftX).arg(m_alignShiftY)
+                            .arg(st->finalScore, 0, 'f', 4);
         m_toolProgress = -1;
     });
 

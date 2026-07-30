@@ -8,6 +8,11 @@
 set -u
 
 LOGS="/var/log/apache2/access.log"*          # current + rotated (.1, .gz)
+# The app lives under /ft/ and its manual under /ft-manual/ (it used to be served
+# from inside the app). Both are counted, so the numbers stay comparable with
+# reports made before the manual was split out. Matching "/ft-manual/" as well as
+# "/ft/" is deliberate: " /ft/" alone would silently drop every manual hit.
+FT_RE=" /ft(-manual)?/"
 CITYDB="/var/lib/GeoIP/GeoLite2-City.mmdb"
 COUNTRYDB="/var/lib/GeoIP/GeoLite2-Country.mmdb"
 REPORT="/home/henning/ft-report.html"
@@ -44,31 +49,31 @@ top_cities() {
 }
 
 # --- HTML report (GoAccess, with country/geo panel) — all available logs ---
-zcat -f $LOGS | grep " /ft/" \
+zcat -f $LOGS | grep -E "$FT_RE" \
   | goaccess --log-format=COMBINED --geoip-database="$CITYDB" -o "$REPORT" -
 chown henning:henning "$REPORT"
 
 # --- HTML report — previous 6 calendar months only ---
-zcat -f $LOGS | grep " /ft/" | grep -E "$RECENT_RE" \
+zcat -f $LOGS | grep -E "$FT_RE" | grep -E "$RECENT_RE" \
   | goaccess --log-format=COMBINED --geoip-database="$CITYDB" -o "$REPORT_RECENT" -
 chown henning:henning "$REPORT_RECENT"
 
 echo "##############################################################"
-echo "Top countries accessing /ft/ (all logs):"
+echo "Top countries accessing /ft/ and /ft-manual/ (all logs):"
 echo "##############################################################"
-zcat -f $LOGS | grep " /ft/" | top_countries
+zcat -f $LOGS | grep -E "$FT_RE" | top_countries
 
 echo "##############################################################"
-echo "Top cities accessing /ft/ (all logs):"
+echo "Top cities accessing /ft/ and /ft-manual/ (all logs):"
 echo "##############################################################"
-zcat -f $LOGS | grep " /ft/" | top_cities
+zcat -f $LOGS | grep -E "$FT_RE" | top_cities
 
 echo "##############################################################"
-echo "Top countries accessing /ft/ in last 6 months (${RANGE_LABEL}):"
+echo "Top countries accessing /ft/ and /ft-manual/ in last 6 months (${RANGE_LABEL}):"
 echo "##############################################################"
-zcat -f $LOGS | grep " /ft/" | grep -E "$RECENT_RE" | top_countries
+zcat -f $LOGS | grep -E "$FT_RE" | grep -E "$RECENT_RE" | top_countries
 
 echo "##############################################################"
-echo "Top cities accessing /ft/ in last 6 months (${RANGE_LABEL}):"
+echo "Top cities accessing /ft/ and /ft-manual/ in last 6 months (${RANGE_LABEL}):"
 echo "##############################################################"
-zcat -f $LOGS | grep " /ft/" | grep -E "$RECENT_RE" | top_cities
+zcat -f $LOGS | grep -E "$FT_RE" | grep -E "$RECENT_RE" | top_cities

@@ -172,6 +172,10 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     // so the panel-2 tool dialog can cover it. Click handling lives in
     // mousePressEvent via m_maskBtnRect.
 
+    // The platform's own button font size, before any scaling has touched it.
+    // resizeEvent() scales the labelled buttons down from here.
+    m_chromeBaseFontPx = std::max(8, QFontInfo(m_loadBtn->font()).pixelSize());
+
     // Any top-level button click should dismiss the "New image" popup
     // (these buttons intercept mouse events, so mousePressEvent does not run).
     auto dismissNewImg = [this]() { if (m_newImageActive) onNewImageCancel(); };
@@ -1780,6 +1784,16 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
         m_alignRotBtn->setToolTip("Align image onto reference by rotating the image");
         connect(m_alignRotBtn, &QPushButton::clicked, this, &FtWindow::onAlignRotate);
         m_alignRotBtn->hide();
+
+        m_alignFullBtn = new QPushButton("Full align", this);
+        m_alignFullBtn->setFixedSize(100, 26);
+        m_alignFullBtn->setStyleSheet(alignBtnSS);
+        m_alignFullBtn->setToolTip(
+            "Exhaustive search: every 0.5° rotation, each scored at its own\n"
+            "best shift. The winning rotation and shift are applied together.\n"
+            "Slower than the other two buttons, but needs no iteration.");
+        connect(m_alignFullBtn, &QPushButton::clicked, this, &FtWindow::onAlignFull);
+        m_alignFullBtn->hide();
     }
 
     // All four toggle buttons next to the histograms ("freeze display
@@ -1939,7 +1953,8 @@ void FtWindow::changeEvent(QEvent *event)
     // browser it must NOT — Qt's canvas-filling window reads as fullscreen even
     // when the browser is not, so a WindowStateChange here would wrongly flip the
     // label to "Leave fullscreen". There the label is driven solely by
-    // handleBrowserFullscreenChange() from the JS fullscreenchange listener.
+    // handleBrowserFullscreenChange(), from the browser's own fullscreenchange
+    // event (see installFullscreenSync()).
     if (event->type() == QEvent::WindowStateChange && isWindow()) {
         updateFullscreenButton(isFullScreen());
         // On macOS the native fullscreen transition settles asynchronously, so
@@ -1955,6 +1970,31 @@ void FtWindow::changeEvent(QEvent *event)
 
 void FtWindow::resizeEvent(QResizeEvent *)
 {
+    // Size the labelled buttons for the window before anything is positioned:
+    // every placement below reads their width and height back. The size and the
+    // font are set on the widget rather than through a stylesheet — a stylesheet
+    // would hand these buttons to QStyleSheetStyle and cost them the native look
+    // they have here, which the panel-tool buttons deliberately give up but these
+    // do not.
+    {
+        const double s = chromeScale();
+        const int fontPx = std::max(7, (int)std::lround(m_chromeBaseFontPx * s));
+        auto sizeChromeButton = [&](QPushButton *b, int w, int h) {
+            if (!b) return;
+            b->setFixedSize(std::max(40, (int)std::lround(w * s)),
+                            std::max(15, (int)std::lround(h * s)));
+            QFont f = b->font();
+            f.setPixelSize(fontPx);
+            b->setFont(f);
+        };
+        for (QPushButton *b : {m_loadBtn, m_createBtn, m_saveBtn, m_reloadBtn,
+                               m_copyImageBtn, m_deleteBtn, m_undoBtn, m_redoBtn})
+            sizeChromeButton(b, 130, 30);
+        // The two widest labels ("Go fullscreen", and the display-mode names).
+        sizeChromeButton(m_fullscreenBtn, 180, 30);
+        sizeChromeButton(m_modeBtn,       180, 30);
+    }
+
     m_loadBtn->move(8, 8);
     m_createBtn->move(8 + m_loadBtn->width() + 4, 8);
     int hy0 = height() - height() / 5;
@@ -1979,7 +2019,11 @@ void FtWindow::resizeEvent(QResizeEvent *)
     // button below it occupy the top-center area, so push undo/redo below
     // both of them. When embedded, the title is hidden but the Manual
     // button is still drawn at the top, so reserve space for one box.
-    int undoY = isWindow() ? (8 + 42 * 2) : (8 + 42);
+    // Scaled by chromeScale() because those boxes are: paintEvent derives their
+    // height from a font and padding that shrink by the same factor, so the
+    // offset that clears them has to shrink with it or Undo/Redo would be left
+    // stranded halfway down the panel.
+    int undoY = (int)std::lround((isWindow() ? (8 + 42 * 2) : (8 + 42)) * chromeScale());
     m_undoBtn->move((width() - m_undoBtn->width()) / 2, undoY);
     m_redoBtn->move((width() - m_redoBtn->width()) / 2, undoY + m_undoBtn->height() + 4);
     m_fullscreenBtn->move(width() - m_fullscreenBtn->width() - 8, 8);
@@ -2241,6 +2285,8 @@ void FtWindow::resizeEvent(QResizeEvent *)
         m_alignShiftBtn->setStyleSheet(alignBtnSS);
         m_alignRotBtn->setFixedSize(static_cast<int>(120 * sc), btnH);
         m_alignRotBtn->setStyleSheet(alignBtnSS);
+        m_alignFullBtn->setFixedSize(static_cast<int>(100 * sc), btnH);
+        m_alignFullBtn->setStyleSheet(alignBtnSS);
     }
 
     // Binning widgets (sizes only)
