@@ -1668,9 +1668,23 @@ sits at the centre of panel 2, and high frequencies are at the corners.
       <td>A tooltip with the tool name appears next to the icon and
           floats above the image / Fourier display rather than being
           clipped by it.</td></tr>
+  <tr><td>Hover over a group square</td>
+      <td>The tools the group contains open in a column right beside the
+          square, level with it and touching it, so you can see what is
+          inside a group without opening it. The group's name is written
+          across the first of those icons — it needs no room of its own
+          there, which is what lets the column sit close enough to reach
+          with one short sideways move. The icons stay up while the
+          pointer is on them, each showing its own tooltip in place of
+          the group name, and a click starts that tool straight away:
+          there is no need to open the group first. Moving the pointer
+          away closes the column again. Groups holding a single tool have
+          nothing to reveal and only show their name.</td></tr>
   <tr><td>Click a history slot (panel 3 or 4)</td>
       <td>Activate that slot. Any pending edits in the previous slot
-          are stored before switching.</td></tr>
+          are stored before switching. While <em>Align to reference</em>
+          is open, the clicked buffer also becomes its image source and
+          output buffer.</td></tr>
 </table>
 </details>
 
@@ -1735,8 +1749,11 @@ underneath, since the whole scale is then conditional.
 Each panel has its own column of tool squares, organised into groups. A
 group square holding several tools opens a small pop-up column of
 sub-squares when clicked; you then click a sub-square to activate that
-tool. A single-tool group activates directly. The detailed reference for
-every tool lives on its own page:
+tool. A single-tool group activates directly. Simply resting the pointer
+on a group square is enough to look inside it: its tools appear in a
+column beside the square, with the group's name written across the first
+of them, and can be clicked from there. The detailed reference for every
+tool lives on its own page:
 </p>
 
 <div class="subpages">

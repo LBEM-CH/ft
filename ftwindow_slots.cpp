@@ -71,10 +71,24 @@ static void parallelFor(int begin, int end, F &&body)
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
-static FtWindow *g_fsWindow = nullptr;
-extern "C" EMSCRIPTEN_KEEPALIVE void ft_on_fullscreen_change(int isFs)
+#include <emscripten/html5.h>
+
+// Browser fullscreen state changes are picked up through Emscripten's own event
+// API rather than a hand-written JS listener calling back in. A listener in JS
+// has no reliable way to reach us: it would need the module object to call an
+// exported function, and Qt's qtloader.js keeps the instance to itself — it
+// never publishes it as window.Module — so such a listener silently does
+// nothing and the button keeps its old label. Registering here hands Emscripten
+// a plain C function pointer and takes JS out of the path. Emscripten attaches
+// both "fullscreenchange" and the "webkitfullscreenchange" that older Safari
+// needs, so every route in and out of fullscreen is caught: our own button, F11,
+// and ESC.
+static EM_BOOL ftFullscreenChanged(int, const EmscriptenFullscreenChangeEvent *e,
+                                   void *userData)
 {
-    if (g_fsWindow) g_fsWindow->handleBrowserFullscreenChange(isFs != 0);
+    if (auto *w = static_cast<FtWindow *>(userData))
+        w->handleBrowserFullscreenChange(e->isFullscreen != 0);
+    return EM_FALSE;   // observe only; leave the event to the browser
 }
 
 // ---- WASM session-history persistence (localStorage) ----------------------
@@ -1010,6 +1024,10 @@ void FtWindow::onToggleFullscreen()
             }
         }
     });
+    // The request is asynchronous, and a refusal is silent. Check back once it
+    // has had time to settle so the label cannot be left claiming a fullscreen
+    // that never happened.
+    QTimer::singleShot(400, this, &FtWindow::refreshFullscreenButtonFromBrowser);
 #else
     // Embedded in another application: defer to the host. A child widget
     // cannot be made fullscreen directly; the host has to toggle its own
@@ -1030,24 +1048,33 @@ void FtWindow::onToggleFullscreen()
 void FtWindow::installFullscreenSync()
 {
 #ifdef __EMSCRIPTEN__
-    g_fsWindow = this;
-    EM_ASM({
-        if (window.__ftFsInit) return;
-        window.__ftFsInit = true;
-        var sync = function() {
-            var fs = document.fullscreenElement ||
-                     document.webkitFullscreenElement ||
-                     document.webkitCurrentFullScreenElement;
-            if (window.Module && window.Module.ccall) {
-                try {
-                    window.Module.ccall('ft_on_fullscreen_change',
-                        null, ['number'], [fs ? 1 : 0]);
-                } catch (e) { console.warn('fs sync failed:', e); }
-            }
-        };
-        document.addEventListener('fullscreenchange', sync);
-        document.addEventListener('webkitfullscreenchange', sync);
+    // Registering the same callback again only replaces it, so this is safe to
+    // call on every toggle — and it must be, since the first fullscreen request
+    // may well be the first time we run at all.
+    EMSCRIPTEN_RESULT r = emscripten_set_fullscreenchange_callback(
+        EMSCRIPTEN_EVENT_TARGET_DOCUMENT, this, /*useCapture=*/0,
+        ftFullscreenChanged);
+    if (r != EMSCRIPTEN_RESULT_SUCCESS)
+        qWarning() << "ft: fullscreenchange callback not registered, result" << r;
+#endif
+}
+
+// Reads the browser's fullscreen state directly and brings the button label into
+// line with it. The event callback above is what keeps the label honest as the
+// state changes; this is the belt to its braces, for the one moment it cannot
+// cover — a fullscreen request the browser simply refuses, which produces no
+// event at all. Only the label is touched: unlike
+// handleBrowserFullscreenChange(), a "not fullscreen" answer here must not tear
+// down the maximized image view, since nothing has actually changed.
+void FtWindow::refreshFullscreenButtonFromBrowser()
+{
+#ifdef __EMSCRIPTEN__
+    const int fs = EM_ASM_INT({
+        return (document.fullscreenElement ||
+                document.webkitFullscreenElement ||
+                document.webkitCurrentFullScreenElement) ? 1 : 0;
     });
+    updateFullscreenButton(fs != 0);
 #endif
 }
 

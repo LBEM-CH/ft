@@ -166,11 +166,14 @@ public:
     // label tracks fullscreen entered/left by any route (F11, Escape, our
     // own button). A no-op on other platforms and safe to call repeatedly.
     void installFullscreenSync();
-    // WASM only: called from the JS fullscreenchange listener. Keeps the button
-    // label in step and, when the maximized image view was shown full-screen,
-    // leaves that view too — so the single ESC that drops browser fullscreen
-    // also returns to the normal layout instead of stranding the image.
+    // WASM only: called from the browser's fullscreenchange event. Keeps the
+    // button label in step and, when the maximized image view was shown
+    // full-screen, leaves that view too — so the single ESC that drops browser
+    // fullscreen also returns to the normal layout instead of stranding the image.
     void handleBrowserFullscreenChange(bool isFullscreen);
+    // WASM only: sets the button label from the browser's current state. Covers
+    // a fullscreen request that was refused, which raises no event.
+    void refreshFullscreenButtonFromBrowser();
 private slots:
     void onToggleMask(bool checked);
     void onApplyBandpass();
@@ -567,6 +570,27 @@ private:
     // keeps the panel-3 and panel-4 thumbnail grids out of it.
     int historyButtonGutter() const
     { return (m_reloadBtn ? m_reloadBtn->width() : 130) + 16; }
+
+    // Size factor for the window's own furniture — the labelled buttons (Load
+    // image, New image, Go fullscreen, the display-mode button, the gutter stack)
+    // and the custom-painted histogram toggles. They were laid out for a large
+    // screen, where they are comfortable; on a laptop they crowded the panels
+    // because their size was fixed. Full size from 2056x1329 upwards, tapering to
+    // half the width, half the height and a font to match by 1312x848, and held
+    // there below that — halving again would leave the labels unreadable.
+    // Whichever dimension is the more cramped decides, so a window that is merely
+    // short shrinks them too.
+    double chromeScale() const
+    {
+        const double fw = (width()  - 1312.0) / (2056.0 - 1312.0);
+        const double fh = (height() -  848.0) / (1329.0 -  848.0);
+        return 0.5 + 0.5 * std::clamp(std::min(fw, fh), 0.0, 1.0);
+    }
+    // Pixel size the labelled buttons use at chromeScale() == 1, read from the
+    // platform's own default once at construction. Scaling from a stored
+    // reference keeps the result stable no matter how often a resize recomputes
+    // it; scaling the current size would drift downwards on every resize.
+    int m_chromeBaseFontPx = 13;
 
     // Locate `relativePath` (e.g. "Exercise_01-Photos/lorenz_1999.png") under the
     // example-images directory. Tries the embedder-supplied override first, then

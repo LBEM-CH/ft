@@ -32,6 +32,7 @@
 #include <QPinchGesture>
 #include <QFont>
 #include <QFontMetrics>
+#include <QFontInfo>
 #include <QDoubleValidator>
 #include <QIntValidator>
 #include <QSignalBlocker>

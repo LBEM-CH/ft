@@ -53,8 +53,20 @@ void FtWindow::buildToolGroups()
 void FtWindow::layoutToolSlots()
 {
     int hy = height() - height() / 5;
-    int btnSide = std::max(width() * 5 / 400, 20);
     int gap = 2;
+    // Half again the size the squares used to be — the icons in them are drawn
+    // relative to the square, so they grow with it.
+    int btnSide = std::max(width() * 5 / 400, 20) * 3 / 2;
+    // …but never taller than the column of groups has room for. At this size a
+    // short window would otherwise push the squares off the top of the panel,
+    // taking the close button — half a square above them again — with them. The
+    // longer of the two panels' group lists sets the limit, since both columns
+    // share this one size, and the +3 leaves the close button its space.
+    const int nGroupsMax = std::max(m_p1Groups.size(), m_p2Groups.size());
+    if (nGroupsMax > 0) {
+        int fits = (hy - (nGroupsMax - 1) * gap) / (nGroupsMax + 3);
+        btnSide = std::max(8, std::min(btnSide, fits));
+    }
     int offset = btnSide / 2;
     m_toolBtnSide = btnSide;
     m_toolBtnGap = gap;
@@ -106,44 +118,38 @@ void FtWindow::layoutToolSlots()
             bool open    = (m_openMenuPanel  == panel && m_openMenuGroup  == g);
             bool preview = (m_hoverMenuPanel == panel && m_hoverMenuGroup == g);
             if ((open || preview) && mem.size() > 1) {
-                // Members fan out into a single floating vertical column; the
-                // group face itself is left empty (drawn as a highlighted anchor
-                // in paint). Clicked open, the column sits beside the square.
-                // Previewed on hover it hangs under the group's mouse-over text
-                // instead, which keeps that text — the label for what the column
-                // is showing — readable rather than covered.
+                // Members fan out into a single floating vertical column immediately
+                // beside the group square and level with it, so the first member's
+                // icon touches the square: reaching it is one short sideways move,
+                // with no diagonal and no gap to fall out of. The square itself is
+                // left empty (drawn as a highlighted anchor in paint), and the
+                // group's mouse-over text is written over that first icon rather
+                // than between the two — see groupTipRect(). The text therefore
+                // costs the column no room, which is what lets it sit this high;
+                // hanging it below the text pushed the icons clear of the square
+                // on a short window, where they could not be reached at all.
                 //
-                // One column wide either way, and deliberately so: the icons are
-                // painted before the image displays are, so anything reaching
-                // past the narrow gutter beside the button column disappears
-                // behind panel 1 / panel 2. A row of six would.
+                // One column wide, and deliberately so: the icons are painted
+                // before the image displays are, so anything reaching past the
+                // narrow gutter beside the button column disappears behind panel
+                // 1 / panel 2. A horizontal row of six would.
                 int n = mem.size();
-                int pad = 4;
-                int panelW = btnSide + 2 * pad;
-                int panelH = n * btnSide + (n - 1) * gap + 2 * pad;
-                int px, py;
-                if (open) {
-                    px = (panel == 1) ? (G.right() + 6) : (G.left() - 6 - panelW);
-                    py = G.top();
-                } else {
-                    QRect tip = groupTipRect(panel, g);
-                    // Flush with the text on the side it grows from, so the
-                    // column reads as hanging from it.
-                    px = (panel == 1) ? tip.left() : (tip.right() + 1 - panelW);
-                    py = tip.bottom() + 3;
-                }
-                // Keep the panel on screen: a group low in the column with many
-                // members would otherwise hang off the bottom edge.
-                if (py + panelH > height()) py = height() - panelH;
+                int panelW = btnSide;
+                int panelH = n * btnSide + (n - 1) * gap;
+                int px = (panel == 1) ? (G.right() + 1) : (G.left() - 1 - panelW);
+                int py = G.top();
+                // Keep the column on screen. If it will not fit below the square,
+                // it grows upwards from the square's foot instead of being pushed
+                // off it — sliding it up the window would break the very adjacency
+                // the layout is built around. Only a very short window gets here.
+                if (py + panelH > height()) py = G.bottom() + 1 - panelH;
                 if (py < 0) py = 0;
                 if (px + panelW > width()) px = width() - panelW;
                 if (px < 0) px = 0;
                 QRect popup(px, py, panelW, panelH);
                 if (panel == 1) m_p1PopupRect = popup; else m_p2PopupRect = popup;
                 for (int k = 0; k < n; k++) {
-                    QRect cell(px + pad,
-                               py + pad + k * (btnSide + gap),
-                               btnSide, btnSide);
+                    QRect cell(px, py + k * (btnSide + gap), btnSide, btnSide);
                     slotRects[mem[k]] = cell;
                     slotVis[mem[k]] = true;
                 }
@@ -169,6 +175,22 @@ QRect FtWindow::groupTipRect(int panel, int g) const
     QFontMetrics ttfm(ttf);
     int ttw = ttfm.horizontalAdvance(groups[g].name) + 8;
     int tth = ttfm.height() + 4;
+
+    // While this group's members are previewed, the text is written over the
+    // first member's icon instead of beside the group square. That way it takes
+    // no room of its own, which is what lets the column sit tight against the
+    // square: put the text between them and the icons are pushed away from the
+    // square by its whole height, far enough on a short window that the pointer
+    // cannot get across. The icon it covers is the one the pointer is on its way
+    // to; arriving there replaces this text with that tool's own.
+    const QRect &popup = (panel == 1) ? m_p1PopupRect : m_p2PopupRect;
+    if (m_hoverMenuPanel == panel && m_hoverMenuGroup == g && !popup.isNull()) {
+        QRect first(popup.left(), popup.top(), m_toolBtnSide, m_toolBtnSide);
+        int ttx = (panel == 1) ? first.left() : (first.right() + 1 - ttw);
+        int tty = first.center().y() - tth / 2;
+        return QRect(ttx, tty, ttw, tth);
+    }
+
     int ttx = (panel == 1) ? (G.right() + 4) : (G.left() - ttw - 4);
     int tty = G.center().y() - tth / 2;
     return QRect(ttx, tty, ttw, tth);
@@ -187,16 +209,8 @@ void FtWindow::updateGroupHoverPreview()
         return;
     }
 
-    // Hold the preview open while the pointer is on the row itself. The icons
-    // sit outside the square that summoned them, so without this they would
-    // vanish the moment the user reached for one.
-    if (m_hoverMenuPanel != 0) {
-        const QRect &popup = (m_hoverMenuPanel == 1) ? m_p1PopupRect : m_p2PopupRect;
-        if (popup.contains(m_mousePos)) return;
-    }
-
-    m_hoverMenuPanel = 0;
-    m_hoverMenuGroup = -1;
+    // A group square under the pointer wins, so that running down the column
+    // hands the preview from one group to the next.
     for (int panel = 1; panel <= 2; panel++) {
         const QVector<ToolGroup> &groups = (panel == 1) ? m_p1Groups : m_p2Groups;
         const QRect *groupRects = (panel == 1) ? m_p1GroupRects : m_p2GroupRects;
@@ -210,6 +224,19 @@ void FtWindow::updateGroupHoverPreview()
             return;
         }
     }
+
+    // Otherwise hold the current preview open while the pointer is on the icons
+    // themselves: they sit outside the square that summoned them, and without
+    // this they would vanish from under the pointer on the way over. The column
+    // is laid out flush against the square, so there is nothing in between to
+    // fall through.
+    if (m_hoverMenuPanel != 0) {
+        const QRect &popup = (m_hoverMenuPanel == 1) ? m_p1PopupRect : m_p2PopupRect;
+        if (popup.contains(m_mousePos)) return;
+    }
+
+    m_hoverMenuPanel = 0;
+    m_hoverMenuGroup = -1;
 }
 
 void FtWindow::deactivateAllP1Tools()
