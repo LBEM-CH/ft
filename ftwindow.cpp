@@ -1978,11 +1978,14 @@ void FtWindow::resizeEvent(QResizeEvent *)
     // do not.
     {
         const double s = chromeScale();
-        const int fontPx = std::max(7, (int)std::lround(m_chromeBaseFontPx * s));
+        // The label has to stay legible even where the proportional size would
+        // drop below that, so the font has a floor of its own — and the box a
+        // floor that keeps room for it.
+        const int fontPx = std::max(9, (int)std::lround(m_chromeBaseFontPx * s));
         auto sizeChromeButton = [&](QPushButton *b, int w, int h) {
             if (!b) return;
-            b->setFixedSize(std::max(40, (int)std::lround(w * s)),
-                            std::max(15, (int)std::lround(h * s)));
+            b->setFixedSize(std::max(56, (int)std::lround(w * s)),
+                            std::max(fontPx + 6, (int)std::lround(h * s)));
             QFont f = b->font();
             f.setPixelSize(fontPx);
             b->setFont(f);

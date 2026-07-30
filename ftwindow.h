@@ -11,6 +11,7 @@
 #include <QSlider>
 #include <QVector>
 #include <QPointer>
+#include <QScreen>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #endif
@@ -582,9 +583,30 @@ private:
     // short shrinks them too.
     double chromeScale() const
     {
+        // Room to spare, in the logical pixels the two reference sizes are quoted
+        // in — 2056x1329 is the built-in retina panel's own geometry, which is
+        // where the sizes in the constructor were judged.
         const double fw = (width()  - 1312.0) / (2056.0 - 1312.0);
         const double fh = (height() -  848.0) / (1329.0 -  848.0);
-        return 0.5 + 0.5 * std::clamp(std::min(fw, fh), 0.0, 1.0);
+        const double taper = 0.5 + 0.5 * std::clamp(std::min(fw, fh), 0.0, 1.0);
+
+        // …times how small a logical pixel physically is on this screen. The two
+        // displays this app is used on differ by almost half: the retina panel
+        // puts 75.8 logical pixels in an inch, an external 4K monitor 110, so a
+        // 30-pixel button really is a third shorter there. Qt does not even that
+        // out by itself, because macOS reports such a monitor at
+        // devicePixelRatio 1 — leaving the buttons to shrink against everything
+        // sized from the window, the tool squares included. Referenced to the
+        // retina panel and bounded, so a monitor that misreports its physical
+        // size cannot inflate the interface; a coarser screen than the reference
+        // keeps the base size rather than growing one.
+        double density = 1.0;
+        if (const QScreen *scr = screen()) {
+            const double lppi = scr->physicalDotsPerInch()
+                                / std::max(1.0, scr->devicePixelRatio());
+            if (lppi > 1.0) density = std::clamp(lppi / 75.8, 1.0, 1.6);
+        }
+        return taper * density;
     }
     // Pixel size the labelled buttons use at chromeScale() == 1, read from the
     // platform's own default once at construction. Scaling from a stored
