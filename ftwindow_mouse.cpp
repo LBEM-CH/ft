@@ -893,7 +893,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
 
         auto *buttons = new QDialogButtonBox(dlg);
         auto *findBtn   = buttons->addButton("Find in manual", QDialogButtonBox::ActionRole);
-        auto *googleBtn = buttons->addButton("Search Google",  QDialogButtonBox::ActionRole);
+        auto *googleBtn = buttons->addButton("Search Google (indexing still not done...)",  QDialogButtonBox::ActionRole);
         buttons->addButton(QDialogButtonBox::Close);
         buttons->setStyleSheet(
             "QPushButton { background-color:#888; border:2px outset #aaa; color:#eee; padding:2px 12px; }");
