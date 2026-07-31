@@ -4290,14 +4290,22 @@ void FtWindow::chainSteps(std::vector<std::function<void()>> steps)
     if (steps.empty()) return;
     auto q = std::make_shared<std::vector<std::function<void()>>>(std::move(steps));
     auto run = std::make_shared<std::function<void()>>();
-    *run = [this, q, run]() {
+    // The closure references itself to schedule the next step, but a strong
+    // self-capture would pin its own refcount above zero forever — one leaked
+    // function + queue per chain, plus any unrun step payloads if the chain is
+    // abandoned. Self-reference weakly instead: each pending singleShot lambda
+    // holds the strong reference (so lock() cannot fail while a step runs),
+    // and the whole thing is freed with the last scheduled step.
+    std::weak_ptr<std::function<void()>> weakRun = run;
+    *run = [this, q, weakRun]() {
         if (q->empty()) return;
         auto fn = std::move(q->front());
         q->erase(q->begin());
         fn();
         update();
-        if (!q->empty())
-            QTimer::singleShot(20, this, [run]() { (*run)(); });
+        if (q->empty()) return;
+        if (auto next = weakRun.lock())
+            QTimer::singleShot(20, this, [next]() { (*next)(); });
     };
     QTimer::singleShot(50, this, [run]() { (*run)(); });
 #else
