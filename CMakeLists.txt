@@ -10,7 +10,9 @@ set(CMAKE_AUTOMOC ON)
 # Standalone builds (default) are unchanged and produce the ft executable.
 option(FT_EMBEDDED "Build ft as a library for embedding into another Qt application" OFF)
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets)
+# Network: the Help dialog's "Find in manual" downloads the online manual
+# pages to search them for snippets.
+find_package(Qt6 REQUIRED COMPONENTS Widgets Network)
 
 set(FT_CORE_SOURCES
     ftwindow.cpp
@@ -26,7 +28,7 @@ set(FT_CORE_SOURCES
 
 add_library(ft_core STATIC ${FT_CORE_SOURCES})
 target_include_directories(ft_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(ft_core PUBLIC Qt6::Widgets)
+target_link_libraries(ft_core PUBLIC Qt6::Widgets Qt6::Network)
 if(NOT EMSCRIPTEN)
     find_package(Threads REQUIRED)
     target_link_libraries(ft_core PUBLIC Threads::Threads)

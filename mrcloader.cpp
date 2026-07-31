@@ -5,6 +5,7 @@
 #include <cstring>
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <vector>
 
 QByteArray saveMrcToData(const std::vector<double> &pixels,
@@ -74,7 +75,13 @@ QByteArray saveMrcToData(const std::vector<double> &pixels,
     // bottom, and loadMrc*() flips rows back to top-down on read, so `pixels`
     // (top-down display order) must be written with the row order reversed to
     // round-trip correctly.
-    QByteArray body((int)(count * 4), '\0');
+    // The body is count*4 bytes. Cap it before multiplying, so the size can
+    // neither overflow qint64 nor exceed what QByteArray can hold on this
+    // platform (qsizetype is 32-bit in WASM): a truncated size would produce
+    // an undersized buffer that the row loop below writes past.
+    const qint64 maxBody = qint64(std::numeric_limits<qsizetype>::max()) - 1024;
+    if (count > maxBody / 4) return QByteArray();
+    QByteArray body(qsizetype(count * 4), '\0');
     char *b = body.data();
     for (int y = 0; y < ny; y++) {
         const double *srcRow = pixels.data() + (qint64)(ny - 1 - y) * nx;
