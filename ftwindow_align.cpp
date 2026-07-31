@@ -200,8 +200,9 @@ bool FtWindow::alignInputsValid() const
     int src = m_alignSrcCombo->currentIndex();
     int ref = m_alignRefCombo->currentIndex();
     // Any buffer may act as source, reference or output — including the same
-    // one for more than one role — so both merely need to be selected.
-    return src >= 0 && ref >= 0;
+    // one for more than one role — but source and reference must actually hold
+    // an image, or the buttons would offer an operation that can only fail.
+    return bufferInUse(src) && bufferInUse(ref);
 }
 
 void FtWindow::syncAlignCombos()

@@ -1,5 +1,11 @@
 #include "ftwindow_common.h"
 
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QRegularExpression>
+#include <QTextBrowser>
+#include <QTextDocument>
+
 // QImage::mirrored() was deprecated in Qt 6.9 in favour of flipped(). The
 // native desktop kit is newer, but the WebAssembly kit is still on Qt 6.8
 // (which has no flipped()), so wrap both behind a version check.
@@ -690,6 +696,235 @@ void FtWindow::openToolHelp(bool panel2)
     openManualAnchor(panel2, anchor);
 }
 
+// ---------------------------------------------------------------------------
+//  "Find in manual" snippet search
+// ---------------------------------------------------------------------------
+// The Help dialog's "Find in manual" searches every manual page, not just
+// manual.html, and lists each occurrence as a clickable snippet. The pages are
+// downloaded rather than bundled so the search always sees the manual as
+// currently published (see kManualBase above).
+namespace {
+struct ManualPage { const char *file; const char *title; };
+struct ManualHit {
+    QString url;      // page URL + #:~:text= directive targeting this occurrence
+    QString snippet;  // rich-text context line, occurrence in bold
+};
+} // namespace
+
+static const ManualPage kManualPages[] = {
+    { "manual.html",           "Main manual" },
+    { "manual_panel1.html",    "Panel 1 — real-space tools" },
+    { "manual_panel2.html",    "Panel 2 — Fourier tools" },
+    { "manual_exercises.html", "Exercises" },
+};
+
+// Downloaded page HTML, kept for the whole session: the pages total ~1 MB and
+// repeated searches shouldn't re-fetch them every time. A failed download is
+// not cached, so the next search retries it.
+static QHash<QString, QString> s_manualPageCache;
+
+// Reduce a page to the plain-text blocks the browser renders, one string per
+// block. A text fragment cannot match across a block boundary, so snippets and
+// their prefix/suffix context must be built within a single block.
+static QStringList manualTextBlocks(QString html)
+{
+    // Content the browser doesn't render as text goes first, or styles,
+    // scripts and embedded image data would turn up as search hits.
+    html.remove(QRegularExpression(QStringLiteral("(?is)<head\\b.*?</head>")));
+    html.remove(QRegularExpression(QStringLiteral("(?is)<script\\b.*?</script>")));
+    html.remove(QRegularExpression(QStringLiteral("(?is)<style\\b.*?</style>")));
+    html.remove(QRegularExpression(QStringLiteral("(?is)<svg\\b.*?</svg>")));
+    html.remove(QRegularExpression(QStringLiteral("(?is)<img\\b[^>]*>")));
+    // QTextDocument supplies the full entity table and block segmentation:
+    // toPlainText() yields one line per block and folds &nbsp; to a plain
+    // space, which matches how the browsers' fragment matchers compare text.
+    QTextDocument doc;
+    doc.setHtml(html);
+    QStringList blocks;
+    const QStringList lines = doc.toPlainText().split(QLatin1Char('\n'));
+    for (const QString &line : lines) {
+        QString t = line;
+        t.replace(QChar(0xFFFC), QLatin1Char(' '));   // object-replacement chars
+        t = t.simplified();
+        if (!t.isEmpty()) blocks << t;
+    }
+    return blocks;
+}
+
+// Percent-encode one part of a text-fragment directive. '-' separates the
+// prefix/suffix from the match text, so it must not survive as a literal;
+// the other delimiters (',' and '&') are outside the default unreserved set
+// and get encoded anyway.
+static QString fragmentEncode(const QString &s)
+{
+    return QString::fromLatin1(QUrl::toPercentEncoding(s, QByteArray(), "-"));
+}
+
+// Every occurrence of `query` in one manual page. The URL pins down WHICH
+// occurrence via context words (#:~:text=prefix-,match,-suffix), so the
+// browser highlights the chosen one instead of the page's first.
+static QVector<ManualHit> findManualMatches(const QString &pageFile,
+                                            const QString &pageHtml,
+                                            const QString &query)
+{
+    // Context sizes in words: enough around the match in the URL to identify
+    // the occurrence uniquely, a bit more in the visible snippet so the hits
+    // can be told apart at a glance.
+    const int kUrlContext = 4, kSnippetContext = 8;
+
+    QVector<ManualHit> hits;
+    QSet<QString> seen;
+    const QStringList blocks = manualTextBlocks(pageHtml);
+    for (qsizetype b = 0; b < blocks.size(); ++b) {
+        const QString &block = blocks.at(b);
+        int idx, from = 0;
+        while ((idx = int(block.indexOf(query, from, Qt::CaseInsensitive))) >= 0) {
+            from = idx + int(query.size());
+            // Fragment matches must start and end on word boundaries, so a
+            // query that hits mid-word is widened to whole words ("math" →
+            // "mathematics").
+            int start = idx, end = idx + int(query.size());
+            while (start > 0 && block.at(start - 1) != QLatin1Char(' ')) --start;
+            while (end < block.size() && block.at(end) != QLatin1Char(' ')) ++end;
+            const QString match = block.mid(start, end - start);
+            const QStringList before =
+                block.left(start).split(QLatin1Char(' '), Qt::SkipEmptyParts);
+            const QStringList after =
+                block.mid(end).split(QLatin1Char(' '), Qt::SkipEmptyParts);
+
+            QStringList pre = before.mid(qMax<qsizetype>(0, before.size() - kUrlContext));
+            QStringList suf = after.mid(0, kUrlContext);
+            // A match filling its whole block (e.g. a bare "Math" heading) has
+            // no same-block context, and "#:~:text=Math" alone would highlight
+            // the page's FIRST "Math" instead. The fragment matcher's text walk
+            // crosses block boundaries as whitespace, so borrow the context
+            // words from the neighbouring blocks.
+            if (pre.isEmpty() && b > 0) {
+                const QStringList prev =
+                    blocks.at(b - 1).split(QLatin1Char(' '), Qt::SkipEmptyParts);
+                pre = prev.mid(qMax<qsizetype>(0, prev.size() - kUrlContext));
+            }
+            if (suf.isEmpty() && b + 1 < blocks.size()) {
+                const QStringList next =
+                    blocks.at(b + 1).split(QLatin1Char(' '), Qt::SkipEmptyParts);
+                suf = next.mid(0, kUrlContext);
+            }
+            QString url = kManualBase + pageFile + QStringLiteral("#:~:text=");
+            if (!pre.isEmpty())
+                url += fragmentEncode(pre.join(QLatin1Char(' '))) + QStringLiteral("-,");
+            url += fragmentEncode(match);
+            if (!suf.isEmpty())
+                url += QStringLiteral(",-") + fragmentEncode(suf.join(QLatin1Char(' ')));
+
+            // Same text in the same context: the browser could not tell the
+            // occurrences apart either, so one entry stands for all of them.
+            if (seen.contains(url)) continue;
+            seen.insert(url);
+
+            const QStringList dpre = before.mid(qMax<qsizetype>(0, before.size() - kSnippetContext));
+            const QStringList dsuf = after.mid(0, kSnippetContext);
+            QString snip;
+            if (before.size() > dpre.size()) snip += QStringLiteral("… ");
+            if (!dpre.isEmpty()) snip += dpre.join(QLatin1Char(' ')).toHtmlEscaped() + QLatin1Char(' ');
+            snip += QStringLiteral("<b>") + match.toHtmlEscaped() + QStringLiteral("</b>");
+            if (!dsuf.isEmpty()) snip += QLatin1Char(' ') + dsuf.join(QLatin1Char(' ')).toHtmlEscaped();
+            if (after.size() > dsuf.size()) snip += QStringLiteral(" …");
+            hits.append({url, snip});
+        }
+    }
+    return hits;
+}
+
+// Render the finished search into the Help dialog's results pane. Every page
+// that downloaded is searched; ones that didn't are reported, so a network
+// failure can't silently pose as "no matches".
+static void showManualSearchResults(QTextBrowser *browser, const QString &query,
+                                    const QStringList &fetchErrors)
+{
+    const int kMaxPerPage = 25;
+    QString out;
+    qsizetype total = 0;
+    for (const ManualPage &page : kManualPages) {
+        const auto it = s_manualPageCache.constFind(QLatin1String(page.file));
+        if (it == s_manualPageCache.constEnd()) continue;
+        const QVector<ManualHit> hits =
+            findManualMatches(QLatin1String(page.file), it.value(), query);
+        if (hits.isEmpty()) continue;
+        total += hits.size();
+        out += QStringLiteral("<h4 style=\"margin:10px 0 2px 0; color:#eee;\">")
+             + QString::fromUtf8(page.title).toHtmlEscaped()
+             + QStringLiteral(" <span style=\"color:#999;\">— %1 match%2</span></h4>")
+                   .arg(hits.size()).arg(hits.size() == 1 ? "" : "es");
+        const int shown = int(qMin<qsizetype>(hits.size(), kMaxPerPage));
+        // Half a line of air below each entry, so multi-line snippets read as
+        // one finding each instead of running together into a wall of text.
+        for (int k = 0; k < shown; ++k)
+            out += QStringLiteral("<p style=\"margin:0 0 8px 14px;\"><a href=\"")
+                 + hits[k].url + QStringLiteral("\">") + hits[k].snippet
+                 + QStringLiteral("</a></p>");
+        if (hits.size() > shown)
+            out += QStringLiteral("<p style=\"margin:0 0 8px 14px; color:#999;\">"
+                                  "… %1 further matches not listed — try a more "
+                                  "specific phrase</p>").arg(hits.size() - shown);
+    }
+
+    QString head;
+    if (total == 0)
+        head = QStringLiteral("<p style=\"color:#eee;\">No matches for “%1” in the "
+                              "manual. Try a shorter keyword, or the Search Google "
+                              "button.</p>").arg(query.toHtmlEscaped());
+    else
+        head = QStringLiteral("<p style=\"color:#bbb;\">%1 match%2 for “%3” — click "
+                              "one to open it in the browser:</p>")
+                   .arg(total).arg(total == 1 ? "" : "es").arg(query.toHtmlEscaped());
+    for (const QString &err : fetchErrors)
+        out += QStringLiteral("<p style=\"color:#f99;\">Could not load %1</p>")
+                   .arg(err.toHtmlEscaped());
+    browser->setHtml(head + out);
+}
+
+// Entry point from the Help dialog: make sure all manual pages are downloaded,
+// then search them and fill `browser` with clickable snippet links.
+static void runManualSearch(const QString &rawQuery, QTextBrowser *browser)
+{
+    const QString query = rawQuery.simplified();
+    if (query.isEmpty()) return;
+    browser->show();
+    browser->setHtml(QStringLiteral("<p style=\"color:#bbb;\">Searching the manual…</p>"));
+
+    QStringList missing;
+    for (const ManualPage &page : kManualPages)
+        if (!s_manualPageCache.contains(QLatin1String(page.file)))
+            missing << QLatin1String(page.file);
+    if (missing.isEmpty()) {
+        showManualSearchResults(browser, query, {});
+        return;
+    }
+
+    // One-shot manager for the missing pages; owned by the results pane so an
+    // early dialog close tears the replies down with it.
+    auto *nam = new QNetworkAccessManager(browser);
+    nam->setTransferTimeout(10000);
+    struct Fetch { int pending; QStringList errors; };
+    auto st = std::make_shared<Fetch>();
+    st->pending = int(missing.size());
+    for (const QString &file : missing) {
+        QNetworkReply *reply = nam->get(QNetworkRequest(QUrl(kManualBase + file)));
+        QObject::connect(reply, &QNetworkReply::finished, browser,
+                         [nam, reply, file, query, browser, st]() {
+            if (reply->error() == QNetworkReply::NoError)
+                s_manualPageCache.insert(file, QString::fromUtf8(reply->readAll()));
+            else
+                st->errors << file + QStringLiteral(" — ") + reply->errorString();
+            reply->deleteLater();
+            if (--st->pending == 0) {
+                nam->deleteLater();
+                showManualSearchResults(browser, query, st->errors);
+            }
+        });
+    }
+}
+
 void FtWindow::mousePressEvent(QMouseEvent *event)
 {
     // Maximized view: display only. The one interaction still offered is
@@ -854,9 +1089,11 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
 
     // "Help" click – show manual link plus a question box that searches the
     // online manual. Two ways to search (hybrid):
-    //   * "Find in manual" jumps straight into manual.html and highlights the
-    //     query using the browser's Text Fragments feature. Works immediately,
-    //     no search-engine indexing required.
+    //   * "Find in manual" downloads all manual pages and lists every
+    //     occurrence of the query as a clickable snippet right in the dialog;
+    //     a click opens that page in the browser with the occurrence
+    //     highlighted via a Text Fragment. Works immediately, no
+    //     search-engine indexing required.
     //   * "Search Google" runs a site-restricted Google query. Only returns
     //     hits once Google has crawled/indexed the manual pages.
     if (!m_manualRect.isNull() && m_manualRect.contains(event->pos())) {
@@ -886,29 +1123,42 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         layout->addWidget(qLabel);
 
         auto *edit = new QLineEdit(dlg);
-        edit->setPlaceholderText("e.g. How does the convolution theorem work?");
+        edit->setPlaceholderText("e.g. convolution theorem");
         edit->setStyleSheet("background:#222; color:white; border:1px solid #888; padding:2px;");
         layout->addWidget(edit);
         edit->setFocus();
 
+        // Results pane for "Find in manual": hidden until the first search so
+        // the dialog opens compact.
+        auto *results = new QTextBrowser(dlg);
+        results->setOpenLinks(false);   // handled below: the links leave the app
+        results->setMinimumHeight(240);
+        results->setStyleSheet(
+            "QTextBrowser { background:#222; color:#eee; border:1px solid #888; }");
+        results->document()->setDefaultStyleSheet(
+            "a { color:#9bbcff; text-decoration:none; }");
+        results->hide();
+        layout->addWidget(results, 1);
+        connect(results, &QTextBrowser::anchorClicked, dlg,
+                [](const QUrl &url) { QDesktopServices::openUrl(url); });
+
         auto *buttons = new QDialogButtonBox(dlg);
         auto *findBtn   = buttons->addButton("Find in manual", QDialogButtonBox::ActionRole);
-        auto *googleBtn = buttons->addButton("Search Google",  QDialogButtonBox::ActionRole);
+        auto *googleBtn = buttons->addButton("Search Google (indexing still not done...)",  QDialogButtonBox::ActionRole);
         buttons->addButton(QDialogButtonBox::Close);
         buttons->setStyleSheet(
             "QPushButton { background-color:#888; border:2px outset #aaa; color:#eee; padding:2px 12px; }");
         layout->addWidget(buttons);
 
-        // Open manual.html and scroll to / highlight the query in the browser.
-        auto findInManual = [manualUrl, edit]() {
-            const QString question = edit->text().trimmed();
-            if (question.isEmpty()) return;
-            // Text-fragment directive: "#:~:text=<encoded phrase>". Force-encode
-            // '-' too, as it is a delimiter inside the directive syntax.
-            const QByteArray frag =
-                QUrl::toPercentEncoding(question, QByteArray(), "-");
-            const QString full = manualUrl + "#:~:text=" + QString::fromLatin1(frag);
-            QDesktopServices::openUrl(QUrl::fromEncoded(full.toUtf8()));
+        // Search every manual page and list the hits in the results pane.
+        auto findInManual = [dlg, edit, results]() {
+            if (edit->text().trimmed().isEmpty()) return;
+            runManualSearch(edit->text(), results);
+            // First search: give the freshly shown results pane vertical room.
+            // The width is left alone — it tracks the main window (90% at
+            // open) or whatever the user has resized it to since.
+            if (dlg->height() < 560)
+                dlg->resize(dlg->width(), 560);
         };
 
         // Site-restricted Google query. Restricting to the manual's own path
@@ -931,7 +1181,18 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         connect(edit, &QLineEdit::returnPressed, dlg, findInManual);  // Enter = find in manual
         connect(buttons, &QDialogButtonBox::rejected, dlg, &QDialog::reject);
 
+        // Open at 90% of the window's current width — the manual-search result
+        // snippets read best wide — but cap it at 1024 px so the dialog stays
+        // readable on very large screens. Height starts at its natural compact
+        // size; the first search grows it (see findInManual).
+        dlg->resize(qMin(int(width() * 0.9), 1024), dlg->sizeHint().height());
         dlg->open();
+        // Land the keyboard focus in the search box so a keyword can be typed
+        // straight away. setFocus() before show (above) is not reliably
+        // honoured on every platform once the window appears — the link-enabled
+        // intro label is also in the focus chain — so re-assert it one event
+        // loop turn after the dialog is up.
+        QTimer::singleShot(0, edit, [edit]() { edit->setFocus(); });
         return;
     }
 
