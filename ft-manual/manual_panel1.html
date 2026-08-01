@@ -271,6 +271,53 @@ matters for downstream FFT analysis.
 </p>
 </details>
 
+<details id="p1-shear">
+<summary>Shear image<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><polygon points="7.9,5.28 16.1,5.28 21.12,18.72 2.88,18.72" fill="#fff"/></svg></span></summary>
+<p>
+Skew the image about its centre, turning a square into a slanted
+parallelogram. A <strong>horizontal</strong> shear slides each row
+sideways by <code>tan(angle) × (its distance from the image centre)</code>,
+so vertical lines lean over by the shear angle while horizontal lines
+stay horizontal. A <strong>vertical</strong> shear does the same to the
+columns: horizontal lines tilt, vertical lines are left alone. Positive
+angles lean the image to the right (horizontal) or lift its right-hand
+side (vertical).
+</p>
+<p>
+The image keeps its dimensions and stays in the <strong>same
+buffer</strong> — the sheared result replaces the image it came from, in
+the active history slot. Pixels that slide out of the frame are lost and
+the wedges left empty behind them are filled with the mean pixel value,
+so pad the image first if a strong shear has to be reversible.
+Resampling is bilinear, and the Fourier transform is recomputed if one
+was showing.
+</p>
+<p>
+Drag on the image to skew it: the point you grab follows the cursor, and
+a <strong>yellow outline</strong> shows the frame the image will take,
+with the angle and the axis reported beside the pointer. The direction
+you drag in picks the axis — mostly sideways shears horizontally, mostly
+up or down shears vertically. How far the grabbed point sits from the
+centre line sets how much leverage the drag has, so grabbing near an edge
+shears gently and grabbing closer in shears harder; inside the middle 30%
+of the image the leverage is held constant, since on the centre line
+itself any drag at all would ask for 90°. The shear is applied when you
+release, and the angle and axis it worked out are written back into the
+parameter window.
+</p>
+<div class="controls">
+  <strong>Shear angle (°):</strong> the tilt given to the sheared axis.
+  Magnitudes are clamped to 80°; the field is rewritten with the angle
+  that was actually applied. <kbd>Return</kbd> applies it. <br>
+  <strong>Shear axis:</strong> <em>Horizontal</em> slides the rows,
+  <em>Vertical</em> slides the columns. <br>
+  <strong>Apply shear:</strong> commits the typed angle, updates the
+  Fourier transform, and stores the result in the active history slot.
+  Repeated applications compound.
+</div>
+<BR>
+</details>
+
 <details id="p1-invert-contrast">
 <summary>Invert contrast<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><g stroke="#fff" stroke-width="1.5"><line x1="4.93" y1="9.75" x2="10.07" y2="9.75"/><line x1="7.5" y1="7.18" x2="7.5" y2="12.32"/><line x1="13.93" y1="18.75" x2="19.07" y2="18.75"/><line x1="13.8" y1="9.75" x2="10.2" y2="18.75"/></g></svg></span></summary>
 <p>

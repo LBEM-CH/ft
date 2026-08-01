@@ -25,7 +25,7 @@ bool FtWindow::p1ToolWindowOpen() const
     return m_p1EraserActive || m_p1BrushActive || m_p1TaperActive || m_p1SymmetrizeActive
         || m_binActive || m_padActive || m_copyActive || m_averageActive || m_cropActive || m_peakPickActive || m_extractActive
         || m_gaborActive || m_hessianActive || m_amyloidActive || m_measureActive
-        || m_shiftActive || m_rotateActive || m_alignActive
+        || m_shiftActive || m_rotateActive || m_shearActive || m_alignActive
         || m_p1FlipHActive || m_p1FlipVActive || m_p1InvertActive;
 }
 
@@ -62,6 +62,7 @@ bool FtWindow::toolHelpInfo(bool panel2, QString &title, QString &anchor) const
         { m_measureActive,      "Measure",                "p1-measure"           },
         { m_shiftActive,        "Shift image",            "p1-shift"             },
         { m_rotateActive,       "Rotate image",           "p1-rotate"            },
+        { m_shearActive,        "Shear image",            "p1-shear"             },
         { m_amyloidActive,      "Amyloid filament",       "p1-amyloid"           },
         { m_alignActive,        "Align to reference",     "p1-align"             },
         { m_p1FlipHActive,      "Flip horizontally",      "p1-flip"              },
@@ -325,6 +326,7 @@ void FtWindow::paintEvent(QPaintEvent *)
             if ((i == 0 && m_p1EraserActive) || (i == 1 && m_p1BrushActive) ||
                 (i == 2 && m_measureActive) ||
                 (i == 5 && m_shiftActive) || (i == 6 && m_rotateActive) ||
+                (i == 22 && m_shearActive) ||
                 (i == 8 && m_p1TaperActive) || (i == 9 && m_p1SymmetrizeActive) ||
                 (i == 10 && m_binActive) || (i == 11 && m_cropActive) ||
                 (i == 19 && m_padActive) || (i == 20 && m_copyActive) ||
@@ -669,6 +671,43 @@ void FtWindow::paintEvent(QPaintEvent *)
                     QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
                     QFontMetrics ttfm(ttf);
                     QString tip = "Rotate image";
+                    int ttw = ttfm.horizontalAdvance(tip) + 8;
+                    int tth = ttfm.height() + 4;
+                    int ttx = r.right() + 4;
+                    int tty = r.center().y() - tth / 2;
+                    pendingTipRect = QRect(ttx, tty, ttw, tth);
+                    pendingTipText = tip;
+                }
+            }
+
+            // Shear icon (button 22): a trapezium — parallel top and bottom
+            // edges of unequal length, the sides leaning in. Nothing else in the
+            // column is a four-sided outline, so it reads at button size.
+            if (i == 22) {
+                p.setRenderHint(QPainter::Antialiasing, true);
+                const QColor col = m_shearActive ? QColor(180, 180, 255) : Qt::white;
+                const double cx2  = r.x() + r.width() / 2.0;
+                const double cy2  = r.y() + r.height() / 2.0;
+                const double halfH = std::min(r.width(), r.height()) * 0.28;
+                const double botHalf = std::min(r.width(), r.height()) * 0.38;
+                const double topHalf = botHalf * 0.45;
+
+                QPainterPath tz;
+                tz.moveTo(cx2 - topHalf, cy2 - halfH);
+                tz.lineTo(cx2 + topHalf, cy2 - halfH);
+                tz.lineTo(cx2 + botHalf, cy2 + halfH);
+                tz.lineTo(cx2 - botHalf, cy2 + halfH);
+                tz.closeSubpath();
+                p.setPen(Qt::NoPen);
+                p.setBrush(col);
+                p.drawPath(tz);
+
+                p.setRenderHint(QPainter::Antialiasing, false);
+
+                if (r.contains(m_mousePos)) {
+                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                    QFontMetrics ttfm(ttf);
+                    QString tip = "Shear image";
                     int ttw = ttfm.horizontalAdvance(tip) + 8;
                     int tth = ttfm.height() + 4;
                     int ttx = r.right() + 4;
@@ -3118,6 +3157,79 @@ void FtWindow::paintEvent(QPaintEvent *)
         }
     }
 
+    // ---- Shear drag overlay (outline of where the image is heading) ------------
+    // The image itself does not move until the button is released, so draw the
+    // frame the drag is asking for: the panel-1 rectangle sheared by the angle
+    // shearFromDrag() reads out of it, with the axis it pivots about marked.
+    if (m_p1Dragging && m_shearActive && !m_image.isNull()) {
+        p.setRenderHint(QPainter::Antialiasing, true);
+        for (int i = 0; i < m_numDispItems; i++) {
+            const DisplayItem &di = m_dispItems[i];
+            if (!di.valid || di.zoomIdx != 0) continue;
+
+            double angleDeg = 0.0;
+            bool vertical = false;
+            if (!shearFromDrag(di, m_p1DragStart, m_mousePos, angleDeg, vertical))
+                break;
+
+            const QRect sr = di.screenRect;
+            const QRectF vis = m_zoom[0].visibleRect(di.imgW, di.imgH);
+            const double t = std::tan(angleDeg * M_PI / 180.0);
+            // Same centre convention as applyShear(), so the outline sits where
+            // the pixels will actually land — including when the panel is zoomed
+            // in, where the image centre is not the centre of what is on screen.
+            const double cx = di.imgW / 2, cy = di.imgH / 2;
+            const QColor yellow(255, 213, 0);
+
+            auto toScreen = [&](double ix, double iy) {
+                return QPointF(sr.x() + (ix - vis.x()) / vis.width()  * sr.width(),
+                               sr.y() + (iy - vis.y()) / vis.height() * sr.height());
+            };
+            // Corners of the image, carried through the same forward map the
+            // pixels will take: x' = x − tan(a)·(y − cy), or its transpose.
+            auto skew = [&](double ix, double iy) {
+                return vertical ? toScreen(ix, iy - t * (ix - cx))
+                                : toScreen(ix - t * (iy - cy), iy);
+            };
+            QPolygonF frame;
+            frame << skew(0, 0) << skew(di.imgW, 0)
+                  << skew(di.imgW, di.imgH) << skew(0, di.imgH);
+
+            // A strong shear throws the corners well outside the panel, and the
+            // outline must not be drawn across the rest of the window.
+            p.save();
+            p.setClipRect(sr);
+
+            // The centre line stays put under the shear — showing it makes clear
+            // what the two halves of the image are sliding against.
+            p.setPen(QPen(QColor(255, 213, 0, 120), 1, Qt::DashLine));
+            if (vertical) p.drawLine(toScreen(cx, 0), toScreen(cx, di.imgH));
+            else          p.drawLine(toScreen(0, cy), toScreen(di.imgW, cy));
+
+            p.setPen(QPen(yellow, 2));
+            p.setBrush(QColor(255, 213, 0, 30));
+            p.drawPolygon(frame);
+            p.restore();
+
+            QString lbl = QString("%1%2°  %3")
+                              .arg(angleDeg >= 0 ? "+" : "")
+                              .arg(angleDeg, 0, 'f', 1)
+                              .arg(vertical ? "vertical" : "horizontal");
+            QFont lf; lf.setBold(true); lf.setPixelSize(13); p.setFont(lf);
+            QFontMetrics lfm(lf);
+            int lw = lfm.horizontalAdvance(lbl), lh2 = lfm.height();
+            QPointF lp(m_mousePos.x() + 14, m_mousePos.y() - 12);
+            QRectF pill(lp.x() - 5, lp.y() - lh2 + lfm.descent() - 3, lw + 10, lh2 + 6);
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(0, 0, 0, 170));
+            p.drawRoundedRect(pill, 4, 4);
+            p.setPen(yellow);
+            p.drawText(lp, lbl);
+            break;
+        }
+        p.setRenderHint(QPainter::Antialiasing, false);
+    }
+
     // ---- Rotation drag overlay (red line + triangle + angle text) ---------------
     if ((m_p1Dragging && m_rotateActive) || (m_p2Dragging && m_ftRotateActive)) {
         p.setRenderHint(QPainter::Antialiasing, true);
@@ -3561,6 +3673,7 @@ void FtWindow::paintEvent(QPaintEvent *)
         bool p1Tool = p1ToolWindowOpen();
         const QString shiftHint  = "Use the mouse to shift the image";
         const QString rotateHint = "Use the mouse to rotate the image";
+        const QString shearHint  = "Use the mouse to skew the image, or type an angle above";
         // Spells out what "Resize image" is about to do, so the user can see
         // whether the chosen target pads or crops before committing to it.
         auto padSizeHint = [this]() -> QString {
@@ -3717,6 +3830,13 @@ void FtWindow::paintEvent(QPaintEvent *)
             } else if (m_rotateActive) {
                 nRows = 2;
                 textW = std::max(fm.horizontalAdvance(rotateHint), m_rotateCancelBtn->width());
+            } else if (m_shearActive) {
+                nRows = 3;
+                int r0 = fm.horizontalAdvance("Shear angle (°): ") + m_shearAngleEdit->width()
+                         + 20 + fm.horizontalAdvance("Shear axis: ") + m_shearAxisCombo->width();
+                int r1 = fm.horizontalAdvance(shearHint);
+                int r2 = m_shearCancelBtn->width() + 8 + m_applyShearBtn->width();
+                textW = std::max({r0, r1, r2});
             } else if (m_amyloidActive) {
                 nRows = 8;
                 const int colGap = 20;
@@ -4002,6 +4122,21 @@ void FtWindow::paintEvent(QPaintEvent *)
             } else if (m_rotateActive) {
                 p.drawText(tx, ty + fm.ascent(), rotateHint);
                 m_rotateCancelBtn->move(tx, ty + lh);
+            } else if (m_shearActive) {
+                // Row 0: the angle, and the axis it is applied to.
+                drawParamLabel(p, fm, tx, ty, "Shear angle (°):", m_shearAngleEdit->toolTip());
+                int angleX = tx + fm.horizontalAdvance("Shear angle (°): ");
+                m_shearAngleEdit->move(angleX, ty);
+                int axisX = angleX + m_shearAngleEdit->width() + 20;
+                drawParamLabel(p, fm, axisX, ty, "Shear axis:", m_shearAxisCombo->toolTip(),
+                               m_shearAxisCombo->height());
+                m_shearAxisCombo->move(axisX + fm.horizontalAdvance("Shear axis: "), ty);
+                // Row 1: how to drive it from the image.
+                p.setPen(QColor(60, 60, 60));
+                p.drawText(tx, ty + lh + fm.ascent(), shearHint);
+                // Row 2: Cancel left, Apply right.
+                m_shearCancelBtn->move(tx, ty + lh * 2);
+                m_applyShearBtn->move(rx + rw - margin - m_applyShearBtn->width(), ty + lh * 2);
             } else if (m_amyloidActive) {
                 const int colGap = 20;
                 int leftSize = fm.horizontalAdvance("Image size (px): ")   + m_amyloidSizeCombo->width();

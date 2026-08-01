@@ -31,7 +31,7 @@ void FtWindow::buildToolGroups()
     m_p1Groups = {
         { "Edit",        {0, 1, 8},     {} }, // eraser, paint brush, taper edges
         { "Measure",     {2},           {} },
-        { "Transform",   {3, 4, 5, 6, 7, 9}, {} }, // flip H/V, shift, rotate, invert, symmetrize
+        { "Transform",   {3, 4, 5, 6, 22, 7, 9}, {} }, // flip H/V, shift, rotate, shear, invert, symmetrize
         { "Redimension", {10, 19, 11},  {} }, // bin, pad, crop
         { "Filter",      {12, 13},      {} }, // gabor, hessian
         { "Amyloid",     {14},          {} },
@@ -245,10 +245,53 @@ void FtWindow::updateGroupHoverPreview()
     m_hoverMenuGroup = -1;
 }
 
+// A shear drag works like grabbing the image and pulling that one point
+// sideways: the angle returned is the one that puts the grabbed point under the
+// cursor. Which axis slides follows the direction dragged in — mostly sideways
+// shears the rows, mostly up or down shears the columns.
+bool FtWindow::shearFromDrag(const DisplayItem &di, const QPoint &from,
+                             const QPoint &to, double &angleDeg,
+                             bool &vertical) const
+{
+    if (!di.valid || di.screenRect.width() <= 0 || di.screenRect.height() <= 0
+        || di.imgW <= 0 || di.imgH <= 0)
+        return false;
+
+    const QRectF src = m_zoom[0].visibleRect(di.imgW, di.imgH);
+    auto imgX = [&](int sx) {
+        return src.x() + (sx - di.screenRect.x())
+               / (double)di.screenRect.width() * src.width();
+    };
+    auto imgY = [&](int sy) {
+        return src.y() + (sy - di.screenRect.y())
+               / (double)di.screenRect.height() * src.height();
+    };
+
+    const double gx = imgX(from.x()), gy = imgY(from.y());
+    const double dx = imgX(to.x()) - gx, dy = imgY(to.y()) - gy;
+    if (std::hypot(dx, dy) < 1.0) return false;   // a click, not a drag
+
+    vertical = (std::abs(dy) > std::abs(dx));
+
+    // Distance of the grabbed point from the centre line is the lever the drag
+    // works on, so grabbing near the edge shears gently and grabbing further in
+    // shears harder. On the line itself the lever would vanish and any drag at
+    // all would ask for 90°, so it is held at a minimum: a drag started inside
+    // that band behaves as though it had grabbed at the band's edge, on the side
+    // it did start on.
+    double lever = vertical ? (gx - di.imgW / 2.0) : (gy - di.imgH / 2.0);
+    const double minLever = 0.15 * (vertical ? di.imgW : di.imgH);
+    if (std::abs(lever) < minLever) lever = (lever < 0.0) ? -minLever : minLever;
+
+    angleDeg = std::atan(-(vertical ? dy : dx) / lever) * 180.0 / M_PI;
+    angleDeg = std::clamp(angleDeg, -SHEAR_MAX_DEG, SHEAR_MAX_DEG);
+    return std::abs(angleDeg) >= 0.05;
+}
+
 void FtWindow::deactivateAllP1Tools()
 {
     m_p1EraserActive = false; m_p1BrushActive = false;
-    m_shiftActive = false; m_rotateActive = false;
+    m_shiftActive = false; m_rotateActive = false; m_shearActive = false;
     m_p1TaperActive = false; m_p1SymmetrizeActive = false;
     m_binActive = false; m_mathActive = false; m_padActive = false;
     m_copyActive = false; m_averageActive = false;
@@ -337,6 +380,10 @@ void FtWindow::showP1ToolWidgets()
     m_measureCancelBtn->setVisible(m_measureActive);
     m_shiftCancelBtn->setVisible(m_shiftActive);
     m_rotateCancelBtn->setVisible(m_rotateActive);
+    m_shearAngleEdit->setVisible(m_shearActive);
+    m_shearAxisCombo->setVisible(m_shearActive);
+    m_shearCancelBtn->setVisible(m_shearActive);
+    m_applyShearBtn->setVisible(m_shearActive);
     m_alignSrcCombo->setVisible(m_alignActive);
     m_alignRefCombo->setVisible(m_alignActive);
     m_alignOutCombo->setVisible(m_alignActive);
@@ -414,6 +461,7 @@ void FtWindow::activateP1Tool(int toolId)
     }
     case 5: { bool was = m_shiftActive; deactivateAllP1Tools(); m_shiftActive = !was; break; }
     case 6: { bool was = m_rotateActive; deactivateAllP1Tools(); m_rotateActive = !was; break; }
+    case 22: { bool was = m_shearActive; deactivateAllP1Tools(); m_shearActive = !was; break; }
     case 7: {
         if (m_image.isNull()) return;
         bool was = m_p1InvertActive;
@@ -1585,14 +1633,16 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         }
     }
 
-    // Shift/rotate: start drag on panel 1 image
-    if ((m_shiftActive || m_rotateActive) && !m_image.isNull()
+    // Shift/rotate/shear: start drag on panel 1 image
+    if ((m_shiftActive || m_rotateActive || m_shearActive) && !m_image.isNull()
         && !m_p1ToolRect.contains(event->pos())) {
         for (int i = 0; i < m_numDispItems; i++) {
             const DisplayItem &di = m_dispItems[i];
             if (di.valid && di.zoomIdx == 0 && di.screenRect.contains(event->pos())) {
-                storeUndoSnapshot(m_shiftActive ? tr("Shifted image")
-                                                : tr("Rotated image"));
+                // Shear snapshots inside applyShear() instead, so that a drag
+                // too small to shear anything leaves no undo step behind.
+                if (m_shiftActive)       storeUndoSnapshot(tr("Shifted image"));
+                else if (m_rotateActive) storeUndoSnapshot(tr("Rotated image"));
                 m_p1Dragging = true;
                 m_p1DragStart = event->pos();
                 return;
@@ -1602,6 +1652,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
 
     // Pan zoomed panel 1 image (no tool active, zoom > 1)
     if (!m_p1EraserActive && !m_p1BrushActive && !m_shiftActive && !m_rotateActive
+        && !m_shearActive
         && !m_image.isNull() && m_zoom[0].factor > 1.0) {
         for (int i = 0; i < m_numDispItems; i++) {
             const DisplayItem &di = m_dispItems[i];
@@ -2115,6 +2166,24 @@ void FtWindow::mouseReleaseEvent(QMouseEvent *event)
                           / (double)di.screenRect.width() * src.width();
             double dyPx = (event->pos().y() - m_p1DragStart.y())
                           / (double)di.screenRect.height() * src.height();
+
+            if (m_shearActive) {
+                // Shear runs on the raw pixel values rather than on the 8-bit
+                // display image, so it takes the whole path itself — undo
+                // snapshot, FFT, history slot — and must not fall through to
+                // the extractImageData() below, which would re-derive the raw
+                // values from the quantised image and lose the dynamic range.
+                double angleDeg = 0.0;
+                bool vertical = false;
+                if (shearFromDrag(di, m_p1DragStart, event->pos(), angleDeg, vertical)) {
+                    m_shearAngleEdit->setText(QString::number(angleDeg, 'f', 2));
+                    m_shearAxisCombo->setCurrentIndex(vertical ? 1 : 0);
+                    if (ensureCalcHeadroom(tr("shear the image")))
+                        applyShear(angleDeg, vertical);
+                }
+                update();
+                break;
+            }
 
             if (m_shiftActive) {
                 // Shift with periodic boundary conditions

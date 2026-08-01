@@ -1198,6 +1198,54 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     connect(m_ftRotateCancelBtn, &QPushButton::clicked, this, &FtWindow::onFtRotateCancel);
     m_ftRotateCancelBtn->hide();
 
+    // Shear tool widgets
+    m_shearAngleEdit = new QLineEdit("0", this);
+    m_shearAngleEdit->setFixedSize(60, 22);
+    m_shearAngleEdit->setStyleSheet("background:white; color:black; border:1px solid #888;");
+    m_shearAngleEdit->setToolTip(
+        "Shear angle in degrees — the tilt given to the axis that is\n"
+        "sheared. A horizontal shear slides each row sideways by\n"
+        "tan(angle) × (its distance from the image centre), so vertical\n"
+        "lines lean over by this angle while horizontal lines stay\n"
+        "horizontal; a vertical shear does the same with columns.\n"
+        "Positive angles lean the image to the right (horizontal shear)\n"
+        "or lift its right-hand side (vertical shear). Magnitudes are\n"
+        "clamped to 80°. Dragging on the image writes the angle it\n"
+        "produced back into this field.");
+    m_shearAngleEdit->hide();
+
+    m_shearAxisCombo = new QComboBox(this);
+    m_shearAxisCombo->addItem("Horizontal", 0);
+    m_shearAxisCombo->addItem("Vertical",   1);
+    m_shearAxisCombo->setFixedSize(100, 22);
+    m_shearAxisCombo->setStyleSheet(
+        "QComboBox { background:white; color:black; border:1px solid #888;"
+        "  padding: 2px 4px; }"
+        "QComboBox::drop-down { width: 20px; }"
+        "QComboBox QAbstractItemView { background:white; color:black;"
+        "  selection-background-color:#ccc; min-width: 80px; padding: 4px; }"
+    );
+    m_shearAxisCombo->setToolTip(
+        "Which axis slides. Horizontal shears the rows sideways (vertical\n"
+        "lines tilt, horizontal lines are untouched); Vertical shears the\n"
+        "columns up and down (horizontal lines tilt). A mouse drag sets\n"
+        "this from the direction you drag in: mostly sideways selects\n"
+        "Horizontal, mostly up or down selects Vertical.");
+    m_shearAxisCombo->hide();
+
+    m_shearCancelBtn = new QPushButton("Cancel", this);
+    m_shearCancelBtn->setFixedSize(80, 26);
+    m_shearCancelBtn->setStyleSheet(cancelBtnStyle);
+    connect(m_shearCancelBtn, &QPushButton::clicked, this, &FtWindow::onShearCancel);
+    m_shearCancelBtn->hide();
+
+    m_applyShearBtn = new QPushButton("Apply shear", this);
+    m_applyShearBtn->setFixedSize(130, 26);
+    m_applyShearBtn->setStyleSheet(cancelBtnStyle);
+    connect(m_applyShearBtn, &QPushButton::clicked, this, &FtWindow::onApplyShear);
+    connect(m_shearAngleEdit, &QLineEdit::returnPressed, this, &FtWindow::onApplyShear);
+    m_applyShearBtn->hide();
+
     // Math calculation widgets (hidden until math button is active)
     auto mathComboStyle = [](QComboBox *cb) {
         cb->setStyleSheet(
@@ -2180,6 +2228,22 @@ void FtWindow::resizeEvent(QResizeEvent *)
     m_p1SymmetryEdit->setStyleSheet(editSS);
     m_applyP1SymmetryBtn->setFixedSize(static_cast<int>(130 * sc), btnH);
     m_applyP1SymmetryBtn->setStyleSheet(btnSS);
+
+    // Shear widgets (sizes only)
+    m_shearAngleEdit->setFixedSize(static_cast<int>(60 * sc), editH);
+    m_shearAngleEdit->setStyleSheet(editSS);
+    m_shearAxisCombo->setFixedSize(static_cast<int>(100 * sc), editH);
+    m_shearAxisCombo->setStyleSheet(QString(
+        "QComboBox { background:white; color:black; border:1px solid #888;"
+        "  padding: 2px 4px; font-size: %1px; }"
+        "QComboBox::drop-down { width: %2px; }"
+        "QComboBox QAbstractItemView { background:white; color:black;"
+        "  selection-background-color:#ccc; min-width: 80px; padding: 4px;"
+        "  font-size: %1px; }").arg(fontSize).arg(static_cast<int>(20 * sc)));
+    m_shearCancelBtn->setFixedSize(static_cast<int>(80 * sc), btnH);
+    m_shearCancelBtn->setStyleSheet(btnSS);
+    m_applyShearBtn->setFixedSize(static_cast<int>(130 * sc), btnH);
+    m_applyShearBtn->setStyleSheet(btnSS);
 
     // Gabor filter widgets (sizes only)
     m_gaborSigmaEdit->setFixedSize(static_cast<int>(60 * sc), editH);

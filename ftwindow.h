@@ -187,6 +187,8 @@ private slots:
     void onGaborCancel();
     void onApplyHessianFilter();
     void onHessianCancel();
+    void onApplyShear();
+    void onShearCancel();
     void onUndo();
     void onRedo();
 
@@ -230,6 +232,13 @@ private:
     void onApplyFtSymmetryImpl();
     void onApplyGaborFilterImpl();
     void onApplyHessianFilterImpl();
+    void onApplyShearImpl();
+    // Core of the Shear tool: skews the raw pixels of the active image about its
+    // centre and leaves the result in the same buffer. `angleDeg` is the tilt the
+    // sheared axis takes on; `vertical` picks which axis slides (false = rows
+    // slide horizontally, true = columns slide vertically). Shared by the Apply
+    // button and by the mouse drag, so both produce exactly the same transform.
+    void applyShear(double angleDeg, bool vertical);
     void onApplyFtCropImpl();
     void onApplyFtPadImpl();
     void onApplyDirectionalImpl();
@@ -702,7 +711,7 @@ private:
     // slot each tool id currently occupies (a group face when collapsed, or a
     // popup cell when its group is open), and m_*SlotVisible says whether that
     // tool id is currently drawn / clickable.
-    static constexpr int P1_TOOL_BUTTONS = 22;   // ids 0..21 (21 = Average)
+    static constexpr int P1_TOOL_BUTTONS = 23;   // ids 0..22 (22 = Shear)
     static constexpr int P2_TOOL_BUTTONS = 14;
     QRect       m_p1BtnRects[P1_TOOL_BUTTONS];       // panel 1 left edge
     QRect       m_toolBtnRects[P2_TOOL_BUTTONS];     // panel 2 right edge
@@ -750,6 +759,7 @@ private:
     // Panel 1 tools
     bool        m_shiftActive = false;
     bool        m_rotateActive = false;
+    bool        m_shearActive = false;
     // Flip / invert apply immediately on every click; these flags only keep the
     // parameter window (title + help button) on screen for the last one used.
     bool        m_p1FlipHActive = false;
@@ -796,6 +806,25 @@ private:
     void onShiftCancel();
     void onRotateCancel();
     void onFtRotateCancel();
+
+    // Shear parameter window: an angle that can be typed in, the axis that
+    // slides, and the Apply / Cancel pair. A mouse drag on the image writes the
+    // angle and axis it worked out back into these, so the window always reports
+    // the shear that was last applied.
+    QLineEdit   *m_shearAngleEdit = nullptr;
+    QComboBox   *m_shearAxisCombo = nullptr;
+    QPushButton *m_shearCancelBtn = nullptr;
+    QPushButton *m_applyShearBtn  = nullptr;
+    // Reads the shear a panel-1 drag is asking for. `di` is the panel-1 display
+    // item, `from` / `to` are the drag ends in widget coordinates. Returns false
+    // for a drag too short to mean anything. Shared by the release handler and
+    // by the drag overlay, so what is previewed is what gets applied.
+    bool shearFromDrag(const DisplayItem &di, const QPoint &from, const QPoint &to,
+                       double &angleDeg, bool &vertical) const;
+    // Largest shear the tool will apply, in degrees. Beyond this the image is
+    // stretched so far along the sheared axis that almost nothing of it is left
+    // inside the frame.
+    static constexpr double SHEAR_MAX_DEG = 80.0;
 
     // Panel 1 eraser/brush parameter widgets
     QLabel     *m_p1EraserDiamLabel = nullptr;

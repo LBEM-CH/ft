@@ -4559,6 +4559,96 @@ void FtWindow::onApplySymmetryImpl()
     chainSteps(std::move(steps));
 }
 
+// ---------------------------------------------------------------------------
+//  Shear
+// ---------------------------------------------------------------------------
+void FtWindow::onApplyShear()
+{
+    if (!ensureCalcHeadroom(tr("shear the image"))) return;
+    onApplyShearImpl();
+}
+
+void FtWindow::onApplyShearImpl()
+{
+    bool ok = false;
+    double angleDeg = m_shearAngleEdit->text().toDouble(&ok);
+    if (!ok) return;
+    applyShear(angleDeg, m_shearAxisCombo->currentData().toInt() != 0);
+}
+
+// Skew the image about its centre. A horizontal shear slides row y sideways by
+// tan(a)·(y − cy), so vertical lines take on the tilt `angleDeg` while
+// horizontal ones are left alone; a vertical shear is the same with the axes
+// swapped. The image keeps its dimensions, so a strong shear pushes part of the
+// picture out of the frame — pad first if that matters.
+void FtWindow::applyShear(double angleDeg, bool vertical)
+{
+    if (m_image.isNull()) return;
+
+    const int w = m_image.width(), h = m_image.height();
+    if ((int)m_imageRawPixels.size() != w * h) return;
+
+    angleDeg = std::clamp(angleDeg, -SHEAR_MAX_DEG, SHEAR_MAX_DEG);
+    if (std::abs(angleDeg) < 1e-4) return;    // nothing to do
+    // Report back what was actually applied, so a clamped or mistyped angle does
+    // not leave the field claiming something the image never got.
+    m_shearAngleEdit->setText(QString::number(angleDeg, 'f', 2));
+
+    storeUndoSnapshot(tr("Sheared"));
+
+    // Samples pulled in from outside the frame get the image mean, as rotate and
+    // symmetrize do: a mid-grey wedge leaks far less into the Fourier transform
+    // than a hard black one.
+    double meanVal = 0.0;
+    for (double v : m_imageRawPixels) meanVal += v;
+    meanVal /= static_cast<double>(w * h);
+
+    const std::vector<double> src = m_imageRawPixels;
+    std::vector<double> dst(static_cast<size_t>(w) * h, meanVal);
+    const double t  = std::tan(angleDeg * M_PI / 180.0);
+    const double cx = w / 2, cy = h / 2;   // same centre convention as Symmetrize
+
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            // Inverse of the forward map, so each output pixel fetches its own
+            // source rather than scattering into a target it may miss.
+            const double sx = vertical ? x : x + t * (y - cy);
+            const double sy = vertical ? y + t * (x - cx) : y;
+            const int x0 = static_cast<int>(std::floor(sx));
+            const int y0 = static_cast<int>(std::floor(sy));
+            if (x0 < 0 || x0 >= w - 1 || y0 < 0 || y0 >= h - 1)
+                continue;                      // outside: keep the mean fill
+            const double fx = sx - x0, fy = sy - y0;
+            const double *q = src.data() + static_cast<size_t>(y0) * w + x0;
+            dst[static_cast<size_t>(y) * w + x] =
+                  (1.0 - fx) * (1.0 - fy) * q[0]
+                +        fx  * (1.0 - fy) * q[1]
+                + (1.0 - fx) *        fy  * q[w]
+                +        fx  *        fy  * q[w + 1];
+        }
+    }
+
+    m_imageRawPixels = std::move(dst);
+    rebuildImageFromRaw();
+    if (m_ftComputed) computeFFT();
+
+    // The sheared image replaces the one it came from: same buffer, so the
+    // history slot and its thumbnail are rewritten in place.
+    if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS) {
+        m_history[m_activeSlot].image     = m_image;
+        m_history[m_activeSlot].rawPixels = m_imageRawPixels;
+        m_history[m_activeSlot].minVal    = m_imageMinVal;
+        m_history[m_activeSlot].maxVal    = m_imageMaxVal;
+        m_history[m_activeSlot].pixelSize = m_pixelSize;
+        m_history[m_activeSlot].occupied  = true;
+        if (m_ftComputed)
+            m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
+    }
+
+    saveHistory();
+    update();
+}
+
 void FtWindow::onApplyFtSymmetry()
 {
     if (!ensureCalcHeadroom(tr("apply the Fourier symmetry"))) return;
@@ -4958,6 +5048,17 @@ void FtWindow::onRotateCancel()
     m_rotateActive = false;
     m_p1Dragging = false;
     m_rotateCancelBtn->hide();
+    update();
+}
+
+void FtWindow::onShearCancel()
+{
+    m_shearActive = false;
+    m_p1Dragging = false;
+    m_shearAngleEdit->hide();
+    m_shearAxisCombo->hide();
+    m_shearCancelBtn->hide();
+    m_applyShearBtn->hide();
     update();
 }
 
