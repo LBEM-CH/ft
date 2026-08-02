@@ -769,7 +769,7 @@ their <em>length</em>, mostly carries the contrast.
 
 
 <details id="ctf"> 
-  <summary>What is the Contrast Transfer Function (CTF) of an Electron Microscope?</summary>
+  <summary>Advanced: What is the Contrast Transfer Function (CTF) of an Electron Microscope?</summary>
 <p>
   The Contrast Transfer Function (CTF) of an electron microscope defines, how contrast 
   from the structure is transfered into the image. This can be studied in real space 
@@ -1446,7 +1446,280 @@ ripples that encode the high-resolution details of the image are preserved.
  microscopy.&rdquo; <em>Ultramicroscopy</em>, 106(4&ndash;5), 376&ndash;382. DOI: <a href="https://doi.org/10.1016/j.ultramic.2005.11.001" target="_blank">10.1016/j.ultramic.2005.11.001</a>.
  </p>
 </details>
-</details>  
+</details>
+
+<details id="hough-theory">
+  <summary>Advanced: What is a Hough transform?</summary>
+<p>
+  The Hough transform answers a question that is awkward to ask of an image
+  directly: <em>where are the straight lines?</em>, or <em>where are the
+  circles?</em> Looking for them by tracing pixels is fragile &mdash; a line
+  broken by noise or by an overlapping object stops being a line halfway along.
+  The Hough transform sidesteps this by turning the search into something images
+  are good at: finding a bright spot.
+</p>
+<p>
+  The idea is to stop describing the picture by its pixels and start describing
+  it by its <em>shapes</em>. A straight line in a plane is fixed by two numbers,
+  and so is the centre of a circle of known size. Those two numbers span a
+  <strong>parameter space</strong>: every point of it stands for one possible
+  line, or one possible circle, in the image. The transform then lets every edge
+  pixel of the image <em>vote</em> for all the shapes it could possibly be part
+  of. A pixel lying on no particular structure scatters its votes thinly. A
+  hundred pixels lying along the same line all vote for that one line, and the
+  cell standing for it collects a hundred votes. The output &mdash; the
+  <strong>accumulator</strong> &mdash; is a map of that evidence, and the shapes
+  present in the image appear in it as peaks.
+</p>
+<p>
+  This is closely related in spirit to what the Fourier transform does elsewhere
+  in this program: an awkward question in one space becomes an easy one in
+  another. The difference is that the Fourier transform is invertible and
+  linear, whereas the Hough transform throws information away &mdash; it keeps
+  only what its chosen family of shapes can express. That is also its strength:
+  everything that is not a line (or not a circle of that size) simply fails to
+  accumulate.
+</p>
+<p>
+  The requirement is that the parameter space be <strong>two-dimensional</strong>,
+  because only then can the accumulator be looked at as an ordinary image.
+  Lines qualify, and so do circles once the radius is fixed. Circles of unknown
+  radius really need three parameters, which is why the tool offers a sweep over
+  a ladder of fixed radii instead.
+</p>
+<BR>
+
+<details id="hough-lines">
+<summary style="font-size:14px;color:#5a5a62;margin-top:2px">
+ <strong>Lines: the (&#952;,&nbsp;&#961;) parametrisation</strong>
+ </summary>
+<p>
+  The obvious way to write a line, <em>y</em> = <em>m x</em> + <em>c</em>, is a
+  poor choice here: a vertical line needs an infinite slope, so the parameter
+  space would have to be infinite in one direction and the accumulator could
+  never be a finite image. The Hough transform uses the <em>normal form</em>
+  instead. Drop a perpendicular from the image centre onto the line; let
+  &#961; be its signed length and &#952; its direction. Then the points
+  (<em>x</em>,&nbsp;<em>y</em>) of the line are exactly those satisfying
+</p>
+<p>
+ &nbsp;&nbsp;&nbsp;&nbsp;&#961; = (<em>x</em> &minus; <em>c<sub>x</sub></em>)&middot;cos&#952;
+ + (<em>y</em> &minus; <em>c<sub>y</sub></em>)&middot;sin&#952;,
+</p>
+<p>
+  where (<em>c<sub>x</sub></em>,&nbsp;<em>c<sub>y</sub></em>) is the image
+  centre. Both parameters are now bounded: &#952; need only run over 180&#176;
+  (a line and the same line turned by 180&#176; are the same line), and
+  |&#961;| can be no larger than half the image diagonal. That is a finite
+  rectangle, and it is what the accumulator image shows &mdash; &#952; across
+  the width, &#961; down the height.
+</p>
+<p>
+  Now read the same equation the other way round. Fix a <em>point</em>
+  (<em>x</em>,&nbsp;<em>y</em>) and let &#952; vary: &#961;(&#952;) traces a
+  sinusoid through the parameter space. That sinusoid is the set of all lines
+  passing through that one point. Two points give two sinusoids, and they cross
+  at the single (&#952;,&nbsp;&#961;) that describes the line joining them.
+  Points that are collinear give sinusoids that all pass through <em>one</em>
+  common cell &mdash; and that cell is the line they lie on.
+</p>
+<svg viewBox="0 0 720 300" width="100%" style="max-width:720px;height:auto;display:block;margin:6px auto" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="12">
+<rect x="0" y="0" width="720" height="300" fill="#ffffff"/>
+<rect x="40" y="46" width="210" height="210" fill="#fafafc" stroke="#c8c8ce"/>
+<line x1="250.0" y1="53.3" x2="108.1" y2="256.0" stroke="#9aa0aa" stroke-width="2"/>
+<line x1="145.0" y1="151.0" x2="169.6" y2="168.2" stroke="#5a5a62" stroke-width="1.4" stroke-dasharray="4 3"/>
+<circle cx="145.0" cy="151.0" r="2.5" fill="#5a5a62"/>
+<text x="164.3" y="154.6" fill="#5a5a62">&#961;</text>
+<text x="139" y="169" text-anchor="end" fill="#5a5a62">centre</text>
+<circle cx="208.6" cy="112.5" r="4.5" fill="#2858c4"/>
+<circle cx="173.0" cy="163.3" r="4.5" fill="#c44a28"/>
+<circle cx="135.2" cy="217.4" r="4.5" fill="#1f8a4c"/>
+<text x="40" y="34" fill="#1d1d20"><tspan font-weight="600">image space</tspan> &#8212; three points on one line</text>
+<rect x="330" y="46" width="350" height="210" fill="#fafafc" stroke="#c8c8ce"/>
+<line x1="330" y1="151.0" x2="680" y2="151.0" stroke="#dcdce2"/>
+<line x1="330" y1="256" x2="330" y2="260" stroke="#9aa0aa"/>
+<text x="330" y="273" text-anchor="start" fill="#5a5a62">0&#176;</text>
+<line x1="505.0" y1="256" x2="505.0" y2="260" stroke="#9aa0aa"/>
+<text x="505.0" y="273" text-anchor="middle" fill="#5a5a62">90&#176;</text>
+<line x1="680.0" y1="256" x2="680.0" y2="260" stroke="#9aa0aa"/>
+<text x="680.0" y="273" text-anchor="end" fill="#5a5a62">180&#176;</text>
+<text x="324" y="56" text-anchor="end" fill="#5a5a62">+&#961;</text>
+<text x="324" y="254" text-anchor="end" fill="#5a5a62">&#8722;&#961;</text>
+<text x="330" y="34" fill="#1d1d20"><tspan font-weight="600">Hough space</tspan> &#8212; each point becomes a sinusoid</text>
+<polyline points="330.0,106.0 331.9,106.5 333.9,107.0 335.8,107.5 337.8,108.1 339.7,108.6 341.7,109.1 343.6,109.7 345.6,110.3 347.5,110.9 349.4,111.5 351.4,112.1 353.3,112.7 355.3,113.3 357.2,114.0 359.2,114.6 361.1,115.3 363.1,116.0 365.0,116.7 366.9,117.4 368.9,118.1 370.8,118.8 372.8,119.5 374.7,120.3 376.7,121.0 378.6,121.8 380.6,122.5 382.5,123.3 384.4,124.1 386.4,124.9 388.3,125.7 390.3,126.5 392.2,127.3 394.2,128.1 396.1,129.0 398.1,129.8 400.0,130.6 401.9,131.5 403.9,132.3 405.8,133.2 407.8,134.1 409.7,134.9 411.7,135.8 413.6,136.7 415.6,137.6 417.5,138.5 419.4,139.4 421.4,140.2 423.3,141.1 425.3,142.0 427.2,143.0 429.2,143.9 431.1,144.8 433.1,145.7 435.0,146.6 436.9,147.5 438.9,148.4 440.8,149.3 442.8,150.3 444.7,151.2 446.7,152.1 448.6,153.0 450.6,153.9 452.5,154.8 454.4,155.8 456.4,156.7 458.3,157.6 460.3,158.5 462.2,159.4 464.2,160.3 466.1,161.2 468.1,162.1 470.0,163.0 471.9,163.9 473.9,164.8 475.8,165.7 477.8,166.5 479.7,167.4 481.7,168.3 483.6,169.1 485.6,170.0 487.5,170.9 489.4,171.7 491.4,172.5 493.3,173.4 495.3,174.2 497.2,175.0 499.2,175.8 501.1,176.6 503.1,177.4 505.0,178.2 506.9,179.0 508.9,179.8 510.8,180.5 512.8,181.3 514.7,182.0 516.7,182.8 518.6,183.5 520.6,184.2 522.5,184.9 524.4,185.6 526.4,186.3 528.3,187.0 530.3,187.6 532.2,188.3 534.2,188.9 536.1,189.6 538.1,190.2 540.0,190.8 541.9,191.4 543.9,192.0 545.8,192.5 547.8,193.1 549.7,193.6 551.7,194.2 553.6,194.7 555.6,195.2 557.5,195.7 559.4,196.1 561.4,196.6 563.3,197.1 565.3,197.5 567.2,197.9 569.2,198.3 571.1,198.7 573.1,199.1 575.0,199.4 576.9,199.8 578.9,200.1 580.8,200.4 582.8,200.7 584.7,201.0 586.7,201.3 588.6,201.6 590.6,201.8 592.5,202.0 594.4,202.2 596.4,202.4 598.3,202.6 600.3,202.8 602.2,202.9 604.2,203.1 606.1,203.2 608.1,203.3 610.0,203.4 611.9,203.4 613.9,203.5 615.8,203.5 617.8,203.5 619.7,203.6 621.7,203.5 623.6,203.5 625.6,203.5 627.5,203.4 629.4,203.3 631.4,203.2 633.3,203.1 635.3,203.0 637.2,202.9 639.2,202.7 641.1,202.6 643.1,202.4 645.0,202.2 646.9,202.0 648.9,201.7 650.8,201.5 652.8,201.2 654.7,200.9 656.7,200.6 658.6,200.3 660.6,200.0 662.5,199.7 664.4,199.3 666.4,198.9 668.3,198.6 670.3,198.2 672.2,197.7 674.2,197.3 676.1,196.9 678.1,196.4 680.0,196.0" fill="none" stroke="#2858c4" stroke-width="1.8"/>
+<polyline points="330.0,131.2 331.9,131.0 333.9,130.9 335.8,130.8 337.8,130.6 339.7,130.5 341.7,130.4 343.6,130.3 345.6,130.2 347.5,130.1 349.4,130.0 351.4,129.9 353.3,129.8 355.3,129.7 357.2,129.7 359.2,129.6 361.1,129.6 363.1,129.5 365.0,129.5 366.9,129.4 368.9,129.4 370.8,129.4 372.8,129.4 374.7,129.4 376.7,129.4 378.6,129.4 380.6,129.4 382.5,129.4 384.4,129.4 386.4,129.5 388.3,129.5 390.3,129.5 392.2,129.6 394.2,129.7 396.1,129.7 398.1,129.8 400.0,129.9 401.9,129.9 403.9,130.0 405.8,130.1 407.8,130.2 409.7,130.3 411.7,130.5 413.6,130.6 415.6,130.7 417.5,130.8 419.4,131.0 421.4,131.1 423.3,131.3 425.3,131.4 427.2,131.6 429.2,131.8 431.1,132.0 433.1,132.1 435.0,132.3 436.9,132.5 438.9,132.7 440.8,132.9 442.8,133.1 444.7,133.3 446.7,133.6 448.6,133.8 450.6,134.0 452.5,134.3 454.4,134.5 456.4,134.8 458.3,135.0 460.3,135.3 462.2,135.5 464.2,135.8 466.1,136.1 468.1,136.3 470.0,136.6 471.9,136.9 473.9,137.2 475.8,137.5 477.8,137.8 479.7,138.1 481.7,138.4 483.6,138.7 485.6,139.0 487.5,139.3 489.4,139.6 491.4,140.0 493.3,140.3 495.3,140.6 497.2,140.9 499.2,141.3 501.1,141.6 503.1,142.0 505.0,142.3 506.9,142.7 508.9,143.0 510.8,143.4 512.8,143.7 514.7,144.1 516.7,144.4 518.6,144.8 520.6,145.1 522.5,145.5 524.4,145.9 526.4,146.2 528.3,146.6 530.3,147.0 532.2,147.4 534.2,147.7 536.1,148.1 538.1,148.5 540.0,148.9 541.9,149.2 543.9,149.6 545.8,150.0 547.8,150.4 549.7,150.7 551.7,151.1 553.6,151.5 555.6,151.9 557.5,152.2 559.4,152.6 561.4,153.0 563.3,153.4 565.3,153.8 567.2,154.1 569.2,154.5 571.1,154.9 573.1,155.2 575.0,155.6 576.9,156.0 578.9,156.3 580.8,156.7 582.8,157.1 584.7,157.4 586.7,157.8 588.6,158.2 590.6,158.5 592.5,158.9 594.4,159.2 596.4,159.6 598.3,159.9 600.3,160.2 602.2,160.6 604.2,160.9 606.1,161.3 608.1,161.6 610.0,161.9 611.9,162.2 613.9,162.6 615.8,162.9 617.8,163.2 619.7,163.5 621.7,163.8 623.6,164.1 625.6,164.4 627.5,164.7 629.4,165.0 631.4,165.3 633.3,165.6 635.3,165.8 637.2,166.1 639.2,166.4 641.1,166.6 643.1,166.9 645.0,167.2 646.9,167.4 648.9,167.6 650.8,167.9 652.8,168.1 654.7,168.3 656.7,168.6 658.6,168.8 660.6,169.0 662.5,169.2 664.4,169.4 666.4,169.6 668.3,169.8 670.3,170.0 672.2,170.2 674.2,170.3 676.1,170.5 678.1,170.7 680.0,170.8" fill="none" stroke="#c44a28" stroke-width="1.8"/>
+<polyline points="330.0,158.0 331.9,157.1 333.9,156.3 335.8,155.5 337.8,154.7 339.7,153.8 341.7,153.0 343.6,152.2 345.6,151.4 347.5,150.5 349.4,149.7 351.4,148.9 353.3,148.1 355.3,147.2 357.2,146.4 359.2,145.6 361.1,144.8 363.1,143.9 365.0,143.1 366.9,142.3 368.9,141.5 370.8,140.7 372.8,139.9 374.7,139.1 376.7,138.3 378.6,137.5 380.6,136.7 382.5,135.9 384.4,135.1 386.4,134.3 388.3,133.6 390.3,132.8 392.2,132.0 394.2,131.3 396.1,130.5 398.1,129.8 400.0,129.0 401.9,128.3 403.9,127.6 405.8,126.9 407.8,126.2 409.7,125.5 411.7,124.8 413.6,124.1 415.6,123.4 417.5,122.7 419.4,122.1 421.4,121.4 423.3,120.8 425.3,120.2 427.2,119.5 429.2,118.9 431.1,118.3 433.1,117.7 435.0,117.1 436.9,116.6 438.9,116.0 440.8,115.4 442.8,114.9 444.7,114.4 446.7,113.8 448.6,113.3 450.6,112.8 452.5,112.4 454.4,111.9 456.4,111.4 458.3,111.0 460.3,110.5 462.2,110.1 464.2,109.7 466.1,109.3 468.1,108.9 470.0,108.5 471.9,108.2 473.9,107.8 475.8,107.5 477.8,107.2 479.7,106.8 481.7,106.6 483.6,106.3 485.6,106.0 487.5,105.7 489.4,105.5 491.4,105.3 493.3,105.1 495.3,104.9 497.2,104.7 499.2,104.5 501.1,104.4 503.1,104.2 505.0,104.1 506.9,104.0 508.9,103.9 510.8,103.8 512.8,103.7 514.7,103.7 516.7,103.6 518.6,103.6 520.6,103.6 522.5,103.6 524.4,103.6 526.4,103.6 528.3,103.7 530.3,103.7 532.2,103.8 534.2,103.9 536.1,104.0 538.1,104.1 540.0,104.2 541.9,104.4 543.9,104.5 545.8,104.7 547.8,104.9 549.7,105.1 551.7,105.3 553.6,105.5 555.6,105.8 557.5,106.0 559.4,106.3 561.4,106.6 563.3,106.9 565.3,107.2 567.2,107.5 569.2,107.9 571.1,108.2 573.1,108.6 575.0,109.0 576.9,109.3 578.9,109.7 580.8,110.2 582.8,110.6 584.7,111.0 586.7,111.5 588.6,111.9 590.6,112.4 592.5,112.9 594.4,113.4 596.4,113.9 598.3,114.4 600.3,115.0 602.2,115.5 604.2,116.1 606.1,116.6 608.1,117.2 610.0,117.8 611.9,118.4 613.9,119.0 615.8,119.6 617.8,120.2 619.7,120.9 621.7,121.5 623.6,122.2 625.6,122.8 627.5,123.5 629.4,124.2 631.4,124.9 633.3,125.6 635.3,126.3 637.2,127.0 639.2,127.7 641.1,128.4 643.1,129.1 645.0,129.9 646.9,130.6 648.9,131.4 650.8,132.1 652.8,132.9 654.7,133.7 656.7,134.4 658.6,135.2 660.6,136.0 662.5,136.8 664.4,137.6 666.4,138.4 668.3,139.2 670.3,140.0 672.2,140.8 674.2,141.6 676.1,142.4 678.1,143.2 680.0,144.0" fill="none" stroke="#1f8a4c" stroke-width="1.8"/>
+<circle cx="398.1" cy="129.8" r="7" fill="none" stroke="#1d1d20" stroke-width="1.6"/>
+<text x="410.1" y="119.8" fill="#1d1d20">they cross at (&#952;&#8201;=&#8201;35&#176;, &#961;&#8201;=&#8201;30)</text>
+<text x="330" y="290" fill="#5a5a62">one crossing = one line; where it sits gives that line back</text>
+</svg>
+<p>
+  So a line in the image is a <em>peak</em> in the accumulator, and its height
+  counts how many edge pixels lie along it. Crucially, those pixels do not have
+  to be adjacent: a dashed line, or one interrupted halfway by something else,
+  votes into the same cell as a solid one and is found just as readily. This is
+  the property that makes the transform worth its cost.
+</p>
+<p>
+  Below is what the tool actually produces. Three straight edges at
+  20&#176;, 75&#176; and 130&#176; were drawn into an image; the accumulator
+  beside it shows one sinusoid per edge pixel, and three bright knots where the
+  sinusoids belonging to each line come together. Nothing else in the parameter
+  space rises anywhere near them.
+</p>
+<div style="display:flex;flex-wrap:wrap;gap:18px;justify-content:center;margin:10px 0">
+  <figure style="margin:0;text-align:center">
+    <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKAAAACgCAAAAACupDjxAAAACXBIWXMAAA9hAAAPYQGoP6dpAAAEeElEQVR4nM2c25aDIAxFw6z+/y87D9W2QoCTy0HyMh2tYZsQlBBaZCM5REp97O8JkI4c2sGdAFXZDLDx8E6Aqod3AhTNgJsBKrIPoO7hjQBF9fBegJpsA9jxsLyWUoxF8fCxDaBiwPehXQBr+QBvBPjx8K81yyaAR/NBTuJNAEWk3Pthqf4+LPcYKZ3Pj0nj18H/y0X16/jQQhmZbnx4gVRDcw/kGcDKctps7pL1w0zr1t57goiIvI6VNpxFhCIvWUboG0xesoRwBDf0sLyETgj4dQDwequgIQIj3VjKqYNBiMEd49aLcAhxy40GweviZELbYIIAZhJaO93Ew9e5HEJPREwMWE0EAojOcJ0Z8OdkgNDxBPu9FAT0EsZGupmHb2fthOFheGrA+1kTYRjuVDK59n76QJtLoRM7IGTELDhBPNyeHhMmwp3qZlra813CwGDSExegTphsuq9SB2ATKhS4U/FUn/6FrxFpcIIZsPeFdp5AeKNFDNibFxdCRPhEBWT6VW+lLw0gmDLJEUD7DbDy6yFrJs1DGQ4mtPnepRzQ3aZvYi9guEAx3E1d/2hhEaKAXz716/ALmFVAD1+Ag6+SjAgaUMo8L0MhRA0Iz60ZqRFIJbJe3Lw15Ah2y9CCdj4hrgz0XHYwoyEClwQUkpvnAtcspBIa9OBFFck2RLuLoerjGS87UjHxUIEHQXtraYlOWIexsCfFzabrrZVHSR0Rd4K5NGp1qDj6UzRULCESyIsyk5a/4qp+W+lmX3lehNB4mbN+MGZDS+/wFji+CRe4Obq2ZL7eFsOhElG3m003Falh9RCabyhUZLtiuElY6LCubtqazFkjhrVYQyShjtrsZqNJ4oXe5I6YUIluIHTcR8pc3LJIam0wpZafOa1P2myAEXpuIWs3BGpDc5dK264BELr6QGJeEkkm25tL3PDCCZXUHTljQh967pahmQ0dHSp5T1O+l7M3XfUJndikNSS9msTTGGHbWq6bGfvqVEIvMWXjX8eGru7E2ZnYErpdTto6mZd4IBd1lJ//fE3xNp/e3Oy3JXF3bNURnb5ibt9NGRC5ZTHXK6J9vv4Rdt3OO1TcIbKgbuxysbch+hbyqAUWlGbFFi1W1I6FCJcB7vckaWSHSZMqn0HQRbjGgsVPuMzFXkJ+kFQetja4BLB8Pz6QozaIx810wLYC1Ua4woKl+mgiXPG6VeoD1KqPqFiziAsAa2vZCMmAKoeJkG9BpbtZCJ/5USYDIX9W12kBfao8NidBjfjc726BhFTAcfMYIduCo14GETKDZJ7wAJ57ZMCp+mkwP/3jdFM3EwENA/Hgq1wLIh1oQvi0i2WWcOcm0VHtg1ChWhC++4GbN3CxyIiQBmicXXYJaX3QnJbuPFVYgJ68vhoq7IUc8wW1mzcJkrdohCTASIHC0R7KF/fKTRMqW7lYlMQDBzCyglgR0izo7zt3wt1cLFIRUoIksPr6VXCqYAFG9X6eKgwXpxV7HMItS4lrOPYMkrechKTqt7z6cQ5gltZD5B/c3AwsiIzBuAAAAABJRU5ErkJggg==" width="200" height="200" alt="" style="border:1px solid #c8c8ce;image-rendering:auto;display:block">
+    <figcaption style="font-size:13px;color:#5a5a62;margin-top:4px;max-width:200px">The input: three straight edges at different angles and distances from the centre.</figcaption>
+  </figure>
+  <figure style="margin:0;text-align:center">
+    <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKAAAACgCAAAAACupDjxAAAACXBIWXMAAA9hAAAPYQGoP6dpAAAgAElEQVR4nO2825Il2XEltpa774hzMrOqutFNDAa8DQFQNJGmkZHUyHR70S/ob/ULmgfpSSaRI2owAIlLo+uWmeeciNjuSw87TmZ1oxoESIJjMmNYW1pVdWaeFb63uy9f7nsD//L8y/Mvz698+J/jQ2MycyOkytrWX/m9/+wA2zxNzY0kAKgqc13Xyzd+/z8vQL85HsKNZrT9o1WZfVsv5+XjP/LPBzDm6XgzubkbAZUEQAAB1bau59Oj/vMBPB6m+XAMi3ASkiRVZQmQQBhqvZwe3/8mAG1yMwJSVX6D/X+9Z745zu1wDG9uhABBpZKU1SVIEsy4nR/vfwnixwFO8zSFGwlqINzWben/IHh3NzfzNB+c7hwLuv8PVVUptwJYKsAtT+/fnf5egIfjYQ572sQQBEi5reflV4eEjzwv7m4PLSZjC9Ik7b/0GaNy7WWGStE8H96+3X4lwFc3x+a0axwApPGqgHK7nB5/E3h3L18c3DxsDpJV4EDHJ3eQslDrljBTF93W91/efyPA9vLu0MyfYsD1XYXKzAKqL4+P+WvCO3zy6ujANLWQWZV9zYIjEqoqpa1nmauXBR+//PL5Iz4EGJ++ODQ3EoB0XYcnqMqeBeXycF+/Dr7PvnVrUDt4wEMy7RbEczQhADIru7JXFgOrrOXbn50+/Jbx+KevjpMZuL/m134XAKC2raC8PNx/LGR95bn9/GUDcAwLnyupgvHrexAABbPKrWtNy25RHWGPP33zdYCffHo3OQEVQF5/xVdxEFJfE+rn919ztq89/Pzzgwkx2RQTNkOZqUrXz9PTR4ssmanW3hdYpdtW1rYv/u4rAA+ff3IwUipeLfdRGxGovhZqfXj3K6JO/N4rF9yjHTw2YxmyYCNEP/9mDluQSkdp65c12NW0oeHN3y7PAD//nZsgSyKB6zp8g22A2lahX95+o0N/+p0DYeB8E0ZFJ1LOytL+4uITPMAImNIrK5cTGjbznuH3P7zsANvvfjoZBZoBI0WqdM2VvwyR6OuG2u7ffNxZvvt5gMx2O6MZqzxl6gmgRpIbL0oaSBKgAa5iT+X95pHVarO2/PgNQOCz79y2MKO5BBCCVKqqrJI+9HNevYfYLoV+fv0xmvRHr0hT3ty4HaD0KmYH1LNKqus7E6SZ02gGuBCF3AqnMxo3t02t/+TnIP7wOzcHCqCK2HegRnxSVuaHC05A19iwrKjl3buvw7v9vRsaO+5mb7O6oVt21NZTqOuaXOMgAbo7zQ1WFqqlc7vPiFT0nOqnP+FffB6eAiSS+xa5sklVZmXPp5fWs9sb1ktpu//FV/F98nsTrXrctnaIlHVUr76O9YV+ac+QBDwc4cZy42WRTismZVQP/Nz/nbELAo0jkT/lOJDu4e7OqxVJCrb7ebRStHn9MLF8+3eDVmrH+XD0MiTWbT13sEogSXMzM6MZx3pVgcpOJRBITK3UkN18M+v81P9IaQY3QCjwKQfvKM3d7SsQTftGgE1Ib/PyjPC737GIQjscD7OLib6sC0wlupm5RWsRrbUW0dydRiNKZHUqxYBsrnRiQxOdL8IrSlaARKMEcWyOHSLpUT1632oYTgbBRsA4xslvvvP6mtx//zOGFrPpdppZUF22Tu+gAzT3sYn2TShIqKqSUJ3ee1Nmc+k2zpO4rU32gv7HFCkC9LH7dxuO/bYHqgh3x5O7kIABgGLqiEkLAPgffhahcty+nA4G5OWyiRLBmOZpcnL8fpAkzczN3cMNdJasiiqFKaKYrt7upubfg5EQDaXBn/d4Su6hgKCZu7nhafFJjXW2OStmngH8m0/JlOnFizgStZzXckls89ycRg83M35ll5uF72WKlayEKnNYkJv5cQ6LWUiRJQz7f0C19iUlSZhHj7ase2iWDBrs6e68TJ/wy/jDl25lqBe3cYT6ZSmvDp+N18pBte+cJ54kSOAE9R5ZVdTmqGkiYXZ/Oxnl30eaVDQDxp69vt3+hQRE0sLpjrrGStjYG5rZo8V3XrqlpJcv5hvT5bwZu1qbYgpCVRLp11DxbALSqFJMbnRCRLHK3ME7m0wtfGN3OFQmQrWjGui4ky4KIFv0iMtaGGSnCHgBNdtp/r2QJYnbu+mG63lVbNXcg8onao4Sdf2duwn2CCdxnnrPSkV3LprmyXBiXPyPHA6XYJKezCMph4dp34bAMGJYje8iIA5fiWi3jZ3CzavjHZfL5tr8ME0u0DJrZNyrA35AWEXSiBEjPYKGNBZK021g7n2KKBcTkESYRrYUCD05Cc2MpEC02DzOS9FQAIokhbqdV8g7j5/MN3VZylfemFOyTDRWJkZ9yGfLXXc4JIxo6O6ePbfeUgaL2G4eeph3CYIByFKpcGUcBDHwubmbE5IdWkQ79TRDASoja54jTkHGq+NdrptVHtxZAGRWW9EaSoANKvecOSkMAlCiU53hnp6bM7j5jLw7RSYBmqoy9zW98qzhczTCzCLC3SW2aBGPa9FcBRT9ODt0uES7ub3pS3Kz2amyUhkKAeUmEqonIqgn+w2GRypJZzLC07eYVV1xXG8DJFG9Z1dBeGZrI0yPLa2qXEeeAu0Y0e4vVfBIQHZ0FHizvHjRtl6pg5tES7n1JEswG/tblMAPNqGg4dZ0ZMnItCn92GS+5Tyh+/cDfVuXbUNJpdLgadxDDgHYvg0re5VAm5pP6oIQULs1J0B+8vKgnrK5GciUoScdKapS2C3ID/ARBEW6IVMRKBComI8tWAAq5ohL9a1Y7MUy2O5rw3P3iDesKjNk9d5aa7etTe86Sj4f3JKuuvlWdPfeQoJ6gl0OyV0lQjXonD40oQgDS0kLqMpCMioPBzGXalm0uNcKoAsyBd2Gxz4t7jPGgmQ0dFXVdIg2vV4gHWYmVHb7eYSdW3QBmbAqZ1UhRSJrqGzaM+QTZ5A4aqnatwJKfoycqUMt5hmxpncUqDB33zM5rnQXT38cO1EAWR1Ss5h/8cgbFz2t2u9MAR06YlGXVzGqRCtXpSy0p6CvFmRjwWVEFd0q00OthacatjlRjyFuFM1aXCnkzgbGl6stB1qhVCBUnTF5e71OjrS2+XemQ6yBWCsuI++nNFyFgaqRfvaE/wFDLyPUYQZVeUjr4UhaSQivNT06KZ8i8ERR9jSBwcL0XCIOsFCBpBTmtw+PVVBv372bp96y2MraWrCCFaguWvWC2XMYhK5LLIIS2QTQlZ3umBCx2dQrPKdCRE4tCIBG7JAGGZSop2BzfeenZEW3oN29fQ2J3/7sMC109o5WHsyUBHQZqsPbUClzgPwgzgg0SN2ohDlLdTfR0rlaU5rVEnYHE8xIFGoP7Fe6sAfUHflu3EGfWDHdcPv29PNe/+oPDoc12OlCenkKNKUCVZyQCdXOCfQsegAYUgZR8AYJXlPYlBkwCFJYi5fdYQ7UyEV+fbMPFLI9nO4RdefCpLd21Pbq5f/72X/VpkthzUpVmCoKVTJkidpAAE6pEqB9RVUZUdEIpVFZ8y29MPfeLBHoVlGTjDncfWcy3OPAdWmvrrJnqWEHb4c5eDfVH/3PL97nqbITkHxLc03n3GOL2FQAqgALQRJ1fXsNrSUBIxIWnDH56slJ3Uw0eTRQ205U97K1rl58NdwTRcfYljQS0Vqb4vbV3R+st+/7mSozQwWyKRtSZipTlgiJAdVIU08IBVICHCXRVbprjrVpCxYIZQSDCbUhWF7Z0BPD5DVSXXfNSDMAwBYmRptefPY37dXIqCn0pFV5KDtVQI4CkFY5HAIajqdhQZCCGJRk0SbOnVlNi4fSmwqxhUy703Kv5Z64FgHJDIBs/2tZ7dx1hMm8/0H/69Oyykiw2VYgvSauRIpQ0VQJGko7f8RTlIFEqJLGyriLaWPbDHJ2smDymDohYw0r5VVduNYiIIoDOZ8oGOlBiVCuX/gP39nFtiVJZck2p6zJbYWpwKgsC1SCdF133wdRZpTjCN5Y0Lm6bwx1OLO8oocqqo/1lF099xpqPlje6z8TgJuBVeoPp3f/Ht/7THNuklkJtrgDrTyyRNZGD/UnjB9ooxzUQUWaSjdz2BbpWNy6giWHWbQUVxhs1Ngi9rpG13i6b0k9ewpaC0CqRQ+n/2vjXz9+dpprpQNQ2FaUAkiyOhv7Rh92lArUlXFpJ/9ElVnMaDVt8HITHALkJf++kOaSRuH+oY9IgO1aDJ8NSJvnoBmt8O7xP55cuse8EJeVVtpgJacKzJR7bpysd7mjBHsKMteQRgJuwss2d4q2ISrdqqwRRv8eYag9idGevBQAza5LTgg2kjHZpjAjreO8/Oy1ZM7HPJawnRFgCZDBJMmUCG7pwZ6DWF01Cexi2XDKeDlN7iiXW8fEhFOAGE0iYKidSWpvBBk4qjYIHExwB27hhMQVfXn/i1FR8K0+DSPupwMllujyBnWQVc5cGKgSYU95YDiJAFIZHpGGaUWUWcI45HVEkQWm9qXVSOdX2WjfikO+2Y3ZmqnAi6Jffi7BUHS816tpRp3XY8tydTqB6jDB1DGhl9k1FXzgJQREn15EpG/e3Va2SjqVMIL+JyljwfdO6dUtntPcvviDyBptOgRAW7vV8rPcpYwqbnBOmdsKt5RhlNbKMsitd4uduj17GzgYnup2PtJ6SOxmW4WrAJoR/j2zKvLaAn9OIRrlA5/+G8CnuYlm62qxfvlYcNOIvUwSN8xthY+NYZT17pBX90DChhh3RQeOTEK/OTSymBUFH1Wa4KES/E9U9GsZYoTxSZ69CnAaG9IMZJsbaNxWHtb3b0VUhY+Im6tbn5vWBQERMKKMPa3QkHCk7GldniIYUXxxmFEkvXPKaqFeYSoazf/YnCNkDhVitElGUARJG50WjRfwuZkZtjNu8/RlDQ9KukGCFmvlEf2UYTQkA6jNBSuYOkb6eRb5R06hvZxmOpRWZiubutxBQh7mf0xAeZUHaTacB0/l0/h3kgaz1sKJ7axbnL7sboCNQn8IrhvCna7T1igFZLJY5CkWgjkUluc4M4x4e3scwkKnJVwC3aozHEr/k31iABqsHyK1J2NSRgHD6WGMaTYiT3XXzm/OLDGGKaroBtZKelj46eTNSmYmsFaYjF37xMIHkZoE2t3UjEiUo9ukrTwq2QxAuX/vyd+vfeIacYrP+WPfoPB5dqAe6/Z4fnigACYsrjzXSNtY7jTvJ3hQcKStbsmqsHqmWk/JAHx5PKJES0qBtVoosXfoLf3PQDo1HAXDU4ir7rGvLkgYbD4EUI95c7ud3o/6E5RgV/XYstSK7sH+yHCXzGtathA8y2x/9Q+jzO3tPPqsoXSTfA+8mUBui/8bQlmkdO0gDiL+5MSg7dY9HBqRp/Xmtk7vcmQBA6SCOUmlImpxODA1ntJhcCING5nmqhH2nvcgGa8OkyQKhalWNetpDZlE5XZBhATnsMQTsxI4ch4o2yOrDlMAeVpubnF+2EpWNOwNuKRbgehwW6iD4WB2v37LLG2GrSZFJb3wxIgxSPKreSahIsCuhk3u2kBt1bsa/QciJaKeTM/de0cKsWtRMh1mR50vx1u/nE4FK+yOJYDMsqDVXn8YZC36g4WbfJuzM+nSc6mzPy9e3NheCFmVYWhMqt6XU/fDdOs/MIPtGuIIUdcf34GZCBPiMDfU+fFw17bLQx9WHvWum0kwJBAs2Qgm5m61IOTeNst0pXFUsFc3IedPDm0QO2OHK6t5bqV+etR8mOfZ4lBCAUbpia8UBbBIyFAEiza3hro8HG4il1Mf7bC9v5qEmVIsAhO3Kh3NEnHnj/f1iRg3ntnpCVCmZ+nDXh2Og1UTZdrUbOvQekk/xNychP9BKQtUSaihS2gEQhsjIDSJNs2za3mYbyddTqfRmrr2t1WEaEZRXhViAdaQjImXZQq2jNqUzr0xdA00L18eHdjNXwrPrXI5b2qHm6O7mdz/lCUzPMuWdeX9O8MygeaHQ6vlIW5nbpeHaz6E2b66UgnWjClmsOSEgcawvnjjvHnvvlPPJ9Y0fXYzo0SqygQq+7osW7XbmznMVbLy78ECqcEsntOc00iO7Ufj8TDX8sC7A/OyTx7VTu6uPTxyKJyyjkDCwktuwdzQOFVs6wf6BADY79zejFYBBMFqWXpf+nR70yZHFUlFONQZUA3KgAJZu/I2ODkN03TQ+lgvJmo9J/UUhIbv0yBAJesNUVN2em6Yvcp5a8sjXtpRL2rTVyqSV7c3nsAuNtSla7vgcLBwy6KNBBDErr6OumNkYmiExVEU13Q4Yj31u4PXdlmvGWYohUMpsX0mJtaWlg5qEzl5ldVNbBe9PMD6exWK1yU+fHo7d1lCErRufVt5nHxy9dUcCBRpsdBNIoQa61zXhdgDJGTHo6/n9fbGKpeLNHrzZHHX10kkQHPVYWO6KCJX6wQqNMPqkTf6ZH2k7Bqp7fPbo2hJCNq2bcua5qmhJxiksWgi4qDcdu1SuypRpkFhMCr/m7lt58vNDVXrUtqzRwm0nd4NMp4Z7FNRBYNZLsDMSuPdsulst/o8l2cLfuvVbfRRu2/r2qvsdqI6KLqpOq3oVf4DWfhQfjimSfcOhHF0GHk83tTpdLx1KC/L6HOSQxOQdmYxNM5uLNNIRSXSRaNZzURVHGGP2msyHH73xbFKheyXdcvizZ0PHt48uwjJTZaBGvWNjb2HsuGb4KiyMd3c4Hw+3IRUyyKwhti8Ux0NadwACJHAEkYbCX7BYRDjPnlp5Y1tX4xPof3uizsR0LZsfSs7RhVpcuUKcpAa+rKEWhZVNImUYf9EWcEoyG8O/nhut03FbSlce1cmAfZUIxRBJyKtdSnNKdGrk2bFwJxJ2eHb6zuJlL79+UtfgW1ZsmeEgy2pXb4xo8rJOvc1potbp6swQs1e+lPDke320M5nu20q2y5952O70vDU2hsyWBctlFFDdTaqNlogkFETkpzsdy8Xk3j3+6+OC/pl7dWtOYEsy5QbFEzJrNP6drnEiziVowATr2UTxeJY8+NhXs+4nSSrZZWGbrt3Va/BfXR9RZdW4xYQzSCaOuhMJ7wiYOH+vf+7k/6Dz16suayZaQfaCKHiJADsYBXMtKx9Q6DN22iHPiU3EDXkT803xzrX7QwRy1KiBksQIdY+YWFD5TPJioJtPlJSlQVy0QyrbHSzaOuUf1X4we/faeuZZY2uKlmpCWmZkqO7C1LWAo8XD8QKExxUoUgZavfKdnfgKW8OKsOyDJl833wjQA+yMHoJnZCTiWkwCHMyKa/espmACJvulpv+/3z3v76x+0pZkJkgragq5EaTwLkQ2pZasxh5+9h6JcldPgZreDLhN4fplMcbydXXTqGe2nfiYEkcZE4qiljJxuGnTpW5c4X5VAZQnNrx0/6vv//Hk70rmVNZjn5tM1ZTkUyladPWH9MtY9qO5vd7l2//xIAEls/HeenzUTLVuo423fjGguBXjdnGZJ8oNnEzEeYomFPdXNk5XUeQ4u725f/y5c/fABbsvdSFKnmKsA52waRuuGwrsFmE5mLdPRZLGOQUPgKct7tD39oRpLCtuYvegKACNX6EtL1upwiYWjmIohmL5oaEeW+iMgTjq++ebj99i2gqQGAWiGSVAKSXyqncoDJXVSQ5+Zn3fZAtJJkEIfMXR/Y4EirlukmDGAioQSpqVJ07bSUNLCFdLDeq4MaUmTZzodxQPTnPS+sVTo0pHRcESzMVqYohvNSlWyXIaBlmpO5RRUM5RUEyHG+8+2Ewq3XVyF47vFEEjmJmJ4NQpwyGTloC5qO3Qxlzczi6EL3OX/zhj36am/bFQLF2AU+Vxg1ELtXXlJuEuMxFxwzc06Aa2wlwHD5p4sGQBSyLDFU7jcbggR9ab/Tz0jq7kUqaU6SNNkuxupX5VIX6u5/8ry9m70sSg3KM4RRjmpgyJArrYi0zCcRNudTcWY+QAkVBNPin4TV7Fa22tewqH17Tx05on9qNJBWa4AUNndsImbHkhi23qRlAu1/++n979Zcvj7UOrkpTgcyRXL2EaS1ZK0WUDP7nJgPDrWkpogafgX7nOGEKAarcUteJnF11tGvBgmsBSYCw0ooyafwAqYI5smfSmvt04w8//vd1fn/Itl4SSqBLrNG0q0xUXXq/dGOVqJ7+lwaEocXIxyNVUJ+9PHgEUCr0NXcyOyLWGDAZIXqM3Y1ZpdKGarCUSLpRoLt6T8ngnA430+OX/8cFPPem6MsGVlIqGwVpGMqyLxegi0gx6H/WzYphLWzqCzDGIV98Ph98AirFXLZrSV/P3SdeuxO4tk9ENItSBd3dVDRn71umzOh2OB7a8u4/fAlCj+a0XDcN8pQuQZUw20aZHhBdmfA/tiwaadNsUy4SDTp89/iCIWSRuWzYj0k9dcJ2BePDzjTg5kR6c5I1QsK2bV0wwtt8nMLx8Hc/AkXqYTZTbT1NBSBhMiqr5+UsY8kDCCfixQJVTjI0j+ZvRJV/98ULoqvDUlsfI+5D796bjmPG6akzsZdcBTZ0CjCjVqVkpmJM89RMlae3fzv8DPkjw0Tv1WP8qm6FiLV6VsFYnY5OV+iYQC4SeJymyV6j7A9+5y6qo2DJ3LLqSk1rVy12y9lTrzFHljb0jCJNvaqS9FLENEQM6P7xb8+kRAHb3/GlwWpNJ4vyYq2lSs7aSmSlmVbGiz7Q5kK7nW/ufvhj/f73j1NeJLCQSwdtnLKo4cj7kQtqwKuR/4wAEpjTUKuyig5lTNMUHAR8u//pz2a/KjOnn+NVdPjKRhYlGPrSq2BTZQWqb94UPeATC+bq2+3h7lvf7n9q03oaoSTXpNV1C2JXPHZ9gNrlI+5pkqQtzJ5Ko6OsTVM45Y4yw8ObH5cOfu2jvg+7a1m+ZTghz7XgHZYrzaxgc+XGsDRzhpHm5N10+O8/+fF26tSQkxKs69kNsDQC4RgovYZuuzKwKi3WO2AhZmtTBA3mSDfT6f4nC8jZr9rWG+ftVOnbEk0AuV3UrCy2DoPSYKbwMWHv5u5m/q1v3V2+8/a+byXQeh/9/7IacwJ7Kb/XJUPTllCocXiiW6eTTI85YuifKnNK/fHnb4kVnHyPTvXacJyqYlu32bYsa+vFTJirJ4nNCMU5Gk2SecxTuN9eaF29L1vveVn3U5j7TNNIc086s/YQvZ8/KVV08yKjRRhhDkFGCtTj2y9R5AbMu5aufGuchcXVMywvFYdt60RaWMrmXmTcqOiU0ggLy5999/gf3m6Uct3O574DwP7fsOMAev2qUtaoR110HMcYHZ3su/pK1vL48wUGYSOnXVrR5R1fttLKtpwRroVtzhS63FQVyIoLmyeCZgKqf6m/+vG/CoFGq17Vaz+ItH+5GnFHdp0alglGM2+YKsYMYoHuVIZBqscv7g0FAzZi3mtVncJvvRUW6FTHw7QtDC+ZNhjQ6YzJVO5jsCPXfnn/v58+/cFduLFSZj6G+0vPJrwCvMabUYAwzJxeU86294XMWEZHhdXju7dW+wmFBU8I8d55tEnMzet+OU7ZVzOJc6bIzPD/Ru5WZjI35Nu3/+ejXd444dxWqWqcqoBKlZWZlZU5JoZLo7sX09TmqXmY84ADSmXmAAwGwg1aTl8s5U8zFNxnxEAs4YaqFZv5ulQ0ZF3HluFY/d+ZAKci0HH/8OO3LGwPphoS2/W5JtzdVUCS7tGmaZqnaGFubhFT+Va0MOwzg06TrE5f3JtflWUgB0JSxOJeVUjLci0rwkdLoixYnIIZMCCwod2fXv/CxeLyt+utTXTBvGfWmJuv3Z4D6gfEYR8GoeWGdKMp4YY0MyHD6/HtQ1RZ7fIotIBt71vqbb/N8sNl3hZr2/v50JgyqcOieuRULrGq4vR4/sLGKNr2dzd3xwNAWphlcrgERlx5nh245hTQAG2ja6suc9M4xWKGXE7vC1bdrl0rYiXaGGfKy7K8gHC4yM7V8rLOBy+BXpXm/j/1Jpqyez6sP7kO9eD8BkwbJ/Wu4yOj82Rubn49ODXGCc1Yo6kIrwQihvOYG8S8/OJiSjhrt/moHn0Ycz2nN6qaqtVGr7XLDBojzP5vJ9Cqyuoxv+iqUeheHvMsL0MJdc2+HwwxDGAcR3U4itrRF9tg1tgTNDcIjDq/e1BnsHYRcmyRpBlYS116IsKUEzNsS+e2jXkYg6X/jwlTJnHJL89D+hDzVKxzWplJQNW+u/mcTnZWPc4ACALdzbuC8NwYThQQxlofv9wYTDmvx0EGRZNZbv1EZmeja22RbNXh6FuRLKD5X5C1lXHp788SQAfycQOINa1oKu0jIDvNt31MRddJEYPRw6nqBpl3NUeKbgaw3/+iB1PudZ2p2BFKlevGovXurRpWb6lmvYzZ+9Di/L9ldpGZ5/e5fy4ul7GoazfRr2rgPpWE6+jFda0Bc0dlFogIbHAJbgYYuD7erwNejUFE8ErXdLlsKljB+xpzD181Iz3UYaqeYIb/d5VJq768F0ZE1OU0Zh+Avho0WiBDj3/OyLo+oFFZAszctKUHjQ6STFQ/vesVXmW+189PFlzOrxebBCtEX9u8eWwZLoZnGpW9e/qfbemGXN91YXCj7bR7LqG+kmMW4spXn+MfMA5JYD/xaqRQbI5xvLKg4Hb/RTWvZECmq5cQgC6Xtz9fzZrkVZHLdFjZMt0oD3QRqov8L0WLXO97aXT/++NwocHjaxWfzljwiTcAvN7Isrdyxt/KG2sU7HDzWk/vxUzGkEXtelwPqPP59Wv0i/kEhdJraYcORyeM8FCCsvQ/g0dfz5dOH3T5vO7RZN9t2xBrxubZR11hBEemxjhV5PswPisFiu6EqtbHcy8PypAw1ij/Kfbz6cv3AOrRfVI5EljblKNTCBrdJJP8z1vUej4VKbqkywJeB/hJENr6ns+uBfsINM+zXqRRKYFAycyG4ALH+v5tNZdsnCGXXYcHt/P9l/sx/gvsgDTPREbkPg8IMwtLhf+5czufqkZly+VxFD+oZ+SBtAMAAAa2SURBVHfLvpeYz558BbdXxvs5DkcRQIlg0OryeG+eNAwvvmYSYDm9+8X1Vg6dZJMnonqieRqHugJ3C1/9L2xZzh1eMFP10xM0PjVBUL1wHWJ+YgrcD9Q82Xuc8XUvhslKyu19F029wivNpTHZVOfHN6+fRQlcuk2RasqNkyVjzA8KYTz4/3BeT6txKJx66GOY8Trjfe279tylrP0U+FMM3IMk6VYpeWgzr3SZ1/puJXtH80oL5eiXsZ8evnKbB7CujDkrvC88siPYyw0qa/L/op9XUgZQuq+h1vGad3Glgtn1tBOvoqDx2oswH4ecm3o1LzSStT6eM8fhDYYSMd5teXz3xdcvXdkW+Kxky7NufIW7NgRVGf5vLytZoKnscROeDjLyaXZ+X+a8RtkrJRwNCHCHR7OSNyZDcm2Pb5Lh6uXBDqeIYp3u37wRvv7kA+xgWY2XOra13JjdGpn+/RMtzSXY40KOo0d7bBsedd3MmVX7mNleoQwC4aNuszDBXLKo8r5c3pvbVmqurnCRJa4P719//BKOU8fcKs0vfZrVYUR1Gv2PaBUsCOcVNT7cOArzJ0Z6hVjDiLoKg+NqgRIAt6oCq8CsUNb73qs8vCeaCVbldbp/8/qbLoNZlopZXdGzBUZIkpr/l9YpMm07FcdY5j6rp6cBnGeEfVzJ8jwxj3FW1VxZ8oAsgIa+vT1V+L7ARas0Xu7ffYP5AAD9XjxEJqvcR69SXP175aAq1gcOA44TC0OvuupEzztxrDP2Ab5rFg5UgcGetJRVz8fFXb3QHGVWab49vH/z7lffpXPaNE3qVTu7pSn8T4wscTuhaHvbbbBqiU8i+bMRawiM9mxcOqsAugoRRQd0vs8sNLeSWU9Gf3j/5svt67/t68966n7w2labTQmDpf9AEJEPuQsuNWQ17MHmKyYcblOVtTeZYKTt8KzEsBSh7fRWFj6quF4e9fD+7Re/ztVYdVprmpiXmgOVZu5/ChR0Xy7sa3y14h6OP/jx/c/Ve+X+Drb7vY8E1BFe2/bAfRC2l5r3h3dvf9Xm+6oRH1ebQ+c+TUQm/PuepvdA2b7GI5HwKrD98kNAmZljNHe4cEBkM3iwZ92nAKpXhdty/+btLy6/1i1J4/XPjz2mWBdvTnT/QW/5DmWjmbJH6evXX46oVzvuF4+NzeDogkWlTCm9W0uZhXDPx3dv3rz5De89y4dzxaQVdEZUbCcUi560qmc3FvfBx49BJFHrYh4e7pYCjF1wqfrrhaQT6svl8XL6dS/B+vB5eHj7rZfzA2UZW57LmFbyGlRnpGMQT5cGfMV2xNOcf1W3FqQ53VJ0VPWHmlXq23q+XE4fXYJf57m/f/Hpq3x1mGI9m3e3otJGlTmun9oZFz40oZ5aJFfEZttCmjfCLFKVDw+9921d1vM/GNwV4vzZ47decP7Du/AyJFGDK15n2jiI/gfP05VC4280josj3FKwVlV6/Td/b7D7TZ7Pvk3c/eu75uPYyz6Msu+8j++/K8BxNQIImCNFi5T05V/9U8IDAMfaJ6cJo0bZI81IJ8THMHKoC6oRxd2zSPcU8su//qfGBweWfjC4ylA2irZBCCXRvjL0jJFM9ixMAKM8xDiBWa9/+A9x2b8XIJbLIWBWxoJ9Ldd9PdXhylQBAjYKbIYSqC9/+E+6/54BYlsnJy1p0tNY71Nt9AFA4AO3IQNZBC2yoPrib379dPEbAsS6TgG6xKeTah/ff08wQbf9xsOwLqD/7Ie/BXhXgFgfpzD4Pta9kxqWviEX04Ysh+smxPbTH/9W8F0BIh+aWzklcqis0kcp67WgGuDZkAK0/vinvx18TwBRjxYujsm3Xf7bY83XsPE66DVCDEA9/vD1bwnfM0Doge4cpw74gX70IcAPf5IwVwJAvf3hw28L3wcAgdMWTo0SgFcp9KOBGgDNkCKA/vMf/aPukf31AWI5uzue3fjjfrwL1cNJqPOPfvrbCC8fBYj+Hma7YKn9tqRfBsj9wjYAzDc/+qUb/n6LAIHTyv1Q8bU8/hq28U/Xaur8k7/9jS+3/ccBxHoqG0ryL6e6r+Y9YHv9n97+I1nfbw4QdbroWUz+aqp7uigAIPr7n/zkH3Z/8W/yfJzxvXh5OztJfsw+gzD0x9df/HahPX/ax55Xd7ez20frToJaT1+79Pi39nwTQNjtze0Yafr6JlReTu/ffNPP/VM/3wgQwOFwPMz7vdn7P6n6ejk9/roywT/B86sAAji0eWoR4wbBytyWZTn/8yDbn78HIAC08F0Qru2fZ9/9/+r5/wDCsLpou7P9/AAAAABJRU5ErkJggg==" width="200" height="200" alt="" style="border:1px solid #c8c8ce;image-rendering:auto;display:block">
+    <figcaption style="font-size:13px;color:#5a5a62;margin-top:4px;max-width:200px">Its line accumulator. &#952; runs left to right over 180&#176;, &#961; from &#8722;&#189;&#8730;(w&#178;+h&#178;) at the top to +&#189;&#8730;(w&#178;+h&#178;) at the bottom. Three peaks, three lines. Display contrast stretched.</figcaption>
+  </figure>
+</div>
+<p>
+  Read the peaks off and you have the lines: the horizontal position of a peak
+  is the angle of its line, the vertical position its distance from the centre.
+  The <em>Inverse Hough transformation</em> option does that reading for you
+  &mdash; keep only the peaks with the histogram tools, transform back, and the
+  lines reappear in the original coordinates with everything else gone.
+</p>
+</details>
+
+<details id="hough-circles">
+<summary style="font-size:14px;color:#5a5a62;margin-top:2px">
+ <strong>Circles of a known radius</strong>
+ </summary>
+<p>
+  A circle needs three numbers &mdash; centre <em>a</em>, centre <em>b</em>, and
+  radius <em>r</em>. Fix the radius and only two are left, so the parameter space
+  is again a plane, and a rather convenient one: it is the space of possible
+  <em>centres</em>, which is the image itself. The accumulator therefore stays
+  in register with the input, and a peak sits literally where the circle is.
+</p>
+<p>
+  The voting rule follows from one observation. If an edge pixel lies on a
+  circle of radius <em>r</em>, then the centre of that circle is exactly
+  <em>r</em> away from it &mdash; but in an unknown direction. Knowing nothing
+  else, the pixel must vote for every candidate centre at distance <em>r</em>,
+  which is to say it draws a circle of radius <em>r</em> around <em>itself</em>
+  in the accumulator. Do that for every edge pixel of a real circle and the
+  vote-circles all pass through one common point: the true centre. Everywhere
+  else they merely cross in pairs.
+</p>
+<svg viewBox="0 0 720 300" width="100%" style="max-width:720px;height:auto;display:block;margin:6px auto" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="12">
+<rect x="0" y="0" width="720" height="300" fill="#ffffff"/>
+<rect x="40" y="46" width="210" height="210" fill="#fafafc" stroke="#c8c8ce"/>
+<circle cx="145.0" cy="151.0" r="46.0" fill="#e9ecf3" stroke="#9aa0aa" stroke-width="2"/>
+<circle cx="145.0" cy="151.0" r="2.5" fill="#5a5a62"/>
+<line x1="101.8" y1="135.3" x2="122.4" y2="142.8" stroke="#2858c4" stroke-width="1.6"/>
+<circle cx="101.8" cy="135.3" r="4.5" fill="#2858c4"/>
+<line x1="180.2" y1="121.4" x2="163.4" y2="135.6" stroke="#c44a28" stroke-width="1.6"/>
+<circle cx="180.2" cy="121.4" r="4.5" fill="#c44a28"/>
+<line x1="156.9" y1="195.4" x2="151.2" y2="174.2" stroke="#1f8a4c" stroke-width="1.6"/>
+<circle cx="156.9" cy="195.4" r="4.5" fill="#1f8a4c"/>
+<text x="40" y="34" fill="#1d1d20"><tspan font-weight="600">image space</tspan> &#8212; three points on the rim</text>
+<rect x="330" y="46" width="210" height="210" fill="#fafafc" stroke="#c8c8ce"/>
+<circle cx="391.8" cy="135.3" r="46.0" fill="none" stroke="#2858c4" stroke-width="1.6" stroke-dasharray="5 3"/>
+<circle cx="391.8" cy="135.3" r="3" fill="#2858c4"/>
+<circle cx="470.2" cy="121.4" r="46.0" fill="none" stroke="#c44a28" stroke-width="1.6" stroke-dasharray="5 3"/>
+<circle cx="470.2" cy="121.4" r="3" fill="#c44a28"/>
+<circle cx="446.9" cy="195.4" r="46.0" fill="none" stroke="#1f8a4c" stroke-width="1.6" stroke-dasharray="5 3"/>
+<circle cx="446.9" cy="195.4" r="3" fill="#1f8a4c"/>
+<circle cx="435.0" cy="151.0" r="7.5" fill="none" stroke="#1d1d20" stroke-width="1.8"/>
+<text x="448" y="140" fill="#1d1d20">all three meet here</text>
+<text x="330" y="34" fill="#1d1d20"><tspan font-weight="600">accumulator</tspan> &#8212; each votes on a circle of radius <tspan font-style="italic">r</tspan></text>
+<text x="330" y="278" fill="#5a5a62">the votes agree only at the true centre &#8212; that is the peak</text>
+</svg>
+<p>
+  In practice the tool does better than voting blindly in all directions. The
+  Sobel operator that finds the edge pixels also gives the <em>direction</em> of
+  the brightness gradient, and on the rim of a disc that direction points along
+  the radius &mdash; inwards for a bright disc, outwards for a dark one. So each
+  pixel need only vote at the two points <em>r</em> along that direction rather
+  than around a whole circle. Both signs are used, so bright and dark objects are
+  found alike, and the votes are spread over a small arc either side to allow for
+  a noisy gradient. This is both far faster and much sharper: the votes that
+  would have smeared around the rest of the vote-circle are never cast.
+</p>
+<p>
+  The radius has to be chosen, and choosing it wrongly is instructive. Below,
+  two discs of radius 20&nbsp;px and one of radius 10&nbsp;px were drawn into an
+  image. Asked for radius 20, the accumulator puts a sharp peak on each of the
+  two matching discs &mdash; and around the 10&nbsp;px one it produces a
+  <em>ring</em> instead, because that disc's edge pixels all vote 20&nbsp;px
+  away from themselves and so agree on a circle rather than on a point. Asked
+  for radius 10, the roles are exactly reversed.
+</p>
+<div style="display:flex;flex-wrap:wrap;gap:18px;justify-content:center;margin:10px 0">
+  <figure style="margin:0;text-align:center">
+    <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKAAAACgCAAAAACupDjxAAAACXBIWXMAAA9hAAAPYQGoP6dpAAABiklEQVR4nO3a0XLDIAxEUdzp//9y++7YQmhhg8f3vHXq0LUCLihpDQAAAAAAAHiHP/8oR2XQ7IuicbJj5K77uOdixMJtZq66fEsqEU8DpYboX3Q7Y4Yjlt6Hn+FRE7+ZqXcTYYqxGl4MlRigU8G4So4axgF7CQwJu3Pw28JZkChQfhoWH1a+Cl5lERdJZoYtn4Xbz8EgYK44q0torODnhJvyr+7bnAHPBUs9oqwVPIKf7vyuCHLrmLmjTi/P8X3hyCuCa5MJhQNKBqtYRUDV9gGjNZhaxosX8bMrOHfLX/TsCvZLuLyAT69gr4TrC+jszdR0/0aQ0JHP2h8ssXZYK7w96gJ3l38xT9cXAAAAdaM7NuPes7bntQWsnhpMAevnLktA5eTqCCid/Q0Bte7J+oBi/2l5QLXF+PT+oExuc7+9gvpHLS+v4ISPnLevIAFVBFQtXcUzvtnCY0ZFQBUBVWy3VGz5VRw7VXQW9u/N7N/d2r8/2LbvsLa2fY+6Nb7ZAgAAAAAAAAA4+Qfd60Bw8lEhjQAAAABJRU5ErkJggg==" width="200" height="200" alt="" style="border:1px solid #c8c8ce;image-rendering:auto;display:block">
+    <figcaption style="font-size:13px;color:#5a5a62;margin-top:4px;max-width:200px">The input: two discs of radius 20&nbsp;px and one of radius 10&nbsp;px.</figcaption>
+  </figure>
+  <figure style="margin:0;text-align:center">
+    <img src="data:image/png;base64,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" width="200" height="200" alt="" style="border:1px solid #c8c8ce;image-rendering:auto;display:block">
+    <figcaption style="font-size:13px;color:#5a5a62;margin-top:4px;max-width:200px">Accumulator at <em>r</em>&nbsp;=&nbsp;20. Sharp peaks on the two matching discs; the 10&nbsp;px disc returns only a ring. Display contrast stretched.</figcaption>
+  </figure>
+</div>
+<div style="display:flex;flex-wrap:wrap;gap:18px;justify-content:center;margin:10px 0">
+  <figure style="margin:0;text-align:center">
+    <img src="data:image/png;base64,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" width="200" height="200" alt="" style="border:1px solid #c8c8ce;image-rendering:auto;display:block">
+    <figcaption style="font-size:13px;color:#5a5a62;margin-top:4px;max-width:200px">The same input at <em>r</em>&nbsp;=&nbsp;10. Now the small disc peaks and the two large ones give rings.</figcaption>
+  </figure>
+  <figure style="margin:0;text-align:center">
+    <img src="data:image/png;base64,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" width="200" height="200" alt="" style="border:1px solid #c8c8ce;image-rendering:auto;display:block">
+    <figcaption style="font-size:13px;color:#5a5a62;margin-top:4px;max-width:200px">Shown again for comparison: <em>r</em>&nbsp;=&nbsp;20. Picking the radius is picking which objects you are asking about.</figcaption>
+  </figure>
+</div>
+<p>
+  This is why the pulldown offers a ladder of radii, and two ways of combining
+  a sweep over all of them. <em>All radii</em> sums the accumulators, so anything
+  circular shows up and a centre that works at several sizes is reinforced;
+  <em>only strongest radius</em> keeps the largest response at each centre, so
+  each object is scored by the radius that actually fits it and objects of
+  different sizes stay distinct rather than blurring into one another.
+</p>
+</details>
+
+<details id="hough-practice">
+<summary style="font-size:14px;color:#5a5a62;margin-top:2px">
+ <strong>What it needs, and what it costs</strong>
+ </summary>
+<p>
+  <strong>It votes from edges, not from brightness.</strong> The image is first
+  run through a Sobel operator and only the strongest gradients are kept &mdash;
+  the top tenth of them, so the cut adapts to the image's own contrast. An image
+  with no edges gives an empty accumulator; if that happens, a <em>Hessian</em>
+  or <em>Gabor</em> filter beforehand will usually bring the edges out. Equally,
+  an image full of noise gives noisy edges and a mushy accumulator, so binning or
+  low-pass filtering first is often worth the step.
+</p>
+<p>
+  <strong>Cost.</strong> The line transform is the expensive one: every edge
+  pixel is swept over the whole angle axis, at half-degree steps. The circle
+  transform casts only a handful of votes per edge pixel, thanks to the gradient
+  trick above, and is correspondingly cheap; a sweep over the seven radii costs
+  seven times one of them. The edge list is capped so that a very large image
+  cannot stall the sweep.
+</p>
+<p>
+  <strong>Peaks are broad.</strong> A real line is a few pixels wide and not
+  perfectly straight, so its peak is a small blob rather than a single cell, and
+  the votes are deliberately spread over neighbouring cells so that a peak grows
+  smoothly instead of splitting across a boundary. Read peaks with that in mind
+  &mdash; the <em>Peak search</em> tool, with a sensible exclusion radius, is the
+  usual way to turn them into a list.
+</p>
+<p>
+  <strong>Try it.</strong> Draw a few straight lines into an empty image with the
+  paint brush, run <em>Lines</em>, and watch each one arrive as its own peak.
+  Then erase part of one line and transform again: the peak gets shorter but does
+  not move &mdash; which is the whole point of the method.
+</p>
+</details>
+</details>
+
+  
 
 <h2 class="section" id="analyzer">The Fourier Analyzer</h2>
 <p>
@@ -1574,10 +1847,29 @@ contact info) and <strong>Manual</strong> (this page).
   <tr><td><strong>Undo</strong> / <strong>Redo</strong></td>
       <td>Step backward or forward through the edit history of the
           current slot. Also bound to <kbd>⌘Z</kbd> and <kbd>⇧⌘Z</kbd>.</td></tr>
-  <tr><td><strong>Fullscreen</strong></td>
-      <td>Toggle fullscreen mode. Separately, the little maximize icon
-          below either image opens a display-only full-screen view of that
-          image with no window title bar; see
+  <tr><td><strong>Basic</strong> / <strong>Advanced</strong></td>
+      <td>The left half of the pair of small buttons above the
+          display-mode button; the label shows the level you are
+          <em>on</em>, and clicking switches to the other.
+          <em>Advanced</em> is
+          the default and offers every function. <em>Basic</em> hides the
+          groups that need some background to use — <em>Filter</em>,
+          <em>Amyloid</em>, <em>Particles</em> and <em>Align</em> in
+          panel&nbsp;1, and <em>CTF</em> in panel&nbsp;2 — so that a
+          first-time user is not faced with all of them at once. The
+          hidden groups leave the tool column entirely rather than being
+          greyed out, so the remaining squares are larger. Nothing is lost:
+          no image, buffer or history is touched, a function that was open
+          when you switch down is simply closed, and switching back brings
+          everything straight back. The choice is remembered between
+          sessions.</td></tr>
+  <tr><td><strong>Fullscreen</strong> / <strong>Window</strong></td>
+      <td>The right half of that pair. Unlike its neighbour, this label
+          names where the button <em>leads</em>: it reads
+          <em>Fullscreen</em> while the application is in a normal window
+          and <em>Window</em> while it fills the screen. Separately, the
+          little maximize icon below either image opens a display-only
+          full-screen view of that image with no window title bar; see
           <a href="#maximized">Maximized image view</a>.</td></tr>
   <tr><td><strong>Mode</strong></td>
       <td>Cycle the panel-2 display through cos/sin, amplitude/phase,
@@ -1759,10 +2051,10 @@ tool lives on its own page:
 <div class="subpages">
   <a href="manual_panel1.html">
     <strong>Panel 1 — real-space tools</strong>
-    <span>Edit (eraser, brush, taper), measure, transform (flip, shift,
-          rotate, invert, symmetrize), redimension (bin, crop), filter
-          (Gabor, Hessian), amyloid, math (calculations, average images),
-          copy image, particles (peak search, extract), align to
+    <span>Edit (eraser, brush, taper, threshold), measure, transform (flip, shift,
+          rotate, shear, invert, symmetrize), redimension (bin, crop), filter
+          (Gabor, Hessian, Hough), amyloid, math (calculations, average images),
+          copy image, particles (peak search, extract, average tiles), align to
           reference.</span>
   </a>
   <a href="manual_panel2.html">
@@ -1785,11 +2077,13 @@ relevant tools in the app. Try to predict the outcome before clicking
 <div class="subpages" style="grid-template-columns: 1fr;">
   <a href="manual_exercises.html">
     <strong>Exercises</strong>
-    <span>Click here to find a series of exercises to experience Fourier space: 
+    <span>Click here to find a series of exercises to experience Fourier space:
           Chessboard from Fourier pixels, high/low/band-pass filters,
           eraser-based image restoration, lattice filtering, the
           convolution theorem with Andreas, phase ramp and the shift
-          theorem, cross-correlation and particle picking.</span>
+          theorem, cross-correlation and particle picking. The advanced
+          exercises go on to helix synthesis, image alignment, CTF fitting
+          and simulation, and finding lines with the Hough transform.</span>
   </a>
 </div>
 

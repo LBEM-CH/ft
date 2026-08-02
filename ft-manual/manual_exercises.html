@@ -236,7 +236,7 @@ particle (not rotationally aligned).
 
 
 <details id="exercise-10">
-<summary>Exercise 10 — Helix synthesis</summary>
+<summary>Advanced Exercise 10 — Helix synthesis</summary>
 <p>
 Load an image of a fibril cross-section into a buffer (<code>a</code>) 
 and use the Amyloid function template to create a fibril projection image with that cross-section. 
@@ -252,7 +252,7 @@ of a real fibril image, especially concerning the reflection line at 4.75 Å?
 
 
 <details id="exercise-11">
-<summary>Exercise 11 — Image alignment</summary>
+<summary>Advanced Exercise 11 — Image alignment</summary>
 <p>
 This exercise uses the <strong>Exercise_11-Alignment</strong> data set: several
 electron micrographs of bacteriophages, each a bright angular head with a thin
@@ -310,7 +310,7 @@ a verdict on your alignment.
 </details>
 
 <details id="exercise-12">
-<summary>Exercise 12 — CTF FIT: measuring defocus and astigmatism</summary>
+<summary>Advanced Exercise 12 — CTF FIT: measuring defocus and astigmatism</summary>
 <p>
 This exercise uses the <strong>Exercise_12-CTF</strong> data set: twelve
 simulated cryo-EM micrographs (<code>Example_&hellip;.mrc</code>) available
@@ -366,7 +366,7 @@ Now experiment:
 </details>
 
 <details id="exercise-13">
-<summary>Exercise 13 — CTF SIM: generation with amplitude contrast and beam tilt</summary>
+<summary>Advanced Exercise 13 — CTF SIM: generation with amplitude contrast and beam tilt</summary>
 <p>
 Choose an empty image buffer. <BR>
 Use the <strong>CTF SIM</strong> tool (the <code>CTF / SIM</code> icon in panel 2) to create a CTF with different defocus settings.  How does the defocus affect the CTF in Fourier space and the PSF in real space?
@@ -381,9 +381,100 @@ The real-space correspondent of the CTF is a point spread function (PSF). How do
  Try to generate a CTF with these parameters: 300 kV, 500 nm underfocus, 67 nm astigmatism, 5 mrad beam tilt. 
  You will see a CTF with near perfect Thon rings, but the real-space PSF will be very anisotropic. This anisotropy in real space is called the "coma" and is a direct consequence of the beam tilt.
  If you have beam tilt in your microscope and correct it by setting (wrong) astigmatism parameters in the CTF, you will see that the Thon rings become round but now your microscope is misaligned and the PSF becomes distorted. 
-In such cases, the correct solution is a Zemlin Tableaux acquisition and correction of the beam tilt, not a CTF astigmatism correction. 
+In such cases, the correct solution is a Zemlin Tableaux acquisition and correction of the beam tilt, not a CTF astigmatism correction.
 </p>
 
+</details>
+
+<details id="exercise-14">
+<summary>Advanced Exercise 14 — Hough transform to find lines</summary>
+<p>
+Load the <code>Polyhead_virus</code> image (the 512-pixel one, from the
+same folder as Exercise&nbsp;4). It is a negative-stain electron
+micrograph of polyhead tubes: long, straight-sided objects lying across
+the field at two or three different orientations. Their edges are exactly
+what a <strong>Hough transform</strong> is built to find — and, unlike a
+Fourier transform, it will tell you <em>where</em> each edge is, not only
+which directions are present. If you have not read it yet,
+<a href="manual.html#hough-theory">Advanced: What is a Hough transform?</a>
+in the main manual explains the machinery.
+</p>
+<p>
+<strong>1. Transform.</strong> Open <strong>Hough transform</strong> in
+the <em>Filter</em> group of panel&nbsp;1. Set <em>Input buffer</em> to
+the buffer holding the micrograph and <em>Output buffer</em> to a free
+one, so that you can flip between the picture and its transform. Leave
+<em>Geometric element</em> on <em>Lines</em> and press
+<strong>Compute</strong>.
+</p>
+<p>
+<strong>2. Read the accumulator.</strong> What you get is not a picture of
+the specimen: the horizontal axis is now the angle &#952; of a line
+(0&#176; at the left edge, 180&#176; at the right) and the vertical axis
+its distance &#961; from the centre of the image. You should see a dense
+weave of sinusoids — one per edge pixel — with a handful of bright knots
+where many of them cross. Each knot is one straight edge in the
+micrograph. Adjust the display contrast by dragging across the histogram
+under panel&nbsp;1; the peaks tower over the background, so the weave only
+becomes visible once you stretch the low end.
+</p>
+<p>
+<strong>3. Read the tube widths off the peaks.</strong> This is the part
+worth doing slowly. Hover the peaks, or run <strong>Peak search</strong>
+on the accumulator with a generous exclusion radius, and note where they
+sit. You will find that the strong peaks come in <em>pairs sharing the
+same &#952;</em>: about &#952;&nbsp;&#8776;&nbsp;126&#176; for one family of
+tubes and about 53&#176; for the other. That is exactly what a tube should
+give — two parallel edges, same orientation, different distance from the
+centre. Now take the difference in &#961; within a pair. Both pairs come
+out at roughly <strong>55&nbsp;pixels</strong>, which is the width of the
+tubes; and the fact that the two families agree tells you the polyheads
+all have the same diameter. Note also that a peak's &#952; is the angle of
+the edge's <em>normal</em>, so the tubes themselves run at
+&#952;&nbsp;&minus;&nbsp;90&#176;, i.e. near 36&#176; and 143&#176;. Check
+that against the picture with the <strong>Measure</strong> tool.
+</p>
+<p>
+<strong>4. Keep only the peaks.</strong> With the accumulator displayed,
+drag across the panel-1 histogram to select just its bright upper end,
+open <strong>Threshold histogram</strong> in the <em>Edit</em> group, set
+<em>Mode</em> to <em>Select histogram</em> and press
+<strong>Compute</strong>. Everything but the peaks drops to black.
+Keeping roughly the top 40&ndash;45% of the value range leaves of the order
+of fifty cells standing — a good starting point. Keep more and you will
+carry noise along; keep less and you will lose the weaker edges.
+</p>
+<p>
+<strong>5. Transform back.</strong> Open <strong>Hough transform</strong>
+again, point <em>Input buffer</em> at the filtered accumulator and
+<em>Output buffer</em> at another free buffer, tick <strong>Inverse Hough
+transformation</strong> and press <strong>Compute</strong>. Every
+surviving cell draws its line back into image coordinates, so what you get
+is a clean drawing of the tube edges — the straight lines that were found,
+with the stain, the noise and the curved features all left behind. Put it
+beside the original and check that the lines land on the tubes.
+</p>
+<p>
+<strong>Things to try.</strong> Vary how much of the histogram you keep in
+step&nbsp;4 and watch lines appear and disappear in the back-transform, in
+order of how much evidence there was for them. Erase part of a tube with
+the panel-1 eraser and transform again: the peak gets <em>shorter</em> but
+does not move, because the remaining pixels still vote for the same line —
+this robustness to gaps is the whole reason for the method, and it is what
+tracing pixels cannot give you. Then run <em>Circles, radius 20&nbsp;px</em>
+on the same micrograph and see that it finds nothing much: there are no
+circles of that size in it, and the transform says so honestly.
+</p>
+<p>
+<strong>Compare with Fourier space.</strong> Exercise&nbsp;4 used this same
+image with the lattice filter. Compute its Fourier transform as well and
+put the two side by side. The Fourier transform tells you which
+<em>periodicities and directions</em> the image contains, spread over the
+whole field; the Hough transform tells you which <em>individual straight
+edges</em> it contains and exactly where each one lies. Two different
+questions, two different transforms — and both are peak-finding problems
+once you are in the right space.
+</p>
 </details>
 
 <footer>

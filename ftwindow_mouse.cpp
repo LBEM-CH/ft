@@ -28,18 +28,21 @@ static QImage flipImage(const QImage &img, Qt::Orientations dir)
 //  in ftwindow_paint.cpp); the group lists below map ids into groups.
 void FtWindow::buildToolGroups()
 {
+    // The trailing `true` marks a group as advanced-only: it is dropped below
+    // when the user level is Basic, so it takes no slot in the column and none
+    // of its tools can be reached.
     m_p1Groups = {
-        { "Edit",        {0, 1, 8},     {} }, // eraser, paint brush, taper edges
+        { "Edit",        {0, 1, 8, 25}, {} }, // eraser, paint brush, taper edges, threshold
         { "Measure",     {2},           {} },
-        { "Transform",   {3, 4, 5, 6, 7, 9}, {} }, // flip H/V, shift, rotate, invert, symmetrize
+        { "Transform",   {3, 4, 5, 6, 22, 7, 9}, {} }, // flip H/V, shift, rotate, shear, invert, symmetrize
         { "Redimension", {10, 19, 11},  {} }, // bin, pad, crop
-        { "Filter",      {12, 13},      {} }, // gabor, hessian
-        { "Amyloid",     {14},          {} },
+        { "Filter",      {12, 13, 23},  {}, true }, // gabor, hessian, hough
+        { "Amyloid",     {14},          {}, true },
         { "Math",        {15, 21},      {} }, // math calculations, average images
-        { "Particles",   {16, 17},      {} }, // peak, extract
+        { "Particles",   {16, 17, 24},  {}, true }, // peak, extract, average tiles
         // Single-member group: the group face is what the user hovers, so the
         // group name is the tooltip that shows (it overrides the icon's own).
-        { "Align image to reference", {18}, {} },
+        { "Align image to reference", {18}, {}, true },
     };
     m_p2Groups = {
         { "Edit",                  {0, 1},      {} }, // eraser, paint brush
@@ -48,9 +51,19 @@ void FtWindow::buildToolGroups()
         { "Transform",             {6, 8},      {} }, // rotate, symmetrize
         { "Redimension",           {9},         {} }, // Fourier crop / pad
         { "Ramp",                  {10},        {} }, // phase ramp
-        { "CTF",                   {11, 12}, "CTF" }, // CTF SIM, CTF FIT (face = "CTF")
+        { "CTF",                   {11, 12}, "CTF", true }, // CTF SIM, CTF FIT (face = "CTF")
         { "Math",                  {13},        {} },
     };
+
+    if (!m_advancedLevel) {
+        auto dropAdvanced = [](QVector<ToolGroup> &groups) {
+            groups.erase(std::remove_if(groups.begin(), groups.end(),
+                                        [](const ToolGroup &g) { return g.advanced; }),
+                         groups.end());
+        };
+        dropAdvanced(m_p1Groups);
+        dropAdvanced(m_p2Groups);
+    }
 }
 
 // Compute, for every tool id, the on-screen rect of the slot it occupies and
@@ -245,17 +258,60 @@ void FtWindow::updateGroupHoverPreview()
     m_hoverMenuGroup = -1;
 }
 
+// A shear drag works like grabbing the image and pulling that one point
+// sideways: the angle returned is the one that puts the grabbed point under the
+// cursor. Which axis slides follows the direction dragged in — mostly sideways
+// shears the rows, mostly up or down shears the columns.
+bool FtWindow::shearFromDrag(const DisplayItem &di, const QPoint &from,
+                             const QPoint &to, double &angleDeg,
+                             bool &vertical) const
+{
+    if (!di.valid || di.screenRect.width() <= 0 || di.screenRect.height() <= 0
+        || di.imgW <= 0 || di.imgH <= 0)
+        return false;
+
+    const QRectF src = m_zoom[0].visibleRect(di.imgW, di.imgH);
+    auto imgX = [&](int sx) {
+        return src.x() + (sx - di.screenRect.x())
+               / (double)di.screenRect.width() * src.width();
+    };
+    auto imgY = [&](int sy) {
+        return src.y() + (sy - di.screenRect.y())
+               / (double)di.screenRect.height() * src.height();
+    };
+
+    const double gx = imgX(from.x()), gy = imgY(from.y());
+    const double dx = imgX(to.x()) - gx, dy = imgY(to.y()) - gy;
+    if (std::hypot(dx, dy) < 1.0) return false;   // a click, not a drag
+
+    vertical = (std::abs(dy) > std::abs(dx));
+
+    // Distance of the grabbed point from the centre line is the lever the drag
+    // works on, so grabbing near the edge shears gently and grabbing further in
+    // shears harder. On the line itself the lever would vanish and any drag at
+    // all would ask for 90°, so it is held at a minimum: a drag started inside
+    // that band behaves as though it had grabbed at the band's edge, on the side
+    // it did start on.
+    double lever = vertical ? (gx - di.imgW / 2.0) : (gy - di.imgH / 2.0);
+    const double minLever = 0.15 * (vertical ? di.imgW : di.imgH);
+    if (std::abs(lever) < minLever) lever = (lever < 0.0) ? -minLever : minLever;
+
+    angleDeg = std::atan(-(vertical ? dy : dx) / lever) * 180.0 / M_PI;
+    angleDeg = std::clamp(angleDeg, -SHEAR_MAX_DEG, SHEAR_MAX_DEG);
+    return std::abs(angleDeg) >= 0.05;
+}
+
 void FtWindow::deactivateAllP1Tools()
 {
     m_p1EraserActive = false; m_p1BrushActive = false;
-    m_shiftActive = false; m_rotateActive = false;
-    m_p1TaperActive = false; m_p1SymmetrizeActive = false;
+    m_shiftActive = false; m_rotateActive = false; m_shearActive = false;
+    m_p1TaperActive = false; m_p1SymmetrizeActive = false; m_threshActive = false;
     m_binActive = false; m_mathActive = false; m_padActive = false;
     m_copyActive = false; m_averageActive = false;
     m_cropActive = false; m_cropDragging = false; m_cropMoving = false; m_cropHasSelection = false;
-    m_peakPickActive = false; m_extractActive = false;
+    m_peakPickActive = false; m_extractActive = false; m_tileAvgActive = false;
     m_alignActive = false; clearAlignDiagnostics();
-    m_gaborActive = false; m_hessianActive = false;
+    m_gaborActive = false; m_hessianActive = false; m_houghActive = false;
     m_amyloidActive = false; m_amyloidPlacing = 0;
     m_measureActive = false; m_measurePlacing = 0; m_measureHasLine = false;
     m_p1FlipHActive = false; m_p1FlipVActive = false; m_p1InvertActive = false;
@@ -271,6 +327,11 @@ void FtWindow::showP1ToolWidgets()
     m_applyP1TaperBtn->setVisible(m_p1TaperActive);
     m_p1SymmetryEdit->setVisible(m_p1SymmetrizeActive);
     m_applyP1SymmetryBtn->setVisible(m_p1SymmetrizeActive);
+    m_threshModeCombo->setVisible(m_threshActive);
+    m_threshMinEdit->setVisible(m_threshActive);
+    m_threshMaxEdit->setVisible(m_threshActive);
+    m_threshCancelBtn->setVisible(m_threshActive);
+    m_threshComputeBtn->setVisible(m_threshActive);
     m_copySrcCombo->setVisible(m_copyActive);
     m_copyTgtCombo->setVisible(m_copyActive);
     m_copyCancelBtn->setVisible(m_copyActive);
@@ -312,6 +373,11 @@ void FtWindow::showP1ToolWidgets()
     m_extractSizeCombo->setVisible(showExtract);
     m_extractCancelBtn->setVisible(showExtract);
     m_extractComputeBtn->setVisible(showExtract);
+    m_tileAvgSourceCombo->setVisible(m_tileAvgActive);
+    m_tileAvgTargetCombo->setVisible(m_tileAvgActive);
+    m_tileAvgSizeCombo->setVisible(m_tileAvgActive);
+    m_tileAvgCancelBtn->setVisible(m_tileAvgActive);
+    m_tileAvgComputeBtn->setVisible(m_tileAvgActive);
     m_gaborSigmaEdit->setVisible(m_gaborActive);
     m_gaborLambdaEdit->setVisible(m_gaborActive);
     m_gaborThetaEdit->setVisible(m_gaborActive);
@@ -322,6 +388,12 @@ void FtWindow::showP1ToolWidgets()
     m_hessianPolarityEdit->setVisible(m_hessianActive);
     m_hessianCancelBtn->setVisible(m_hessianActive);
     m_hessianComputeBtn->setVisible(m_hessianActive);
+    m_houghSourceCombo->setVisible(m_houghActive);
+    m_houghTargetCombo->setVisible(m_houghActive);
+    m_houghElementCombo->setVisible(m_houghActive);
+    m_houghInverseBtn->setVisible(m_houghActive);
+    m_houghCancelBtn->setVisible(m_houghActive);
+    m_houghComputeBtn->setVisible(m_houghActive);
     m_amyloidRiseEdit->setVisible(m_amyloidActive);
     m_amyloidTwistEdit->setVisible(m_amyloidActive);
     m_amyloidMapCombo->setVisible(m_amyloidActive);
@@ -337,6 +409,10 @@ void FtWindow::showP1ToolWidgets()
     m_measureCancelBtn->setVisible(m_measureActive);
     m_shiftCancelBtn->setVisible(m_shiftActive);
     m_rotateCancelBtn->setVisible(m_rotateActive);
+    m_shearAngleEdit->setVisible(m_shearActive);
+    m_shearAxisCombo->setVisible(m_shearActive);
+    m_shearCancelBtn->setVisible(m_shearActive);
+    m_applyShearBtn->setVisible(m_shearActive);
     m_alignSrcCombo->setVisible(m_alignActive);
     m_alignRefCombo->setVisible(m_alignActive);
     m_alignOutCombo->setVisible(m_alignActive);
@@ -344,6 +420,8 @@ void FtWindow::showP1ToolWidgets()
     m_alignShiftBtn->setVisible(m_alignActive);
     m_alignRotBtn->setVisible(m_alignActive);
     m_alignFullBtn->setVisible(m_alignActive);
+    m_alignTilesBtn->setVisible(m_alignActive);
+    m_alignTileSizeCombo->setVisible(m_alignActive);
 }
 
 void FtWindow::closeP1Function()
@@ -414,6 +492,7 @@ void FtWindow::activateP1Tool(int toolId)
     }
     case 5: { bool was = m_shiftActive; deactivateAllP1Tools(); m_shiftActive = !was; break; }
     case 6: { bool was = m_rotateActive; deactivateAllP1Tools(); m_rotateActive = !was; break; }
+    case 22: { bool was = m_shearActive; deactivateAllP1Tools(); m_shearActive = !was; break; }
     case 7: {
         if (m_image.isNull()) return;
         bool was = m_p1InvertActive;
@@ -423,6 +502,12 @@ void FtWindow::activateP1Tool(int toolId)
         return;
     }
     case 8: { bool was = m_p1TaperActive; deactivateAllP1Tools(); m_p1TaperActive = !was; break; }
+    case 25: {
+        bool was = m_threshActive; deactivateAllP1Tools(); m_threshActive = !was;
+        // Open on whatever the histogram under panel 1 currently has marked.
+        if (m_threshActive) syncThresholdEdits();
+        break;
+    }
     case 9: { bool was = m_p1SymmetrizeActive; deactivateAllP1Tools(); m_p1SymmetrizeActive = !was; break; }
     case 10: { bool was = m_binActive; deactivateAllP1Tools(); m_binActive = !was; break; }
     case 20: {
@@ -455,6 +540,16 @@ void FtWindow::activateP1Tool(int toolId)
     }
     case 12: { bool was = m_gaborActive; deactivateAllP1Tools(); m_gaborActive = !was; break; }
     case 13: { bool was = m_hessianActive; deactivateAllP1Tools(); m_hessianActive = !was; break; }
+    case 23: {
+        bool was = m_houghActive; deactivateAllP1Tools(); m_houghActive = !was;
+        // Both open on the buffer being looked at, so the transform replaces
+        // its own input unless the user points the output somewhere else.
+        if (m_houghActive && m_activeSlot >= 0) {
+            m_houghSourceCombo->setCurrentIndex(m_activeSlot);
+            m_houghTargetCombo->setCurrentIndex(m_activeSlot);
+        }
+        break;
+    }
     case 14: {
         bool was = m_amyloidActive; deactivateAllP1Tools(); m_amyloidActive = !was;
         if (!m_amyloidActive) { m_amyloidPlacing = 0; }
@@ -480,10 +575,24 @@ void FtWindow::activateP1Tool(int toolId)
             m_extractSourceCombo->setCurrentIndex(m_activeSlot);
         break;
     }
+    case 24: {
+        bool was = m_tileAvgActive; deactivateAllP1Tools(); m_tileAvgActive = !was;
+        if (m_tileAvgActive) {
+            if (m_activeSlot >= 0)
+                m_tileAvgSourceCombo->setCurrentIndex(m_activeSlot);
+            // The tile size follows the box size Extract particles last used —
+            // both pulldowns offer the same two sizes, and the two functions are
+            // normally run on the same features.
+            m_tileAvgSizeCombo->setCurrentIndex(m_extractSizeCombo->currentIndex());
+        }
+        break;
+    }
     case 18: {
         bool was = m_alignActive; deactivateAllP1Tools(); m_alignActive = !was;
         if (m_alignActive) {
             m_alignResult.clear();
+            // Same tile size the other two tile functions default to.
+            m_alignTileSizeCombo->setCurrentIndex(m_extractSizeCombo->currentIndex());
             int src = (m_activeSlot >= 0) ? m_activeSlot : 0;
             alignSeedSourceAndOutput(src);
             // The reference is sticky: restore whichever buffer was last used as
@@ -1585,14 +1694,16 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         }
     }
 
-    // Shift/rotate: start drag on panel 1 image
-    if ((m_shiftActive || m_rotateActive) && !m_image.isNull()
+    // Shift/rotate/shear: start drag on panel 1 image
+    if ((m_shiftActive || m_rotateActive || m_shearActive) && !m_image.isNull()
         && !m_p1ToolRect.contains(event->pos())) {
         for (int i = 0; i < m_numDispItems; i++) {
             const DisplayItem &di = m_dispItems[i];
             if (di.valid && di.zoomIdx == 0 && di.screenRect.contains(event->pos())) {
-                storeUndoSnapshot(m_shiftActive ? tr("Shifted image")
-                                                : tr("Rotated image"));
+                // Shear snapshots inside applyShear() instead, so that a drag
+                // too small to shear anything leaves no undo step behind.
+                if (m_shiftActive)       storeUndoSnapshot(tr("Shifted image"));
+                else if (m_rotateActive) storeUndoSnapshot(tr("Rotated image"));
                 m_p1Dragging = true;
                 m_p1DragStart = event->pos();
                 return;
@@ -1602,6 +1713,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
 
     // Pan zoomed panel 1 image (no tool active, zoom > 1)
     if (!m_p1EraserActive && !m_p1BrushActive && !m_shiftActive && !m_rotateActive
+        && !m_shearActive
         && !m_image.isNull() && m_zoom[0].factor > 1.0) {
         for (int i = 0; i < m_numDispItems; i++) {
             const DisplayItem &di = m_dispItems[i];
@@ -1921,6 +2033,9 @@ void FtWindow::mouseReleaseEvent(QMouseEvent *event)
                 case HIST_P1:
                     m_imageDispMin = newMin; m_imageDispMax = newMax;
                     rebuildImageWithLUT();
+                    // The threshold tool works on this very selection, so its
+                    // fields follow it rather than only seeding when it opens.
+                    syncThresholdEdits();
                     break;
                 case HIST_POWER:
                     if (m_displayMode == 2) {
@@ -1950,6 +2065,7 @@ void FtWindow::mouseReleaseEvent(QMouseEvent *event)
                     m_imageDispMin = m_imageMinVal;
                     m_imageDispMax = m_imageMaxVal;
                     rebuildImageWithLUT();
+                    syncThresholdEdits();
                     break;
                 case HIST_POWER:
                     if (m_displayMode == 2) {
@@ -2115,6 +2231,24 @@ void FtWindow::mouseReleaseEvent(QMouseEvent *event)
                           / (double)di.screenRect.width() * src.width();
             double dyPx = (event->pos().y() - m_p1DragStart.y())
                           / (double)di.screenRect.height() * src.height();
+
+            if (m_shearActive) {
+                // Shear runs on the raw pixel values rather than on the 8-bit
+                // display image, so it takes the whole path itself — undo
+                // snapshot, FFT, history slot — and must not fall through to
+                // the extractImageData() below, which would re-derive the raw
+                // values from the quantised image and lose the dynamic range.
+                double angleDeg = 0.0;
+                bool vertical = false;
+                if (shearFromDrag(di, m_p1DragStart, event->pos(), angleDeg, vertical)) {
+                    m_shearAngleEdit->setText(QString::number(angleDeg, 'f', 2));
+                    m_shearAxisCombo->setCurrentIndex(vertical ? 1 : 0);
+                    if (ensureCalcHeadroom(tr("shear the image")))
+                        applyShear(angleDeg, vertical);
+                }
+                update();
+                break;
+            }
 
             if (m_shiftActive) {
                 // Shift with periodic boundary conditions
