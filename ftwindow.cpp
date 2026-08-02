@@ -1150,17 +1150,10 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_houghTargetCombo->hide();
 
     m_houghElementCombo = new QComboBox(this);
-    m_houghElementCombo->addItem("Lines",                                HoughLines);
-    m_houghElementCombo->addItem("Circles, radius 5 px",                 HoughCircles5);
-    m_houghElementCombo->addItem("Circles, radius 10 px",                HoughCircles10);
-    m_houghElementCombo->addItem("Circles, radius 20 px",                HoughCircles20);
-    m_houghElementCombo->addItem("Circles, radius 30 px",                HoughCircles30);
-    m_houghElementCombo->addItem("Circles, radius 40 px",                HoughCircles40);
-    m_houghElementCombo->addItem("Circles, radius 50 px",                HoughCircles50);
-    m_houghElementCombo->addItem("Circles, radius 60 px",                HoughCircles60);
-    m_houghElementCombo->addItem("Circles, all radii 5 - 60 px",         HoughCirclesAll);
-    m_houghElementCombo->addItem("Circles, only strongest radius 5 - 60 px",
-                                                                        HoughCirclesStrongest);
+    m_houghElementCombo->addItem("Lines",                             HoughLines);
+    m_houghElementCombo->addItem("Circles, one radius",               HoughCirclesOne);
+    m_houghElementCombo->addItem("Circles, radii 5,10,20,30,40,50,60", HoughCirclesLadder);
+    m_houghElementCombo->addItem("Circles, find radius automatically", HoughCirclesAuto);
     m_houghElementCombo->setFixedSize(240, 22);
     m_houghElementCombo->setStyleSheet(
         "QComboBox { background:white; color:black; border:1px solid #888;"
@@ -1173,39 +1166,90 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
         "Which geometric element the accumulator votes for. Every option\n"
         "has a two-dimensional parameter space, so the result is an\n"
         "ordinary image:\n"
-        "  Lines     — axes are the line angle θ (0…180° across the width)\n"
-        "              and its signed distance ρ from the image centre\n"
-        "              (down the height). One bright spot per straight\n"
-        "              edge in the image.\n"
-        "  Radius N  — axes are the circle centre, so the result stays in\n"
-        "              register with the input: a bright spot sits where a\n"
-        "              circle of that radius is centred. Pick the radius\n"
-        "              closest to the features you are after; one of the\n"
-        "              wrong size gives a much weaker peak.\n"
-        "  All radii — sums the accumulators for radii 5, 10, 20, 30, 40,\n"
-        "              50 and 60 px, so anything circular shows up and a\n"
-        "              centre that works at several sizes is reinforced.\n"
-        "  Strongest — the same sweep, but each centre keeps only its best\n"
-        "              radius, so differently sized discs stay distinct\n"
-        "              instead of blurring together.\n"
-        "Both sweeps cost seven times a single radius.");
+        "  Lines       — axes are the line angle θ (0…180° across the\n"
+        "                width) and its signed distance ρ from the image\n"
+        "                centre (down the height). One bright spot per\n"
+        "                straight edge in the image.\n"
+        "  One radius  — axes are the circle centre, so the result stays\n"
+        "                in register with the input: a bright spot sits\n"
+        "                where a circle of that radius is centred. The\n"
+        "                slider below sets the radius; one of the wrong\n"
+        "                size gives a much weaker, ring-shaped response.\n"
+        "  Radii 5…60  — sums the accumulators for radii 5, 10, 20, 30,\n"
+        "                40, 50 and 60 px, so anything circular shows up\n"
+        "                whatever its size. Costs seven single radii.\n"
+        "  Find radius — tries every radius from 5 to 60 px, keeps the one\n"
+        "     automatically whose accumulator has the strongest peak\n"
+        "                relative to its own background, reports it in this\n"
+        "                window and applies the transform at that radius\n"
+        "                alone. Use it when you do not know the size of\n"
+        "                your particles; it is the slowest option, being\n"
+        "                fifty-six single radii.");
     m_houghElementCombo->hide();
+    connect(m_houghElementCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [this](int) {
+        // A radius found for one element does not apply to another.
+        m_houghAutoRadius = 0;
+        if (m_houghActive) { showP1ToolWidgets(); update(); }
+    });
+
+    m_houghRadiusSlider = new QSlider(Qt::Horizontal, this);
+    m_houghRadiusSlider->setRange(HOUGH_RMIN, HOUGH_RMAX);
+    m_houghRadiusSlider->setValue(10);
+    m_houghRadiusSlider->setFixedSize(200, 22);
+    m_houghRadiusSlider->setStyleSheet(
+        "QSlider::groove:horizontal { background:#888; height:6px; border-radius:3px; }"
+        "QSlider::handle:horizontal { background:white; border:1px solid #555; width:14px; margin:-5px 0; border-radius:7px; }");
+    m_houghRadiusSlider->setToolTip(
+        "Radius of the circles, in image pixels (5 to 60). Set it to the\n"
+        "radius of the features you are after: the rim of a disc votes one\n"
+        "radius inwards, so a circle of the wrong size produces a ring in\n"
+        "the accumulator instead of a peak.\n"
+        "\n"
+        "Letting go of the handle runs the transform straight away, so the\n"
+        "radius can be found by dragging; each such run replaces the one\n"
+        "before it rather than piling up undo steps. It governs the inverse\n"
+        "direction too, where it is the radius of the circles drawn back\n"
+        "into the image. Used by the \"Circles, one radius\" element.");
+    m_houghRadiusSlider->hide();
+    // Letting go of the handle runs the transform, so the radius can be tried
+    // by dragging rather than by dragging and then reaching for Compute. The
+    // run waits for the release rather than following the handle — a Hough
+    // transform per pixel of travel would be unusable — and a value that
+    // arrives without a drag, from the keyboard or the wheel, is acted on as
+    // soon as it lands, since no release is coming for it.
+    connect(m_houghRadiusSlider, &QSlider::valueChanged, this, [this]() {
+        if (!m_houghActive) return;
+        update();                      // the value shown beside the slider
+        if (!m_houghRadiusSlider->isSliderDown()) houghRadiusPreview();
+    });
+    connect(m_houghRadiusSlider, &QSlider::sliderReleased, this, [this]() {
+        if (m_houghActive) houghRadiusPreview();
+    });
 
     m_houghInverseBtn = new QCheckBox("Inverse Hough transformation", this);
     m_houghInverseBtn->setStyleSheet(checkBoxStyle("#333"));
     m_houghInverseBtn->setToolTip(
-        "Checked: run the line transform backwards. The input buffer is read\n"
-        "as a (θ, ρ) accumulator — the output of a forward Lines transform,\n"
-        "usually after the histogram tools have been used on it to keep only\n"
-        "its peaks — and every cell still standing above the background draws\n"
-        "the line it represents back into the output image. What comes out is\n"
-        "a picture of the lines that survived the filtering, in the original\n"
-        "image's coordinates.\n"
+        "Checked: run the transform backwards. The input buffer is read as an\n"
+        "accumulator — the output of a forward pass, usually after the\n"
+        "histogram tools have been used on it to keep only its peaks — and\n"
+        "every cell still standing above the background draws the shape it\n"
+        "represents back into the output image.\n"
         "\n"
-        "The geometric-element pulldown does not apply while this is ticked:\n"
-        "only the line transform has a parameter space to come back from — a\n"
-        "circle accumulator is already in image coordinates.");
-    connect(m_houghInverseBtn, &QCheckBox::toggled, this, [this](bool) { update(); });
+        "The element pulldown says which shape that is, so it still applies:\n"
+        "  Lines      — a cell is a (θ, ρ) pair, and the line it stands for\n"
+        "               is drawn back in the image's own coordinates.\n"
+        "  Circles    — the accumulator is already in image space, so a cell\n"
+        "               is a centre and a circle of the chosen radius is\n"
+        "               drawn around it, recreating the discs that were\n"
+        "               found. The radius slider still sets the size, and\n"
+        "               keeps whatever it was last used with.\n"
+        "What comes out either way is a picture of just the shapes that\n"
+        "survived the filtering.");
+    connect(m_houghInverseBtn, &QCheckBox::toggled, this, [this](bool) {
+        if (m_houghActive) showP1ToolWidgets();   // the radius row comes and goes
+        update();
+    });
     m_houghInverseBtn->hide();
 
     m_houghCancelBtn = new QPushButton("Cancel", this);
@@ -1750,15 +1794,17 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
         "this level are ignored. Lower the slider to accept more,\n"
         "weaker peaks; raise it to keep only the strongest ones.");
     m_peakThresholdSlider->hide();
-    connect(m_peakThresholdSlider, &QSlider::valueChanged, this, [this]() {
-        if (m_peakPickActive) update();  // just update threshold display
-    });
 
     m_peakExclLabel = new QLabel("Exclusion radius:", this);
     m_peakExclLabel->setStyleSheet("color: #333;");
     m_peakExclLabel->hide();
     m_peakExclRadiusSlider = new QSlider(Qt::Horizontal, this);
-    m_peakExclRadiusSlider->setRange(32, 200);
+    // The floor is 5 px rather than 0: an exclusion zone smaller than a few
+    // pixels no longer separates neighbouring particles but merely trims the
+    // shoulder of a single peak, so one object comes back picked several times
+    // over. Five is small enough for the tiny particles a heavily binned
+    // micrograph leaves behind.
+    m_peakExclRadiusSlider->setRange(5, 200);
     m_peakExclRadiusSlider->setValue(32);
     m_peakExclRadiusSlider->setFixedSize(200, 22);
     m_peakExclRadiusSlider->setStyleSheet(
@@ -1766,13 +1812,30 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
         "QSlider::handle:horizontal { background:white; border:1px solid #555; width:14px; margin:-5px 0; border-radius:7px; }");
     m_peakExclRadiusSlider->setToolTip(
         "Minimum centre-to-centre distance between two accepted peaks,\n"
-        "in image pixels. When two candidate peaks are closer than\n"
-        "this radius, only the stronger one is kept. Set this to a\n"
-        "bit more than the particle radius to avoid double-picking.");
+        "in image pixels (5 to 200). When two candidate peaks are\n"
+        "closer than this radius, only the stronger one is kept. Set\n"
+        "this to a bit more than the particle radius to avoid\n"
+        "double-picking.");
     m_peakExclRadiusSlider->hide();
-    connect(m_peakExclRadiusSlider, &QSlider::valueChanged, this, [this]() {
-        if (m_peakPickActive) update();
-    });
+
+    // Both sliders re-run the search by themselves: they exist to be tried, and
+    // reaching for Compute after every nudge only gets in the way. The search
+    // runs when the handle is let go rather than on every value a drag sweeps
+    // through, so one pass over the image is made per drag and not a hundred.
+    // A value that arrives without a drag — from the keyboard, the wheel, or a
+    // click on the groove — is acted on as soon as it lands, since no release
+    // is coming for it. Only one of the two paths can fire for any one change,
+    // because sliderReleased is only ever emitted after the handle was pressed.
+    for (QSlider *s : { m_peakThresholdSlider, m_peakExclRadiusSlider }) {
+        connect(s, &QSlider::valueChanged, this, [this, s]() {
+            if (!m_peakPickActive) return;
+            update();                       // the value shown beside the slider
+            if (!s->isSliderDown()) onPeakCompute();
+        });
+        connect(s, &QSlider::sliderReleased, this, [this]() {
+            if (m_peakPickActive) onPeakCompute();
+        });
+    }
 
     m_peakCancelBtn = new QPushButton("Cancel", this);
     m_peakCancelBtn->setFixedSize(80, 26);
@@ -2614,7 +2677,6 @@ void FtWindow::resizeEvent(QResizeEvent *)
         m_houghTargetCombo->setFixedSize(static_cast<int>(70 * sc), editH);
         m_houghTargetCombo->setStyleSheet(hSS);
     }
-    m_houghInverseBtn->setStyleSheet(cbSS);
     m_houghElementCombo->setFixedSize(static_cast<int>(240 * sc), editH);
     m_houghElementCombo->setStyleSheet(QString(
         "QComboBox { background:white; color:black; border:1px solid #888;"
@@ -2623,6 +2685,8 @@ void FtWindow::resizeEvent(QResizeEvent *)
         "QComboBox QAbstractItemView { background:white; color:black;"
         "  selection-background-color:#ccc; min-width: 160px; padding: 4px;"
         "  font-size: %1px; }").arg(fontSize).arg(static_cast<int>(20 * sc)));
+    m_houghRadiusSlider->setFixedSize(static_cast<int>(200 * sc), editH);
+    m_houghInverseBtn->setStyleSheet(cbSS);
     m_houghCancelBtn->setFixedSize(static_cast<int>(80 * sc), btnH);
     m_houghCancelBtn->setStyleSheet(btnSS);
     m_houghComputeBtn->setFixedSize(static_cast<int>(80 * sc), btnH);

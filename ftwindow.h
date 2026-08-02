@@ -799,6 +799,19 @@ private:
     // us that made the switch (so we don't yank a user's own fullscreen away).
     Qt::WindowStates m_maxPrevWindowState = Qt::WindowNoState;
     bool        m_maxDidFullScreen = false;
+    // Make buffer `slot` the displayed one, saving whatever is on screen back
+    // to its own slot first. Shared by clicking a history thumbnail and by the
+    // arrow keys in the maximized view.
+    void        activateHistorySlot(int slot);
+    // Step the maximized view to the next buffer holding an image, wrapping
+    // round; `dir` is +1 or -1. False when there is nowhere else to go.
+    bool        stepToAdjacentBuffer(int dir);
+    // Show the current buffer's letter over the maximized image for a second —
+    // long enough to see where an arrow key has landed, short enough not to sit
+    // on the picture. -1 when nothing is being shown.
+    void        flashMaximizedSlotLetter();
+    int         m_maxSlotFlash = -1;
+    QTimer     *m_maxSlotFlashTimer = nullptr;
     // Click targets for the maximize icons, below each Zoom/Pan overlay.
     // Repopulated every paintEvent; null while the view is maximized.
     QRect       m_p1MaxRect;
@@ -924,26 +937,36 @@ private:
     // computation. Every element has a two-dimensional parameter space, which is
     // what lets the result be shown as an ordinary image in the same buffer.
     enum HoughElement {
-        HoughLines = 0,     // (theta, rho) — the classic line transform
-        HoughCircles5,      // circle centres, fixed radius 5 px
-        HoughCircles10,     // …10 px
-        HoughCircles20,     // …20 px
-        HoughCircles30,     // …30 px
-        HoughCircles40,     // …40 px
-        HoughCircles50,     // …50 px
-        HoughCircles60,     // …60 px
-        // Both sweep radii 5–60 px and differ only in how the per-radius
-        // accumulators are folded together: All sums them, so a centre that
-        // works at several radii is reinforced and everything circular shows up;
-        // Strongest keeps the largest, so each centre is scored by the one
-        // radius that actually fits it and the sizes do not blur together.
-        HoughCirclesAll,
-        HoughCirclesStrongest,
+        HoughLines = 0,      // (theta, rho) — the classic line transform
+        HoughCirclesOne,     // circle centres at the one radius the slider picks
+        HoughCirclesLadder,  // 5,10,20,30,40,50,60 px, summed into one map
+        HoughCirclesAuto,    // every radius 5…60 tried, the best one applied
     };
+    static constexpr int HOUGH_RMIN = 5;    // ends of the radius range, shared by
+    static constexpr int HOUGH_RMAX = 60;   // the slider and the automatic sweep
     bool        m_houghActive = false;
     QComboBox  *m_houghSourceCombo  = nullptr;
     QComboBox  *m_houghTargetCombo  = nullptr;
     QComboBox  *m_houghElementCombo = nullptr;
+    QSlider    *m_houghRadiusSlider = nullptr;
+    // Radius the automatic search settled on, in pixels; 0 until it has run.
+    // Shown in the parameter window so the size it found is not left implicit.
+    int         m_houghAutoRadius = 0;
+    // True while the radius slider has any bearing on what Compute will do —
+    // that is, for the single-radius element with the inverse switched off.
+    bool        houghShowsRadiusSlider() const;
+    // Run the transform because the radius slider was let go. Each such run
+    // replaces the one before it rather than stacking on top: both buffer
+    // pulldowns open on the same slot, so a second run would otherwise read
+    // back the accumulator the first one just wrote and transform that instead
+    // of the image. Undoing the previous preview first puts the original back
+    // underneath, which is what makes dragging the slider a preview rather than
+    // a cascade — and leaves one undo step for a whole exploration, not thirty.
+    void        houghRadiusPreview();
+    // Undo-stack depth just after such a preview, or -1 when there is none of
+    // ours to replace. Anything else the user does moves the stack off this
+    // depth, and that preview is then left alone rather than swallowed.
+    int         m_houghPreviewUndoDepth = -1;
     // Run the line transform backwards instead: read the input buffer as a
     // (theta, rho) accumulator and draw the line each of its cells stands for,
     // which turns a filtered accumulator back into a picture of just the lines
