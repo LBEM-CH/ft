@@ -168,6 +168,7 @@ QString FtWindow::toolExerciseAnchor(bool panel2) const
     if (m_peakPickActive || m_extractActive)                    return "exercise-9";
     if (m_amyloidActive)                                        return "exercise-10";
     if (m_alignActive)                                          return "exercise-11";
+    if (m_houghActive)                                          return "exercise-14";
     return QString();
 }
 
