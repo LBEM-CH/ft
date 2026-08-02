@@ -1080,8 +1080,9 @@ void FtWindow::refreshFullscreenButtonFromBrowser()
 
 void FtWindow::updateFullscreenButton(bool isFullscreen)
 {
+    // The label names where the button leads, not where you are.
     if (m_fullscreenBtn)
-        m_fullscreenBtn->setText(isFullscreen ? "Leave fullscreen" : "Go fullscreen");
+        m_fullscreenBtn->setText(isFullscreen ? "Window" : "Fullscreen");
 }
 
 void FtWindow::handleBrowserFullscreenChange(bool isFullscreen)
@@ -4455,6 +4456,131 @@ void FtWindow::onApplyEdgeTaperImpl()
     });
 }
 
+// ---------------------------------------------------------------------------
+//  User level
+// ---------------------------------------------------------------------------
+// Unlike the fullscreen toggle beside it, this label names the level you are
+// on rather than the one the button switches to.
+QString FtWindow::userLevelLabel() const
+{
+    return m_advancedLevel ? QStringLiteral("Advanced") : QStringLiteral("Basic");
+}
+
+void FtWindow::onToggleUserLevel()
+{
+    m_advancedLevel = !m_advancedLevel;
+    m_userLevelBtn->setText(userLevelLabel());
+
+    // A function that has just been hidden must not be left running with its
+    // parameter window still on screen.
+    if (!m_advancedLevel) {
+        if (m_gaborActive || m_hessianActive || m_houghActive || m_amyloidActive
+            || m_peakPickActive || m_extractActive || m_tileAvgActive || m_alignActive)
+            closeP1Function();
+        if (m_ctfActive || m_ctfFitActive)
+            closeP2Function();
+    }
+
+    // Group indices shift as groups come and go, so an open or previewed menu
+    // would now point at the wrong one.
+    m_openMenuPanel  = 0; m_openMenuGroup  = -1;
+    m_hoverMenuPanel = 0; m_hoverMenuGroup = -1;
+
+    buildToolGroups();
+
+#ifndef __EMSCRIPTEN__
+    QSettings settings("ft", "ft");
+    settings.setValue("userLevelAdvanced", m_advancedLevel);
+#endif
+    update();
+}
+
+// ---------------------------------------------------------------------------
+//  Threshold / truncate against the panel-1 histogram selection
+// ---------------------------------------------------------------------------
+void FtWindow::syncThresholdEdits()
+{
+    if (!m_threshMinEdit || !m_threshMaxEdit) return;
+    m_threshMinEdit->setText(QString::number(m_imageDispMin, 'g', 6));
+    m_threshMaxEdit->setText(QString::number(m_imageDispMax, 'g', 6));
+}
+
+void FtWindow::onThresholdCancel()
+{
+    m_threshActive = false;
+    m_threshModeCombo->hide();
+    m_threshMinEdit->hide();
+    m_threshMaxEdit->hide();
+    m_threshCancelBtn->hide();
+    m_threshComputeBtn->hide();
+    update();
+}
+
+void FtWindow::onApplyThreshold()
+{
+    if (!ensureCalcHeadroom(tr("threshold the image"))) return;
+    onApplyThresholdImpl();
+}
+
+// Everything inside the kept range is left exactly as it was; only the pixels
+// outside it move, and the mode says where to. Thresholding sends them out to
+// the image's own extremes, which saturates them to full black and full white
+// without touching the range in between; truncating clips them to the range's
+// own ends, so no value outside it survives at all; selecting sends both sides
+// down to the image's minimum, leaving only the chosen band of density standing
+// against a flat background.
+void FtWindow::onApplyThresholdImpl()
+{
+    if (m_image.isNull()) return;
+    const int w = m_image.width(), h = m_image.height();
+    if ((int)m_imageRawPixels.size() != w * h) return;
+
+    bool okLo = false, okHi = false;
+    double lo = m_threshMinEdit->text().toDouble(&okLo);
+    double hi = m_threshMaxEdit->text().toDouble(&okHi);
+    if (!okLo || !okHi) return;
+    if (lo > hi) std::swap(lo, hi);
+
+    // Read the image's extremes before the pixels change — rebuilding from the
+    // raw values below recomputes them, and two of the three modes need the old
+    // ones. Each mode is just a different pair of replacement values.
+    const int mode = m_threshModeCombo->currentData().toInt();
+    double below = m_imageMinVal, above = m_imageMaxVal;   // ThresholdToImageRange
+    QString opName = tr("Thresholded histogram");
+    if (mode == TruncateToRange) {
+        below = lo;  above = hi;
+        opName = tr("Truncated histogram");
+    } else if (mode == SelectRange) {
+        below = above = m_imageMinVal;
+        opName = tr("Selected histogram range");
+    }
+
+    storeUndoSnapshot(opName);
+
+    for (double &v : m_imageRawPixels) {
+        if (v < lo)      v = below;
+        else if (v > hi) v = above;
+    }
+
+    rebuildImageFromRaw();
+    if (m_ftComputed) computeFFT();
+
+    // Same buffer in, same buffer out: the history slot is rewritten in place.
+    if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS) {
+        m_history[m_activeSlot].image     = m_image;
+        m_history[m_activeSlot].rawPixels = m_imageRawPixels;
+        m_history[m_activeSlot].minVal    = m_imageMinVal;
+        m_history[m_activeSlot].maxVal    = m_imageMaxVal;
+        m_history[m_activeSlot].pixelSize = m_pixelSize;
+        m_history[m_activeSlot].occupied  = true;
+        if (m_ftComputed)
+            m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
+    }
+
+    saveHistory();
+    update();
+}
+
 void FtWindow::onApplySymmetry()
 {
     if (!ensureCalcHeadroom(tr("apply the symmetry"))) return;
@@ -4557,6 +4683,96 @@ void FtWindow::onApplySymmetryImpl()
     });
 
     chainSteps(std::move(steps));
+}
+
+// ---------------------------------------------------------------------------
+//  Shear
+// ---------------------------------------------------------------------------
+void FtWindow::onApplyShear()
+{
+    if (!ensureCalcHeadroom(tr("shear the image"))) return;
+    onApplyShearImpl();
+}
+
+void FtWindow::onApplyShearImpl()
+{
+    bool ok = false;
+    double angleDeg = m_shearAngleEdit->text().toDouble(&ok);
+    if (!ok) return;
+    applyShear(angleDeg, m_shearAxisCombo->currentData().toInt() != 0);
+}
+
+// Skew the image about its centre. A horizontal shear slides row y sideways by
+// tan(a)·(y − cy), so vertical lines take on the tilt `angleDeg` while
+// horizontal ones are left alone; a vertical shear is the same with the axes
+// swapped. The image keeps its dimensions, so a strong shear pushes part of the
+// picture out of the frame — pad first if that matters.
+void FtWindow::applyShear(double angleDeg, bool vertical)
+{
+    if (m_image.isNull()) return;
+
+    const int w = m_image.width(), h = m_image.height();
+    if ((int)m_imageRawPixels.size() != w * h) return;
+
+    angleDeg = std::clamp(angleDeg, -SHEAR_MAX_DEG, SHEAR_MAX_DEG);
+    if (std::abs(angleDeg) < 1e-4) return;    // nothing to do
+    // Report back what was actually applied, so a clamped or mistyped angle does
+    // not leave the field claiming something the image never got.
+    m_shearAngleEdit->setText(QString::number(angleDeg, 'f', 2));
+
+    storeUndoSnapshot(tr("Sheared"));
+
+    // Samples pulled in from outside the frame get the image mean, as rotate and
+    // symmetrize do: a mid-grey wedge leaks far less into the Fourier transform
+    // than a hard black one.
+    double meanVal = 0.0;
+    for (double v : m_imageRawPixels) meanVal += v;
+    meanVal /= static_cast<double>(w * h);
+
+    const std::vector<double> src = m_imageRawPixels;
+    std::vector<double> dst(static_cast<size_t>(w) * h, meanVal);
+    const double t  = std::tan(angleDeg * M_PI / 180.0);
+    const double cx = w / 2, cy = h / 2;   // same centre convention as Symmetrize
+
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            // Inverse of the forward map, so each output pixel fetches its own
+            // source rather than scattering into a target it may miss.
+            const double sx = vertical ? x : x + t * (y - cy);
+            const double sy = vertical ? y + t * (x - cx) : y;
+            const int x0 = static_cast<int>(std::floor(sx));
+            const int y0 = static_cast<int>(std::floor(sy));
+            if (x0 < 0 || x0 >= w - 1 || y0 < 0 || y0 >= h - 1)
+                continue;                      // outside: keep the mean fill
+            const double fx = sx - x0, fy = sy - y0;
+            const double *q = src.data() + static_cast<size_t>(y0) * w + x0;
+            dst[static_cast<size_t>(y) * w + x] =
+                  (1.0 - fx) * (1.0 - fy) * q[0]
+                +        fx  * (1.0 - fy) * q[1]
+                + (1.0 - fx) *        fy  * q[w]
+                +        fx  *        fy  * q[w + 1];
+        }
+    }
+
+    m_imageRawPixels = std::move(dst);
+    rebuildImageFromRaw();
+    if (m_ftComputed) computeFFT();
+
+    // The sheared image replaces the one it came from: same buffer, so the
+    // history slot and its thumbnail are rewritten in place.
+    if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS) {
+        m_history[m_activeSlot].image     = m_image;
+        m_history[m_activeSlot].rawPixels = m_imageRawPixels;
+        m_history[m_activeSlot].minVal    = m_imageMinVal;
+        m_history[m_activeSlot].maxVal    = m_imageMaxVal;
+        m_history[m_activeSlot].pixelSize = m_pixelSize;
+        m_history[m_activeSlot].occupied  = true;
+        if (m_ftComputed)
+            m_history[m_activeSlot].powerSpecImg = computePowerSpecMasked(m_image);
+    }
+
+    saveHistory();
+    update();
 }
 
 void FtWindow::onApplyFtSymmetry()
@@ -4936,6 +5152,475 @@ void FtWindow::onApplyHessianFilterImpl()
     });
 }
 
+// ---------------------------------------------------------------------------
+//  Hough transform
+// ---------------------------------------------------------------------------
+namespace {
+
+// Edge pixels the accumulator votes from: position plus the direction the
+// brightness gradient points in, which is what lets the circle transform vote
+// only towards plausible centres instead of around a whole circle per pixel.
+struct HoughEdges {
+    std::vector<float> x, y;
+    std::vector<float> cosDir, sinDir;
+    size_t size() const { return x.size(); }
+};
+
+// Angular resolution of the line accumulator: 0…180° in half-degree steps. The
+// inverse transform reads it too, so that the angle a column of the result
+// stands for is exactly the angle the forward pass put there.
+constexpr int kHoughNTheta = 360;
+
+// The line a cell of the accumulator stands for, in the image the accumulator
+// was made from. Column x carries the angle, row y the signed distance of the
+// line from the image centre; the mapping is the exact inverse of the resample
+// at the end of the forward pass.
+inline void houghLineFromCell(double cellX, double cellY, int w, int h,
+                              double &theta, double &rho)
+{
+    const double sx = (w > 1) ? (cellX * (kHoughNTheta - 1.0) / (w - 1)) : 0.0;
+    theta = M_PI * sx / kHoughNTheta;
+    const double rhoMax = 0.5 * std::hypot((double)w, (double)h);
+    rho = (h > 1) ? rhoMax * (2.0 * cellY / (h - 1) - 1.0) : 0.0;
+}
+
+// One accumulator cell worth drawing back, and how strongly.
+struct HoughCell { float x, y, weight; };
+
+// Spread one vote over the four accumulator bins around (fx, fy), so a peak
+// grows smoothly instead of splitting across a bin boundary.
+inline void houghSplat(std::vector<double> &acc, int w, int h,
+                       double fx, double fy, double weight)
+{
+    const int x0 = static_cast<int>(std::floor(fx));
+    const int y0 = static_cast<int>(std::floor(fy));
+    const double tx = fx - x0, ty = fy - y0;
+    for (int dy = 0; dy <= 1; dy++) {
+        const int yy = y0 + dy;
+        if (yy < 0 || yy >= h) continue;
+        const double wy = dy ? ty : (1.0 - ty);
+        for (int dx = 0; dx <= 1; dx++) {
+            const int xx = x0 + dx;
+            if (xx < 0 || xx >= w) continue;
+            acc[static_cast<size_t>(yy) * w + xx] += weight * wy * (dx ? tx : (1.0 - tx));
+        }
+    }
+}
+
+} // namespace
+
+void FtWindow::onHoughCancel()
+{
+    m_houghActive = false;
+    m_houghSourceCombo->hide();
+    m_houghTargetCombo->hide();
+    m_houghElementCombo->hide();
+    m_houghCancelBtn->hide();
+    m_houghComputeBtn->hide();
+    update();
+}
+
+void FtWindow::onApplyHoughFilter()
+{
+    if (!ensureCalcHeadroom(tr("compute the Hough transform"))) return;
+    onApplyHoughFilterImpl();
+}
+
+// Every element the pulldown offers has a two-dimensional parameter space, and
+// the accumulator over that space is written back as the image itself: same
+// buffer, same dimensions, so the result can be inspected, Fourier transformed
+// and undone like any other image. For circles the parameter space *is* image
+// space (the centre), so the accumulator stays in register with the input; for
+// lines it is (theta, rho), voted at a fixed angular resolution and then
+// resampled to the image dimensions so the buffer geometry does not change.
+void FtWindow::onApplyHoughFilterImpl()
+{
+    const int srcIdx = m_houghSourceCombo->currentIndex();
+    const int tgtIdx = m_houghTargetCombo->currentIndex();
+    if (srcIdx < 0 || srcIdx >= HISTORY_SLOTS) return;
+    if (tgtIdx < 0 || tgtIdx >= HISTORY_SLOTS) return;
+
+    // Takes the live pixels when the input is the buffer on display, so unsaved
+    // edits are transformed too.
+    int w = 0, h = 0;
+    auto srcPix = std::make_shared<std::vector<double>>(alignSlotPixels(srcIdx, w, h));
+    if (srcPix->empty() || w < 3 || h < 3) return;
+
+    const int element = m_houghElementCombo->currentData().toInt();
+    const double srcPixelSize = alignSlotPixelSize(srcIdx);
+    const bool srcPixelAssumed = alignSlotPixelSizeAssumed(srcIdx);
+    const bool hadFT = m_ftComputed;
+    const QString opName = m_houghInverseBtn->isChecked() ? tr("Inverse Hough transform")
+                                                          : tr("Hough transform");
+
+    storeUndoSnapshot(opName);
+
+    m_toolProgress = 0.05;
+    update();
+
+    auto edges = std::make_shared<HoughEdges>();
+    auto acc   = std::make_shared<std::vector<double>>();
+
+    std::vector<std::function<void()>> steps;
+
+    // ---- The inverse: an accumulator back into a picture of its lines -------
+    // Read the input as a (theta, rho) accumulator and draw, for every cell that
+    // still stands above the background, the line that cell represents. Run on
+    // a raw accumulator this is the usual smeared back-projection; run on one
+    // whose peaks have been isolated with the histogram tools — which is what it
+    // is for — it redraws exactly the lines that survived, and nothing else.
+    if (m_houghInverseBtn->isChecked()) {
+        auto cells = std::make_shared<std::vector<HoughCell>>();
+
+        // Which cells to draw. Everything sitting at the image minimum is
+        // background: a filtered accumulator is mostly that, and those cells
+        // stand for no line at all. If more survive than can be drawn in
+        // reasonable time the strongest are kept, found through a histogram so
+        // that nothing has to be sorted.
+        steps.push_back([this, srcPix, cells, w, h]() {
+            const std::vector<double> &a = *srcPix;
+            double mn = a[0], mx = a[0];
+            for (double v : a) { mn = std::min(mn, v); mx = std::max(mx, v); }
+            cells->clear();
+            if (mx <= mn) { m_toolProgress = 0.15; return; }   // flat: no lines
+
+            constexpr size_t CAP = 20000;
+            constexpr int    NB  = 1024;
+            std::vector<size_t> hist(NB, 0);
+            const double scale = (NB - 1) / (mx - mn);
+            for (double v : a) hist[static_cast<int>((v - mn) * scale)]++;
+
+            size_t cum = 0;
+            int cut = 1;
+            for (int b = NB - 1; b >= 1; b--) {   // bin 0 is the background floor
+                cum += hist[b];
+                cut = b;
+                if (cum >= CAP) break;
+            }
+            const double thresh = mn + cut / scale;
+
+            cells->reserve(std::min(cum, CAP));
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++) {
+                    const double v = a[static_cast<size_t>(y) * w + x];
+                    if (v <= mn || v < thresh) continue;
+                    cells->push_back({ static_cast<float>(x), static_cast<float>(y),
+                                       static_cast<float>(v - mn) });
+                }
+            m_toolProgress = 0.15;
+        });
+
+        // Draw them. Stepping half a pixel along each line and splatting
+        // bilinearly leaves a smooth trace whatever its angle; the half-step is
+        // paid back in the weight so a line deposits the same total either way.
+        constexpr int kDrawChunks = 12;
+        for (int chunk = 0; chunk < kDrawChunks; chunk++) {
+            steps.push_back([this, cells, acc, w, h, chunk]() {
+                if (chunk == 0) acc->assign(static_cast<size_t>(w) * h, 0.0);
+                const double cx = w / 2.0, cy = h / 2.0;
+                const double tMax = 0.5 * std::hypot((double)w, (double)h) + 2.0;
+                const size_t n = cells->size();
+                const size_t c0 = n * chunk / kDrawChunks;
+                const size_t c1 = n * (chunk + 1) / kDrawChunks;
+                for (size_t i = c0; i < c1; i++) {
+                    const HoughCell &c = (*cells)[i];
+                    double theta = 0.0, rho = 0.0;
+                    houghLineFromCell(c.x, c.y, w, h, theta, rho);
+                    const double ct = std::cos(theta), st = std::sin(theta);
+                    // Foot of the perpendicular from the image centre, then
+                    // along the line in both directions.
+                    const double px = cx + rho * ct, py = cy + rho * st;
+                    for (double t = -tMax; t <= tMax; t += 0.5) {
+                        const double X = px - st * t, Y = py + ct * t;
+                        if (X < 0.0 || Y < 0.0 || X > w - 1.0 || Y > h - 1.0) continue;
+                        houghSplat(*acc, w, h, X, Y, c.weight * 0.5);
+                    }
+                }
+                m_toolProgress = 0.15 + 0.75 * (chunk + 1) / kDrawChunks;
+            });
+        }
+    } else {
+
+    // ---- 1. Edge points -----------------------------------------------------
+    // A Hough transform votes from edges, not from raw intensities, so the image
+    // is first run through a Sobel operator and only the strongest gradients are
+    // kept. The threshold is picked from a histogram of the magnitudes rather
+    // than being a fixed number, so it adapts to the image's own contrast; the
+    // list is also capped, because the line transform costs one pass over the
+    // angle axis per edge point and a large image would otherwise stall.
+    steps.push_back([this, edges, srcPix, w, h]() {
+        const std::vector<double> &s = *srcPix;
+        auto S = [&](int x, int y) -> double {
+            x = std::clamp(x, 0, w - 1);
+            y = std::clamp(y, 0, h - 1);
+            return s[static_cast<size_t>(y) * w + x];
+        };
+        // Sobel at one pixel, with the image edge clamped rather than wrapped.
+        auto sobel = [&](int x, int y, double &dX, double &dY) {
+            dX = -S(x - 1, y - 1) - 2.0 * S(x - 1, y) - S(x - 1, y + 1)
+                 +S(x + 1, y - 1) + 2.0 * S(x + 1, y) + S(x + 1, y + 1);
+            dY = -S(x - 1, y - 1) - 2.0 * S(x, y - 1) - S(x + 1, y - 1)
+                 +S(x - 1, y + 1) + 2.0 * S(x, y + 1) + S(x + 1, y + 1);
+        };
+
+        // Only the magnitudes are stored — one float buffer rather than three.
+        // The gradient direction is wanted at the few pixels that survive the
+        // threshold, and recomputing the Sobel there costs far less than the two
+        // extra full-size buffers holding it for every pixel would.
+        std::vector<float> mag(static_cast<size_t>(w) * h, 0.0f);
+        double maxMag = 0.0;
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                double dX, dY;
+                sobel(x, y, dX, dY);
+                const double m = std::hypot(dX, dY);
+                mag[static_cast<size_t>(y) * w + x] = static_cast<float>(m);
+                if (m > maxMag) maxMag = m;
+            }
+        }
+        if (maxMag <= 0.0) return;    // featureless image: no edges to vote from
+
+        // Keep the top decile of gradient magnitudes, but never more points than
+        // the cap. Counting into a coarse histogram and walking down from the
+        // top bin finds that cut without sorting the whole image.
+        constexpr int    NBINS   = 1024;
+        constexpr size_t MAX_PTS = 250000;
+        std::vector<size_t> hist(NBINS, 0);
+        const double binScale = (NBINS - 1) / maxMag;
+        for (float m : mag) hist[static_cast<int>(m * binScale)]++;
+
+        const size_t want = std::max<size_t>(1,
+                                std::min(MAX_PTS, static_cast<size_t>(w) * h / 10));
+        size_t cum = 0;
+        int cutBin = NBINS - 1;
+        for (int b = NBINS - 1; b > 0; b--) {
+            cum += hist[b];
+            cutBin = b;
+            if (cum >= want) break;
+        }
+        const double thresh = cutBin / binScale;
+
+        edges->x.reserve(cum);
+        edges->y.reserve(cum);
+        edges->cosDir.reserve(cum);
+        edges->sinDir.reserve(cum);
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                const double m = mag[static_cast<size_t>(y) * w + x];
+                if (m < thresh || m <= 0.0) continue;
+                double dX, dY;
+                sobel(x, y, dX, dY);
+                edges->x.push_back(static_cast<float>(x));
+                edges->y.push_back(static_cast<float>(y));
+                edges->cosDir.push_back(static_cast<float>(dX / m));
+                edges->sinDir.push_back(static_cast<float>(dY / m));
+            }
+        }
+        m_toolProgress = 0.25;
+    });
+
+    // ---- 2. Accumulate ------------------------------------------------------
+    if (element == HoughLines) {
+        // Classic (theta, rho) transform. Every edge point is a sinusoid in the
+        // accumulator; where several sinusoids cross, their edge points share a
+        // line. Theta is voted at half-degree steps regardless of image size —
+        // finer than that buys nothing and costs one pass per edge point — and
+        // rho is measured from the image centre so the axis stays symmetric.
+        steps.push_back([this, edges, acc, w, h]() {
+            constexpr int NTHETA = kHoughNTheta;         // 0…180° in 0.5° steps
+            const int nRho = std::clamp(h, 64, 1024);
+            const double rhoMax = 0.5 * std::hypot((double)w, (double)h);
+            std::vector<double> a(static_cast<size_t>(NTHETA) * nRho, 0.0);
+
+            std::vector<double> cs(NTHETA), sn(NTHETA);
+            for (int t = 0; t < NTHETA; t++) {
+                const double th = M_PI * t / NTHETA;
+                cs[t] = std::cos(th);
+                sn[t] = std::sin(th);
+            }
+
+            const double cx = w / 2.0, cy = h / 2.0;
+            const double rhoScale = (nRho - 1) / (2.0 * rhoMax);
+            for (size_t e = 0; e < edges->size(); e++) {
+                const double dx = edges->x[e] - cx, dy = edges->y[e] - cy;
+                for (int t = 0; t < NTHETA; t++) {
+                    const double rho = dx * cs[t] + dy * sn[t];
+                    houghSplat(a, NTHETA, nRho, t,
+                               (rho + rhoMax) * rhoScale, 1.0);
+                }
+            }
+
+            // Resample the accumulator onto the image grid: theta across the
+            // width, rho down the height, so the buffer keeps its dimensions.
+            acc->assign(static_cast<size_t>(w) * h, 0.0);
+            for (int y = 0; y < h; y++) {
+                const double sy = (h > 1) ? (y * (nRho - 1.0) / (h - 1)) : 0.0;
+                const int y0 = std::min((int)sy, nRho - 2 >= 0 ? nRho - 2 : 0);
+                const double fy = sy - y0;
+                for (int x = 0; x < w; x++) {
+                    const double sx = (w > 1) ? (x * (NTHETA - 1.0) / (w - 1)) : 0.0;
+                    const int x0 = std::min((int)sx, NTHETA - 2);
+                    const double fx = sx - x0;
+                    const double *q = a.data() + static_cast<size_t>(y0) * NTHETA + x0;
+                    (*acc)[static_cast<size_t>(y) * w + x] =
+                          (1.0 - fx) * (1.0 - fy) * q[0]
+                        +        fx  * (1.0 - fy) * q[1]
+                        + (1.0 - fx) *        fy  * q[NTHETA]
+                        +        fx  *        fy  * q[NTHETA + 1];
+                }
+            }
+            m_toolProgress = 0.9;
+        });
+    } else {
+        // Circle transform. The centre of a circle through an edge point lies
+        // one radius away along the brightness gradient — towards the bright
+        // side for a bright disc, away from it for a dark one, so both signs are
+        // voted. The votes are spread over a small arc because a noisy gradient
+        // direction is the main thing that blurs this transform.
+        // A single radius for the fixed options; the whole ladder for the two
+        // sweeps, which differ only in how their per-radius accumulators are
+        // folded together below.
+        std::vector<int> radii;
+        switch (element) {
+        case HoughCircles5:  radii = {  5 }; break;
+        case HoughCircles20: radii = { 20 }; break;
+        case HoughCircles30: radii = { 30 }; break;
+        case HoughCircles40: radii = { 40 }; break;
+        case HoughCircles50: radii = { 50 }; break;
+        case HoughCircles60: radii = { 60 }; break;
+        case HoughCirclesAll:
+        case HoughCirclesStrongest:
+            radii = { 5, 10, 20, 30, 40, 50, 60 }; break;
+        case HoughCircles10:
+        default:             radii = { 10 }; break;
+        }
+        const size_t nR = radii.size();
+        const bool sumRadii = (element == HoughCirclesAll);
+        // A sweep needs somewhere to build each radius before folding it into
+        // the running best; a single radius votes straight into the result and
+        // is spared the second full-size buffer.
+        auto scratch = std::make_shared<std::vector<double>>();
+        for (size_t k = 0; k < nR; k++) {
+            const int radius = radii[k];
+            steps.push_back([this, edges, acc, scratch, w, h, radius, k, nR, sumRadii]() {
+                const size_t n = static_cast<size_t>(w) * h;
+                if (k == 0) acc->assign(n, 0.0);
+                std::vector<double> &a = (nR == 1) ? *acc : *scratch;
+                if (nR > 1) a.assign(n, 0.0);
+
+                constexpr int ARC  = 3;                    // ±3 samples…
+                const double  STEP = 4.0 * M_PI / 180.0;   // …4° apart
+                const double  wgt  = 1.0 / (2 * ARC + 1);
+                for (size_t e = 0; e < edges->size(); e++) {
+                    const double ex = edges->x[e], ey = edges->y[e];
+                    const double cd = edges->cosDir[e], sd = edges->sinDir[e];
+                    for (int s = -ARC; s <= ARC; s++) {
+                        const double ca = std::cos(s * STEP), sa = std::sin(s * STEP);
+                        // Rotate the gradient direction by s·STEP.
+                        const double rx = cd * ca - sd * sa;
+                        const double ry = sd * ca + cd * sa;
+                        houghSplat(a, w, h, ex + radius * rx, ey + radius * ry, wgt);
+                        houghSplat(a, w, h, ex - radius * rx, ey - radius * ry, wgt);
+                    }
+                }
+
+                // Fold this radius into the running result. Summing lets every
+                // radius contribute, so anything circular appears and a centre
+                // that works at several sizes is reinforced; taking the maximum
+                // scores each centre by the one radius that actually fits it,
+                // which keeps discs of different sizes from blurring together.
+                if (nR > 1) {
+                    if (sumRadii) for (size_t i = 0; i < n; i++) (*acc)[i] += a[i];
+                    else          for (size_t i = 0; i < n; i++)
+                                      (*acc)[i] = std::max((*acc)[i], a[i]);
+                    if (k + 1 == nR) scratch->clear();
+                }
+
+                m_toolProgress = 0.25 + 0.65 * (k + 1) / static_cast<double>(nR);
+            });
+        }
+    }
+    }   // end of the forward branch
+
+    // ---- 3. Write the accumulator to the output buffer ----------------------
+    // The accumulator has the input's dimensions, so the output buffer takes an
+    // image of the same size. Sending it to a different buffer keeps the input
+    // for comparison; pointing both pulldowns at one buffer transforms in place,
+    // which is what they open on.
+    steps.push_back([this, acc, w, h, tgtIdx, srcPixelSize, srcPixelAssumed, opName]() {
+        if (acc->size() != static_cast<size_t>(w) * h)
+            acc->assign(static_cast<size_t>(w) * h, 0.0);   // no edges were found
+        std::vector<double> outPix = std::move(*acc);
+
+        double mn = outPix[0], mx = outPix[0];
+        for (double v : outPix) { mn = std::min(mn, v); mx = std::max(mx, v); }
+        const double range = mx - mn;
+        const double scale = (range > 0) ? 255.0 / range : 1.0;
+
+        QImage outImg(w, h, QImage::Format_Grayscale8);
+        for (int y = 0; y < h; y++) {
+            uchar *row = outImg.scanLine(y);
+            for (int x = 0; x < w; x++)
+                row[x] = static_cast<uchar>(std::clamp(
+                    (outPix[static_cast<size_t>(y) * w + x] - mn) * scale, 0.0, 255.0));
+        }
+
+        // Keep whatever is on display safe in its own slot before the display
+        // moves, so live edits are not lost.
+        if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS && !m_image.isNull()) {
+            m_history[m_activeSlot].image     = m_image;
+            m_history[m_activeSlot].rawPixels = m_imageRawPixels;
+            m_history[m_activeSlot].minVal    = m_imageMinVal;
+            m_history[m_activeSlot].maxVal    = m_imageMaxVal;
+            m_history[m_activeSlot].occupied  = true;
+        }
+
+        m_history[tgtIdx].image     = outImg;
+        m_history[tgtIdx].rawPixels = std::move(outPix);
+        m_history[tgtIdx].minVal    = mn;
+        m_history[tgtIdx].maxVal    = mx;
+        // Circle accumulators are still in image space, so the sampling carries
+        // over; for the line transform neither axis is a distance and the value
+        // is meaningless, but it is harmless to keep.
+        m_history[tgtIdx].pixelSize = srcPixelSize;
+        m_history[tgtIdx].pixelSizeAssumed = srcPixelAssumed;
+        m_history[tgtIdx].lastOperation    = opName;
+        m_history[tgtIdx].path.clear();
+        m_history[tgtIdx].exampleImage = false;
+        m_history[tgtIdx].occupied  = true;
+
+        m_activeSlot     = tgtIdx;
+        m_image          = m_history[tgtIdx].image;
+        m_imagePath.clear();
+        m_imageRawPixels = m_history[tgtIdx].rawPixels;
+        m_imageMinVal    = mn;
+        m_imageMaxVal    = mx;
+        if (!m_imageContrastLocked) {
+            m_imageDispMin = mn;
+            m_imageDispMax = mx;
+        }
+        m_pixelSize        = m_history[tgtIdx].pixelSize;
+        m_pixelSizeAssumed = m_history[tgtIdx].pixelSizeAssumed;
+        m_lastOperation    = m_history[tgtIdx].lastOperation;
+        m_zoom[0].reset(w, h);
+        m_ftComputed = false;
+        m_toolProgress = 0.95;
+    });
+
+    steps.push_back([this, tgtIdx, hadFT]() {
+        // Panel 2 was showing a transform of the old image; refresh it rather
+        // than leaving it blank, since comparing the two is usually the point.
+        if (hadFT) computeFFT();
+        m_history[tgtIdx].powerSpecImg = m_ftComputed ? powerSpecFromCurrentFFT()
+                                                      : computePowerSpecMasked(m_image);
+        saveHistory();
+        m_toolProgress = -1;
+        update();
+    });
+
+    chainSteps(std::move(steps));
+}
+
 void FtWindow::onMeasureCancel()
 {
     m_measureActive = false;
@@ -4958,6 +5643,17 @@ void FtWindow::onRotateCancel()
     m_rotateActive = false;
     m_p1Dragging = false;
     m_rotateCancelBtn->hide();
+    update();
+}
+
+void FtWindow::onShearCancel()
+{
+    m_shearActive = false;
+    m_p1Dragging = false;
+    m_shearAngleEdit->hide();
+    m_shearAxisCombo->hide();
+    m_shearCancelBtn->hide();
+    m_applyShearBtn->hide();
     update();
 }
 
@@ -6157,6 +6853,139 @@ void FtWindow::onExtractComputeImpl()
     }
 #endif
             m_toolProgress = -1;
+        }
+    });
+}
+
+// ---------------------------------------------------------------------------
+//  Average image tiles – cut the source into a grid and average the tiles
+// ---------------------------------------------------------------------------
+void FtWindow::onTileAverageCancel()
+{
+    m_tileAvgActive = false;
+    m_tileAvgSourceCombo->hide();
+    m_tileAvgTargetCombo->hide();
+    m_tileAvgSizeCombo->hide();
+    m_tileAvgCancelBtn->hide();
+    m_tileAvgComputeBtn->hide();
+    update();
+}
+
+void FtWindow::onTileAverageCompute()
+{
+    if (!ensureCalcHeadroom(tr("average the image tiles"))) return;
+    onTileAverageComputeImpl();
+}
+
+void FtWindow::onTileAverageComputeImpl()
+{
+    const int srcIdx = m_tileAvgSourceCombo->currentIndex();
+    const int tgtIdx = m_tileAvgTargetCombo->currentIndex();
+    if (srcIdx < 0 || srcIdx >= HISTORY_SLOTS || !m_history[srcIdx].occupied) return;
+    if (tgtIdx < 0 || tgtIdx >= HISTORY_SLOTS) return;
+
+    const int tile = m_tileAvgSizeCombo->currentData().toInt();
+    if (tile <= 0) return;
+
+    // The source slot can lag behind what is on screen, so take the live pixels
+    // when the source is the buffer currently being displayed.
+    const auto &srcEntry = m_history[srcIdx];
+    const int srcW = (srcIdx == m_activeSlot && !m_image.isNull())
+                         ? m_image.width()  : srcEntry.image.width();
+    const int srcH = (srcIdx == m_activeSlot && !m_image.isNull())
+                         ? m_image.height() : srcEntry.image.height();
+    if (srcW < tile || srcH < tile) return;   // not even one whole tile fits
+
+    // Left-to-right blue progress bar in the parameter-window background.
+    m_toolProgress = 0.1;
+    update();
+
+    chainSteps({
+        // --- Step 1: average every whole tile into one tile-sized image ---
+        [this, srcIdx, tgtIdx, tile, srcW, srcH]() {
+            const std::vector<double> &srcPix =
+                (srcIdx == m_activeSlot && (int)m_imageRawPixels.size() == srcW * srcH)
+                    ? m_imageRawPixels : m_history[srcIdx].rawPixels;
+            if ((int)srcPix.size() != srcW * srcH) { m_toolProgress = -1; return; }
+
+            // Whole tiles only, on a grid anchored at the top-left corner. A
+            // partial strip along the right or bottom edge is left out rather
+            // than padded, so no tile contributes invented pixels to the mean.
+            const int nx = srcW / tile, ny = srcH / tile;
+            const int nTiles = nx * ny;
+
+            std::vector<double> outPix(static_cast<size_t>(tile) * tile, 0.0);
+            for (int ty = 0; ty < ny; ty++) {
+                for (int tx = 0; tx < nx; tx++) {
+                    const int x0 = tx * tile, y0 = ty * tile;
+                    for (int dy = 0; dy < tile; dy++) {
+                        const double *row = srcPix.data()
+                                          + static_cast<size_t>(y0 + dy) * srcW + x0;
+                        double *orow = outPix.data() + static_cast<size_t>(dy) * tile;
+                        for (int dx = 0; dx < tile; dx++) orow[dx] += row[dx];
+                    }
+                }
+            }
+            const double inv = 1.0 / nTiles;
+            for (double &v : outPix) v *= inv;
+
+            double mn = outPix[0], mx = outPix[0];
+            for (double v : outPix) { mn = std::min(mn, v); mx = std::max(mx, v); }
+            const double range = mx - mn;
+            const double scale = (range > 0) ? 255.0 / range : 1.0;
+
+            QImage outImg(tile, tile, QImage::Format_Grayscale8);
+            for (int y = 0; y < tile; y++) {
+                uchar *row = outImg.scanLine(y);
+                for (int x = 0; x < tile; x++)
+                    row[x] = static_cast<uchar>(std::clamp(
+                        (outPix[static_cast<size_t>(y) * tile + x] - mn) * scale, 0.0, 255.0));
+            }
+
+            storeUndoSnapshot();
+            m_history[tgtIdx].image     = outImg;
+            m_history[tgtIdx].rawPixels = std::move(outPix);
+            m_history[tgtIdx].minVal    = mn;
+            m_history[tgtIdx].maxVal    = mx;
+            // Tiles are cut at full resolution, so the sampling is unchanged.
+            m_history[tgtIdx].pixelSize = m_history[srcIdx].pixelSize;
+            m_history[tgtIdx].pixelSizeAssumed = m_history[srcIdx].pixelSizeAssumed;
+            m_history[tgtIdx].lastOperation    =
+                tr("Averaged %1 tiles of %2 px").arg(nTiles).arg(tile);
+            m_history[tgtIdx].path.clear();
+            m_history[tgtIdx].occupied  = true;
+            m_history[tgtIdx].powerSpecImg = computePowerSpecMasked(outImg);
+
+            // Switch the display to the target slot, as Extract particles does.
+            m_activeSlot     = tgtIdx;
+            m_image          = m_history[tgtIdx].image;
+            m_imagePath.clear();
+            m_imageRawPixels = m_history[tgtIdx].rawPixels;
+            m_imageMinVal    = mn;
+            m_imageMaxVal    = mx;
+            if (!m_imageContrastLocked) {
+                m_imageDispMin = mn;
+                m_imageDispMax = mx;
+            }
+            m_pixelSize        = m_history[tgtIdx].pixelSize;
+            m_pixelSizeAssumed = m_history[tgtIdx].pixelSizeAssumed;
+            m_lastOperation    = m_history[tgtIdx].lastOperation;
+            m_zoom[0].reset(tile, tile);
+            m_ftComputed = false;
+            m_toolProgress = 0.5;
+        },
+        // --- Step 2: persist history and remember the chosen buffers ---
+        [this]() {
+            saveHistory();
+#ifndef __EMSCRIPTEN__
+            {
+                QSettings settings("ft", "ft");
+                settings.setValue("tileAvgSourceIdx", m_tileAvgSourceCombo->currentIndex());
+                settings.setValue("tileAvgTargetIdx", m_tileAvgTargetCombo->currentIndex());
+            }
+#endif
+            m_toolProgress = -1;
+            update();
         }
     });
 }
