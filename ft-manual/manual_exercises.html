@@ -440,7 +440,7 @@ drag across the panel-1 histogram to select just its bright upper end,
 open <strong>Threshold histogram</strong> in the <em>Edit</em> group, set
 <em>Mode</em> to <em>Select histogram</em> and press
 <strong>Compute</strong>. Everything but the peaks drops to black.
-Keeping roughly the top 40&ndash;45% of the value range leaves of the order
+Keeping roughly the top 40&ndash;45% of the value range leaves on the order
 of fifty cells standing — a good starting point. Keep more and you will
 carry noise along; keep less and you will lose the weaker edges.
 </p>
@@ -461,9 +461,10 @@ order of how much evidence there was for them. Erase part of a tube with
 the panel-1 eraser and transform again: the peak gets <em>shorter</em> but
 does not move, because the remaining pixels still vote for the same line —
 this robustness to gaps is the whole reason for the method, and it is what
-tracing pixels cannot give you. Then run <em>Circles, radius 20&nbsp;px</em>
-on the same micrograph and see that it finds nothing much: there are no
-circles of that size in it, and the transform says so honestly.
+tracing pixels cannot give you. Then run <em>Circles, one radius</em> at
+20&nbsp;px on the same micrograph and see that it finds nothing much:
+there are no circles of that size in it, and the transform says so
+honestly.
 </p>
 <p>
 <strong>Compare with Fourier space.</strong> Exercise&nbsp;4 used this same
@@ -474,6 +475,126 @@ whole field; the Hough transform tells you which <em>individual straight
 edges</em> it contains and exactly where each one lies. Two different
 questions, two different transforms — and both are peak-finding problems
 once you are in the right space.
+</p>
+</details>
+
+<details id="exercise-15">
+<summary>Advanced Exercise 15 — Hough transform to find circles</summary>
+<p>
+Load <code>apoartcns_006</code> from the
+<code>Exercise_09-Artemin-Protein / size_1024_rescaled_cropped</code>
+folder — the same negative-stain Artemin data used in
+Exercise&nbsp;9. It is a 1024-pixel micrograph holding of the order of a
+hundred small ring-shaped Artemin protein particles, 
+roughly 20&nbsp;pixels across, on a
+very noisy background. Exercise&nbsp;9 found them by cross-correlating
+against a template. Here you will find them with no template at all —
+only a statement of how big they are.
+</p>
+<p>
+<strong>1. Try it the naive way first.</strong> Open <strong>Hough
+transform</strong> (<em>Filter</em> group, panel&nbsp;1), point
+<em>Input buffer</em> at the micrograph and <em>Output buffer</em> at a
+free buffer, choose <em>Circles, one radius</em>, set the radius slider to
+about 14&nbsp;pixels and press
+<strong>Compute</strong>. The result is disappointing: a dense mess with
+no clear particles in it. Run <strong>Peak search</strong> on it and you
+will get well over a thousand peaks — far more than there are particles.
+</p>
+<p>
+Why? Because the transform votes from <em>edges</em>, and in a raw
+negative-stain image the noise has edges everywhere. Every noise speck
+casts votes just as a particle rim does, and there are vastly more noise
+specks than particles. This is the single most important practical lesson
+about the Hough transform: it is only as good as the edge map it is given.
+</p>
+<p>
+<strong>2. Low-pass filter the image, then transform.</strong> Undo, and use the 
+<strong>Bandpass filter</strong> in Fourier space to create a blurred image, where the ring
+particles are visible, but the noise is strongly reduced. 
+</p>
+<p>
+Now run the Hough transform again on the smoothed image. If you do not
+want to guess the size, choose <em>Circles, find radius automatically</em>
+and let the tool sweep every radius from 5 to 60&nbsp;pixels: it reports
+the one it settled on in the parameter window, around 14&nbsp;pixels for
+this micrograph, which is a measurement of the particles in its own right.
+Switch back to <em>Circles, one radius</em> with the slider at that value
+for the rest of the exercise.
+This time the accumulator is transformed: a field of sharp, well-separated points
+on a dark background.
+Because the parameter space of a fixed-radius circle <em>is</em> the space
+of centres, the accumulator stays in register with the image — click back
+and forth between the two buffers and you will see each peak sitting
+exactly on its particle. A peak search now returns of the order of
+120&nbsp;particles, which is about what you count by eye.
+</p>
+<p>
+<strong>3. Get the radius wrong on purpose.</strong> Repeat on the
+smoothed image with the radius slider pushed up to 40&nbsp;px. Instead of
+points you get <em>rings</em> — one around each particle. The reason is
+worth working out: every rim pixel of a 14-pixel particle votes
+40&nbsp;pixels away from itself, so the votes agree on a circle of radius
+40 about the particle rather than on its centre. Nothing is centred, so
+nothing peaks. Drag the slider slowly from 5 up to 60 and recompute as you
+go: the peaks sharpen as you approach the true radius and dissolve into
+rings as you pass it. The
+number of spurious peaks rises several-fold at the same time. Choosing the
+radius is choosing which objects you are asking about, and the transform
+answers honestly when the answer is "none of that size".
+</p>
+<p>
+<strong>4. When you do not know the size.</strong> Compare the two
+multi-radius options on the smoothed image.
+<em>Circles, radii 5,10,20,30,40,50,60</em> sums that fixed ladder, so
+everything circular contributes and the particles sit on a raised
+background of wrong-radius rings — useful on a specimen holding a mixture
+of sizes, wasteful here where they are all alike.
+<em>Circles, find radius automatically</em> instead tries all
+56&nbsp;radii, scores each, and applies only the winner, so the result is
+as clean as the hand-tuned single radius while costing you no guessing.
+It is the slowest option in the tool; the progress bar shows the sweep
+running.
+</p>
+<p>
+<strong>5. Turn the peaks into particles.</strong> Run
+<strong>Peak search</strong> on the accumulator, with an exclusion radius
+of about 16&nbsp;pixels &mdash; a little more than the particle radius, so
+that one particle cannot be picked twice &mdash; and commit the list. That
+returns of the order of 95&nbsp;particles. Push the exclusion radius on up
+to 28 and the count falls to under 90, because touching pairs start being
+merged into a single pick; that is the trade-off the setting controls, and
+the slider runs from 5 to 200 so you can see both ends of it. Because the
+accumulator is in register
+with the image, those coordinates are the particle coordinates. Now set
+<strong>Extract particles</strong> to read from the <em>original
+micrograph</em> — not from the accumulator — and write a montage into a
+free buffer, then average it with <strong>Average image tiles</strong> at
+the same box size. You have gone from a noisy field to an averaged
+particle without ever supplying a reference.
+</p>
+<p>
+Two details worth knowing here. The montage is always 1024&nbsp;pixels
+square, so at a 64-pixel box it holds 256&nbsp;tiles; with only about
+120&nbsp;particles picked, half of its tiles stay empty and the tile
+average is correspondingly diluted by that flat half. The particle is
+still perfectly visible, but if you want a clean average either pick from
+several micrographs until the montage fills, or use the lattice-filter
+route from Exercise&nbsp;9, which averages the montage in Fourier space
+and is not troubled by the empty tiles. Note also that the particles are
+<em>not</em> rotationally aligned by any of this &mdash; the Hough
+transform locates them, it says nothing about their orientation.
+</p>
+<p>
+<strong>Compare with Exercise&nbsp;9.</strong> That exercise picked the
+same particles by cross-correlating against a template. Both end in a peak
+search, but what they need is different: cross-correlation needs a picture
+of what you are looking for and finds whatever resembles it, including its
+orientation; the Hough transform needs only a shape and a size, and is
+indifferent to how the particle actually looks inside its rim. Try both on
+this micrograph and compare the peak lists. Which one is more forgiving of
+particles that are partly overlapping, or clipped by the edge of the
+field?
 </p>
 </details>
 

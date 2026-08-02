@@ -5207,11 +5207,41 @@ inline void houghSplat(std::vector<double> &acc, int w, int h,
     }
 }
 
+// Cast every edge point's circle votes at one radius into `acc` (which is added
+// to, not cleared). The centre of a circle through an edge point lies one radius
+// away along the brightness gradient — towards the bright side for a bright
+// disc, away from it for a dark one, so both signs are voted. The votes are
+// spread over a small arc because a noisy gradient direction is the main thing
+// that blurs this transform. Shared by the fixed-radius path and by the
+// automatic search, so the radius the search scores is voted for in exactly the
+// same way as the radius it finally applies.
+void houghVoteCircles(const HoughEdges &edges, std::vector<double> &acc,
+                      int w, int h, int radius)
+{
+    constexpr int ARC  = 3;                    // ±3 samples…
+    const double  STEP = 4.0 * M_PI / 180.0;   // …4° apart
+    const double  wgt  = 1.0 / (2 * ARC + 1);
+    for (size_t e = 0; e < edges.size(); e++) {
+        const double ex = edges.x[e], ey = edges.y[e];
+        const double cd = edges.cosDir[e], sd = edges.sinDir[e];
+        for (int s = -ARC; s <= ARC; s++) {
+            const double ca = std::cos(s * STEP), sa = std::sin(s * STEP);
+            // Rotate the gradient direction by s·STEP.
+            const double rx = cd * ca - sd * sa;
+            const double ry = sd * ca + cd * sa;
+            houghSplat(acc, w, h, ex + radius * rx, ey + radius * ry, wgt);
+            houghSplat(acc, w, h, ex - radius * rx, ey - radius * ry, wgt);
+        }
+    }
+}
+
+
 } // namespace
 
 void FtWindow::onHoughCancel()
 {
     m_houghActive = false;
+    m_houghPreviewUndoDepth = -1;
     m_houghSourceCombo->hide();
     m_houghTargetCombo->hide();
     m_houghElementCombo->hide();
@@ -5223,7 +5253,35 @@ void FtWindow::onHoughCancel()
 void FtWindow::onApplyHoughFilter()
 {
     if (!ensureCalcHeadroom(tr("compute the Hough transform"))) return;
+    // A run the user asked for explicitly is theirs to keep: it must not be
+    // swallowed by the next twitch of the radius slider.
+    m_houghPreviewUndoDepth = -1;
     onApplyHoughFilterImpl();
+}
+
+void FtWindow::houghRadiusPreview()
+{
+    if (!houghShowsRadiusSlider()) return;
+    // On WebAssembly the steps run through the event loop, so a second release
+    // could arrive while the first run is still going. One at a time.
+    if (m_toolProgress >= 0.0) return;
+
+    // Collapse the previous preview, but only if it is still exactly where this
+    // slider left it: any other operation pushes the stack deeper and a user's
+    // own Undo makes it shallower, and in either case the state below is no
+    // longer ours to discard.
+    if (m_houghPreviewUndoDepth >= 0
+        && static_cast<int>(m_undoStack.size()) == m_houghPreviewUndoDepth
+        && !m_undoStack.empty()) {
+        onUndo();
+    }
+    m_houghPreviewUndoDepth = -1;
+
+    if (!ensureCalcHeadroom(tr("compute the Hough transform"))) return;
+    onApplyHoughFilterImpl();
+    // storeUndoSnapshot() runs before the steps are chained, so the depth is
+    // already final here even where the steps themselves are not.
+    m_houghPreviewUndoDepth = static_cast<int>(m_undoStack.size());
 }
 
 // Every element the pulldown offers has a two-dimensional parameter space, and
@@ -5310,12 +5368,27 @@ void FtWindow::onApplyHoughFilterImpl()
             m_toolProgress = 0.15;
         });
 
-        // Draw them. Stepping half a pixel along each line and splatting
-        // bilinearly leaves a smooth trace whatever its angle; the half-step is
-        // paid back in the weight so a line deposits the same total either way.
+        // What each surviving cell is turned back into depends on which element
+        // the pulldown holds — the inverse has to speak the same language the
+        // forward pass wrote in. For Lines a cell is a line; for the circle
+        // elements the accumulator is already in image space, so a cell is a
+        // circle centre and what goes back is a circle of the chosen radius
+        // drawn about it. That reconstructs the discs the forward transform
+        // found, which is the point of running it backwards.
+        std::vector<int> drawRadii;
+        if (element == HoughCirclesLadder) drawRadii = { 5, 10, 20, 30, 40, 50, 60 };
+        else if (element == HoughCirclesAuto)
+            drawRadii = { m_houghAutoRadius > 0 ? m_houghAutoRadius
+                                                : m_houghRadiusSlider->value() };
+        else if (element == HoughCirclesOne)
+            drawRadii = { m_houghRadiusSlider->value() };
+
+        // Stepping half a pixel along each curve and splatting bilinearly leaves
+        // a smooth trace whatever its angle; the half-step is paid back in the
+        // weight so a curve deposits the same total however finely it is walked.
         constexpr int kDrawChunks = 12;
         for (int chunk = 0; chunk < kDrawChunks; chunk++) {
-            steps.push_back([this, cells, acc, w, h, chunk]() {
+            steps.push_back([this, cells, acc, w, h, chunk, element, drawRadii]() {
                 if (chunk == 0) acc->assign(static_cast<size_t>(w) * h, 0.0);
                 const double cx = w / 2.0, cy = h / 2.0;
                 const double tMax = 0.5 * std::hypot((double)w, (double)h) + 2.0;
@@ -5324,16 +5397,30 @@ void FtWindow::onApplyHoughFilterImpl()
                 const size_t c1 = n * (chunk + 1) / kDrawChunks;
                 for (size_t i = c0; i < c1; i++) {
                     const HoughCell &c = (*cells)[i];
-                    double theta = 0.0, rho = 0.0;
-                    houghLineFromCell(c.x, c.y, w, h, theta, rho);
-                    const double ct = std::cos(theta), st = std::sin(theta);
-                    // Foot of the perpendicular from the image centre, then
-                    // along the line in both directions.
-                    const double px = cx + rho * ct, py = cy + rho * st;
-                    for (double t = -tMax; t <= tMax; t += 0.5) {
-                        const double X = px - st * t, Y = py + ct * t;
-                        if (X < 0.0 || Y < 0.0 || X > w - 1.0 || Y > h - 1.0) continue;
-                        houghSplat(*acc, w, h, X, Y, c.weight * 0.5);
+                    if (element == HoughLines) {
+                        double theta = 0.0, rho = 0.0;
+                        houghLineFromCell(c.x, c.y, w, h, theta, rho);
+                        const double ct = std::cos(theta), st = std::sin(theta);
+                        // Foot of the perpendicular from the image centre, then
+                        // along the line in both directions.
+                        const double px = cx + rho * ct, py = cy + rho * st;
+                        for (double t = -tMax; t <= tMax; t += 0.5) {
+                            const double X = px - st * t, Y = py + ct * t;
+                            if (X < 0.0 || Y < 0.0 || X > w - 1.0 || Y > h - 1.0) continue;
+                            houghSplat(*acc, w, h, X, Y, c.weight * 0.5);
+                        }
+                    } else {
+                        // The cell is the centre; walk the rim of each radius.
+                        for (int r : drawRadii) {
+                            if (r <= 0) continue;
+                            const double dt = 0.5 / r;      // half a pixel of arc
+                            for (double a = 0.0; a < 2.0 * M_PI; a += dt) {
+                                const double X = c.x + r * std::cos(a);
+                                const double Y = c.y + r * std::sin(a);
+                                if (X < 0.0 || Y < 0.0 || X > w - 1.0 || Y > h - 1.0) continue;
+                                houghSplat(*acc, w, h, X, Y, c.weight * 0.5);
+                            }
+                        }
                     }
                 }
                 m_toolProgress = 0.15 + 0.75 * (chunk + 1) / kDrawChunks;
@@ -5471,31 +5558,63 @@ void FtWindow::onApplyHoughFilterImpl()
             }
             m_toolProgress = 0.9;
         });
+    } else if (element == HoughCirclesAuto) {
+        // Try every radius in the range and keep the one whose accumulator has
+        // the most convincing peak. "Most convincing" cannot be the bare peak
+        // height: a larger circle has more rim pixels voting on it, so the raw
+        // maximum drifts upwards with the radius whatever the image holds. What
+        // is scored instead is how far the peak stands above the accumulator's
+        // own background, in units of that background's own spread — a quantity
+        // that does not care how many votes were cast in total.
+        auto best = std::make_shared<std::pair<double, int>>(
+            -std::numeric_limits<double>::infinity(), HOUGH_RMIN);
+
+        constexpr int kSweepChunks = 14;
+        const int nRadii = HOUGH_RMAX - HOUGH_RMIN + 1;
+        for (int chunk = 0; chunk < kSweepChunks; chunk++) {
+            const int i0 = nRadii * chunk / kSweepChunks;
+            const int i1 = nRadii * (chunk + 1) / kSweepChunks;
+            steps.push_back([this, edges, best, w, h, i0, i1, chunk]() {
+                const size_t n = static_cast<size_t>(w) * h;
+                std::vector<double> a(n, 0.0);
+                for (int i = i0; i < i1; i++) {
+                    const int radius = HOUGH_RMIN + i;
+                    std::fill(a.begin(), a.end(), 0.0);
+                    houghVoteCircles(*edges, a, w, h, radius);
+
+                    double mx = 0.0, sum = 0.0, sq = 0.0;
+                    for (double v : a) { mx = std::max(mx, v); sum += v; sq += v * v; }
+                    const double mean = sum / n;
+                    const double var  = sq / n - mean * mean;
+                    const double sd   = std::sqrt(std::max(1e-12, var));
+                    const double score = (mx - mean) / sd;
+                    if (score > best->first) *best = { score, radius };
+                }
+                m_toolProgress = 0.25 + 0.60 * (chunk + 1) / kSweepChunks;
+            });
+        }
+
+        // Then simply do the transform at the radius that won.
+        steps.push_back([this, edges, acc, best, w, h]() {
+            m_houghAutoRadius = best->second;
+            acc->assign(static_cast<size_t>(w) * h, 0.0);
+            houghVoteCircles(*edges, *acc, w, h, m_houghAutoRadius);
+            m_toolProgress = 0.9;
+        });
     } else {
         // Circle transform. The centre of a circle through an edge point lies
         // one radius away along the brightness gradient — towards the bright
         // side for a bright disc, away from it for a dark one, so both signs are
         // voted. The votes are spread over a small arc because a noisy gradient
         // direction is the main thing that blurs this transform.
-        // A single radius for the fixed options; the whole ladder for the two
-        // sweeps, which differ only in how their per-radius accumulators are
-        // folded together below.
+        // One radius from the slider, or the fixed ladder summed into one map.
+        // The automatic search is handled in its own branch above, since it has
+        // to score a whole sweep before it knows what to accumulate.
         std::vector<int> radii;
-        switch (element) {
-        case HoughCircles5:  radii = {  5 }; break;
-        case HoughCircles20: radii = { 20 }; break;
-        case HoughCircles30: radii = { 30 }; break;
-        case HoughCircles40: radii = { 40 }; break;
-        case HoughCircles50: radii = { 50 }; break;
-        case HoughCircles60: radii = { 60 }; break;
-        case HoughCirclesAll:
-        case HoughCirclesStrongest:
-            radii = { 5, 10, 20, 30, 40, 50, 60 }; break;
-        case HoughCircles10:
-        default:             radii = { 10 }; break;
-        }
+        if (element == HoughCirclesLadder) radii = { 5, 10, 20, 30, 40, 50, 60 };
+        else                               radii = { m_houghRadiusSlider->value() };
         const size_t nR = radii.size();
-        const bool sumRadii = (element == HoughCirclesAll);
+        const bool sumRadii = (element == HoughCirclesLadder);
         // A sweep needs somewhere to build each radius before folding it into
         // the running best; a single radius votes straight into the result and
         // is spared the second full-size buffer.
@@ -5508,31 +5627,13 @@ void FtWindow::onApplyHoughFilterImpl()
                 std::vector<double> &a = (nR == 1) ? *acc : *scratch;
                 if (nR > 1) a.assign(n, 0.0);
 
-                constexpr int ARC  = 3;                    // ±3 samples…
-                const double  STEP = 4.0 * M_PI / 180.0;   // …4° apart
-                const double  wgt  = 1.0 / (2 * ARC + 1);
-                for (size_t e = 0; e < edges->size(); e++) {
-                    const double ex = edges->x[e], ey = edges->y[e];
-                    const double cd = edges->cosDir[e], sd = edges->sinDir[e];
-                    for (int s = -ARC; s <= ARC; s++) {
-                        const double ca = std::cos(s * STEP), sa = std::sin(s * STEP);
-                        // Rotate the gradient direction by s·STEP.
-                        const double rx = cd * ca - sd * sa;
-                        const double ry = sd * ca + cd * sa;
-                        houghSplat(a, w, h, ex + radius * rx, ey + radius * ry, wgt);
-                        houghSplat(a, w, h, ex - radius * rx, ey - radius * ry, wgt);
-                    }
-                }
+                houghVoteCircles(*edges, a, w, h, radius);
 
-                // Fold this radius into the running result. Summing lets every
-                // radius contribute, so anything circular appears and a centre
-                // that works at several sizes is reinforced; taking the maximum
-                // scores each centre by the one radius that actually fits it,
-                // which keeps discs of different sizes from blurring together.
+                // Fold this radius into the running result: summing lets every
+                // radius contribute, so anything circular appears whatever its
+                // size and a centre that works at several sizes is reinforced.
                 if (nR > 1) {
-                    if (sumRadii) for (size_t i = 0; i < n; i++) (*acc)[i] += a[i];
-                    else          for (size_t i = 0; i < n; i++)
-                                      (*acc)[i] = std::max((*acc)[i], a[i]);
+                    for (size_t i = 0; i < n; i++) (*acc)[i] += a[i];
                     if (k + 1 == nR) scratch->clear();
                 }
 

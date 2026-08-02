@@ -697,9 +697,8 @@ exactly where a circle of that radius is centred. Send the result to a
 <em>different</em> output buffer and you can click between the two in the
 buffer strip to see which feature produced which peak; leave both
 pulldowns on the same buffer and undo/redo does the same job. That holds
-for the two sweeps as well — their result is still a map of where the
-circles are, only the way the seven radii are folded together differs.
-For
+for the two multi-radius options as well — their result is still a map of
+where the circles are. For
 <em>Lines</em> the axes change meaning: the horizontal axis is the line's
 angle &theta;, running 0° at the left edge to 180° at the right, and the
 vertical axis is its signed perpendicular distance &rho; from the image
@@ -720,23 +719,27 @@ neither axis is a distance in the image.
   result. <br>
   <strong>Geometric element:</strong> what the accumulator votes for.
   <em>Lines</em> gives the classic (&theta;,&nbsp;&rho;) transform, voted
-  at half-degree steps. <em>Circles, radius 5 / 10 / 20 / 30 / 40 / 50 /
-  60 px</em> vote for circle centres at that one radius — pick the one
+  at half-degree steps. <em>Circles, one radius</em> votes for circle
+  centres at the single radius set by the slider below — pick the one
   closest to the features you are after, since a circle of the wrong size
-  gives a much weaker peak. The last two entries sweep all seven radii and
-  differ only in how the results are combined:
-  <em>Circles, all radii 5&nbsp;-&nbsp;60&nbsp;px</em> <strong
-  class="inline">sums</strong> them, so anything circular appears and a
-  centre that works at several sizes is reinforced, while
-  <em>Circles, only strongest radius 5&nbsp;-&nbsp;60&nbsp;px</em> keeps
-  the <strong class="inline">largest</strong> response at each centre, so
-  each centre is scored by the one radius that actually fits it and discs
-  of different sizes stay distinct instead of blurring together. Both
-  sweeps cost seven times a single radius. <br>
-  <strong>Inverse Hough transformation:</strong> run the line transform
-  backwards instead — see below. While it is ticked the geometric-element
-  pulldown goes dead, since only the line transform has a parameter space
-  to come back from. <br>
+  gives a much weaker, ring-shaped response.
+  <em>Circles, radii 5,10,20,30,40,50,60</em> sums the accumulators for
+  those seven sizes, so anything circular appears whatever its size and a
+  centre that works at several sizes is reinforced; it costs seven single
+  radii. <em>Circles, find radius automatically</em> is described below.
+  <br>
+  <strong>Circle radius:</strong> the radius voted for, 5 to 60&nbsp;pixels,
+  with the value shown beside the slider. The row appears for
+  <em>Circles, one radius</em>, in either direction. <strong
+  class="inline">Letting go of the handle runs the transform</strong>, so
+  you can find the right size by dragging: each such run replaces the one
+  before it rather than stacking, so a whole exploration costs one undo
+  step and always transforms the original rather than the accumulator it
+  just produced. <br>
+  <strong>Inverse Hough transformation:</strong> run the transform
+  backwards instead — see below. The element pulldown and the radius still
+  apply, since they say which shape each accumulator cell is turned back
+  into. <br>
   <strong>Cancel:</strong> closes the tool without touching the image. <br>
   <strong>Compute:</strong> runs the transform and writes the accumulator
   to the output buffer, which then becomes the displayed one. One undo
@@ -744,15 +747,60 @@ neither axis is a distance in the image.
 </div>
 <BR>
 <p>
+<strong>Finding the radius automatically.</strong> If you do not know how
+big your features are, choose <em>Circles, find radius automatically</em>.
+The tool then runs the circle transform at <em>every</em> radius from 5 to
+60&nbsp;pixels, one pixel at a time, scores each result, keeps the radius
+that scored best, and finally applies the transform at that radius alone —
+so what lands in the output buffer is an ordinary single-radius
+accumulator, not a blend. The radius it settled on is reported in the
+parameter window, which is usually the more valuable half of the answer:
+it is a measurement of how big your particles are.
+</p>
+<p>
+The score is not the height of the peak. A larger circle has more rim
+pixels voting on it, so the raw maximum drifts upwards with the radius
+whatever the image actually contains, and picking the largest would pick
+60&nbsp;px every time. What is scored instead is how far the peak stands
+above the accumulator's <em>own</em> background, measured in units of that
+background's own spread — a quantity that does not care how many votes
+were cast in total. On a test image of discs of a known size it returns
+that size exactly, and on a real micrograph it agrees with the radius you
+get by measuring the particle rim by hand.
+</p>
+<p>
+It is the slowest option in the tool, being fifty-six single-radius
+transforms plus the one it finally applies, so expect it to take a few
+seconds on a large image; the progress bar fills across the parameter
+window as the sweep runs. Two cautions. The radius is only meaningful if
+there are circles to find — asked of an image without any, it will still
+report whichever radius scored best. And the search is bounded at 5 and
+60&nbsp;pixels, so features outside that range are simply not among the
+candidates; bin the image first if your particles are larger.
+</p>
+<p>
 <strong>The inverse transform.</strong> Tick <em>Inverse Hough
 transformation</em> and the tool runs the other way: the input buffer is
-read as a (&theta;,&nbsp;&rho;) accumulator, and every cell in it draws the
-line it stands for back into the output image. A cell at column
-<em>x</em>, row <em>y</em> means the line at angle
-&theta;&nbsp;=&nbsp;180°·<em>x</em>/(<em>w</em>−1) whose perpendicular
-distance from the image centre is &rho;, read off the vertical axis the
-same way the forward transform wrote it — so a forward pass followed by an
-inverse pass puts the lines back where they came from.
+read as an accumulator, and every cell in it draws the shape it stands for
+back into the output image. The element pulldown says which shape, so it
+still applies — and so does the radius, which keeps whatever value it was
+last used with.
+</p>
+<p>
+With <em>Lines</em>, a cell at column <em>x</em>, row <em>y</em> means the
+line at angle &theta;&nbsp;=&nbsp;180°·<em>x</em>/(<em>w</em>−1) whose
+perpendicular distance from the image centre is &rho;, read off the
+vertical axis the same way the forward transform wrote it — so a forward
+pass followed by an inverse pass puts the lines back where they came from.
+</p>
+<p>
+With any of the <em>circle</em> elements it is simpler still, because a
+circle accumulator is already in image coordinates: a cell <em>is</em> a
+centre, and what gets drawn is a circle of the chosen radius around it. So
+running the circle transform forwards and then backwards recreates the
+discs it found — outlined rather than filled, since it is the rims the
+transform knows about. The fixed ladder draws all seven of its radii, and
+the automatic element draws the radius it last found.
 </p>
 <p>
 That is what makes the pair useful. Run <em>Lines</em> on an image, then
@@ -767,14 +815,22 @@ how much of the histogram you keep and you vary how many lines are
 returned.
 </p>
 <p>
+The same three steps work for circles, and give you the particles you
+found drawn as rings on an empty field: run one of the circle elements,
+select the peaks in the histogram, then transform back with the radius
+left where it was. It is a quick way to check a pick — anything that comes
+back in the wrong place, or does not come back at all, tells you the
+radius or the threshold needs another look.
+</p>
+<p>
 Cells sitting at the accumulator's minimum count as background and draw
 nothing, which is exactly what a filtered accumulator is mostly made of.
 An <em>unfiltered</em> one works too, but every cell then contributes and
 the result is the familiar smeared back-projection rather than a set of
-lines; to keep that case from taking minutes, at most the 20 000 strongest
-cells are drawn. Each line is deposited with the weight its cell carried,
-so a strong peak comes back as a bright line and a marginal one as a faint
-one.
+distinct shapes; to keep that case from taking minutes, at most the
+20&nbsp;000 strongest cells are drawn. Each shape is deposited with the
+weight its cell carried, so a strong peak comes back bright and a marginal
+one faint.
 </p>
 </details>
 
@@ -996,14 +1052,24 @@ whole pixels; there is no sub-pixel refinement.
   <strong>Threshold:</strong> the cut-off, dragged as a fraction of the
   source buffer's own min–max range; the resulting value is shown next to
   the slider. Because it is relative to that buffer's range, the same
-  slider position means different things on different maps. <br>
+  slider position means different things on different maps.
+  <strong class="inline">Both sliders re-run the search by themselves</strong>
+  the moment you let go of the handle, so you can drag, release, look at
+  the count and the crosses, and drag again without touching Compute. The
+  search waits for the release rather than following the handle, so a drag
+  costs one pass over the image and not one per pixel of travel. <br>
   <strong>Exclusion radius:</strong> minimum separation between picks, in
-  pixels. Set it to roughly the particle diameter so that one particle
-  cannot be picked twice. <br>
+  pixels, from 5 to 200. Set it to roughly the particle diameter so that
+  one particle cannot be picked twice. The floor of 5 is deliberate: an
+  exclusion zone smaller than a few pixels no longer separates
+  neighbouring particles but merely trims the shoulder of a single peak,
+  so one object comes back picked several times over. <br>
   <strong>Peaks found:</strong> the live count, which updates on every
-  Compute — the number to watch while tuning. <br>
+  search — the number to watch while tuning the two sliders. <br>
   <strong>Cancel / Compute:</strong> Compute runs the search; the window
-  stays open so you can iterate.
+  stays open so you can iterate. Since the sliders now run it themselves,
+  Compute is mainly for re-picking after changing the source buffer or
+  editing the map it points at.
 </div>
 <BR>
 <p>

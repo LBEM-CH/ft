@@ -1672,12 +1672,24 @@ ripples that encode the high-resolution details of the image are preserved.
   </figure>
 </div>
 <p>
-  This is why the pulldown offers a ladder of radii, and two ways of combining
-  a sweep over all of them. <em>All radii</em> sums the accumulators, so anything
-  circular shows up and a centre that works at several sizes is reinforced;
-  <em>only strongest radius</em> keeps the largest response at each centre, so
-  each object is scored by the radius that actually fits it and objects of
-  different sizes stay distinct rather than blurring into one another.
+  This is why the radius is a control of its own. <em>Circles, one radius</em>
+  puts it on a slider, so you can sweep it by hand and watch peaks sharpen and
+  dissolve as it passes through the true size &mdash; which is itself an
+  instructive thing to do. <em>Circles, radii 5,10,20,30,40,50,60</em> sums a
+  fixed ladder of sizes, so anything circular shows up whatever it is.
+</p>
+<p>
+  And when the size is what you actually want to know, <em>Circles, find radius
+  automatically</em> works it out: it runs the transform at every radius from 5
+  to 60&nbsp;pixels and keeps the one whose accumulator has the most convincing
+  peak. The score cannot be the peak's raw height &mdash; a larger circle has
+  more rim pixels voting on it, so the maximum drifts upwards with the radius
+  regardless of what the image contains, and the largest would always win.
+  What is scored is how far the peak stands above the accumulator's <em>own</em>
+  background, in units of that background's own spread, which is indifferent to
+  how many votes were cast. The winning radius is then applied on its own and
+  reported in the parameter window, so the tool hands back a measurement of your
+  particles' size as well as a map of where they are.
 </p>
 </details>
 
@@ -1698,9 +1710,9 @@ ripples that encode the high-resolution details of the image are preserved.
   <strong>Cost.</strong> The line transform is the expensive one: every edge
   pixel is swept over the whole angle axis, at half-degree steps. The circle
   transform casts only a handful of votes per edge pixel, thanks to the gradient
-  trick above, and is correspondingly cheap; a sweep over the seven radii costs
-  seven times one of them. The edge list is capped so that a very large image
-  cannot stall the sweep.
+  trick above, and is correspondingly cheap; the fixed ladder costs seven times
+  one radius, and the automatic search fifty-six. The edge list is capped so
+  that a very large image cannot stall the sweep.
 </p>
 <p>
   <strong>Peaks are broad.</strong> A real line is a few pixels wide and not
@@ -2023,6 +2035,20 @@ and the image fills the whole screen against a black background. Zoom and
 pan stay live; every other interaction is suppressed. Press <kbd>Esc</kbd>,
 or tap the <strong>✕</strong> in the top-right corner, to leave — the
 window returns to whatever state it was in before.
+</p>
+<p>
+The <strong>arrow keys page through the buffers</strong> without leaving
+the view: <kbd>←</kbd> and <kbd>↑</kbd> step back, <kbd>→</kbd> and
+<kbd>↓</kbd> step forward. Only buffers that actually hold an image are
+visited, and the list wraps round, so repeated presses in one direction
+tour everything you have loaded and come back to where you started. Each
+step switches the displayed buffer exactly as clicking its thumbnail
+would, and the buffer's <strong>letter appears in yellow in the top-left
+corner for one second</strong> before fading out — long enough to see
+where you have landed, short enough to leave the picture alone. If a
+buffer's Fourier transform is not already cached it is computed on
+arrival, so stepping onto a large image can pause briefly. With only one
+buffer in use the keys do nothing.
 </p>
 <p>
 A <strong>scale bar</strong> is drawn in the bottom-right corner: a white
