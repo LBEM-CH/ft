@@ -145,21 +145,38 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     updateUndoRedoButtons();
 
     // Fullscreen toggle button
-    m_fullscreenBtn = new QPushButton("Go fullscreen", this);
-    m_fullscreenBtn->setFixedSize(180, 30);
+    m_fullscreenBtn = new QPushButton("Fullscreen", this);
+    m_fullscreenBtn->setFixedSize(88, 30);
+    m_fullscreenBtn->setToolTip(
+        "Fill the screen with the application window, or return it to a\n"
+        "normal window. The label names where the button leads.\n"
+        "Separately, the small maximize icon below either image opens a\n"
+        "display-only full-screen view of that image alone.");
     connect(m_fullscreenBtn, &QPushButton::clicked, this, &FtWindow::onToggleFullscreen);
     // Start with the label matching reality, and keep it matching from here on.
 #ifdef __EMSCRIPTEN__
     // In the browser the button tracks real browser fullscreen, which a freshly
     // loaded page is never in (entering it needs a user gesture). Qt's
     // isFullScreen() is unreliable here — the canvas-filling window always looks
-    // fullscreen — so start on "Go fullscreen"; the fullscreenchange listener
+    // fullscreen — so start on "Fullscreen"; the fullscreenchange listener
     // installed just below keeps the label in step from then on.
     updateFullscreenButton(false);
 #else
     updateFullscreenButton(isWindow() && isFullScreen());
 #endif
     installFullscreenSync();
+
+    // User level button, immediately left of the fullscreen toggle
+    m_userLevelBtn = new QPushButton(userLevelLabel(), this);
+    m_userLevelBtn->setFixedSize(88, 30);
+    m_userLevelBtn->setToolTip(
+        "User level — the label shows the level you are on. Click to switch.\n"
+        "  Advanced — every function is available (the default).\n"
+        "  Basic    — the function groups that need some background to use\n"
+        "             are hidden: Filter, Amyloid, Particles and Align in\n"
+        "             panel 1, and CTF in panel 2. Everything else is\n"
+        "             unchanged, and nothing already in a buffer is lost.");
+    connect(m_userLevelBtn, &QPushButton::clicked, this, &FtWindow::onToggleUserLevel);
 
     // Mode cycle button
     m_modeBtn = new QPushButton(modeLabel(), this);
@@ -180,7 +197,8 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     // (these buttons intercept mouse events, so mousePressEvent does not run).
     auto dismissNewImg = [this]() { if (m_newImageActive) onNewImageCancel(); };
     for (QPushButton *b : {m_loadBtn, m_saveBtn, m_reloadBtn, m_copyImageBtn, m_deleteBtn,
-                           m_undoBtn, m_redoBtn, m_fullscreenBtn, m_modeBtn}) {
+                           m_undoBtn, m_redoBtn, m_fullscreenBtn, m_modeBtn,
+                           m_userLevelBtn}) {
         connect(b, &QPushButton::pressed, this, dismissNewImg);
     }
 
@@ -945,6 +963,69 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
         "angles k·360°/N (k = 0…N−1), enforcing N-fold rotational\n"
         "symmetry. Use N = 2 for two-fold, 3 for three-fold, etc.");
     m_p1SymmetryEdit->hide();
+    // Histogram threshold / truncate widgets
+    m_threshModeCombo = new QComboBox(this);
+    m_threshModeCombo->addItem("Threshold histogram", ThresholdToImageRange);
+    m_threshModeCombo->addItem("Truncate histogram",  TruncateToRange);
+    m_threshModeCombo->addItem("Select histogram",    SelectRange);
+    m_threshModeCombo->setFixedSize(180, 22);
+    m_threshModeCombo->setStyleSheet(
+        "QComboBox { background:white; color:black; border:1px solid #888;"
+        "  padding: 2px 4px; }"
+        "QComboBox::drop-down { width: 20px; }"
+        "QComboBox QAbstractItemView { background:white; color:black;"
+        "  selection-background-color:#ccc; min-width: 140px; padding: 4px; }");
+    m_threshModeCombo->setToolTip(
+        "What happens to the pixels outside the kept range:\n"
+        "  Threshold histogram — a pixel below the minimum is set to the\n"
+        "        image's current minimum and one above the maximum to its\n"
+        "        current maximum, so they are pushed out to full black and\n"
+        "        full white and the range in between is left untouched.\n"
+        "  Truncate histogram — a pixel below the minimum is set to that\n"
+        "        minimum and one above the maximum to that maximum, so the\n"
+        "        values are clipped and nothing outside the range survives.\n"
+        "  Select histogram — everything outside the range, on either side,\n"
+        "        is set to the image's current minimum, so only the pixels\n"
+        "        whose grey value falls inside it are left standing against\n"
+        "        a flat background. Use it to isolate one band of density.\n"
+        "All three leave every pixel inside the range exactly as it was.");
+    m_threshModeCombo->hide();
+
+    m_threshMinEdit = new QLineEdit("0", this);
+    m_threshMinEdit->setFixedSize(80, 22);
+    m_threshMinEdit->setStyleSheet("background:white; color:black; border:1px solid #888;");
+    m_threshMinEdit->setToolTip(
+        "Lowest grey value the image may keep. Opens on the left edge of the\n"
+        "selection in the histogram below the image, and follows it whenever\n"
+        "that selection is dragged, so marking a range there is enough to set\n"
+        "this. It can also be typed in directly.");
+    m_threshMinEdit->hide();
+
+    m_threshMaxEdit = new QLineEdit("0", this);
+    m_threshMaxEdit->setFixedSize(80, 22);
+    m_threshMaxEdit->setStyleSheet("background:white; color:black; border:1px solid #888;");
+    m_threshMaxEdit->setToolTip(
+        "Highest grey value the image may keep. Opens on the right edge of the\n"
+        "selection in the histogram below the image, and follows it whenever\n"
+        "that selection is dragged. It can also be typed in directly.");
+    m_threshMaxEdit->hide();
+
+    m_threshCancelBtn = new QPushButton("Cancel", this);
+    m_threshCancelBtn->setFixedSize(80, 26);
+    m_threshCancelBtn->setStyleSheet(
+        "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }");
+    connect(m_threshCancelBtn, &QPushButton::clicked, this, &FtWindow::onThresholdCancel);
+    m_threshCancelBtn->hide();
+
+    m_threshComputeBtn = new QPushButton("Compute", this);
+    m_threshComputeBtn->setFixedSize(80, 26);
+    m_threshComputeBtn->setStyleSheet(
+        "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }");
+    connect(m_threshComputeBtn, &QPushButton::clicked, this, &FtWindow::onApplyThreshold);
+    connect(m_threshMinEdit, &QLineEdit::returnPressed, this, &FtWindow::onApplyThreshold);
+    connect(m_threshMaxEdit, &QLineEdit::returnPressed, this, &FtWindow::onApplyThreshold);
+    m_threshComputeBtn->hide();
+
     m_applyP1SymmetryBtn = new QPushButton("Apply symmetry", this);
     m_applyP1SymmetryBtn->setFixedSize(130, 26);
     connect(m_applyP1SymmetryBtn, &QPushButton::clicked, this, &FtWindow::onApplySymmetry);
@@ -1035,6 +1116,110 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
         "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }");
     connect(m_hessianComputeBtn, &QPushButton::clicked, this, &FtWindow::onApplyHessianFilter);
     m_hessianComputeBtn->hide();
+
+    // Hough transform widgets
+    const QString houghComboStyle =
+        "QComboBox { background:white; color:black; border:1px solid #888;"
+        "  padding: 2px 4px; }"
+        "QComboBox::drop-down { width: 20px; }"
+        "QComboBox QAbstractItemView { background:white; color:black;"
+        "  selection-background-color:#ccc; min-width: 60px; padding: 4px; }";
+
+    m_houghSourceCombo = new QComboBox(this);
+    for (int i = 0; i < HISTORY_SLOTS; i++)
+        m_houghSourceCombo->addItem(QString(QChar('a' + i)));
+    m_houghSourceCombo->setFixedSize(70, 22);
+    m_houghSourceCombo->setStyleSheet(houghComboStyle);
+    m_houghSourceCombo->setToolTip(
+        "Image buffer (a…p) the transform reads. The edges it votes from are\n"
+        "found in this image, so it should be the picture holding the lines\n"
+        "or circles you are after — filtering it first (Hessian, Gabor) can\n"
+        "help when the edges are faint.");
+    m_houghSourceCombo->hide();
+
+    m_houghTargetCombo = new QComboBox(this);
+    for (int i = 0; i < HISTORY_SLOTS; i++)
+        m_houghTargetCombo->addItem(QString(QChar('a' + i)));
+    m_houghTargetCombo->setFixedSize(70, 22);
+    m_houghTargetCombo->setStyleSheet(houghComboStyle);
+    m_houghTargetCombo->setToolTip(
+        "Buffer (a…p) the accumulator is written to. It becomes the displayed\n"
+        "buffer and is overwritten. Both pulldowns open on the buffer you are\n"
+        "looking at, so by default the transform replaces its own input; point\n"
+        "this one elsewhere to keep the original alongside the result.");
+    m_houghTargetCombo->hide();
+
+    m_houghElementCombo = new QComboBox(this);
+    m_houghElementCombo->addItem("Lines",                                HoughLines);
+    m_houghElementCombo->addItem("Circles, radius 5 px",                 HoughCircles5);
+    m_houghElementCombo->addItem("Circles, radius 10 px",                HoughCircles10);
+    m_houghElementCombo->addItem("Circles, radius 20 px",                HoughCircles20);
+    m_houghElementCombo->addItem("Circles, radius 30 px",                HoughCircles30);
+    m_houghElementCombo->addItem("Circles, radius 40 px",                HoughCircles40);
+    m_houghElementCombo->addItem("Circles, radius 50 px",                HoughCircles50);
+    m_houghElementCombo->addItem("Circles, radius 60 px",                HoughCircles60);
+    m_houghElementCombo->addItem("Circles, all radii 5 - 60 px",         HoughCirclesAll);
+    m_houghElementCombo->addItem("Circles, only strongest radius 5 - 60 px",
+                                                                        HoughCirclesStrongest);
+    m_houghElementCombo->setFixedSize(240, 22);
+    m_houghElementCombo->setStyleSheet(
+        "QComboBox { background:white; color:black; border:1px solid #888;"
+        "  padding: 2px 4px; }"
+        "QComboBox::drop-down { width: 20px; }"
+        "QComboBox QAbstractItemView { background:white; color:black;"
+        "  selection-background-color:#ccc; min-width: 160px; padding: 4px; }"
+    );
+    m_houghElementCombo->setToolTip(
+        "Which geometric element the accumulator votes for. Every option\n"
+        "has a two-dimensional parameter space, so the result is an\n"
+        "ordinary image:\n"
+        "  Lines     — axes are the line angle θ (0…180° across the width)\n"
+        "              and its signed distance ρ from the image centre\n"
+        "              (down the height). One bright spot per straight\n"
+        "              edge in the image.\n"
+        "  Radius N  — axes are the circle centre, so the result stays in\n"
+        "              register with the input: a bright spot sits where a\n"
+        "              circle of that radius is centred. Pick the radius\n"
+        "              closest to the features you are after; one of the\n"
+        "              wrong size gives a much weaker peak.\n"
+        "  All radii — sums the accumulators for radii 5, 10, 20, 30, 40,\n"
+        "              50 and 60 px, so anything circular shows up and a\n"
+        "              centre that works at several sizes is reinforced.\n"
+        "  Strongest — the same sweep, but each centre keeps only its best\n"
+        "              radius, so differently sized discs stay distinct\n"
+        "              instead of blurring together.\n"
+        "Both sweeps cost seven times a single radius.");
+    m_houghElementCombo->hide();
+
+    m_houghInverseBtn = new QCheckBox("Inverse Hough transformation", this);
+    m_houghInverseBtn->setStyleSheet(checkBoxStyle("#333"));
+    m_houghInverseBtn->setToolTip(
+        "Checked: run the line transform backwards. The input buffer is read\n"
+        "as a (θ, ρ) accumulator — the output of a forward Lines transform,\n"
+        "usually after the histogram tools have been used on it to keep only\n"
+        "its peaks — and every cell still standing above the background draws\n"
+        "the line it represents back into the output image. What comes out is\n"
+        "a picture of the lines that survived the filtering, in the original\n"
+        "image's coordinates.\n"
+        "\n"
+        "The geometric-element pulldown does not apply while this is ticked:\n"
+        "only the line transform has a parameter space to come back from — a\n"
+        "circle accumulator is already in image coordinates.");
+    connect(m_houghInverseBtn, &QCheckBox::toggled, this, [this](bool) { update(); });
+    m_houghInverseBtn->hide();
+
+    m_houghCancelBtn = new QPushButton("Cancel", this);
+    m_houghCancelBtn->setFixedSize(80, 26);
+    m_houghCancelBtn->setStyleSheet(
+        "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }");
+    connect(m_houghCancelBtn, &QPushButton::clicked, this, &FtWindow::onHoughCancel);
+    m_houghCancelBtn->hide();
+    m_houghComputeBtn = new QPushButton("Compute", this);
+    m_houghComputeBtn->setFixedSize(80, 26);
+    m_houghComputeBtn->setStyleSheet(
+        "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }");
+    connect(m_houghComputeBtn, &QPushButton::clicked, this, &FtWindow::onApplyHoughFilter);
+    m_houghComputeBtn->hide();
 
     // Amyloid filament widgets
     m_amyloidRiseEdit = new QLineEdit("4.75", this);
@@ -1678,6 +1863,63 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     connect(m_extractComputeBtn, &QPushButton::clicked, this, &FtWindow::onExtractCompute);
     m_extractComputeBtn->hide();
 
+    // Average image tiles widgets
+    const QString tileAvgComboStyle =
+        "QComboBox { background:#222; color:white; border:1px solid #888;"
+        "  padding: 2px 8px; }"
+        "QComboBox::drop-down { width: 20px; }"
+        "QComboBox QAbstractItemView { background:#222; color:white;"
+        "  selection-background-color:#555; min-width: 60px; padding: 4px; }";
+
+    m_tileAvgSourceCombo = new QComboBox(this);
+    for (int i = 0; i < HISTORY_SLOTS; i++)
+        m_tileAvgSourceCombo->addItem(QString(QChar('a' + i)));
+    m_tileAvgSourceCombo->setFixedSize(70, 28);
+    m_tileAvgSourceCombo->setStyleSheet(tileAvgComboStyle);
+    m_tileAvgSourceCombo->setToolTip(
+        "Source image buffer (a…p) that is cut into tiles. The tiles are\n"
+        "taken from a grid anchored at the top-left corner; a strip along\n"
+        "the right and bottom edges that does not make up a whole tile is\n"
+        "left out, so every tile in the average is complete.");
+    m_tileAvgSourceCombo->hide();
+
+    m_tileAvgTargetCombo = new QComboBox(this);
+    for (int i = 0; i < HISTORY_SLOTS; i++)
+        m_tileAvgTargetCombo->addItem(QString(QChar('a' + i)));
+    m_tileAvgTargetCombo->setFixedSize(70, 28);
+    m_tileAvgTargetCombo->setStyleSheet(tileAvgComboStyle);
+    m_tileAvgTargetCombo->setToolTip(
+        "Target buffer (a…p) where the averaged tile is stored. The result\n"
+        "is one tile-sized image, not a stack. Any existing content of the\n"
+        "target buffer is overwritten.");
+    m_tileAvgTargetCombo->hide();
+
+    m_tileAvgSizeCombo = new QComboBox(this);
+    m_tileAvgSizeCombo->addItem("64", 64);
+    m_tileAvgSizeCombo->addItem("128", 128);
+    m_tileAvgSizeCombo->setFixedSize(70, 28);
+    m_tileAvgSizeCombo->setStyleSheet(tileAvgComboStyle);
+    m_tileAvgSizeCombo->setToolTip(
+        "Side length, in pixels, of the square tiles the image is cut into,\n"
+        "and therefore of the averaged result. Opens on whichever size the\n"
+        "Extract particles function last used, since the two are normally\n"
+        "run at the same box size.");
+    m_tileAvgSizeCombo->hide();
+
+    m_tileAvgCancelBtn = new QPushButton("Cancel", this);
+    m_tileAvgCancelBtn->setFixedSize(80, 26);
+    m_tileAvgCancelBtn->setStyleSheet(
+        "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }");
+    connect(m_tileAvgCancelBtn, &QPushButton::clicked, this, &FtWindow::onTileAverageCancel);
+    m_tileAvgCancelBtn->hide();
+
+    m_tileAvgComputeBtn = new QPushButton("Compute", this);
+    m_tileAvgComputeBtn->setFixedSize(80, 26);
+    m_tileAvgComputeBtn->setStyleSheet(
+        "QPushButton { background-color: #888; border: 2px outset #aaa; color: #eee; padding: 2px; }");
+    connect(m_tileAvgComputeBtn, &QPushButton::clicked, this, &FtWindow::onTileAverageCompute);
+    m_tileAvgComputeBtn->hide();
+
     // Copy-buffer widgets
     {
         auto makeCopyCombo = [this](const QString &tip) {
@@ -1842,6 +2084,46 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
             "Slower than the other two buttons, but needs no iteration.");
         connect(m_alignFullBtn, &QPushButton::clicked, this, &FtWindow::onAlignFull);
         m_alignFullBtn->hide();
+
+        m_alignTilesBtn = new QCheckBox("Image has tiles", this);
+        m_alignTilesBtn->setStyleSheet(checkBoxStyle("#333"));
+        m_alignTilesBtn->setToolTip(
+            "Checked: the source is not aligned as one picture but cut into a\n"
+            "grid of square tiles, each of which is aligned onto the reference\n"
+            "on its own and then written back at the position it came from. The\n"
+            "output keeps the source's dimensions and tiling, and every tile in\n"
+            "it holds its own aligned content.\n"
+            "\n"
+            "The search and the resampling work on the cut-out tile alone: a\n"
+            "movement reaching past a tile's edge takes that tile's own mean\n"
+            "rather than borrowing from its neighbour.\n"
+            "\n"
+            "Only the centre of the reference is used, cut to the tile size —\n"
+            "a reference larger than a tile cannot be matched by one, and a\n"
+            "smaller one is padded out with its own mean.\n"
+            "\n"
+            "All three action buttons work this way while it is checked. Full\n"
+            "align searches every tile against every angle and is much slower\n"
+            "here than on a single image.");
+        connect(m_alignTilesBtn, &QCheckBox::toggled, this, [this](bool) { update(); });
+        m_alignTilesBtn->hide();
+
+        m_alignTileSizeCombo = new QComboBox(this);
+        m_alignTileSizeCombo->addItem("64", 64);
+        m_alignTileSizeCombo->addItem("128", 128);
+        m_alignTileSizeCombo->setFixedSize(70, 28);
+        m_alignTileSizeCombo->setStyleSheet(
+            "QComboBox { background:white; color:black; border:1px solid #888;"
+            "  padding: 2px 4px; }"
+            "QComboBox::drop-down { width: 20px; }"
+            "QComboBox QAbstractItemView { background:white; color:black;"
+            "  selection-background-color:#ccc; min-width: 60px; padding: 4px; }");
+        m_alignTileSizeCombo->setToolTip(
+            "Side length, in pixels, of the tiles the source is cut into, and\n"
+            "therefore of the reference region used. Opens on whichever size\n"
+            "the Extract particles function last used, as the Average image\n"
+            "tiles function does.");
+        m_alignTileSizeCombo->hide();
     }
 
     // All four toggle buttons next to the histograms ("freeze display
@@ -1859,6 +2141,12 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_maskCenter = settings.value("maskCenter", false).toBool();
     m_displayMode = settings.value("displayMode", 3).toInt();
     m_modeBtn->setText(modeLabel());
+
+    // Defaults to Advanced; the tool columns were built at that level above, so
+    // they only need rebuilding when the stored level turns out to be Basic.
+    m_advancedLevel = settings.value("userLevelAdvanced", true).toBool();
+    m_userLevelBtn->setText(userLevelLabel());
+    if (!m_advancedLevel) buildToolGroups();
 
     // Restore math combo selections
     m_mathOutCombo->setCurrentIndex(settings.value("mathOutIdx", 0).toInt());
@@ -1906,6 +2194,12 @@ FtWindow::FtWindow(QWidget *parent) : QWidget(parent)
     m_extractSourceCombo->setCurrentIndex(settings.value("extractSourceIdx", 0).toInt());
     m_extractTargetCombo->setCurrentIndex(settings.value("extractTargetIdx", 1).toInt());
     m_extractSizeCombo->setCurrentIndex(settings.value("extractSizeIdx", 0).toInt());
+
+    // Restore average-image-tiles settings. The tile size deliberately has no
+    // stored value of its own: it is seeded from the extract box size whenever
+    // the tool is opened (see activateP1Tool).
+    m_tileAvgSourceCombo->setCurrentIndex(settings.value("tileAvgSourceIdx", 0).toInt());
+    m_tileAvgTargetCombo->setCurrentIndex(settings.value("tileAvgTargetIdx", 1).toInt());
 
     m_activeSlot = settings.value("activeSlot", -1).toInt();
     if (m_activeSlot >= 0 && m_activeSlot < HISTORY_SLOTS
@@ -2000,15 +2294,15 @@ void FtWindow::changeEvent(QEvent *event)
     // Desktop: the button follows the window's own fullscreen state. In the
     // browser it must NOT — Qt's canvas-filling window reads as fullscreen even
     // when the browser is not, so a WindowStateChange here would wrongly flip the
-    // label to "Leave fullscreen". There the label is driven solely by
+    // label to "Window". There the label is driven solely by
     // handleBrowserFullscreenChange(), from the browser's own fullscreenchange
     // event (see installFullscreenSync()).
     if (event->type() == QEvent::WindowStateChange && isWindow()) {
         updateFullscreenButton(isFullScreen());
         // On macOS the native fullscreen transition settles asynchronously, so
         // isFullScreen() can still report the old state during this event —
-        // most visibly on the way out, leaving the button stuck on "Leave
-        // fullscreen". Re-read once the event loop has caught up.
+        // most visibly on the way out, leaving the button stuck on
+        // "Window". Re-read once the event loop has caught up.
         QTimer::singleShot(0, this, [this]() {
             if (isWindow()) updateFullscreenButton(isFullScreen());
         });
@@ -2041,9 +2335,24 @@ void FtWindow::resizeEvent(QResizeEvent *)
         for (QPushButton *b : {m_loadBtn, m_createBtn, m_saveBtn, m_reloadBtn,
                                m_copyImageBtn, m_deleteBtn, m_undoBtn, m_redoBtn})
             sizeChromeButton(b, 130, 30);
-        // The two widest labels ("Go fullscreen", and the display-mode names).
-        sizeChromeButton(m_fullscreenBtn, 180, 30);
-        sizeChromeButton(m_modeBtn,       180, 30);
+        // The display-mode button carries by far the longest labels and keeps
+        // the full width. The two one-word toggles sit side by side on the line
+        // above it and, gap included, span exactly that width — so they are
+        // sized from it rather than from a number of their own, and the odd
+        // pixel of a width that will not halve goes to the right-hand one.
+        sizeChromeButton(m_modeBtn, 180, 30);
+        {
+            const int totalW = m_modeBtn->width();
+            const int leftW  = std::max(1, (totalW - kChromeToggleGap) / 2);
+            const int rightW = std::max(1, totalW - kChromeToggleGap - leftW);
+            m_userLevelBtn->setFixedSize(leftW,  m_modeBtn->height());
+            m_fullscreenBtn->setFixedSize(rightW, m_modeBtn->height());
+            for (QPushButton *b : { m_userLevelBtn, m_fullscreenBtn }) {
+                QFont f = b->font();
+                f.setPixelSize(fontPx);
+                b->setFont(f);
+            }
+        }
     }
 
     m_loadBtn->move(8, 8);
@@ -2077,7 +2386,11 @@ void FtWindow::resizeEvent(QResizeEvent *)
     int undoY = (int)std::lround((isWindow() ? (8 + 42 * 2) : (8 + 42)) * chromeScale());
     m_undoBtn->move((width() - m_undoBtn->width()) / 2, undoY);
     m_redoBtn->move((width() - m_redoBtn->width()) / 2, undoY + m_undoBtn->height() + 4);
+    // The two toggles share the top line, right-aligned with the display-mode
+    // button below them, and between them they cover exactly its width.
     m_fullscreenBtn->move(width() - m_fullscreenBtn->width() - 8, 8);
+    m_userLevelBtn->move(std::max(8, m_fullscreenBtn->x() - m_userLevelBtn->width()
+                                     - kChromeToggleGap), 8);
     m_modeBtn->move(width() - m_modeBtn->width() - 8, 8 + m_fullscreenBtn->height() + 4);
 
     // Scale factor for tool dialogue widgets based on panel height
@@ -2229,6 +2542,24 @@ void FtWindow::resizeEvent(QResizeEvent *)
     m_applyP1SymmetryBtn->setFixedSize(static_cast<int>(130 * sc), btnH);
     m_applyP1SymmetryBtn->setStyleSheet(btnSS);
 
+    // Histogram threshold widgets (sizes only)
+    m_threshModeCombo->setFixedSize(static_cast<int>(180 * sc), editH);
+    m_threshModeCombo->setStyleSheet(QString(
+        "QComboBox { background:white; color:black; border:1px solid #888;"
+        "  padding: 2px 4px; font-size: %1px; }"
+        "QComboBox::drop-down { width: %2px; }"
+        "QComboBox QAbstractItemView { background:white; color:black;"
+        "  selection-background-color:#ccc; min-width: 140px; padding: 4px;"
+        "  font-size: %1px; }").arg(fontSize).arg(static_cast<int>(20 * sc)));
+    m_threshMinEdit->setFixedSize(static_cast<int>(80 * sc), editH);
+    m_threshMinEdit->setStyleSheet(editSS);
+    m_threshMaxEdit->setFixedSize(static_cast<int>(80 * sc), editH);
+    m_threshMaxEdit->setStyleSheet(editSS);
+    m_threshCancelBtn->setFixedSize(static_cast<int>(80 * sc), btnH);
+    m_threshCancelBtn->setStyleSheet(btnSS);
+    m_threshComputeBtn->setFixedSize(static_cast<int>(80 * sc), btnH);
+    m_threshComputeBtn->setStyleSheet(btnSS);
+
     // Shear widgets (sizes only)
     m_shearAngleEdit->setFixedSize(static_cast<int>(60 * sc), editH);
     m_shearAngleEdit->setStyleSheet(editSS);
@@ -2269,6 +2600,34 @@ void FtWindow::resizeEvent(QResizeEvent *)
     m_hessianComputeBtn->setFixedSize(static_cast<int>(80 * sc), btnH);
     m_hessianComputeBtn->setStyleSheet(btnSS);
 
+    // Hough transform widgets (sizes only)
+    {
+        const QString hSS = QString(
+            "QComboBox { background:white; color:black; border:1px solid #888;"
+            "  padding: 2px 4px; font-size: %1px; }"
+            "QComboBox::drop-down { width: %2px; }"
+            "QComboBox QAbstractItemView { background:white; color:black;"
+            "  selection-background-color:#ccc; min-width: 60px; padding: 4px;"
+            "  font-size: %1px; }").arg(fontSize).arg(static_cast<int>(20 * sc));
+        m_houghSourceCombo->setFixedSize(static_cast<int>(70 * sc), editH);
+        m_houghSourceCombo->setStyleSheet(hSS);
+        m_houghTargetCombo->setFixedSize(static_cast<int>(70 * sc), editH);
+        m_houghTargetCombo->setStyleSheet(hSS);
+    }
+    m_houghInverseBtn->setStyleSheet(cbSS);
+    m_houghElementCombo->setFixedSize(static_cast<int>(240 * sc), editH);
+    m_houghElementCombo->setStyleSheet(QString(
+        "QComboBox { background:white; color:black; border:1px solid #888;"
+        "  padding: 2px 4px; font-size: %1px; }"
+        "QComboBox::drop-down { width: %2px; }"
+        "QComboBox QAbstractItemView { background:white; color:black;"
+        "  selection-background-color:#ccc; min-width: 160px; padding: 4px;"
+        "  font-size: %1px; }").arg(fontSize).arg(static_cast<int>(20 * sc)));
+    m_houghCancelBtn->setFixedSize(static_cast<int>(80 * sc), btnH);
+    m_houghCancelBtn->setStyleSheet(btnSS);
+    m_houghComputeBtn->setFixedSize(static_cast<int>(80 * sc), btnH);
+    m_houghComputeBtn->setStyleSheet(btnSS);
+
     // Particle picking widgets (sizes only)
     m_peakSourceCombo->setFixedSize(static_cast<int>(70 * sc), btnH);
     m_peakSourceCombo->setStyleSheet(QString(
@@ -2305,6 +2664,18 @@ void FtWindow::resizeEvent(QResizeEvent *)
     m_extractCancelBtn->setStyleSheet(btnSS);
     m_extractComputeBtn->setFixedSize(static_cast<int>(80 * sc), btnH);
     m_extractComputeBtn->setStyleSheet(btnSS);
+
+    // Average image tiles widgets (sizes only)
+    m_tileAvgSourceCombo->setFixedSize(static_cast<int>(70 * sc), btnH);
+    m_tileAvgSourceCombo->setStyleSheet(extractComboSS);
+    m_tileAvgTargetCombo->setFixedSize(static_cast<int>(70 * sc), btnH);
+    m_tileAvgTargetCombo->setStyleSheet(extractComboSS);
+    m_tileAvgSizeCombo->setFixedSize(static_cast<int>(70 * sc), btnH);
+    m_tileAvgSizeCombo->setStyleSheet(extractComboSS);
+    m_tileAvgCancelBtn->setFixedSize(static_cast<int>(80 * sc), btnH);
+    m_tileAvgCancelBtn->setStyleSheet(btnSS);
+    m_tileAvgComputeBtn->setFixedSize(static_cast<int>(80 * sc), btnH);
+    m_tileAvgComputeBtn->setStyleSheet(btnSS);
 
     // Copy-buffer widgets (sizes only)
     {
@@ -2354,6 +2725,15 @@ void FtWindow::resizeEvent(QResizeEvent *)
         m_alignRotBtn->setStyleSheet(alignBtnSS);
         m_alignFullBtn->setFixedSize(static_cast<int>(100 * sc), btnH);
         m_alignFullBtn->setStyleSheet(alignBtnSS);
+        m_alignTilesBtn->setStyleSheet(cbSS);
+        m_alignTileSizeCombo->setFixedSize(static_cast<int>(70 * sc), editH);
+        m_alignTileSizeCombo->setStyleSheet(QString(
+            "QComboBox { background:white; color:black; border:1px solid #888;"
+            "  padding: 2px 4px; font-size: %1px; }"
+            "QComboBox::drop-down { width: %2px; }"
+            "QComboBox QAbstractItemView { background:white; color:black;"
+            "  selection-background-color:#ccc; min-width: 60px; padding: 4px;"
+            "  font-size: %1px; }").arg(fontSize).arg(static_cast<int>(20 * sc)));
     }
 
     // Binning widgets (sizes only)

@@ -23,8 +23,10 @@ void FtWindow::drawParamLabel(QPainter &p, const QFontMetrics &fm,
 bool FtWindow::p1ToolWindowOpen() const
 {
     return m_p1EraserActive || m_p1BrushActive || m_p1TaperActive || m_p1SymmetrizeActive
+        || m_threshActive
         || m_binActive || m_padActive || m_copyActive || m_averageActive || m_cropActive || m_peakPickActive || m_extractActive
-        || m_gaborActive || m_hessianActive || m_amyloidActive || m_measureActive
+        || m_tileAvgActive
+        || m_gaborActive || m_hessianActive || m_houghActive || m_amyloidActive || m_measureActive
         || m_shiftActive || m_rotateActive || m_shearActive || m_alignActive
         || m_p1FlipHActive || m_p1FlipVActive || m_p1InvertActive;
 }
@@ -49,6 +51,7 @@ bool FtWindow::toolHelpInfo(bool panel2, QString &title, QString &anchor) const
         { m_p1EraserActive,     "Eraser",                 "p1-eraser"            },
         { m_p1BrushActive,      "Paint brush",            "p1-paint-brush"       },
         { m_p1TaperActive,      "Taper edges (Hanning)",  "p1-taper-edges"       },
+        { m_threshActive,       "Threshold histogram",    "p1-threshold"         },
         { m_p1SymmetrizeActive, "Symmetrize image",       "p1-symmetrize"        },
         { m_binActive,          "Bin image",              "p1-bin"               },
         { m_padActive,          "Pad image",              "p1-pad"               },
@@ -57,8 +60,10 @@ bool FtWindow::toolHelpInfo(bool panel2, QString &title, QString &anchor) const
         { m_cropActive,         "Crop image",             "p1-crop"              },
         { m_peakPickActive,     "Peak search",            "p1-peak-search"       },
         { m_extractActive,      "Extract particles",      "p1-extract-particles" },
+        { m_tileAvgActive,      "Average image tiles",    "p1-tile-average"      },
         { m_gaborActive,        "Gabor filter",           "p1-gabor"             },
         { m_hessianActive,      "Hessian filter",         "p1-hessian"           },
+        { m_houghActive,        "Hough transform",        "p1-hough"             },
         { m_measureActive,      "Measure",                "p1-measure"           },
         { m_shiftActive,        "Shift image",            "p1-shift"             },
         { m_rotateActive,       "Rotate image",           "p1-rotate"            },
@@ -328,11 +333,14 @@ void FtWindow::paintEvent(QPaintEvent *)
                 (i == 5 && m_shiftActive) || (i == 6 && m_rotateActive) ||
                 (i == 22 && m_shearActive) ||
                 (i == 8 && m_p1TaperActive) || (i == 9 && m_p1SymmetrizeActive) ||
+                (i == 25 && m_threshActive) ||
                 (i == 10 && m_binActive) || (i == 11 && m_cropActive) ||
                 (i == 19 && m_padActive) || (i == 20 && m_copyActive) ||
                 (i == 12 && m_gaborActive) || (i == 13 && m_hessianActive) ||
+                (i == 23 && m_houghActive) ||
                 (i == 14 && m_amyloidActive) || (i == 15 && m_mathActive) ||
                 (i == 16 && m_peakPickActive) || (i == 17 && m_extractActive) ||
+                (i == 24 && m_tileAvgActive) ||
                 (i == 18 && m_alignActive) || (i == 21 && m_averageActive))
                 p.setBrush(QColor(60, 60, 60));
             else
@@ -680,27 +688,65 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Shear icon (button 22): a trapezium — parallel top and bottom
-            // edges of unequal length, the sides leaning in. Nothing else in the
-            // column is a four-sided outline, so it reads at button size.
+            // Histogram threshold icon (button 25): a white bar histogram with a
+            // Gaussian peak, its top third of the value axis washed over in grey
+            // — the part a threshold takes out.
+            if (i == 25) {
+                p.setRenderHint(QPainter::Antialiasing, false);
+                const QRectF ir = QRectF(r).adjusted(3, 3, -3, -3);
+                const int    nBars = 9;
+                const double bw    = ir.width() / nBars;
+                const double sigma = nBars / 5.0;
+                const double mid   = (nBars - 1) / 2.0;
+
+                p.setPen(Qt::NoPen);
+                p.setBrush(m_threshActive ? QColor(180, 180, 255) : Qt::white);
+                for (int k = 0; k < nBars; k++) {
+                    const double t = (k - mid) / sigma;
+                    const double bh = std::max(1.0, ir.height() * std::exp(-0.5 * t * t));
+                    p.drawRect(QRectF(ir.x() + k * bw + bw * 0.15, ir.bottom() - bh,
+                                      std::max(1.0, bw * 0.7), bh));
+                }
+
+                p.setBrush(QColor(150, 150, 150, 180));
+                p.drawRect(QRectF(ir.x() + ir.width() * 2.0 / 3.0, ir.y(),
+                                  ir.width() / 3.0, ir.height()));
+
+                if (r.contains(m_mousePos)) {
+                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                    QFontMetrics ttfm(ttf);
+                    QString tip = "Threshold the image with the current histogram selection";
+                    int ttw = ttfm.horizontalAdvance(tip) + 8;
+                    int tth = ttfm.height() + 4;
+                    int ttx = r.right() + 4;
+                    int tty = r.center().y() - tth / 2;
+                    pendingTipRect = QRect(ttx, tty, ttw, tth);
+                    pendingTipText = tip;
+                }
+            }
+
+            // Shear icon (button 22): a parallelogram — a square whose top edge
+            // has slid sideways, which is exactly the shape the tool leaves
+            // behind. Nothing else in the column is a leaning quadrilateral, so
+            // it reads at button size.
             if (i == 22) {
                 p.setRenderHint(QPainter::Antialiasing, true);
                 const QColor col = m_shearActive ? QColor(180, 180, 255) : Qt::white;
                 const double cx2  = r.x() + r.width() / 2.0;
                 const double cy2  = r.y() + r.height() / 2.0;
-                const double halfH = std::min(r.width(), r.height()) * 0.28;
-                const double botHalf = std::min(r.width(), r.height()) * 0.38;
-                const double topHalf = botHalf * 0.45;
+                const double side = std::min(r.width(), r.height());
+                const double half = side * 0.25;   // half the (unsheared) square
+                const double lean = side * 0.15;   // how far the top edge slides
 
-                QPainterPath tz;
-                tz.moveTo(cx2 - topHalf, cy2 - halfH);
-                tz.lineTo(cx2 + topHalf, cy2 - halfH);
-                tz.lineTo(cx2 + botHalf, cy2 + halfH);
-                tz.lineTo(cx2 - botHalf, cy2 + halfH);
-                tz.closeSubpath();
+                QPainterPath pg;
+                pg.moveTo(cx2 - half + lean, cy2 - half);
+                pg.lineTo(cx2 + half + lean, cy2 - half);
+                pg.lineTo(cx2 + half - lean, cy2 + half);
+                pg.lineTo(cx2 - half - lean, cy2 + half);
+                pg.closeSubpath();
                 p.setPen(Qt::NoPen);
                 p.setBrush(col);
-                p.drawPath(tz);
+                p.drawPath(pg);
 
                 p.setRenderHint(QPainter::Antialiasing, false);
 
@@ -1049,6 +1095,32 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
             }
 
+            // Average-image-tiles icon (button 24): three vertical and three
+            // horizontal white lines cutting the black face into 4×4 tiles —
+            // the grid the image is divided along.
+            if (i == 24) {
+                const QColor col = m_tileAvgActive ? QColor(180, 180, 255) : Qt::white;
+                p.setPen(QPen(col, std::max(1, r.width() / 20)));
+                for (int k = 1; k <= 3; k++) {
+                    const int gx = r.left() + r.width()  * k / 4;
+                    const int gy = r.top()  + r.height() * k / 4;
+                    p.drawLine(gx, r.top() + 1, gx, r.bottom() - 1);
+                    p.drawLine(r.left() + 1, gy, r.right() - 1, gy);
+                }
+
+                if (r.contains(m_mousePos)) {
+                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                    QFontMetrics ttfm(ttf);
+                    QString tip = "Average image tiles";
+                    int ttw = ttfm.horizontalAdvance(tip) + 8;
+                    int tth = ttfm.height() + 4;
+                    int ttx = r.right() + 4;
+                    int tty = r.center().y() - tth / 2;
+                    pendingTipRect = QRect(ttx, tty, ttw, tth);
+                    pendingTipText = tip;
+                }
+            }
+
             // Copy icon (button 20): two numbered white squares, "1" at the top
             // left and "2" over it at the bottom right, overlapping by 30% of a
             // square's width — one buffer duplicated onto another.
@@ -1119,7 +1191,7 @@ void FtWindow::paintEvent(QPaintEvent *)
                 if (r.contains(m_mousePos)) {
                     QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
                     QFontMetrics ttfm(ttf);
-                    QString tip = "Average images by summing them up";
+                    QString tip = "Average image buffers";
                     int ttw = ttfm.horizontalAdvance(tip) + 8;
                     int tth = ttfm.height() + 4;
                     pendingTipRect = QRect(r.right() + 4, r.center().y() - tth / 2, ttw, tth);
@@ -1250,6 +1322,37 @@ void FtWindow::paintEvent(QPaintEvent *)
                     QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
                     QFontMetrics ttfm(ttf);
                     QString tip = "Amyloid filament";
+                    int ttw = ttfm.horizontalAdvance(tip) + 8;
+                    int tth = ttfm.height() + 4;
+                    int ttx = r.right() + 4;
+                    int tty = r.center().y() - tth / 2;
+                    pendingTipRect = QRect(ttx, tty, ttw, tth);
+                    pendingTipText = tip;
+                }
+            }
+
+            // Hough transform icon (button 23): three white lines at irregular
+            // angles, crossing at three different points — a picture of what the
+            // transform is built to find, and of why its accumulator peaks.
+            if (i == 23) {
+                p.setRenderHint(QPainter::Antialiasing, true);
+                const double x0 = r.x(), y0 = r.y();
+                const double bw = r.width(), bh = r.height();
+                auto pt = [&](double fx, double fy) {
+                    return QPointF(x0 + fx * bw, y0 + fy * bh);
+                };
+                QPen lp(Qt::white, std::max(1.0, bw / 13.0));
+                lp.setCapStyle(Qt::RoundCap);
+                p.setPen(lp);
+                p.drawLine(pt(0.08, 0.70), pt(0.92, 0.48));   // shallow
+                p.drawLine(pt(0.22, 0.10), pt(0.66, 0.94));   // steep, leaning right
+                p.drawLine(pt(0.92, 0.20), pt(0.42, 0.90));   // steep, leaning left
+                p.setRenderHint(QPainter::Antialiasing, false);
+
+                if (r.contains(m_mousePos)) {
+                    QFont ttf; ttf.setPixelSize(11); p.setFont(ttf);
+                    QFontMetrics ttfm(ttf);
+                    QString tip = "Hough transform for lines";
                     int ttw = ttfm.horizontalAdvance(tip) + 8;
                     int tth = ttfm.height() + 4;
                     int ttx = r.right() + 4;
@@ -3712,6 +3815,13 @@ void FtWindow::paintEvent(QPaintEvent *)
                 int r1 = fm.horizontalAdvance("Symmetry to apply: ") + m_p1SymmetryEdit->width();
                 int r2 = m_applyP1SymmetryBtn->width();
                 textW = std::max(r1, r2);
+            } else if (m_threshActive) {
+                nRows = 3;
+                int r0 = fm.horizontalAdvance("Mode: ") + m_threshModeCombo->width();
+                int r1 = fm.horizontalAdvance("Keep grey values from: ") + m_threshMinEdit->width()
+                         + fm.horizontalAdvance(" to ") + m_threshMaxEdit->width();
+                int r2 = m_threshCancelBtn->width() + 8 + m_threshComputeBtn->width();
+                textW = std::max({r0, r1, r2});
             } else if (m_binActive) {
                 nRows = 3;
                 int r1 = m_binCombo->width();
@@ -3783,20 +3893,31 @@ void FtWindow::paintEvent(QPaintEvent *)
                     int r3 = m_extractCancelBtn->width() + 8 + m_extractComputeBtn->width();
                     textW = std::max({r0, r1, r2, r3});
                 }
+            } else if (m_tileAvgActive) {
+                nRows = 4;
+                int r0 = fm.horizontalAdvance("Source image: ") + m_tileAvgSourceCombo->width();
+                int r1 = fm.horizontalAdvance("Target image: ") + m_tileAvgTargetCombo->width();
+                int r2 = fm.horizontalAdvance("Tile size: ")    + m_tileAvgSizeCombo->width();
+                int r3 = m_tileAvgCancelBtn->width() + 8 + m_tileAvgComputeBtn->width();
+                textW = std::max({r0, r1, r2, r3});
             } else if (m_alignActive) {
                 // Three selectors laid out side by side: a header row, the
-                // pulldowns beneath, then the button row (and an optional result).
-                nRows = m_alignResult.isEmpty() ? 3 : 4;
+                // pulldowns beneath, the tiling row, then the button row (and an
+                // optional result).
+                nRows = m_alignResult.isEmpty() ? 4 : 5;
                 const int comboW = m_alignSrcCombo->width();
                 const int colGap = 14;
                 int c0 = std::max(fm.horizontalAdvance("Alignment reference"), comboW);
                 int c1 = std::max(fm.horizontalAdvance("Image source"), comboW);
                 int c2 = std::max(fm.horizontalAdvance("Output buffer"), comboW);
                 int rCols = c0 + c1 + c2 + 2 * colGap;
+                int rTile = m_alignTilesBtn->sizeHint().width() + 16
+                            + fm.horizontalAdvance("Tile size: ")
+                            + m_alignTileSizeCombo->width();
                 int rBtns = m_alignCancelBtn->width() + 8 + m_alignShiftBtn->width()
                             + 8 + m_alignRotBtn->width() + 8 + m_alignFullBtn->width();
                 int rRes  = m_alignResult.isEmpty() ? 0 : fm.horizontalAdvance(m_alignResult);
-                textW = std::max({rCols, rBtns, rRes});
+                textW = std::max({rCols, rTile, rBtns, rRes});
             } else if (m_gaborActive) {
                 nRows = 5;
                 int r0 = fm.horizontalAdvance("Sigma (envelope): ")     + m_gaborSigmaEdit->width();
@@ -3811,6 +3932,14 @@ void FtWindow::paintEvent(QPaintEvent *)
                 int r1 = fm.horizontalAdvance("Polarity (+1/-1): ")        + m_hessianPolarityEdit->width();
                 int r2 = m_hessianCancelBtn->width() + 8 + m_hessianComputeBtn->width();
                 textW = std::max({r0, r1, r2});
+            } else if (m_houghActive) {
+                nRows = 5;
+                int r0 = fm.horizontalAdvance("Input buffer: ")  + m_houghSourceCombo->width();
+                int r1 = fm.horizontalAdvance("Output buffer: ") + m_houghTargetCombo->width();
+                int r2 = fm.horizontalAdvance("Geometric element: ") + m_houghElementCombo->width();
+                int r3 = m_houghInverseBtn->sizeHint().width();
+                int r4 = m_houghCancelBtn->width() + 8 + m_houghComputeBtn->width();
+                textW = std::max({r0, r1, r2, r3, r4});
             } else if (m_measureActive) {
                 nRows = 3;
                 double dx = m_measureP1.x() - m_measureP0.x();
@@ -3911,6 +4040,23 @@ void FtWindow::paintEvent(QPaintEvent *)
                 drawParamLabel(p, fm, tx, ty, "Symmetry to apply:", m_p1SymmetryEdit->toolTip());
                 m_p1SymmetryEdit->move(tx + fm.horizontalAdvance("Symmetry to apply: "), ty);
                 m_applyP1SymmetryBtn->move(tx, ty + lh);
+            } else if (m_threshActive) {
+                // Row 0: what happens to the pixels outside the kept range.
+                drawParamLabel(p, fm, tx, ty, "Mode:", m_threshModeCombo->toolTip(),
+                               m_threshModeCombo->height());
+                m_threshModeCombo->move(tx + fm.horizontalAdvance("Mode: "), ty);
+                // Row 1: the range itself, opening on the histogram selection.
+                drawParamLabel(p, fm, tx, ty + lh, "Keep grey values from:",
+                               m_threshMinEdit->toolTip());
+                int minX = tx + fm.horizontalAdvance("Keep grey values from: ");
+                m_threshMinEdit->move(minX, ty + lh);
+                int toX = minX + m_threshMinEdit->width();
+                drawParamLabel(p, fm, toX, ty + lh, " to ", m_threshMaxEdit->toolTip());
+                m_threshMaxEdit->move(toX + fm.horizontalAdvance(" to "), ty + lh);
+                // Row 2: Cancel left, Compute right.
+                m_threshCancelBtn->move(tx, ty + lh * 2);
+                m_threshComputeBtn->move(rx + rw - margin - m_threshComputeBtn->width(),
+                                         ty + lh * 2);
             } else if (m_binActive) {
                 m_binCombo->move(tx, ty);
                 m_binKeepSizeBtn->move(tx, ty + lh);
@@ -4046,6 +4192,18 @@ void FtWindow::paintEvent(QPaintEvent *)
                     m_extractCancelBtn->move(tx, ty + lh * 3);
                     m_extractComputeBtn->move(rx + rw - margin - m_extractComputeBtn->width(), ty + lh * 3);
                 }
+            } else if (m_tileAvgActive) {
+                drawParamLabel(p, fm, tx, ty, "Source image:", m_tileAvgSourceCombo->toolTip(),
+                               m_tileAvgSourceCombo->height());
+                m_tileAvgSourceCombo->move(tx + fm.horizontalAdvance("Source image: "), ty);
+                drawParamLabel(p, fm, tx, ty + lh, "Target image:", m_tileAvgTargetCombo->toolTip(),
+                               m_tileAvgTargetCombo->height());
+                m_tileAvgTargetCombo->move(tx + fm.horizontalAdvance("Target image: "), ty + lh);
+                drawParamLabel(p, fm, tx, ty + lh * 2, "Tile size:", m_tileAvgSizeCombo->toolTip(),
+                               m_tileAvgSizeCombo->height());
+                m_tileAvgSizeCombo->move(tx + fm.horizontalAdvance("Tile size: "), ty + lh * 2);
+                m_tileAvgCancelBtn->move(tx, ty + lh * 3);
+                m_tileAvgComputeBtn->move(rx + rw - margin - m_tileAvgComputeBtn->width(), ty + lh * 3);
             } else if (m_alignActive) {
                 // Three columns side by side: a bold header on top, the pulldown
                 // for that buffer role directly beneath it. Reading order follows
@@ -4078,16 +4236,31 @@ void FtWindow::paintEvent(QPaintEvent *)
                 }
                 p.setFont(sf);
 
+                // Row 2: the tiling toggle and the size it works at. The size
+                // pulldown stays visible but goes dead while the toggle is off,
+                // so it is clear that it belongs to the toggle.
+                m_alignTilesBtn->move(tx, ty + lh * 2);
+                int tileLblX = tx + m_alignTilesBtn->sizeHint().width() + 16;
+                m_alignTileSizeCombo->setEnabled(m_alignTilesBtn->isChecked());
+                p.setPen(m_alignTilesBtn->isChecked() ? QColor(60, 60, 60)
+                                                      : QColor(150, 150, 150));
+                drawParamLabel(p, fm, tileLblX, ty + lh * 2, "Tile size:",
+                               m_alignTileSizeCombo->toolTip(),
+                               m_alignTileSizeCombo->height());
+                m_alignTileSizeCombo->move(tileLblX + fm.horizontalAdvance("Tile size: "),
+                                           ty + lh * 2);
+                p.setPen(QColor(60, 60, 60));
+
                 // Cancel on the left, the three alignment actions right-aligned in
                 // increasing thoroughness: shift, rotation, then both at once.
-                m_alignCancelBtn->move(tx, ty + lh * 2);
+                m_alignCancelBtn->move(tx, ty + lh * 3);
                 int bRight = rx + rw - margin;
                 for (QPushButton *b : { m_alignFullBtn, m_alignRotBtn, m_alignShiftBtn }) {
-                    b->move(bRight - b->width(), ty + lh * 2);
+                    b->move(bRight - b->width(), ty + lh * 3);
                     bRight -= b->width() + 8;
                 }
                 if (!m_alignResult.isEmpty())
-                    p.drawText(tx, ty + lh * 3 + fm.ascent(), m_alignResult);
+                    p.drawText(tx, ty + lh * 4 + fm.ascent(), m_alignResult);
             } else if (m_gaborActive) {
                 drawParamLabel(p, fm, tx, ty, "Sigma (envelope):", m_gaborSigmaEdit->toolTip());
                 m_gaborSigmaEdit->move(tx + fm.horizontalAdvance("Sigma (envelope): "), ty);
@@ -4106,6 +4279,26 @@ void FtWindow::paintEvent(QPaintEvent *)
                 m_hessianPolarityEdit->move(tx + fm.horizontalAdvance("Polarity (+1/-1): "), ty + lh);
                 m_hessianCancelBtn->move(tx, ty + lh * 2);
                 m_hessianComputeBtn->move(rx + rw - margin - m_hessianComputeBtn->width(), ty + lh * 2);
+            } else if (m_houghActive) {
+                drawParamLabel(p, fm, tx, ty, "Input buffer:", m_houghSourceCombo->toolTip(),
+                               m_houghSourceCombo->height());
+                m_houghSourceCombo->move(tx + fm.horizontalAdvance("Input buffer: "), ty);
+                drawParamLabel(p, fm, tx, ty + lh, "Output buffer:", m_houghTargetCombo->toolTip(),
+                               m_houghTargetCombo->height());
+                m_houghTargetCombo->move(tx + fm.horizontalAdvance("Output buffer: "), ty + lh);
+                // The element pulldown has nothing to say about the inverse, so
+                // it goes dead — label and all — while that box is ticked.
+                const bool inv = m_houghInverseBtn->isChecked();
+                m_houghElementCombo->setEnabled(!inv);
+                p.setPen(inv ? QColor(150, 150, 150) : QColor(60, 60, 60));
+                drawParamLabel(p, fm, tx, ty + lh * 2, "Geometric element:",
+                               m_houghElementCombo->toolTip(), m_houghElementCombo->height());
+                p.setPen(QColor(60, 60, 60));
+                m_houghElementCombo->move(tx + fm.horizontalAdvance("Geometric element: "),
+                                          ty + lh * 2);
+                m_houghInverseBtn->move(tx, ty + lh * 3);
+                m_houghCancelBtn->move(tx, ty + lh * 4);
+                m_houghComputeBtn->move(rx + rw - margin - m_houghComputeBtn->width(), ty + lh * 4);
             } else if (m_measureActive) {
                 double dx = m_measureP1.x() - m_measureP0.x();
                 double dy = m_measureP1.y() - m_measureP0.y();

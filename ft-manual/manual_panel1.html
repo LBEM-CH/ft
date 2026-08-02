@@ -138,6 +138,13 @@ parameter window appears at the bottom of the panel; hover any parameter
 label for an inline tooltip. The sections below are arranged by group,
 in the same order as the squares in the panel.
 </p>
+<p>
+If a group described below is missing from your panel, check the
+user-level button at the top right: while it reads
+<em>Basic</em> the <em>Filter</em>, <em>Amyloid</em>,
+<em>Particles</em> and <em>Align</em> groups are hidden. Click it to
+switch to <em>Advanced</em> — the default — and they come back.
+</p>
 
 <details id="p1-histogram-toggles">
 <summary>Histogram-side toggles</summary>
@@ -225,6 +232,56 @@ strong cross of high-frequency content.
 <BR>
 </details>
 
+<details id="p1-threshold">
+<summary>Threshold histogram<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><g fill="#fff"><rect x="3.3" y="20.4" width="1.4" height="0.6"/><rect x="5.3" y="18.6" width="1.4" height="2.4"/><rect x="7.3" y="14.6" width="1.4" height="6.4"/><rect x="9.3" y="9.6" width="1.4" height="11.4"/><rect x="11.3" y="7.4" width="1.4" height="13.6"/><rect x="13.3" y="9.6" width="1.4" height="11.4"/><rect x="15.3" y="14.6" width="1.4" height="6.4"/><rect x="17.3" y="18.6" width="1.4" height="2.4"/><rect x="19.3" y="20.4" width="1.4" height="0.6"/></g><rect x="15" y="3" width="6" height="18" fill="#969696" opacity="0.7"/></svg></span></summary>
+<p>
+Act on the grey-value range you have marked in the histogram below the
+image. Drag a range across that histogram — the same gesture you use to
+adjust the display contrast — and this tool turns that selection into a
+real change to the pixel values: pushing everything outside it out to
+black and white, clipping it away, or dropping it to black so that only
+the marked band of density is left.
+</p>
+<p>
+The two fields open on whatever the histogram currently has selected, and
+<strong>follow it</strong>: drag a new range there and they update, so
+marking the range is normally all you need to do. They can also be typed
+in directly, and if you give them the wrong way round they are swapped.
+Pixels <em>inside</em> the range keep their own grey values in all three
+modes; the modes differ only in where the pixels outside it are sent.
+</p>
+<div class="controls">
+  <strong>Mode &mdash; Threshold histogram:</strong> a pixel below the
+  minimum is set to the image's <em>current minimum</em>, and one above
+  the maximum to its <em>current maximum</em>. The outliers are pushed out
+  to full black and full white, the range in between is left alone, and
+  the image keeps its original span. Use it to saturate what lies outside
+  the feature you marked. <br>
+  <strong>Mode &mdash; Truncate histogram:</strong> a pixel below the
+  minimum is set to <em>that minimum</em>, and one above the maximum to
+  <em>that maximum</em>. The values are clipped, so nothing outside the
+  range survives at all and the image's span shrinks to the range itself.
+  Use it to cut off hot pixels or a runaway background before an FFT. <br>
+  <strong>Mode &mdash; Select histogram:</strong> everything outside the
+  range &mdash; on <em>both</em> sides &mdash; is set to the image's
+  <em>current minimum</em>, while the pixels inside it keep their own grey
+  values. Only the chosen band of density is left standing, against a flat
+  background. This is the mode that differs from <em>Threshold
+  histogram</em> only above the maximum: there, bright outliers are pushed
+  up to full white; here they are dropped to black along with the dark
+  ones. Use it to isolate one class of feature by its density &mdash; the
+  protein but not the support film, say &mdash; and then measure, mask or
+  transform what is left. <br>
+  <strong>Keep grey values from / to:</strong> the range that survives
+  untouched. Defaults to the histogram selection. <br>
+  <strong>Cancel / Compute:</strong> Compute applies the change to the
+  image in place, in the active history slot, and recomputes the Fourier
+  transform if one was showing. <kbd>Return</kbd> in either field does the
+  same. One undo step per application.
+</div>
+<BR>
+</details>
+
 <h2 class="group" id="p1-group-measure">Measure</h2>
 
 <details id="p1-measure">
@@ -272,7 +329,7 @@ matters for downstream FFT analysis.
 </details>
 
 <details id="p1-shear">
-<summary>Shear image<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><polygon points="7.9,5.28 16.1,5.28 21.12,18.72 2.88,18.72" fill="#fff"/></svg></span></summary>
+<summary>Shear image<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><polygon points="9.6,6 21.6,6 14.4,18 2.4,18" fill="#fff"/></svg></span></summary>
 <p>
 Skew the image about its centre, turning a square into a slanted
 parallelogram. A <strong>horizontal</strong> shear slides each row
@@ -605,6 +662,122 @@ which way.
 </p>
 </details>
 
+<details id="p1-hough">
+<summary>Hough transform<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><g stroke="#fff" stroke-width="1.85" stroke-linecap="round"><line x1="1.92" y1="16.8" x2="22.08" y2="11.52"/><line x1="5.28" y1="2.4" x2="15.84" y2="22.56"/><line x1="22.08" y1="4.8" x2="10.08" y2="21.6"/></g></svg></span></summary>
+<p>
+Find straight lines or circles by voting. The Hough transform turns a
+shape-detection problem into a peak-finding problem: every edge pixel
+votes for all the shapes of the chosen kind that could pass through it,
+and wherever many edge pixels agree, the votes pile up into a bright
+spot. The result is the <em>accumulator</em> — a map of how much evidence
+there is for each possible shape — and it is written to the chosen
+<strong>output buffer</strong> at the input's dimensions, so it can be
+contrast-adjusted, Fourier transformed, peak-searched or undone like any
+other image. Both buffer pulldowns open on the buffer you are looking at,
+so the transform replaces its own input unless you send it somewhere
+else.
+</p>
+<p>
+<strong>How it works.</strong> The input image is first run through a
+Sobel operator, and only the strongest gradients are kept as edge pixels
+— the top tenth of the magnitudes, so the cut adapts to the image's own
+contrast rather than to a fixed number (the list is capped at 250 000
+points, which only a very large image reaches). Each surviving pixel then
+casts its votes, spread over the neighbouring accumulator bins so a peak
+grows smoothly instead of splitting across a bin boundary. Nothing beyond
+the three pulldowns needs setting; if the transform comes out empty, the
+image had no edges to vote from, and a Hessian or Gabor filter beforehand
+will usually give it some.
+</p>
+<p>
+<strong>Reading the result.</strong> For the <em>circle</em> options the
+parameter space <em>is</em> image space — the coordinates of the centre —
+so the accumulator stays in register with the input: a bright spot sits
+exactly where a circle of that radius is centred. Send the result to a
+<em>different</em> output buffer and you can click between the two in the
+buffer strip to see which feature produced which peak; leave both
+pulldowns on the same buffer and undo/redo does the same job. That holds
+for the two sweeps as well — their result is still a map of where the
+circles are, only the way the seven radii are folded together differs.
+For
+<em>Lines</em> the axes change meaning: the horizontal axis is the line's
+angle &theta;, running 0° at the left edge to 180° at the right, and the
+vertical axis is its signed perpendicular distance &rho; from the image
+centre, running from &minus;&frac12;&radic;(<em>w</em>&sup2;+<em>h</em>&sup2;)
+at the top to +&frac12;&radic;(<em>w</em>&sup2;+<em>h</em>&sup2;) at the
+bottom. One bright spot there means one straight edge in the image; two
+spots at the same &theta; but different &rho; mean two parallel edges.
+Note that the pixel size no longer applies to a line accumulator, since
+neither axis is a distance in the image.
+</p>
+<div class="controls">
+  <strong>Input buffer:</strong> the buffer (a…p) the edges are found in.
+  Opens on the buffer you are looking at. <br>
+  <strong>Output buffer:</strong> where the accumulator is written. It is
+  overwritten and becomes the displayed buffer. It also opens on the
+  buffer you are looking at, so by default the transform replaces its own
+  input; point it at a free buffer to keep the original alongside the
+  result. <br>
+  <strong>Geometric element:</strong> what the accumulator votes for.
+  <em>Lines</em> gives the classic (&theta;,&nbsp;&rho;) transform, voted
+  at half-degree steps. <em>Circles, radius 5 / 10 / 20 / 30 / 40 / 50 /
+  60 px</em> vote for circle centres at that one radius — pick the one
+  closest to the features you are after, since a circle of the wrong size
+  gives a much weaker peak. The last two entries sweep all seven radii and
+  differ only in how the results are combined:
+  <em>Circles, all radii 5&nbsp;-&nbsp;60&nbsp;px</em> <strong
+  class="inline">sums</strong> them, so anything circular appears and a
+  centre that works at several sizes is reinforced, while
+  <em>Circles, only strongest radius 5&nbsp;-&nbsp;60&nbsp;px</em> keeps
+  the <strong class="inline">largest</strong> response at each centre, so
+  each centre is scored by the one radius that actually fits it and discs
+  of different sizes stay distinct instead of blurring together. Both
+  sweeps cost seven times a single radius. <br>
+  <strong>Inverse Hough transformation:</strong> run the line transform
+  backwards instead — see below. While it is ticked the geometric-element
+  pulldown goes dead, since only the line transform has a parameter space
+  to come back from. <br>
+  <strong>Cancel:</strong> closes the tool without touching the image. <br>
+  <strong>Compute:</strong> runs the transform and writes the accumulator
+  to the output buffer, which then becomes the displayed one. One undo
+  step per run.
+</div>
+<BR>
+<p>
+<strong>The inverse transform.</strong> Tick <em>Inverse Hough
+transformation</em> and the tool runs the other way: the input buffer is
+read as a (&theta;,&nbsp;&rho;) accumulator, and every cell in it draws the
+line it stands for back into the output image. A cell at column
+<em>x</em>, row <em>y</em> means the line at angle
+&theta;&nbsp;=&nbsp;180°·<em>x</em>/(<em>w</em>−1) whose perpendicular
+distance from the image centre is &rho;, read off the vertical axis the
+same way the forward transform wrote it — so a forward pass followed by an
+inverse pass puts the lines back where they came from.
+</p>
+<p>
+That is what makes the pair useful. Run <em>Lines</em> on an image, then
+use <em>Threshold histogram</em> on the accumulator — <em>Select
+histogram</em> is the natural mode — to mark the range that holds the
+peaks and drop everything else to the background. Feed that filtered
+accumulator back in with <em>Inverse Hough transformation</em> ticked, and
+what comes out is a clean picture of <em>only</em> the straight lines that
+survived the filtering, in the original image's coordinates: the lines
+found, with the noise, the texture and the curved edges left behind. Vary
+how much of the histogram you keep and you vary how many lines are
+returned.
+</p>
+<p>
+Cells sitting at the accumulator's minimum count as background and draw
+nothing, which is exactly what a filtered accumulator is mostly made of.
+An <em>unfiltered</em> one works too, but every cell then contributes and
+the result is the familiar smeared back-projection rather than a set of
+lines; to keep that case from taking minutes, at most the 20 000 strongest
+cells are drawn. Each line is deposited with the weight its cell carried,
+so a strong peak comes back as a bright line and a marginal one as a faint
+one.
+</p>
+</details>
+
 <h2 class="group" id="p1-group-amyloid">Amyloid</h2>
 
 <details id="p1-amyloid">
@@ -901,6 +1074,46 @@ rescaled across the montage as a whole.
 </p>
 </details>
 
+<details id="p1-tile-average">
+<summary>Average image tiles<span class="toolicons"><svg viewBox="0 0 24 24" width="40" height="40"><rect width="24" height="24" rx="3" fill="#323232"/><g stroke="#fff" stroke-width="1.2"><line x1="6" y1="1" x2="6" y2="23"/><line x1="12" y1="1" x2="12" y2="23"/><line x1="18" y1="1" x2="18" y2="23"/><line x1="1" y1="6" x2="23" y2="6"/><line x1="1" y1="12" x2="23" y2="12"/><line x1="1" y1="18" x2="23" y2="18"/></g></svg></span></summary>
+<p>
+Cut the source image into a grid of square tiles and average them all
+into one tile-sized image. Unlike <em>Extract particles</em>, which needs
+a peak list and lays the boxes out as a montage, this needs nothing but
+the image itself: the grid is fixed, so it is the quick way to see what a
+periodic image has in common from tile to tile, or to beat down noise by
+√<em>N</em> when the features already sit on a regular pitch.
+</p>
+<p>
+The tiles are taken from a grid anchored at the <strong>top-left
+corner</strong> and stepped by the tile size, so a
+<code>1024×1024</code> image gives 16×16&nbsp;=&nbsp;256 tiles at 64&nbsp;px
+or 8×8&nbsp;=&nbsp;64 tiles at 128&nbsp;px. Only whole tiles count: if the
+image dimensions are not multiples of the tile size, the leftover strip
+along the right and bottom edges is <em>left out</em> rather than padded,
+so no tile contributes invented pixels to the mean. An image smaller than
+one tile in either direction produces nothing.
+</p>
+<p>
+The result is a single <code>tile × tile</code> image — not a stack —
+written to the target buffer, which then becomes the displayed slot. The
+tiles are cut at full resolution, so the pixel size carries over
+unchanged from the source.
+</p>
+<div class="controls">
+  <strong>Source image:</strong> the buffer (a…p) that is cut into tiles.
+  Defaults to the buffer on display. <br>
+  <strong>Target image:</strong> the buffer the averaged tile is written
+  to. It is overwritten and becomes the displayed slot. <br>
+  <strong>Tile size:</strong> 64 or 128 pixels. It opens on whichever size
+  <em>Extract particles</em> last used, since the two functions are
+  normally run at the same box size; changing it here does not change the
+  extract setting. <br>
+  <strong>Cancel / Compute:</strong> Compute performs the averaging.
+</div>
+<BR>
+</details>
+
 <h2 class="group" id="p1-group-align">Align</h2>
 
 <details id="p1-align">
@@ -939,6 +1152,11 @@ you happen to be looking at.
   Choosing a different one from the pulldown keeps it there until you click
   another buffer. The output buffer becomes the displayed one when the
   alignment finishes. <br>
+  <strong>Image has tiles / Tile size:</strong> treat the source as a grid
+  of square tiles rather than as one picture — see <em>Tiled
+  alignment</em> below. The size pulldown is dead until the box is
+  ticked, and offers 64 or 128 pixels, opening on whichever size
+  <em>Extract particles</em> last used. <br>
   <strong>Cancel / Shift align / Rotation align / Full align:</strong>
   Cancel closes the window; the other three run the kinds of alignment
   described below, in increasing thoroughness. The window stays open
@@ -1052,6 +1270,63 @@ over the largest circle that fits inside the frame, exactly as in the
 rotation-only search, so the number it reports is comparable with the one
 <em>Rotation align</em> gives; the reference is masked to that circle,
 since it is the only region the image can still fill at every angle.
+</p>
+<BR>
+<p>
+<strong>Tiled alignment.</strong> Tick <em>Image has tiles</em> when the
+source is not one picture but a grid of them — the montage
+<em>Extract particles</em> produces, say, or a crystal cut on its own
+repeat. The source is then divided into square tiles of the chosen size,
+anchored at the top-left corner, giving 256 small images at 64&nbsp;px or
+64 at 128&nbsp;px for a 1024-pixel montage. <em>Every tile is aligned
+onto the reference separately</em>, and each aligned tile is written back
+at the position it was taken from. The output buffer therefore has the
+<strong>same dimensions and the same number of tiles</strong> as the
+input, and <strong>every tile in it holds its own aligned content</strong>
+— a montage of particles comes back as the same montage with each
+particle brought onto the reference, ready to be averaged (with
+<em>Average image tiles</em>) or filtered further.
+</p>
+<p>
+Only the <strong>centre of the reference</strong> is used, cut to the
+tile size: a tile can only ever match something of its own size, so
+anything beyond that would score against nothing. A reference smaller
+than a tile is padded out with its own mean. This means you can align a
+montage of 64-pixel particle boxes against a full micrograph and still
+get a sensible answer — what is compared is the middle 64×64 of that
+micrograph.
+</p>
+<p>
+All three action buttons work this way while the box is ticked, and mean
+the same thing they do for a whole image: <em>Shift align</em> lets each
+tile slide, <em>Rotation align</em> lets it turn, <em>Full align</em>
+searches both together. Everything — the search and the resampling that
+applies its answer — happens on the small cut-out tile alone, never on
+the surrounding image: a movement that would reach past a tile's edge
+takes that tile's own mean rather than borrowing from its neighbour,
+which belongs to a different particle. A strip along the right or bottom
+edge too narrow to hold a whole tile has no tile to align and keeps the
+source's own pixels unchanged.
+</p>
+<p>
+Two practical notes. The angle steps are coarser than for a whole image —
+half a degree moves the rim of a 64-pixel tile by only a quarter of a
+pixel, so the sweep steps by about a pixel's worth instead — and
+<em>Full align</em> runs its sweep coarsely first and then refines it
+around the winner, because a joint search per tile is far dearer than one
+search for a picture. Even so it is the slow button here: expect a few
+seconds for a 1024-pixel montage in the desktop build and longer in the
+browser, with the progress bar filling as it goes. And because a tiled
+run performs hundreds of alignments rather than one, the diagnostics
+overlay in panel 4 stays blank; the line under the buttons reports the
+tile count and the mean shift, angle and correlation across all of them
+instead.
+</p>
+<p>
+The natural next step is <em>Average image tiles</em> in the
+<em>Particles</em> group: run it on the aligned montage, at the same tile
+size, and the tiles that were just brought into register are averaged
+into one — which is the classic pick, box, align, average sequence.
 </p>
 </details>
 

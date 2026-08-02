@@ -263,6 +263,8 @@ void FtWindow::onAlignCancel()
     m_alignShiftBtn->hide();
     m_alignRotBtn->hide();
     m_alignFullBtn->hide();
+    m_alignTilesBtn->hide();
+    m_alignTileSizeCombo->hide();
     update();
 }
 
@@ -353,6 +355,339 @@ void FtWindow::finishAlign(int outIdx, std::vector<double> result,
 }
 
 // ---------------------------------------------------------------------------
+//  Tiled align — every tile onto the same reference, then averaged
+// ---------------------------------------------------------------------------
+//  With "Image has tiles" checked the source is not one picture to be moved but
+//  a grid of them — a montage of boxed particles, say, or a crystal cut on its
+//  own repeat. It is cut into tiles of the chosen size, each tile is aligned
+//  onto the same reference on its own, and each aligned tile is written back at
+//  the position it was taken from. The output therefore has the source's
+//  dimensions and tiling, with every tile holding its own aligned content.
+//
+//  The whole search and the resampling that follows it work on the cut-out tile
+//  alone, never on the surrounding image: what a tile does not contain, it
+//  cannot align, and a movement that would reach past its edge takes the tile's
+//  own mean instead.
+//
+//  The reference is the *centre* of the reference buffer, cut to the tile size:
+//  a tile can only ever match something of its own size, so anything beyond that
+//  would score against nothing. A reference smaller than a tile is padded out
+//  with its own mean.
+//
+//  The three action buttons choose what each tile may do, exactly as they do for
+//  a whole image. Full align is much dearer here than there — it is a joint
+//  search per tile rather than one for the picture — so its angle sweep runs
+//  coarse first and is then refined around the winner.
+void FtWindow::alignTilesImpl(AlignTileMode mode)
+{
+    if (!alignInputsValid()) return;
+    const int srcIdx = m_alignSrcCombo->currentIndex();
+    const int refIdx = m_alignRefCombo->currentIndex();
+    const int outIdx = m_alignOutCombo->currentIndex();
+    m_alignRefSlot = refIdx;   // remember the reference actually used
+
+    int w = 0, h = 0, rw = 0, rh = 0;
+    std::vector<double> src = alignSlotPixels(srcIdx, w, h);
+    std::vector<double> ref = alignSlotPixels(refIdx, rw, rh);
+    if (src.empty() || ref.empty()) {
+        m_alignResult = "Source and reference must both hold an image";
+        update();
+        return;
+    }
+
+    const int tile = m_alignTileSizeCombo->currentData().toInt();
+    if (tile < 8 || w < tile || h < tile) {
+        m_alignResult = QString("Image is smaller than one %1 px tile").arg(tile);
+        update();
+        return;
+    }
+
+    storeUndoSnapshot();
+    m_alignResult.clear();
+    // The panel-4 overlay reports one alignment; a run that performs hundreds
+    // has no single map or curve to show, so it stays blank for this path.
+    clearAlignDiagnostics();
+    m_toolProgress = 0.02;
+    update();
+
+    // Cut the reference down to the tile size about its centre.
+    padOrCropCentred(ref, rw, rh, tile, tile);
+
+    struct Work {
+        std::vector<double>  src;        // full source, w×h
+        std::vector<double>  out;        // result, w×h — one aligned tile per slot
+        std::vector<double>  refTile;    // tile×tile, zero-mean over the scored area
+        std::vector<Complex> refF;       // conjugated spectrum of refTile, N×N
+        std::vector<Complex> buf;        // reused for each tile/angle transform
+        std::vector<int>     diskIdx;    // scored area for the rotating modes
+        std::vector<double>  angles;     // the sweep, in degrees
+        double refNorm = 0.0;
+        double fineStep = 1.0;
+        int    w = 0, h = 0, tile = 0, nx = 0, ny = 0, N = 0;
+        int    outIdx = 0;
+        double pixelSize = 1.0;
+        bool   pixelSizeAssumed = false;
+        QString srcPath;
+        // Running totals for the one line the tool reports.
+        double sumAbsAngle = 0.0, sumScore = 0.0, sumAbsShift = 0.0;
+        int    nDone = 0;
+    };
+    auto st = std::make_shared<Work>();
+    st->w = w; st->h = h; st->tile = tile;
+    st->nx = w / tile; st->ny = h / tile;
+    st->N  = nextGoodFFTSize(tile);
+    st->outIdx = outIdx;
+    st->pixelSize = alignSlotPixelSize(srcIdx);
+    st->pixelSizeAssumed = alignSlotPixelSizeAssumed(srcIdx);
+    st->srcPath = alignSlotPath(srcIdx);
+    st->src = std::move(src);
+    st->refTile = std::move(ref);
+    // Half a degree is finer than a tile can tell apart: at the rim of a 64 px
+    // tile it moves the pixels by a quarter of one. Scale the step so the rim
+    // travels about a pixel instead, which is what the whole-image search aims
+    // for on its own much larger working grid.
+    st->fineStep = std::max(0.5, 90.0 / tile);
+
+    const bool rotates = (mode != AlignTileMode::Shift);
+    const bool shifts  = (mode != AlignTileMode::Rotate);
+
+    std::vector<std::function<void()>> steps;
+
+    // ---- Preparation: the reference, once, for every tile to be scored on ----
+    steps.push_back([this, st, rotates, shifts, mode]() {
+        const int T = st->tile, N = st->N;
+
+        // A rotating search may only compare what every angle keeps inside the
+        // frame, which is the inscribed disk; a pure shift has no such limit and
+        // uses the whole tile, as whole-image Shift align does.
+        const double c = (T - 1) / 2.0;
+        const double rad = T / 2.0 - 1.0, rad2 = rad * rad;
+        st->diskIdx.clear();
+        st->diskIdx.reserve((size_t)T * T);
+        for (int y = 0; y < T; y++)
+            for (int x = 0; x < T; x++) {
+                const double dx = x - c, dy = y - c;
+                if (!rotates || dx * dx + dy * dy <= rad2)
+                    st->diskIdx.push_back(y * T + x);
+            }
+
+        double sum = 0.0;
+        for (int i : st->diskIdx) sum += st->refTile[i];
+        const double mean = sum / st->diskIdx.size();
+        // Zero-meaning the reference over the scored area makes the correlation
+        // blind to a tile's own brightness offset, so tiles of different average
+        // density still score on their structure alone.
+        std::vector<double> masked((size_t)T * T, 0.0);
+        double sq = 0.0;
+        for (int i : st->diskIdx) {
+            const double v = st->refTile[i] - mean;
+            masked[i] = v;
+            sq += v * v;
+        }
+        st->refTile = std::move(masked);
+        st->refNorm = std::sqrt(sq);
+
+        if (shifts) {
+            st->refF.assign((size_t)N * N, Complex(0, 0));
+            for (int y = 0; y < T; y++)
+                for (int x = 0; x < T; x++)
+                    st->refF[(size_t)y * N + x] =
+                        Complex(st->refTile[(size_t)y * T + x], 0);
+            fft2d(st->refF, N, false);
+            for (Complex &z : st->refF) z = std::conj(z);
+            st->buf.assign((size_t)N * N, Complex(0, 0));
+        }
+
+        // The angle sweep. Rotation align walks the whole circle at the fine
+        // step; Full align cannot afford that per tile and runs a coarse pass
+        // first, refined around its winner (see the per-tile step below).
+        st->angles.clear();
+        if (mode == AlignTileMode::Rotate) {
+            for (double a = 0.0; a < 360.0; a += st->fineStep) st->angles.push_back(a);
+        } else if (mode == AlignTileMode::Full) {
+            for (double a = 0.0; a < 360.0; a += 8.0) st->angles.push_back(a);
+        } else {
+            st->angles.push_back(0.0);
+        }
+
+        // The output starts as a copy of the source, so that a strip along the
+        // right or bottom edge too narrow to hold a whole tile — which is never
+        // aligned, there being no tile there to align — keeps its own pixels
+        // instead of becoming a flat block. Every whole tile is overwritten
+        // below by its aligned self.
+        st->out = st->src;
+        m_toolProgress = 0.05;
+    });
+
+    // ---- Per-tile search and accumulation, in chunks ------------------------
+    const int nTiles = (w / tile) * (h / tile);
+    const int kChunks = std::min(nTiles, 24);
+    for (int chunk = 0; chunk < kChunks; chunk++) {
+        const int t0 = nTiles * chunk / kChunks;
+        const int t1 = nTiles * (chunk + 1) / kChunks;
+        steps.push_back([this, st, t0, t1, chunk, kChunks, mode, rotates, shifts]() {
+            const int T = st->tile, N = st->N;
+            const double c = (T - 1) / 2.0;
+            const double n = (double)st->diskIdx.size();
+
+            std::vector<double> tilePix((size_t)T * T);
+            std::vector<double> rot((size_t)T * T);   // the tile at one orientation
+
+            // Score one orientation of `tilePix`, and for the shifting modes
+            // report the displacement that achieved it. The number returned is
+            // a correlation coefficient either way — the peak of the
+            // cross-correlation where a shift is allowed, the correlation as the
+            // tile lies where it is not — so one loop serves all three buttons
+            // and the scores of different angles stay comparable.
+            auto scoreAngle = [&](double angDeg, double tileMean,
+                                  int &kx, int &ky) -> double {
+                const double ang = angDeg * M_PI / 180.0;
+                const double ca = std::cos(ang), sa = std::sin(ang);
+
+                // Zero-mean, so that the correlation reads on structure alone;
+                // pixels a rotation sweeps in from outside sample the tile mean
+                // and therefore land on exactly zero.
+                for (int y = 0; y < T; y++) {
+                    const double dy = y - c;
+                    for (int x = 0; x < T; x++) {
+                        const double dx = x - c;
+                        // Inverse map, as everywhere else in this tool: a
+                        // positive angle turns the tile clockwise on screen.
+                        rot[(size_t)y * T + x] = rotates
+                            ? sampleBilinear(tilePix, T, T, c + ca * dx + sa * dy,
+                                             c - sa * dx + ca * dy, tileMean) - tileMean
+                            : tilePix[(size_t)y * T + x] - tileMean;
+                    }
+                }
+
+                // The tile's spread over the same area the reference norm was
+                // measured on, so the ratio below is a correlation coefficient.
+                double sum = 0.0, sumSq = 0.0;
+                for (int i : st->diskIdx) {
+                    const double v = rot[i];
+                    sum += v; sumSq += v * v;
+                }
+                const double var = sumSq - sum * sum / n;
+                const double denom = (var > 0.0) ? std::sqrt(var) * st->refNorm : 0.0;
+
+                kx = ky = 0;
+                if (!shifts) {
+                    // The reference is already zero outside the scored area, so
+                    // the dot product only ever sees that area.
+                    double dot = 0.0;
+                    for (int i : st->diskIdx) dot += rot[i] * st->refTile[i];
+                    return (denom > 0.0) ? dot / denom : 0.0;
+                }
+
+                std::fill(st->buf.begin(), st->buf.end(), Complex(0, 0));
+                for (int y = 0; y < T; y++)
+                    for (int x = 0; x < T; x++)
+                        st->buf[(size_t)y * N + x] = Complex(rot[(size_t)y * T + x], 0);
+                fft2d(st->buf, N, false);
+                for (size_t i = 0; i < st->buf.size(); i++) st->buf[i] *= st->refF[i];
+                fft2d(st->buf, N, true);
+
+                // c[k] = Σ tile[n+k]·ref[n], so the peak index is what the tile
+                // must be read ahead by — the same convention as Shift align.
+                int px = 0, py = 0;
+                double peak = -std::numeric_limits<double>::infinity();
+                for (int y = 0; y < N; y++)
+                    for (int x = 0; x < N; x++) {
+                        const double v = st->buf[(size_t)y * N + x].real();
+                        if (v > peak) { peak = v; px = x; py = y; }
+                    }
+                kx = (px > N / 2) ? px - N : px;
+                ky = (py > N / 2) ? py - N : py;
+                return (denom > 0.0) ? peak / denom : 0.0;
+            };
+
+            for (int t = t0; t < t1; t++) {
+                const int tx = t % st->nx, ty = t / st->nx;
+                const int x0 = tx * T, y0 = ty * T;
+                for (int y = 0; y < T; y++)
+                    std::copy_n(st->src.data() + (size_t)(y0 + y) * st->w + x0, T,
+                                tilePix.data() + (size_t)y * T);
+                const double tileMean = meanOf(tilePix);
+
+                double bestScore = -std::numeric_limits<double>::infinity();
+                double bestAngle = 0.0;
+                int bestKx = 0, bestKy = 0;
+                for (double a : st->angles) {
+                    int kx = 0, ky = 0;
+                    const double s = scoreAngle(a, tileMean, kx, ky);
+                    if (s > bestScore) { bestScore = s; bestAngle = a; bestKx = kx; bestKy = ky; }
+                }
+                // Full align's coarse pass located the answer to within 8°;
+                // walk that neighbourhood at the fine step to settle it.
+                if (mode == AlignTileMode::Full) {
+                    const double a0 = bestAngle - 8.0, a1 = bestAngle + 8.0;
+                    for (double a = a0; a <= a1 + 1e-9; a += st->fineStep) {
+                        int kx = 0, ky = 0;
+                        const double s = scoreAngle(a, tileMean, kx, ky);
+                        if (s > bestScore) { bestScore = s; bestAngle = a; bestKx = kx; bestKy = ky; }
+                    }
+                }
+
+                // Apply the winner and write the aligned tile back where it came
+                // from. It is resampled from the cut-out tile alone, so a
+                // movement that reaches past the tile edge takes the tile's own
+                // mean rather than borrowing from the neighbouring tile, which
+                // belongs to a different picture.
+                const double ang = bestAngle * M_PI / 180.0;
+                const double ca = std::cos(ang), sa = std::sin(ang);
+                for (int v = 0; v < T; v++) {
+                    for (int u = 0; u < T; u++) {
+                        // Rotation first, then the shift — the same order the
+                        // whole-image Full align applies them in.
+                        const double du = (u + bestKx) - c, dv = (v + bestKy) - c;
+                        const double sx = c + ca * du + sa * dv;
+                        const double sy = c - sa * du + ca * dv;
+                        st->out[(size_t)(y0 + v) * st->w + (x0 + u)] =
+                            sampleBilinear(tilePix, T, T, sx, sy, tileMean);
+                    }
+                }
+
+                double wrapped = std::fmod(bestAngle, 360.0);
+                if (wrapped > 180.0) wrapped -= 360.0;
+                if (wrapped < -180.0) wrapped += 360.0;
+                st->sumAbsAngle += std::abs(wrapped);
+                st->sumAbsShift += std::hypot((double)bestKx, (double)bestKy);
+                st->sumScore    += bestScore;
+                st->nDone++;
+            }
+            m_toolProgress = 0.05 + 0.9 * (chunk + 1) / kChunks;
+        });
+    }
+
+    // ---- Hand the tiled result over -----------------------------------------
+    steps.push_back([this, st, mode]() {
+        const int T = st->tile, W = st->w, H = st->h;
+        st->src.clear();   st->src.shrink_to_fit();
+        st->refF.clear();  st->refF.shrink_to_fit();
+        st->buf.clear();   st->buf.shrink_to_fit();
+
+        const char *what = (mode == AlignTileMode::Shift)  ? "shift"
+                         : (mode == AlignTileMode::Rotate) ? "rotate" : "full";
+        finishAlign(st->outIdx, std::move(st->out), W, H,
+                    st->pixelSize, st->srcPath, st->pixelSizeAssumed,
+                    tr("Aligned tiles to reference (%1)").arg(QString::fromLatin1(what)));
+
+        const double inv = (st->nDone > 0) ? 1.0 / st->nDone : 0.0;
+        QString detail;
+        if (mode != AlignTileMode::Rotate)
+            detail += QString(", mean shift %1 px").arg(st->sumAbsShift * inv, 0, 'f', 1);
+        if (mode != AlignTileMode::Shift)
+            detail += QString(", mean |angle| %1°").arg(st->sumAbsAngle * inv, 0, 'f', 1);
+        m_alignResult = QString("Aligned %1 tiles of %2 px%3 (mean correlation %4)")
+                            .arg(st->nDone).arg(T).arg(detail)
+                            .arg(st->sumScore * inv, 0, 'f', 4);
+        m_toolProgress = -1;
+    });
+
+    chainSteps(std::move(steps));
+}
+
+// ---------------------------------------------------------------------------
 //  Shift align
 // ---------------------------------------------------------------------------
 void FtWindow::onAlignShift()
@@ -363,6 +698,7 @@ void FtWindow::onAlignShift()
 
 void FtWindow::onAlignShiftImpl()
 {
+    if (m_alignTilesBtn->isChecked()) { alignTilesImpl(AlignTileMode::Shift); return; }
     if (!alignInputsValid()) return;
     int srcIdx = m_alignSrcCombo->currentIndex();
     int refIdx = m_alignRefCombo->currentIndex();
@@ -527,6 +863,7 @@ void FtWindow::onAlignRotate()
 
 void FtWindow::onAlignRotateImpl()
 {
+    if (m_alignTilesBtn->isChecked()) { alignTilesImpl(AlignTileMode::Rotate); return; }
     if (!alignInputsValid()) return;
     int srcIdx = m_alignSrcCombo->currentIndex();
     int refIdx = m_alignRefCombo->currentIndex();
@@ -747,6 +1084,7 @@ void FtWindow::onAlignFull()
 
 void FtWindow::onAlignFullImpl()
 {
+    if (m_alignTilesBtn->isChecked()) { alignTilesImpl(AlignTileMode::Full); return; }
     if (!alignInputsValid()) return;
     int srcIdx = m_alignSrcCombo->currentIndex();
     int refIdx = m_alignRefCombo->currentIndex();

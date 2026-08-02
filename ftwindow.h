@@ -187,6 +187,8 @@ private slots:
     void onGaborCancel();
     void onApplyHessianFilter();
     void onHessianCancel();
+    void onApplyHoughFilter();
+    void onHoughCancel();
     void onApplyShear();
     void onShearCancel();
     void onUndo();
@@ -232,6 +234,7 @@ private:
     void onApplyFtSymmetryImpl();
     void onApplyGaborFilterImpl();
     void onApplyHessianFilterImpl();
+    void onApplyHoughFilterImpl();
     void onApplyShearImpl();
     // Core of the Shear tool: skews the raw pixels of the active image about its
     // centre and leaves the result in the same buffer. `angleDeg` is the tilt the
@@ -246,6 +249,7 @@ private:
     void onFtMathComputeImpl();
     void onMathComputeImpl();
     void onExtractComputeImpl();
+    void onTileAverageComputeImpl();
     void onCtfComputeImpl();
     void onCtfFitExecuteImpl();
     void onPhaseRampComputeImpl();
@@ -404,6 +408,20 @@ private:
     QPushButton *m_redoBtn   = nullptr;
     QPushButton *m_fullscreenBtn = nullptr;
     QPushButton *m_modeBtn   = nullptr;
+    // User level. Basic hides the function groups that need some background to
+    // use — the panel-1 filters, amyloid, particles and align, and the panel-2
+    // CTF pair — so that a first-time user is not faced with all of them at
+    // once. Advanced is the default and shows everything. Which groups go is
+    // decided in buildToolGroups(), so the hidden ones are absent from the
+    // layout entirely rather than merely painted over.
+    QPushButton *m_userLevelBtn = nullptr;
+    bool        m_advancedLevel = true;
+    // Gap between the user-level and fullscreen toggles. They are sized so that
+    // the two of them plus this gap come to exactly the width of the
+    // display-mode button on the line below, so both places use this one value.
+    static constexpr int kChromeToggleGap = 4;
+    QString     userLevelLabel() const;
+    void        onToggleUserLevel();
     // m_maskBtn (panel-2 "mask center for display") is custom-painted in
     // paintEvent so that the panel-2 parameter window can cover it.
     QRect       m_maskBtnRect;
@@ -582,7 +600,7 @@ private:
     { return (m_reloadBtn ? m_reloadBtn->width() : 130) + 16; }
 
     // Size factor for the window's own furniture — the labelled buttons (Load
-    // image, New image, Go fullscreen, the display-mode button, the gutter stack)
+    // image, New image, Fullscreen, the display-mode button, the gutter stack)
     // and the custom-painted histogram toggles. They were laid out for a large
     // screen, where they are comfortable; on a laptop they crowded the panels
     // because their size was fixed. Full size from 2056x1329 upwards, tapering to
@@ -711,7 +729,7 @@ private:
     // slot each tool id currently occupies (a group face when collapsed, or a
     // popup cell when its group is open), and m_*SlotVisible says whether that
     // tool id is currently drawn / clickable.
-    static constexpr int P1_TOOL_BUTTONS = 23;   // ids 0..22 (22 = Shear)
+    static constexpr int P1_TOOL_BUTTONS = 26;   // ids 0..25 (25 = Threshold)
     static constexpr int P2_TOOL_BUTTONS = 14;
     QRect       m_p1BtnRects[P1_TOOL_BUTTONS];       // panel 1 left edge
     QRect       m_toolBtnRects[P2_TOOL_BUTTONS];     // panel 2 right edge
@@ -728,6 +746,7 @@ private:
         QVector<int> members;    // tool ids; members[0] is the group's "face"
         QString      faceText;   // if set, the collapsed face is a black square
                                  // showing this text instead of members[0]'s icon
+        bool         advanced = false;   // dropped while the user level is Basic
     };
     QVector<ToolGroup> m_p1Groups;
     QVector<ToolGroup> m_p2Groups;
@@ -842,6 +861,26 @@ private:
     QLineEdit  *m_p1SymmetryEdit = nullptr;
     QPushButton *m_applyP1SymmetryBtn = nullptr;
 
+    // Threshold / truncate against the grey-value histogram under panel 1. The
+    // two fields open on whatever range is selected there and follow it as the
+    // histogram is dragged, so the tool acts on what the user has just marked.
+    enum ThresholdMode {
+        ThresholdToImageRange = 0,  // outside the range → the image's own min / max
+        TruncateToRange,            // outside the range → the range's own min / max
+        SelectRange,                // outside the range → the image's min, both sides
+    };
+    bool        m_threshActive = false;
+    QComboBox  *m_threshModeCombo  = nullptr;
+    QLineEdit  *m_threshMinEdit    = nullptr;
+    QLineEdit  *m_threshMaxEdit    = nullptr;
+    QPushButton *m_threshCancelBtn  = nullptr;
+    QPushButton *m_threshComputeBtn = nullptr;
+    // Put the panel-1 histogram's current selection into the two fields.
+    void syncThresholdEdits();
+    void onThresholdCancel();
+    void onApplyThreshold();
+    void onApplyThresholdImpl();
+
     void p1EraserApply(QPoint pos);
     void p1BrushApply(QPoint pos);
     void rebuildImageFromRaw();
@@ -878,6 +917,40 @@ private:
     QLineEdit  *m_hessianPolarityEdit = nullptr;
     QPushButton *m_hessianCancelBtn   = nullptr;
     QPushButton *m_hessianComputeBtn  = nullptr;
+
+    // Hough transform. The pulldown picks which geometric element the
+    // accumulator votes for; the value below is what each item carries as its
+    // item data, so the order of the pulldown can change without touching the
+    // computation. Every element has a two-dimensional parameter space, which is
+    // what lets the result be shown as an ordinary image in the same buffer.
+    enum HoughElement {
+        HoughLines = 0,     // (theta, rho) — the classic line transform
+        HoughCircles5,      // circle centres, fixed radius 5 px
+        HoughCircles10,     // …10 px
+        HoughCircles20,     // …20 px
+        HoughCircles30,     // …30 px
+        HoughCircles40,     // …40 px
+        HoughCircles50,     // …50 px
+        HoughCircles60,     // …60 px
+        // Both sweep radii 5–60 px and differ only in how the per-radius
+        // accumulators are folded together: All sums them, so a centre that
+        // works at several radii is reinforced and everything circular shows up;
+        // Strongest keeps the largest, so each centre is scored by the one
+        // radius that actually fits it and the sizes do not blur together.
+        HoughCirclesAll,
+        HoughCirclesStrongest,
+    };
+    bool        m_houghActive = false;
+    QComboBox  *m_houghSourceCombo  = nullptr;
+    QComboBox  *m_houghTargetCombo  = nullptr;
+    QComboBox  *m_houghElementCombo = nullptr;
+    // Run the line transform backwards instead: read the input buffer as a
+    // (theta, rho) accumulator and draw the line each of its cells stands for,
+    // which turns a filtered accumulator back into a picture of just the lines
+    // that survived the filtering. Overrides the element pulldown while ticked.
+    QCheckBox  *m_houghInverseBtn   = nullptr;
+    QPushButton *m_houghCancelBtn   = nullptr;
+    QPushButton *m_houghComputeBtn  = nullptr;
 
     // Measure tool (panel 1)
     bool        m_measureActive = false;
@@ -925,6 +998,20 @@ private:
     void onExtractCancel();
     void onExtractCompute();
 
+    // Average image tiles: cut the source buffer into a grid of square tiles of
+    // the chosen size and average them into a single tile-sized image. The size
+    // pulldown offers the same choices as Extract particles and opens on
+    // whichever of them that tool last used, since the two are normally run on
+    // the same features.
+    bool        m_tileAvgActive = false;
+    QComboBox  *m_tileAvgSourceCombo = nullptr;
+    QComboBox  *m_tileAvgTargetCombo = nullptr;
+    QComboBox  *m_tileAvgSizeCombo   = nullptr;
+    QPushButton *m_tileAvgCancelBtn  = nullptr;
+    QPushButton *m_tileAvgComputeBtn = nullptr;
+    void onTileAverageCancel();
+    void onTileAverageCompute();
+
     // Copy one image buffer into another, leaving the source untouched.
     bool        m_copyActive = false;
     QComboBox  *m_copySrcCombo     = nullptr;
@@ -962,6 +1049,16 @@ private:
     QPushButton *m_alignShiftBtn  = nullptr;
     QPushButton *m_alignRotBtn    = nullptr;
     QPushButton *m_alignFullBtn   = nullptr;   // joint rotation + shift search
+    // Tiled mode: the source is cut into a grid of square tiles, every tile is
+    // aligned onto the same reference, and the aligned tiles are averaged. The
+    // size pulldown offers the same choices as Extract particles and opens on
+    // whichever of them that tool last used, as the tile-average tool does.
+    QCheckBox  *m_alignTilesBtn      = nullptr;
+    QComboBox  *m_alignTileSizeCombo = nullptr;
+    // Which movement the per-tile search is allowed to make. The three action
+    // buttons map onto these exactly as they do in the whole-image case.
+    enum class AlignTileMode { Shift, Rotate, Full };
+    void alignTilesImpl(AlignTileMode mode);
     // Outcome of the last alignment, shown as an extra line in the parameter
     // window. Empty until one of the three buttons has run.
     QString     m_alignResult;
