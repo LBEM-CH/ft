@@ -391,6 +391,7 @@ void FtWindow::showP1ToolWidgets()
     m_houghSourceCombo->setVisible(m_houghActive);
     m_houghTargetCombo->setVisible(m_houghActive);
     m_houghElementCombo->setVisible(m_houghActive);
+    m_houghRadiusSlider->setVisible(houghShowsRadiusSlider());
     m_houghInverseBtn->setVisible(m_houghActive);
     m_houghCancelBtn->setVisible(m_houghActive);
     m_houghComputeBtn->setVisible(m_houghActive);
@@ -544,9 +545,12 @@ void FtWindow::activateP1Tool(int toolId)
         bool was = m_houghActive; deactivateAllP1Tools(); m_houghActive = !was;
         // Both open on the buffer being looked at, so the transform replaces
         // its own input unless the user points the output somewhere else.
-        if (m_houghActive && m_activeSlot >= 0) {
-            m_houghSourceCombo->setCurrentIndex(m_activeSlot);
-            m_houghTargetCombo->setCurrentIndex(m_activeSlot);
+        if (m_houghActive) {
+            m_houghAutoRadius = 0;   // nothing found yet in this session of the tool
+            if (m_activeSlot >= 0) {
+                m_houghSourceCombo->setCurrentIndex(m_activeSlot);
+                m_houghTargetCombo->setCurrentIndex(m_activeSlot);
+            }
         }
         break;
     }
@@ -564,7 +568,10 @@ void FtWindow::activateP1Tool(int toolId)
     case 16: {
         bool was = m_peakPickActive; deactivateAllP1Tools(); m_peakPickActive = !was;
         if (m_peakPickActive) {
-            m_peakThresholdSlider->setValue(750);
+            // Seeding the slider is not the user moving it, so it must not set
+            // the automatic search going — opening the tool should not compute.
+            { QSignalBlocker b(m_peakThresholdSlider);
+              m_peakThresholdSlider->setValue(750); }
             if (m_activeSlot >= 0) m_peakSourceCombo->setCurrentIndex(m_activeSlot);
         }
         break;
@@ -1034,6 +1041,121 @@ static void runManualSearch(const QString &rawQuery, QTextBrowser *browser)
     }
 }
 
+// Make buffer `i` the one on display, saving whatever is on screen back to
+// its own slot first. Shared by clicking a history thumbnail and by the
+// arrow keys in the maximized view, so both routes leave exactly the same
+// state behind.
+void FtWindow::activateHistorySlot(int i)
+{
+    if (i < 0 || i >= HISTORY_SLOTS) return;
+        // A slot the startup restore skipped (large image, or file on a
+        // network volume) still holds its path. Clicking it is the moment we
+        // pay for the load — including when it is already the active slot,
+        // which is why the "already active" early-out comes after this test.
+        const bool needsDiskLoad = !m_history[i].occupied && m_history[i].deferred;
+
+        if (i == m_activeSlot && !needsDiskLoad) return;   // already active
+        if (m_history[i].loading && i == m_activeSlot) return;   // still reading
+
+        // Save current active image back to its slot, caching its forward
+        // FFT so returning here won't recompute it. The power-spectrum
+        // thumbnail is derived from that cached FFT (no extra transform).
+        if (m_activeSlot >= 0 && !m_image.isNull()) {
+            HistoryEntry &cur = m_history[m_activeSlot];
+            cur.image        = m_image;
+            cur.path         = m_imagePath;
+            cur.rawPixels    = m_imageRawPixels;
+            cur.minVal       = m_imageMinVal;
+            cur.maxVal       = m_imageMaxVal;
+            cur.pixelSize    = m_pixelSize;
+            cur.pixelSizeAssumed = m_pixelSizeAssumed;
+            cur.lastOperation = m_lastOperation;
+            cur.ftComputed   = m_ftComputed;
+            if (m_ftComputed) {
+                cur.fftData      = m_fftData;
+                cur.fftN         = m_fftN;
+                cur.fftOrigW     = m_origW;
+                cur.fftOrigH     = m_origH;
+                cur.ftInverseOutput = m_ftInverseOutput;
+                cur.powerSpecImg = powerSpecFromCurrentFFT();
+            } else {
+                cur.fftData.clear();
+                cur.fftData.shrink_to_fit();
+                cur.powerSpecImg = computePowerSpecMasked(m_image);
+            }
+            cur.occupied     = true;
+            cur.deferred     = false;
+        }
+
+        // Activate the clicked slot
+        m_activeSlot = i;
+
+        // Realise a deferred slot now that its data is actually wanted. The
+        // read runs on a worker thread — these are exactly the images that
+        // were too big to load at startup, so blocking here would freeze the
+        // window and leave the user unable to delete the buffer they just
+        // discovered they do not want. The slot fills in when it arrives.
+        if (needsDiskLoad)
+            startSlotLoad(i);
+
+        if (m_history[i].occupied) {
+            // Load occupied slot into panel 1
+            m_image          = m_history[i].image;
+            m_imagePath      = m_history[i].path;
+            m_imageRawPixels = m_history[i].rawPixels;
+            m_imageMinVal    = m_history[i].minVal;
+            m_imageMaxVal    = m_history[i].maxVal;
+            m_imageDispMin   = m_history[i].minVal;
+            m_imageDispMax   = m_history[i].maxVal;
+            m_pixelSize      = m_history[i].pixelSize;
+            m_pixelSizeAssumed = m_history[i].pixelSizeAssumed;
+            m_lastOperation  = m_history[i].lastOperation;
+        } else {
+            // Empty slot – clear panel 1
+            m_image          = QImage();
+            m_imagePath.clear();
+            m_imageRawPixels.clear();
+            m_imageMinVal    = 0;
+            m_imageMaxVal    = 0;
+            m_imageDispMin   = 0;
+            m_imageDispMax   = 0;
+            m_pixelSize      = 1.0;
+            m_pixelSizeAssumed = false;
+            m_lastOperation.clear();
+        }
+
+        m_modeBtn->setText(modeLabel());
+
+        if (m_history[i].occupied && m_history[i].ftComputed
+            && !m_history[i].fftData.empty()) {
+            // Cached FFT: restore it and rebuild only the display images
+            // (parallelized) instead of recomputing the forward transform.
+            m_fftData    = m_history[i].fftData;
+            m_fftN       = m_history[i].fftN;
+            m_origW      = m_history[i].fftOrigW;
+            m_origH      = m_history[i].fftOrigH;
+            m_ftInverseOutput = m_history[i].ftInverseOutput;
+            m_ftComputed = true;
+            recomputeDisplayImages();
+            m_modeBtn->show();
+            m_maskBtnVisible = true;
+        } else {
+            m_ftComputed = false;
+            m_modeBtn->hide();
+            m_maskBtnVisible = false;
+            if (!m_image.isNull())
+                computeFFT(true);
+        }
+
+        saveHistory();
+#ifndef __EMSCRIPTEN__
+        QSettings settings("ft", "ft");
+        settings.setValue("lastFile", m_imagePath);
+        settings.setValue("activeSlot", m_activeSlot);
+#endif
+        update();
+}
+
 void FtWindow::mousePressEvent(QMouseEvent *event)
 {
     // Maximized view: display only. The one interaction still offered is
@@ -1327,116 +1449,8 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
             alignSeedSourceAndOutput(clickedSlot);
             syncAlignCombos();      // repaints the parameter window
         }
-        int i = clickedSlot;
-        {
-            // A slot the startup restore skipped (large image, or file on a
-            // network volume) still holds its path. Clicking it is the moment we
-            // pay for the load — including when it is already the active slot,
-            // which is why the "already active" early-out comes after this test.
-            const bool needsDiskLoad = !m_history[i].occupied && m_history[i].deferred;
-
-            if (i == m_activeSlot && !needsDiskLoad) return;   // already active
-            if (m_history[i].loading && i == m_activeSlot) return;   // still reading
-
-            // Save current active image back to its slot, caching its forward
-            // FFT so returning here won't recompute it. The power-spectrum
-            // thumbnail is derived from that cached FFT (no extra transform).
-            if (m_activeSlot >= 0 && !m_image.isNull()) {
-                HistoryEntry &cur = m_history[m_activeSlot];
-                cur.image        = m_image;
-                cur.path         = m_imagePath;
-                cur.rawPixels    = m_imageRawPixels;
-                cur.minVal       = m_imageMinVal;
-                cur.maxVal       = m_imageMaxVal;
-                cur.pixelSize    = m_pixelSize;
-                cur.pixelSizeAssumed = m_pixelSizeAssumed;
-                cur.lastOperation = m_lastOperation;
-                cur.ftComputed   = m_ftComputed;
-                if (m_ftComputed) {
-                    cur.fftData      = m_fftData;
-                    cur.fftN         = m_fftN;
-                    cur.fftOrigW     = m_origW;
-                    cur.fftOrigH     = m_origH;
-                    cur.ftInverseOutput = m_ftInverseOutput;
-                    cur.powerSpecImg = powerSpecFromCurrentFFT();
-                } else {
-                    cur.fftData.clear();
-                    cur.fftData.shrink_to_fit();
-                    cur.powerSpecImg = computePowerSpecMasked(m_image);
-                }
-                cur.occupied     = true;
-                cur.deferred     = false;
-            }
-
-            // Activate the clicked slot
-            m_activeSlot = i;
-
-            // Realise a deferred slot now that its data is actually wanted. The
-            // read runs on a worker thread — these are exactly the images that
-            // were too big to load at startup, so blocking here would freeze the
-            // window and leave the user unable to delete the buffer they just
-            // discovered they do not want. The slot fills in when it arrives.
-            if (needsDiskLoad)
-                startSlotLoad(i);
-
-            if (m_history[i].occupied) {
-                // Load occupied slot into panel 1
-                m_image          = m_history[i].image;
-                m_imagePath      = m_history[i].path;
-                m_imageRawPixels = m_history[i].rawPixels;
-                m_imageMinVal    = m_history[i].minVal;
-                m_imageMaxVal    = m_history[i].maxVal;
-                m_imageDispMin   = m_history[i].minVal;
-                m_imageDispMax   = m_history[i].maxVal;
-                m_pixelSize      = m_history[i].pixelSize;
-                m_pixelSizeAssumed = m_history[i].pixelSizeAssumed;
-                m_lastOperation  = m_history[i].lastOperation;
-            } else {
-                // Empty slot – clear panel 1
-                m_image          = QImage();
-                m_imagePath.clear();
-                m_imageRawPixels.clear();
-                m_imageMinVal    = 0;
-                m_imageMaxVal    = 0;
-                m_imageDispMin   = 0;
-                m_imageDispMax   = 0;
-                m_pixelSize      = 1.0;
-                m_pixelSizeAssumed = false;
-                m_lastOperation.clear();
-            }
-
-            m_modeBtn->setText(modeLabel());
-
-            if (m_history[i].occupied && m_history[i].ftComputed
-                && !m_history[i].fftData.empty()) {
-                // Cached FFT: restore it and rebuild only the display images
-                // (parallelized) instead of recomputing the forward transform.
-                m_fftData    = m_history[i].fftData;
-                m_fftN       = m_history[i].fftN;
-                m_origW      = m_history[i].fftOrigW;
-                m_origH      = m_history[i].fftOrigH;
-                m_ftInverseOutput = m_history[i].ftInverseOutput;
-                m_ftComputed = true;
-                recomputeDisplayImages();
-                m_modeBtn->show();
-                m_maskBtnVisible = true;
-            } else {
-                m_ftComputed = false;
-                m_modeBtn->hide();
-                m_maskBtnVisible = false;
-                if (!m_image.isNull())
-                    computeFFT(true);
-            }
-
-            saveHistory();
-#ifndef __EMSCRIPTEN__
-            QSettings settings("ft", "ft");
-            settings.setValue("lastFile", m_imagePath);
-            settings.setValue("activeSlot", m_activeSlot);
-#endif
-            update();
-            return;
-        }
+        activateHistorySlot(clickedSlot);
+        return;
     }
 
     // Custom-painted toggle buttons next to the histograms. Each sits behind
@@ -2750,12 +2764,61 @@ void FtWindow::mouseDoubleClickEvent(QMouseEvent *event)
 //  Wheel – zoom
 // ---------------------------------------------------------------------------
 // ESC is the documented way out of the maximized image view.
+// Walk to the next buffer that holds an image, wrapping round the sixteen. A
+// deferred slot counts: it holds a picture, it has just not been read off disk
+// yet, and activating it is what pays for that.
+bool FtWindow::stepToAdjacentBuffer(int dir)
+{
+    if (m_activeSlot < 0 || dir == 0) return false;
+    for (int n = 1; n < HISTORY_SLOTS; n++) {
+        const int cand = ((m_activeSlot + dir * n) % HISTORY_SLOTS + HISTORY_SLOTS)
+                         % HISTORY_SLOTS;
+        if (!bufferInUse(cand) && !m_history[cand].deferred) continue;
+        activateHistorySlot(cand);
+        // Switching a buffer goes through code that shows the display-mode
+        // button; the maximized view carries no chrome, so put it away again
+        // and let exitMaximized() work out what it should be on the way back.
+        if (m_maxPanel != 0) m_modeBtn->hide();
+        flashMaximizedSlotLetter();
+        return true;
+    }
+    return false;
+}
+
+void FtWindow::flashMaximizedSlotLetter()
+{
+    m_maxSlotFlash = m_activeSlot;
+    if (!m_maxSlotFlashTimer) {
+        m_maxSlotFlashTimer = new QTimer(this);
+        m_maxSlotFlashTimer->setSingleShot(true);
+        connect(m_maxSlotFlashTimer, &QTimer::timeout, this, [this]() {
+            m_maxSlotFlash = -1;
+            update();
+        });
+    }
+    m_maxSlotFlashTimer->start(1000);   // restarts on every press
+    update();
+}
+
 void FtWindow::keyPressEvent(QKeyEvent *event)
 {
-    if (m_maxPanel != 0 && event->key() == Qt::Key_Escape) {
-        exitMaximized();
-        event->accept();
-        return;
+    if (m_maxPanel != 0) {
+        if (event->key() == Qt::Key_Escape) {
+            exitMaximized();
+            event->accept();
+            return;
+        }
+        // The arrow keys page through the buffers while the view is up. Left
+        // and Up go back, Right and Down go forward — there is one list, not
+        // two, so either axis walks it.
+        const int k = event->key();
+        if (k == Qt::Key_Left || k == Qt::Key_Up
+            || k == Qt::Key_Right || k == Qt::Key_Down) {
+            const int dir = (k == Qt::Key_Left || k == Qt::Key_Up) ? -1 : +1;
+            stepToAdjacentBuffer(dir);
+            event->accept();
+            return;
+        }
     }
     QWidget::keyPressEvent(event);
 }

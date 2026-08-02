@@ -20,6 +20,15 @@ void FtWindow::drawParamLabel(QPainter &p, const QFontMetrics &fm,
     }
 }
 
+// The radius governs the inverse as much as the forward transform — running the
+// circle transform backwards means drawing circles of that radius back in — so
+// the slider stays put whichever direction is selected.
+bool FtWindow::houghShowsRadiusSlider() const
+{
+    return m_houghActive && m_houghElementCombo
+        && m_houghElementCombo->currentData().toInt() == HoughCirclesOne;
+}
+
 bool FtWindow::p1ToolWindowOpen() const
 {
     return m_p1EraserActive || m_p1BrushActive || m_p1TaperActive || m_p1SymmetrizeActive
@@ -3934,13 +3943,25 @@ void FtWindow::paintEvent(QPaintEvent *)
                 int r2 = m_hessianCancelBtn->width() + 8 + m_hessianComputeBtn->width();
                 textW = std::max({r0, r1, r2});
             } else if (m_houghActive) {
-                nRows = 5;
+                // Input, output, element, [radius], inverse, buttons. The radius
+                // row is there whenever a radius is in play, in either
+                // direction: the inverse of a circle transform draws circles of
+                // that radius back into the image.
+                const int  el  = m_houghElementCombo->currentData().toInt();
+                const bool radiusRow = (el == HoughCirclesOne || el == HoughCirclesAuto);
+                nRows = radiusRow ? 6 : 5;
                 int r0 = fm.horizontalAdvance("Input buffer: ")  + m_houghSourceCombo->width();
                 int r1 = fm.horizontalAdvance("Output buffer: ") + m_houghTargetCombo->width();
                 int r2 = fm.horizontalAdvance("Geometric element: ") + m_houghElementCombo->width();
-                int r3 = m_houghInverseBtn->sizeHint().width();
-                int r4 = m_houghCancelBtn->width() + 8 + m_houghComputeBtn->width();
-                textW = std::max({r0, r1, r2, r3, r4});
+                int r3 = radiusRow
+                    ? (el == HoughCirclesOne
+                         ? fm.horizontalAdvance("Circle radius: ") + m_houghRadiusSlider->width()
+                           + fm.horizontalAdvance("  60 px")
+                         : fm.horizontalAdvance("Best radius found: 60 px (searched 5 - 60 px)"))
+                    : 0;
+                int r4 = m_houghInverseBtn->sizeHint().width();
+                int r5 = m_houghCancelBtn->width() + 8 + m_houghComputeBtn->width();
+                textW = std::max({r0, r1, r2, r3, r4, r5});
             } else if (m_measureActive) {
                 nRows = 3;
                 double dx = m_measureP1.x() - m_measureP0.x();
@@ -4287,19 +4308,47 @@ void FtWindow::paintEvent(QPaintEvent *)
                 drawParamLabel(p, fm, tx, ty + lh, "Output buffer:", m_houghTargetCombo->toolTip(),
                                m_houghTargetCombo->height());
                 m_houghTargetCombo->move(tx + fm.horizontalAdvance("Output buffer: "), ty + lh);
-                // The element pulldown has nothing to say about the inverse, so
-                // it goes dead — label and all — while that box is ticked.
-                const bool inv = m_houghInverseBtn->isChecked();
-                m_houghElementCombo->setEnabled(!inv);
-                p.setPen(inv ? QColor(150, 150, 150) : QColor(60, 60, 60));
+                // The element now selects what the inverse draws back as much as
+                // what the forward pass votes for, so it stays live either way.
+                const int el = m_houghElementCombo->currentData().toInt();
+                m_houghElementCombo->setEnabled(true);
                 drawParamLabel(p, fm, tx, ty + lh * 2, "Geometric element:",
                                m_houghElementCombo->toolTip(), m_houghElementCombo->height());
-                p.setPen(QColor(60, 60, 60));
                 m_houghElementCombo->move(tx + fm.horizontalAdvance("Geometric element: "),
                                           ty + lh * 2);
-                m_houghInverseBtn->move(tx, ty + lh * 3);
-                m_houghCancelBtn->move(tx, ty + lh * 4);
-                m_houghComputeBtn->move(rx + rw - margin - m_houghComputeBtn->width(), ty + lh * 4);
+
+                // The radius row: the slider for the single-radius element, and
+                // for the automatic one the size it settled on — which is the
+                // whole point of running it, so it is reported rather than left
+                // for the user to infer from the picture.
+                int row = 3;
+                if (el == HoughCirclesOne) {
+                    drawParamLabel(p, fm, tx, ty + lh * row, "Circle radius:",
+                                   m_houghRadiusSlider->toolTip(),
+                                   m_houghRadiusSlider->height());
+                    int sx = tx + fm.horizontalAdvance("Circle radius: ");
+                    m_houghRadiusSlider->move(sx, ty + lh * row);
+                    drawParamLabel(p, fm, sx + m_houghRadiusSlider->width() + 6, ty + lh * row,
+                                   QString("%1 px").arg(m_houghRadiusSlider->value()),
+                                   m_houghRadiusSlider->toolTip(),
+                                   m_houghRadiusSlider->height());
+                    row++;
+                } else if (el == HoughCirclesAuto) {
+                    const QString msg = m_houghAutoRadius > 0
+                        ? QString("Best radius found: %1 px (searched %2 - %3 px)")
+                              .arg(m_houghAutoRadius).arg(HOUGH_RMIN).arg(HOUGH_RMAX)
+                        : QString("Radius will be searched over %1 - %2 px")
+                              .arg(HOUGH_RMIN).arg(HOUGH_RMAX);
+                    drawParamLabel(p, fm, tx, ty + lh * row, msg,
+                                   m_houghElementCombo->toolTip());
+                    row++;
+                }
+
+                m_houghInverseBtn->move(tx, ty + lh * row);
+                row++;
+                m_houghCancelBtn->move(tx, ty + lh * row);
+                m_houghComputeBtn->move(rx + rw - margin - m_houghComputeBtn->width(),
+                                        ty + lh * row);
             } else if (m_measureActive) {
                 double dx = m_measureP1.x() - m_measureP0.x();
                 double dy = m_measureP1.y() - m_measureP0.y();
@@ -5760,6 +5809,12 @@ void FtWindow::exitMaximized()
     for (const QPointer<QWidget> &w : m_maxHiddenWidgets)
         if (w) w->show();
     m_maxHiddenWidgets.clear();
+
+    // A buffer switched while the view was up may have gained or lost its
+    // Fourier transform, so what was remembered on the way in can be stale.
+    m_modeBtn->setVisible(m_ftComputed);
+    m_maxSlotFlash = -1;
+    if (m_maxSlotFlashTimer) m_maxSlotFlashTimer->stop();
     update();
 }
 
@@ -5957,7 +6012,7 @@ void FtWindow::paintMaximized(QPainter &p)
         QFont hf; hf.setPixelSize(13); p.setFont(hf);
         QFontMetrics hfm(hf);
         const QString hint =
-            "Tap ✕ (top right) or press ESC to leave the maximized view";
+            "← → move between buffers · Tap ✕ (top right) or press ESC to leave";
         int tw = hfm.horizontalAdvance(hint);
         int th = hfm.height();
         QRect pill((width() - tw) / 2 - 10, height() - th - 18,
@@ -5969,6 +6024,27 @@ void FtWindow::paintMaximized(QPainter &p)
         p.drawRoundedRect(pill, 5, 5);
         p.setPen(QColor(215, 215, 215));
         p.drawText(pill, Qt::AlignCenter, hint);
+        p.restore();
+    }
+
+    // The buffer's letter, top left, for a second after an arrow key moved the
+    // view onto it. Long enough to see where you have landed, short enough not
+    // to sit on the picture; a shadow behind it so it reads on a bright image.
+    if (m_maxSlotFlash >= 0 && m_maxSlotFlash < HISTORY_SLOTS) {
+        p.save();
+        p.setRenderHint(QPainter::Antialiasing, true);
+        QFont lf;
+        lf.setBold(true);
+        lf.setPixelSize(std::clamp(height() / 12, 24, 160));
+        p.setFont(lf);
+        const QString letter(QChar('a' + m_maxSlotFlash));
+        const QFontMetrics lfm(lf);
+        const int x = margin + 14;
+        const int y = margin + 10 + lfm.ascent();
+        p.setPen(QColor(0, 0, 0, 190));
+        p.drawText(x + 2, y + 2, letter);
+        p.setPen(QColor(255, 213, 0));
+        p.drawText(x, y, letter);
         p.restore();
     }
 }
