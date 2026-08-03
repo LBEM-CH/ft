@@ -5242,11 +5242,11 @@ void FtWindow::onHoughCancel()
 {
     m_houghActive = false;
     m_houghPreviewUndoDepth = -1;
-    m_houghSourceCombo->hide();
-    m_houghTargetCombo->hide();
-    m_houghElementCombo->hide();
-    m_houghCancelBtn->hide();
-    m_houghComputeBtn->hide();
+    // Let the one function that knows every panel-1 tool widget put them away,
+    // rather than repeating the list here: a hand-written list is exactly what
+    // goes stale when a tool gains a control, as this one did when the radius
+    // slider and the inverse checkbox were added.
+    showP1ToolWidgets();
     update();
 }
 
