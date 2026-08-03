@@ -1048,112 +1048,129 @@ static void runManualSearch(const QString &rawQuery, QTextBrowser *browser)
 void FtWindow::activateHistorySlot(int i)
 {
     if (i < 0 || i >= HISTORY_SLOTS) return;
-        // A slot the startup restore skipped (large image, or file on a
-        // network volume) still holds its path. Clicking it is the moment we
-        // pay for the load — including when it is already the active slot,
-        // which is why the "already active" early-out comes after this test.
-        const bool needsDiskLoad = !m_history[i].occupied && m_history[i].deferred;
 
-        if (i == m_activeSlot && !needsDiskLoad) return;   // already active
-        if (m_history[i].loading && i == m_activeSlot) return;   // still reading
+    // With the Align tool open, moving to a buffer retargets what it works
+    // on: that buffer becomes both the image that moves and the buffer the
+    // result lands in, so the tool keeps acting on what is being looked at
+    // instead of on whichever buffer happened to be shown when it opened.
+    // The reference is left as it is — that one is chosen once and stays
+    // put. Done before the early-outs below, so it applies even when the
+    // buffer is already the active one (there the display does not change
+    // but the pulldowns may still be pointing somewhere else). It lives
+    // here rather than at the call site so that every route to another
+    // buffer — a thumbnail click, an arrow key in the maximized view —
+    // leaves the same tool state behind.
+    if (m_alignActive) {
+        alignSeedSourceAndOutput(i);
+        syncAlignCombos();      // repaints the parameter window
+    }
 
-        // Save current active image back to its slot, caching its forward
-        // FFT so returning here won't recompute it. The power-spectrum
-        // thumbnail is derived from that cached FFT (no extra transform).
-        if (m_activeSlot >= 0 && !m_image.isNull()) {
-            HistoryEntry &cur = m_history[m_activeSlot];
-            cur.image        = m_image;
-            cur.path         = m_imagePath;
-            cur.rawPixels    = m_imageRawPixels;
-            cur.minVal       = m_imageMinVal;
-            cur.maxVal       = m_imageMaxVal;
-            cur.pixelSize    = m_pixelSize;
-            cur.pixelSizeAssumed = m_pixelSizeAssumed;
-            cur.lastOperation = m_lastOperation;
-            cur.ftComputed   = m_ftComputed;
-            if (m_ftComputed) {
-                cur.fftData      = m_fftData;
-                cur.fftN         = m_fftN;
-                cur.fftOrigW     = m_origW;
-                cur.fftOrigH     = m_origH;
-                cur.ftInverseOutput = m_ftInverseOutput;
-                cur.powerSpecImg = powerSpecFromCurrentFFT();
-            } else {
-                cur.fftData.clear();
-                cur.fftData.shrink_to_fit();
-                cur.powerSpecImg = computePowerSpecMasked(m_image);
-            }
-            cur.occupied     = true;
-            cur.deferred     = false;
-        }
+    // A slot the startup restore skipped (large image, or file on a
+    // network volume) still holds its path. Reaching it is the moment we
+    // pay for the load — including when it is already the active slot,
+    // which is why the "already active" early-out comes after this test.
+    const bool needsDiskLoad = !m_history[i].occupied && m_history[i].deferred;
 
-        // Activate the clicked slot
-        m_activeSlot = i;
+    if (i == m_activeSlot && !needsDiskLoad) return;   // already active
+    if (m_history[i].loading && i == m_activeSlot) return;   // still reading
 
-        // Realise a deferred slot now that its data is actually wanted. The
-        // read runs on a worker thread — these are exactly the images that
-        // were too big to load at startup, so blocking here would freeze the
-        // window and leave the user unable to delete the buffer they just
-        // discovered they do not want. The slot fills in when it arrives.
-        if (needsDiskLoad)
-            startSlotLoad(i);
-
-        if (m_history[i].occupied) {
-            // Load occupied slot into panel 1
-            m_image          = m_history[i].image;
-            m_imagePath      = m_history[i].path;
-            m_imageRawPixels = m_history[i].rawPixels;
-            m_imageMinVal    = m_history[i].minVal;
-            m_imageMaxVal    = m_history[i].maxVal;
-            m_imageDispMin   = m_history[i].minVal;
-            m_imageDispMax   = m_history[i].maxVal;
-            m_pixelSize      = m_history[i].pixelSize;
-            m_pixelSizeAssumed = m_history[i].pixelSizeAssumed;
-            m_lastOperation  = m_history[i].lastOperation;
+    // Save current active image back to its slot, caching its forward
+    // FFT so returning here won't recompute it. The power-spectrum
+    // thumbnail is derived from that cached FFT (no extra transform).
+    if (m_activeSlot >= 0 && !m_image.isNull()) {
+        HistoryEntry &cur = m_history[m_activeSlot];
+        cur.image        = m_image;
+        cur.path         = m_imagePath;
+        cur.rawPixels    = m_imageRawPixels;
+        cur.minVal       = m_imageMinVal;
+        cur.maxVal       = m_imageMaxVal;
+        cur.pixelSize    = m_pixelSize;
+        cur.pixelSizeAssumed = m_pixelSizeAssumed;
+        cur.lastOperation = m_lastOperation;
+        cur.ftComputed   = m_ftComputed;
+        if (m_ftComputed) {
+            cur.fftData      = m_fftData;
+            cur.fftN         = m_fftN;
+            cur.fftOrigW     = m_origW;
+            cur.fftOrigH     = m_origH;
+            cur.ftInverseOutput = m_ftInverseOutput;
+            cur.powerSpecImg = powerSpecFromCurrentFFT();
         } else {
-            // Empty slot – clear panel 1
-            m_image          = QImage();
-            m_imagePath.clear();
-            m_imageRawPixels.clear();
-            m_imageMinVal    = 0;
-            m_imageMaxVal    = 0;
-            m_imageDispMin   = 0;
-            m_imageDispMax   = 0;
-            m_pixelSize      = 1.0;
-            m_pixelSizeAssumed = false;
-            m_lastOperation.clear();
+            cur.fftData.clear();
+            cur.fftData.shrink_to_fit();
+            cur.powerSpecImg = computePowerSpecMasked(m_image);
         }
+        cur.occupied     = true;
+        cur.deferred     = false;
+    }
 
-        m_modeBtn->setText(modeLabel());
+    // Activate the clicked slot
+    m_activeSlot = i;
 
-        if (m_history[i].occupied && m_history[i].ftComputed
-            && !m_history[i].fftData.empty()) {
-            // Cached FFT: restore it and rebuild only the display images
-            // (parallelized) instead of recomputing the forward transform.
-            m_fftData    = m_history[i].fftData;
-            m_fftN       = m_history[i].fftN;
-            m_origW      = m_history[i].fftOrigW;
-            m_origH      = m_history[i].fftOrigH;
-            m_ftInverseOutput = m_history[i].ftInverseOutput;
-            m_ftComputed = true;
-            recomputeDisplayImages();
-            m_modeBtn->show();
-            m_maskBtnVisible = true;
-        } else {
-            m_ftComputed = false;
-            m_modeBtn->hide();
-            m_maskBtnVisible = false;
-            if (!m_image.isNull())
-                computeFFT(true);
-        }
+    // Realise a deferred slot now that its data is actually wanted. The
+    // read runs on a worker thread — these are exactly the images that
+    // were too big to load at startup, so blocking here would freeze the
+    // window and leave the user unable to delete the buffer they just
+    // discovered they do not want. The slot fills in when it arrives.
+    if (needsDiskLoad)
+        startSlotLoad(i);
 
-        saveHistory();
+    if (m_history[i].occupied) {
+        // Load occupied slot into panel 1
+        m_image          = m_history[i].image;
+        m_imagePath      = m_history[i].path;
+        m_imageRawPixels = m_history[i].rawPixels;
+        m_imageMinVal    = m_history[i].minVal;
+        m_imageMaxVal    = m_history[i].maxVal;
+        m_imageDispMin   = m_history[i].minVal;
+        m_imageDispMax   = m_history[i].maxVal;
+        m_pixelSize      = m_history[i].pixelSize;
+        m_pixelSizeAssumed = m_history[i].pixelSizeAssumed;
+        m_lastOperation  = m_history[i].lastOperation;
+    } else {
+        // Empty slot – clear panel 1
+        m_image          = QImage();
+        m_imagePath.clear();
+        m_imageRawPixels.clear();
+        m_imageMinVal    = 0;
+        m_imageMaxVal    = 0;
+        m_imageDispMin   = 0;
+        m_imageDispMax   = 0;
+        m_pixelSize      = 1.0;
+        m_pixelSizeAssumed = false;
+        m_lastOperation.clear();
+    }
+
+    m_modeBtn->setText(modeLabel());
+
+    if (m_history[i].occupied && m_history[i].ftComputed
+        && !m_history[i].fftData.empty()) {
+        // Cached FFT: restore it and rebuild only the display images
+        // (parallelized) instead of recomputing the forward transform.
+        m_fftData    = m_history[i].fftData;
+        m_fftN       = m_history[i].fftN;
+        m_origW      = m_history[i].fftOrigW;
+        m_origH      = m_history[i].fftOrigH;
+        m_ftInverseOutput = m_history[i].ftInverseOutput;
+        m_ftComputed = true;
+        recomputeDisplayImages();
+        m_modeBtn->show();
+        m_maskBtnVisible = true;
+    } else {
+        m_ftComputed = false;
+        m_modeBtn->hide();
+        m_maskBtnVisible = false;
+        if (!m_image.isNull())
+            computeFFT(true);
+    }
+
+    saveHistory();
 #ifndef __EMSCRIPTEN__
-        QSettings settings("ft", "ft");
-        settings.setValue("lastFile", m_imagePath);
-        settings.setValue("activeSlot", m_activeSlot);
+    QSettings settings("ft", "ft");
+    settings.setValue("lastFile", m_imagePath);
+    settings.setValue("activeSlot", m_activeSlot);
 #endif
-        update();
+    update();
 }
 
 void FtWindow::mousePressEvent(QMouseEvent *event)
@@ -1437,18 +1454,6 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         }
     }
     if (clickedSlot >= 0) {
-        // With the Align tool open, picking a buffer retargets what it works on:
-        // the clicked buffer becomes both the image that moves and the buffer the
-        // result lands in, so the tool keeps acting on what is being looked at
-        // instead of on whichever buffer happened to be shown when it opened. The
-        // reference is left as it is — that one is chosen once and stays put.
-        // Done before the early-outs below, so it applies even when the clicked
-        // buffer is already the active one (there the display does not change but
-        // the pulldowns may still be pointing somewhere else).
-        if (m_alignActive) {
-            alignSeedSourceAndOutput(clickedSlot);
-            syncAlignCombos();      // repaints the parameter window
-        }
         activateHistorySlot(clickedSlot);
         return;
     }
