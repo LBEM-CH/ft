@@ -25,6 +25,8 @@
 
 class QTimer;
 class QAbstractItemDelegate;
+class QProcess;
+class QTextBrowser;
 
 // ---- zoom state for one display panel ----
 struct ZoomState {
@@ -396,6 +398,47 @@ private:
 
     // Open `panel2`'s manual page scrolled to an explicit function anchor.
     void openManualAnchor(bool panel2, const QString &anchor);
+
+#ifndef __EMSCRIPTEN__
+    // ---- AI Help mode ------------------------------------------------------
+    // The Help dialog's second mode: instead of listing every literal
+    // occurrence of a keyword and leaving the reader to open each one, a local
+    // language model reads the manual sections that retrieval selected and
+    // answers the question directly, citing the sections it used.
+    //
+    // The work happens in rag/serve.py, started once as a child process and
+    // kept alive for the lifetime of this window: loading an 8B model takes
+    // 10-20 seconds, so a process per question would be unusable. The protocol
+    // is one JSON object per line in each direction (see rag/serve.py).
+    //
+    // Excluded from the WebAssembly build, which has no QProcess and no local
+    // model. There "Find in manual" remains the only route.
+    QProcess *m_aiProc = nullptr;
+    QByteArray m_aiBuf;                    // partial line from the worker
+    QPointer<QTextBrowser> m_aiOut;        // results pane of the open dialog
+    QPointer<QPushButton> m_aiThinkBtn;    // "Show reasoning" toggle
+    bool    m_aiReady    = false;          // worker finished loading its models
+    bool    m_aiBusy     = false;          // a question is in flight
+    bool    m_aiShowThink = false;         // reasoning unfolded?
+    QString m_aiStatus;                    // last loading stage, for the pane
+    QString m_aiThink, m_aiAnswer;         // last completed reply
+    QString m_aiStream;                    // tokens so far, while generating
+    QVector<QStringList> m_aiSources;      // [score, anchor, title, url]
+
+    void aiEnsureStarted();                // start the worker if not running
+    void aiAsk(const QString &question);   // send one question
+    void aiHandleLine(const QByteArray &line);
+    void aiRender();                       // paint state into m_aiOut
+    void aiStop();                         // terminate the worker
+
+public:
+    // Directory holding rag/ and its virtual environment. Defaults to the
+    // repository beside the executable; embedding applications that install
+    // elsewhere override it, as they do with setExampleImagesDir().
+    static void setAiDir(const QString &dir);
+    static QString aiDir();
+private:
+#endif
 
     // ---- widgets ----
     QPushButton *m_loadBtn   = nullptr;

@@ -1376,6 +1376,29 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         auto *buttons = new QDialogButtonBox(dlg);
         auto *findBtn   = buttons->addButton("Find in manual", QDialogButtonBox::ActionRole);
         auto *googleBtn = buttons->addButton("Search Google (indexing still not done...)",  QDialogButtonBox::ActionRole);
+
+        // AI mode: the same question box, answered by a local model reading the
+        // manual sections retrieval picked, instead of listed as occurrences to
+        // open one by one. Desktop only -- the WebAssembly build has no local
+        // model, so there the button does not exist and literal search stays the
+        // only route. `aiBtn` is declared outside the guard so the submit lambda
+        // below is identical in both builds; in WebAssembly it stays null.
+        QPushButton *aiBtn = nullptr;
+#ifndef __EMSCRIPTEN__
+        aiBtn = buttons->addButton("AI mode", QDialogButtonBox::ActionRole);
+        aiBtn->setCheckable(true);
+        aiBtn->setToolTip("Ask in your own words and have a local model answer "
+                          "from the manual, instead of listing keyword matches.");
+
+        // QTextBrowser's HTML subset has no <details>, so the model's reasoning
+        // is folded by a button rather than by markup.
+        m_aiThinkBtn = buttons->addButton("Show reasoning", QDialogButtonBox::ActionRole);
+        m_aiThinkBtn->hide();
+        connect(m_aiThinkBtn, &QPushButton::clicked, dlg, [this]() {
+            m_aiShowThink = !m_aiShowThink;
+            aiRender();
+        });
+#endif
         buttons->addButton(QDialogButtonBox::Close);
         buttons->setStyleSheet(
             "QPushButton { background-color:#888; border:2px outset #aaa; color:#eee; padding:2px 12px; }");
@@ -1407,9 +1430,47 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
             QDesktopServices::openUrl(url);
         };
 
-        connect(findBtn,   &QPushButton::clicked, dlg, findInManual);
+        // One action button and the Enter key, routed by whichever mode is on.
+        auto submit = [this, dlg, edit, results, aiBtn, findInManual]() {
+            if (edit->text().trimmed().isEmpty()) return;
+#ifndef __EMSCRIPTEN__
+            if (aiBtn && aiBtn->isChecked()) {
+                m_aiOut = results;          // QPointer: cleared when dlg closes
+                results->show();
+                aiAsk(edit->text());
+                if (dlg->height() < 560)
+                    dlg->resize(dlg->width(), 560);
+                return;
+            }
+#endif
+            findInManual();
+        };
+
+#ifndef __EMSCRIPTEN__
+        // Switching mode re-labels the box and the action button, and starts the
+        // helper loading its models straight away, so the wait overlaps with the
+        // user still typing the question.
+        connect(aiBtn, &QPushButton::toggled, dlg,
+                [this, edit, qLabel, results, findBtn](bool on) {
+            edit->setPlaceholderText(on ? "e.g. how do I do CTF correction?"
+                                        : "e.g. convolution theorem");
+            qLabel->setText(on ? "Ask a question about the Fourier Analyzer\n"
+                                 "(a local model answers from the manual):"
+                               : "Ask a question about the Fourier Analyzer\n"
+                                 "(searches the online manual):");
+            findBtn->setText(on ? "Ask" : "Find in manual");
+            if (on) {
+                m_aiOut = results;
+                results->show();
+                aiEnsureStarted();
+                aiRender();
+            }
+        });
+#endif
+
+        connect(findBtn,   &QPushButton::clicked, dlg, submit);
         connect(googleBtn, &QPushButton::clicked, dlg, searchGoogle);
-        connect(edit, &QLineEdit::returnPressed, dlg, findInManual);  // Enter = find in manual
+        connect(edit, &QLineEdit::returnPressed, dlg, submit);
         connect(buttons, &QDialogButtonBox::rejected, dlg, &QDialog::reject);
 
         // Open at 90% of the window's current width — the manual-search result
