@@ -34,8 +34,10 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QHash>
 #include <QProcess>
 #include <QPushButton>
+#include <QRegularExpression>
 #include <QTextBrowser>
 
 // Where rag/ lives. Empty means "work it out from the executable's location",
@@ -63,6 +65,40 @@ QString FtWindow::aiDir()
 static QString htmlPara(const QString &s)
 {
     return s.toHtmlEscaped().replace("\n", "<br>");
+}
+
+// The model cites sections by tag, as [p2-ctf-fit] -- meaningful to it, but the
+// reader would have to match that string against the source list by eye. So the
+// tags are rewritten into numbered links, [3], pointing straight at the manual
+// section, and the source list below is numbered to match. A tag that is not
+// among the sources is left exactly as written rather than silently dropped:
+// that only happens when the model invented a citation, which is worth seeing.
+static QString linkCitations(const QString &plain,
+                             const QVector<QStringList> &sources)
+{
+    QHash<QString, int> number;
+    for (int i = 0; i < sources.size(); ++i)
+        number.insert(sources.at(i).value(1), i + 1);
+
+    const QString escaped = plain.toHtmlEscaped();
+    static const QRegularExpression re(QStringLiteral("\\[([A-Za-z0-9._#-]+)\\]"));
+
+    QString out;
+    qsizetype last = 0;
+    auto it = re.globalMatch(escaped);
+    while (it.hasNext()) {
+        const QRegularExpressionMatch m = it.next();
+        out += escaped.mid(last, m.capturedStart() - last);
+        const int n = number.value(m.captured(1), 0);
+        if (n > 0)
+            out += QStringLiteral("<a href=\"%1\">[%2]</a>")
+                       .arg(sources.at(n - 1).value(3)).arg(n);
+        else
+            out += m.captured(0);
+        last = m.capturedEnd();
+    }
+    out += escaped.mid(last);
+    return out.replace("\n", "<br>");
 }
 
 void FtWindow::aiEnsureStarted()
@@ -141,17 +177,32 @@ void FtWindow::aiStop()
     m_aiReady = false;
 }
 
-void FtWindow::aiAsk(const QString &question)
+// The reply fields live on the window, not on the dialog, so that the worker
+// and its loaded model survive Help being closed and reopened. That means they
+// must be cleared deliberately: otherwise reopening Help and switching to AI
+// mode repaints the previous answer, which reads as the app answering a
+// question nobody asked.
+void FtWindow::aiResetReply()
 {
-    aiEnsureStarted();
-    if (!m_aiProc || m_aiProc->state() == QProcess::NotRunning)
-        return;
-
     m_aiThink.clear();
     m_aiAnswer.clear();
     m_aiStream.clear();
     m_aiSources.clear();
     m_aiShowThink = false;
+    if (m_aiThinkBtn)
+        m_aiThinkBtn->hide();
+}
+
+void FtWindow::aiAsk(const QString &question)
+{
+    if (m_aiBusy)          // one question at a time; ignore double submits
+        return;
+
+    aiEnsureStarted();
+    if (!m_aiProc || m_aiProc->state() == QProcess::NotRunning)
+        return;
+
+    aiResetReply();
     m_aiBusy = true;
     aiRender();
 
@@ -177,9 +228,12 @@ void FtWindow::aiHandleLine(const QByteArray &line)
         m_aiSources.clear();
         for (const QJsonValue &v : arr) {
             const QJsonObject s = v.toObject();
+            // [0] score, [1] citation tag, [2] title, [3] url. The tag is the
+            // exact string the model was asked to cite, so answers can be
+            // matched against it -- anchor where there is one, page otherwise.
             m_aiSources.append(QStringList{
                 QString::number(s.value("score").toDouble(), 'f', 3),
-                s.value("anchor").toString(),
+                s.value("tag").toString(),
                 s.value("title").toString(),
                 s.value("url").toString() });
         }
@@ -214,11 +268,17 @@ void FtWindow::aiRender()
 
     QString html;
 
-    // Still loading, or something went wrong.
-    if (!m_aiReady && !m_aiBusy && m_aiAnswer.isEmpty()) {
-        html = "<p style=\"color:#bbb;\">" +
-               (m_aiStatus.isEmpty() ? QStringLiteral("Starting the local model...")
-                                     : htmlPara(m_aiStatus)) + "</p>";
+    // Nothing asked yet: report loading progress, or invite a question. Never
+    // show a stale reply here -- aiResetReply() has cleared it, and reaching
+    // this branch means the pane is between questions.
+    if (!m_aiBusy && m_aiAnswer.isEmpty()) {
+        if (m_aiReady && m_aiStatus.isEmpty())
+            html = "<p style=\"color:#bbb;\">Ready. Type a question above and "
+                   "press Ask.</p>";
+        else
+            html = "<p style=\"color:#bbb;\">" +
+                   (m_aiStatus.isEmpty() ? QStringLiteral("Starting the local model...")
+                                         : htmlPara(m_aiStatus)) + "</p>";
         m_aiOut->setHtml(html);
         if (m_aiThinkBtn) m_aiThinkBtn->hide();
         return;
@@ -238,19 +298,26 @@ void FtWindow::aiRender()
     if (!m_aiThink.isEmpty() && m_aiShowThink)
         html += "<div style=\"color:#999; border-left:2px solid #555; "
                 "padding-left:8px; margin:6px 0;\"><i>" +
-                htmlPara(m_aiThink) + "</i></div>";
+                linkCitations(m_aiThink, m_aiSources) + "</i></div>";
 
     if (!m_aiAnswer.isEmpty())
-        html += "<p style=\"color:#eee;\">" + htmlPara(m_aiAnswer) + "</p>";
+        html += "<p style=\"color:#eee;\">" +
+                linkCitations(m_aiAnswer, m_aiSources) + "</p>";
 
     if (!m_aiSources.isEmpty() && !m_aiBusy) {
         html += "<p style=\"color:#999; margin:10px 0 2px 0;\">Sources</p>";
-        for (const QStringList &s : m_aiSources)
+        int n = 0;
+        for (const QStringList &s : m_aiSources) {
+            ++n;
+            // Numbered to match the [N] links in the answer above, so a citation
+            // can be followed either way: click it, or find it by number here.
             html += QStringLiteral("<p style=\"margin:0 0 4px 14px;\">"
-                                   "<span style=\"color:#777;\">%1</span> "
-                                   "<a href=\"%2\">%3</a></p>")
-                        .arg(s.value(0), s.value(3),
-                             (s.value(2).isEmpty() ? s.value(1) : s.value(2)).toHtmlEscaped());
+                                   "<a href=\"%1\">[%2]</a> %3 "
+                                   "<span style=\"color:#777;\">%4</span></p>")
+                        .arg(s.value(3)).arg(n)
+                        .arg((s.value(2).isEmpty() ? s.value(1) : s.value(2)).toHtmlEscaped(),
+                             s.value(0));
+        }
     }
 
     m_aiOut->setHtml(html);

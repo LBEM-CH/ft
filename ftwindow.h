@@ -427,6 +427,7 @@ private:
 
     void aiEnsureStarted();                // start the worker if not running
     void aiAsk(const QString &question);   // send one question
+    void aiResetReply();                   // forget the last reply
     void aiHandleLine(const QByteArray &line);
     void aiRender();                       // paint state into m_aiOut
     void aiStop();                         // terminate the worker

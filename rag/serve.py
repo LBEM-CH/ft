@@ -25,7 +25,7 @@ and the answer as separate fields and can fold one away.
 import argparse, json, re, sys, time
 
 from retrieve import Retriever
-from ask import SYSTEM, build_prompt
+from ask import SYSTEM, build_prompt, build_messages
 
 THINK_RE = re.compile(r"<think>(.*?)</think>", re.S)
 
@@ -52,10 +52,12 @@ def main():
     ap.add_argument("--index-dir", default="rag")
     ap.add_argument("--model", default="mlx-community/Qwen3-8B-4bit")
     ap.add_argument("--device", default=None)
-    ap.add_argument("-k", type=int, default=8)
+    ap.add_argument("-k", type=int, default=12)
     ap.add_argument("--floor", type=float, default=None)
     ap.add_argument("--max-tokens", type=int, default=900)
     ap.add_argument("--temp", type=float, default=0.2)
+    ap.add_argument("--no-fewshot", action="store_true",
+                    help="drop the worked examples (see rag/ask.py FEWSHOT)")
     args = ap.parse_args()
 
     try:
@@ -116,14 +118,15 @@ def main():
                 continue
 
             emit({"type": "retrieved", "sources": [
-                {"anchor": c["anchor"], "title": c["title"], "url": c["url"],
-                 "score": round(s, 4)} for c, s in hits]})
+                {"tag": c["anchor"] or c["page"], "anchor": c["anchor"],
+                 "title": c["title"], "url": c["url"], "score": round(s, 4)}
+                for c, s in hits]})
 
             prompt = build_prompt(question, hits)
             try:
                 text = tokenizer.apply_chat_template(
-                    [{"role": "system", "content": SYSTEM},
-                     {"role": "user", "content": prompt}],
+                    build_messages(question, hits,
+                                   fewshot=bool(req.get("fewshot", not args.no_fewshot))),
                     add_generation_prompt=True, tokenize=False)
             except Exception:
                 text = SYSTEM + "\n\n" + prompt
@@ -139,7 +142,8 @@ def main():
 
             think, answer = split_think("".join(out))
             emit({"type": "answer", "think": think, "answer": answer,
-                  "sources": [{"anchor": c["anchor"], "title": c["title"],
+                  "sources": [{"tag": c["anchor"] or c["page"],
+                               "anchor": c["anchor"], "title": c["title"],
                                "url": c["url"], "score": round(s, 4)}
                               for c, s in hits],
                   "elapsed": round(time.time() - t0, 1)})

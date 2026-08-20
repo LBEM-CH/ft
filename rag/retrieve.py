@@ -103,7 +103,7 @@ class Retriever:
                               normalize_embeddings=True)[0]
         return self.vectors @ v            # (N,) cosine similarity
 
-    def retrieve(self, question, k=8, floor=None):
+    def retrieve(self, question, k=12, floor=None):
         """
         The k best-matching chunks, best first, as (chunk, score) pairs.
 
@@ -123,7 +123,7 @@ class Retriever:
 def main():
     ap = argparse.ArgumentParser(description="Retrieve manual chunks for a question.")
     ap.add_argument("question")
-    ap.add_argument("-k", type=int, default=8)
+    ap.add_argument("-k", type=int, default=12)
     ap.add_argument("--floor", type=float, default=None)
     ap.add_argument("--index-dir", default="rag")
     ap.add_argument("--device", default=None)
