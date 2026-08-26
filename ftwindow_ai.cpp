@@ -34,11 +34,11 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QHash>
 #include <QProcess>
 #include <QPushButton>
-#include <QRegularExpression>
 #include <QTextBrowser>
+
+#include "answerformatting.h"
 
 // Where rag/ lives. Empty means "work it out from the executable's location",
 // which covers the normal case of building into <repo>/build.
@@ -62,43 +62,12 @@ QString FtWindow::aiDir()
 }
 
 // Escape for the results pane and keep the line breaks the model produced.
+// For status lines and the live token stream only: finished replies go
+// through AnswerFormatting::answerToHtml() (answerformatting.h), which
+// renders the model's Markdown and mathematics properly, citations included.
 static QString htmlPara(const QString &s)
 {
     return s.toHtmlEscaped().replace("\n", "<br>");
-}
-
-// The model cites sections by tag, as [p2-ctf-fit] -- meaningful to it, but the
-// reader would have to match that string against the source list by eye. So the
-// tags are rewritten into numbered links, [3], pointing straight at the manual
-// section, and the source list below is numbered to match. A tag that is not
-// among the sources is left exactly as written rather than silently dropped:
-// that only happens when the model invented a citation, which is worth seeing.
-static QString linkCitations(const QString &plain,
-                             const QVector<QStringList> &sources)
-{
-    QHash<QString, int> number;
-    for (int i = 0; i < sources.size(); ++i)
-        number.insert(sources.at(i).value(1), i + 1);
-
-    const QString escaped = plain.toHtmlEscaped();
-    static const QRegularExpression re(QStringLiteral("\\[([A-Za-z0-9._#-]+)\\]"));
-
-    QString out;
-    qsizetype last = 0;
-    auto it = re.globalMatch(escaped);
-    while (it.hasNext()) {
-        const QRegularExpressionMatch m = it.next();
-        out += escaped.mid(last, m.capturedStart() - last);
-        const int n = number.value(m.captured(1), 0);
-        if (n > 0)
-            out += QStringLiteral("<a href=\"%1\">[%2]</a>")
-                       .arg(sources.at(n - 1).value(3).toHtmlEscaped()).arg(n);
-        else
-            out += m.captured(0);
-        last = m.capturedEnd();
-    }
-    out += escaped.mid(last);
-    return out.replace("\n", "<br>");
 }
 
 void FtWindow::aiEnsureStarted()
@@ -176,6 +145,10 @@ void FtWindow::aiEnsureStarted()
         if (!err.trimmed().isEmpty()) {
             qDebug().noquote() << "[rag]" << err.trimmed();
             m_aiErr += err;
+            // Same tail cap as the readyRead handler: a worker dying with a
+            // long undrained traceback must not paste it all into the pane.
+            if (m_aiErr.size() > 2000)
+                m_aiErr = m_aiErr.right(2000);
         }
         m_aiReady = false;
         m_aiBusy = false;
@@ -351,12 +324,12 @@ void FtWindow::aiRender()
     // has no <details>, so the fold is the button beside the pane, not markup.
     if (!m_aiThink.isEmpty() && m_aiShowThink)
         html += "<div style=\"color:#999; border-left:2px solid #555; "
-                "padding-left:8px; margin:6px 0;\"><i>" +
-                linkCitations(m_aiThink, m_aiSources) + "</i></div>";
+                "padding-left:8px; margin:6px 0;\">" +
+                AnswerFormatting::answerToHtml(m_aiThink, m_aiSources) + "</div>";
 
     if (!m_aiAnswer.isEmpty())
-        html += "<p style=\"color:#eee;\">" +
-                linkCitations(m_aiAnswer, m_aiSources) + "</p>";
+        html += "<div style=\"color:#eee;\">" +
+                AnswerFormatting::answerToHtml(m_aiAnswer, m_aiSources) + "</div>";
 
     if (!m_aiSources.isEmpty() && !m_aiBusy) {
         html += "<p style=\"color:#999; margin:10px 0 2px 0;\">Sources</p>";
