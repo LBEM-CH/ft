@@ -417,6 +417,7 @@ private:
     QProcess *m_aiProc = nullptr;
     QByteArray m_aiBuf;                    // partial line from the worker
     QByteArray m_aiErr;                    // stderr tail, shown if the worker dies
+    QByteArray m_aiErrLineBuf;             // partial stderr line, kept until complete
     QPointer<QTextBrowser> m_aiOut;        // results pane of the open dialog
     QPointer<QPushButton> m_aiThinkBtn;    // "Show reasoning" toggle
     bool    m_aiReady    = false;          // worker finished loading its models
@@ -435,7 +436,7 @@ private:
     void aiAsk(const QString &question);   // send one question
     void aiResetReply();                   // forget the last reply
     void aiHandleLine(const QByteArray &line);
-    void aiHandleStderr(const QByteArray &chunk);
+    void aiHandleStderr(const QByteArray &chunk, bool flushPartial = false);
     void aiReadStdout(bool flushPartial);  // deliver buffered worker output
     void aiRender();                       // paint state into m_aiOut
     void aiStop();                         // terminate the worker
