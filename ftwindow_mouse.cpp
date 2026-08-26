@@ -834,9 +834,10 @@ static const ManualPage kManualPages[] = {
     { "manual_exercises.html", "Exercises" },
 };
 
-// Downloaded page HTML, kept for the whole session: the pages total ~1 MB and
-// repeated searches shouldn't re-fetch them every time. A failed download is
-// not cached, so the next search retries it.
+// Downloaded page HTML, kept for the whole session: the pages total ~300 kB
+// (the figures live in separate files the search never fetches) and repeated
+// searches shouldn't re-fetch them every time. A failed download is not
+// cached, so the next search retries it.
 static QHash<QString, QString> s_manualPageCache;
 
 // Reduce a page to the plain-text blocks the browser renders, one string per
