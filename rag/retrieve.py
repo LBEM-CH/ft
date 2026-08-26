@@ -113,6 +113,10 @@ class Retriever:
         not cover it rather than answer from the least-irrelevant sections.
         Calibrate the value with eval.py; do not guess it.
         """
+        # A k of 0 would slice to nothing and read as "the manual does not
+        # cover this"; a negative one would slice to nearly the whole corpus.
+        # Neither is ever meant, so clamp rather than trust the caller.
+        k = max(1, int(k))
         s = self.scores(question)
         order = np.argsort(-s)[:k]
         if floor is not None and (len(order) == 0 or s[order[0]] < floor):

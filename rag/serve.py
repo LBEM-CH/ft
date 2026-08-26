@@ -28,6 +28,20 @@ from retrieve import Retriever
 from ask import SYSTEM, build_prompt, build_messages
 
 THINK_RE = re.compile(r"<think>(.*?)</think>", re.S)
+TAG_RE = re.compile(r"\[sect-([A-Za-z0-9._#-]+)\]")
+
+
+def fix_leaked_prefix(text, tags):
+    """
+    The worked examples in ask.py cite abstract tags of the form [sect-alpha],
+    and a small model sometimes grafts that prefix onto real tags, writing
+    [sect-p1-rotate] for the section it was given as [p1-rotate] — which the
+    application then cannot link. Strip the prefix only where the remainder is
+    a real source tag: a citation that is invented outright stays exactly as
+    written, visibly broken, which is worth seeing.
+    """
+    return TAG_RE.sub(
+        lambda m: f"[{m.group(1)}]" if m.group(1) in tags else m.group(0), text)
 
 
 def emit(obj):
@@ -153,6 +167,9 @@ def main():
                 emit({"type": "token", "text": chunk})
 
             think, answer = split_think("".join(out))
+            tags = {c["anchor"] or c["page"] for c, _ in hits}
+            think, answer = fix_leaked_prefix(think, tags), \
+                            fix_leaked_prefix(answer, tags)
             emit({"type": "answer", "think": think, "answer": answer,
                   "sources": [{"tag": c["anchor"] or c["page"],
                                "anchor": c["anchor"], "title": c["title"],
