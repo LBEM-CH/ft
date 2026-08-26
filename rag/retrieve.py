@@ -5,7 +5,7 @@ Retrieval: question -> the k manual chunks most likely to answer it.
 This is the "R" in retrieval-augmented generation, kept in its own module so it
 can be measured (eval.py) without involving a language model at all.
 
-The whole index is 86 vectors. Scoring is an exact dot product against every
+The whole index is 83 vectors. Scoring is an exact dot product against every
 one of them -- roughly 90k multiply-adds, microseconds. Nothing is approximated
 and no chunk is skipped, so there is no reason for an index structure or a
 vector database at this corpus size.
