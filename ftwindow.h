@@ -431,6 +431,7 @@ private:
     void aiAsk(const QString &question);   // send one question
     void aiResetReply();                   // forget the last reply
     void aiHandleLine(const QByteArray &line);
+    void aiReadStdout(bool flushPartial);  // deliver buffered worker output
     void aiRender();                       // paint state into m_aiOut
     void aiStop();                         // terminate the worker
 
