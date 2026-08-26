@@ -10,7 +10,7 @@ Protocol: one JSON object per line, both directions. Line-delimited rather than
 framed, so it is readable in a terminal and debuggable by hand:
 
     $ python3 rag/serve.py
-    {"type":"status","stage":"index","detail":"86 chunks"}
+    {"type":"status","stage":"index","detail":"83 chunks"}
     {"type":"status","stage":"embed-model","detail":"Qwen/Qwen3-Embedding-0.6B"}
     {"type":"status","stage":"llm","detail":"mlx-community/Qwen3-8B-4bit"}
     {"type":"ready"}

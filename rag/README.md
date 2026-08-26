@@ -19,6 +19,7 @@ ft-manual/*.html
    │  retrieve.py   question → k best chunks              (this is the retrieval)
    │  ask.py        chunks → prompt → local model       → answer + citations
    │  eval.py       measures retrieve.py on its own
+   │  serve.py      retrieve + ask as a persistent worker, driven by the app
 ```
 
 `retrieve.py` is separate from `ask.py` on purpose: retrieval can be measured
@@ -27,18 +28,21 @@ the two failed.
 
 ## Setup
 
+From the repository root — the path matters, the application looks for
+`<repo>/rag/.venv` and falls back to whatever `python3` is on PATH:
+
 ```bash
-uv venv rag/.venv                 # Python 3.14.4, the default here
+python3 -m venv rag/.venv         # or: uv venv rag/.venv, if uv is installed
 source rag/.venv/bin/activate
-uv pip install numpy sentence-transformers mlx-lm
+pip install numpy sentence-transformers mlx-lm
 ```
 
-Verified on this machine, Python 3.14.4 / arm64:
+Verified on this machine, Python 3.12.10 (miniforge) / arm64:
 
 | package | version | |
 |---|---|---|
 | torch | 2.13.0 | `mps` available, matmul runs on Metal |
-| mlx / mlx-metal | 0.32.1 | default device `gpu` |
+| mlx / mlx-metal | 0.32.2 | default device `gpu` |
 | mlx-lm | 0.31.3 | |
 | sentence-transformers | 6.0.0 | |
 | transformers | 5.15.1 | |
@@ -50,7 +54,7 @@ Verified on this machine, Python 3.14.4 / arm64:
 ## Run
 
 ```bash
-python3 rag/ingest.py                       # → 86 chunks
+python3 rag/ingest.py                       # → 83 chunks
 python3 rag/embed.py                        # → vectors.npy (seconds)
 python3 rag/retrieve.py "how do I do CTF correction?"
 python3 rag/ask.py     "how do I do CTF correction?"
@@ -105,12 +109,12 @@ means every chunk knows its address, so citations are free. Sections over 600
 words are split at their nested `<details>`, never mid-thought; the parent
 heading rides along so a fragment still says what it is about.
 
-**No vector database.** The index is 86 vectors. Scoring is an exact dot
+**No vector database.** The index is 83 vectors. Scoring is an exact dot
 product against every one — microseconds. An index structure would be slower to
 build than the search it replaces, and could only lose recall. This stays true
 to roughly 100,000 chunks.
 
-**Retrieve generously.** Eight of 86 chunks is ~9% of the corpus. At that ratio
+**Retrieve generously.** Eight of 83 chunks is ~10% of the corpus. At that ratio
 query rewriting, re-ranking and agent loops solve problems you do not have —
 they exist to pick 5 out of 500,000. Add them only if `eval.py` shows a failure
 they would fix.
@@ -129,4 +133,5 @@ prompt's instruction to say when the manual does not cover something.
 | `retrieve.py` | question → k chunks; also importable |
 | `ask.py` | retrieve → prompt → mlx-lm → answer |
 | `eval.py` | recall@k and score separation |
+| `serve.py` | persistent stdin/stdout worker behind the app's AI Help mode |
 | `questions.example.json` | 35 seed questions, 5 deliberately uncovered |

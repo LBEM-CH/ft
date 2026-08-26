@@ -1839,7 +1839,9 @@ display in panel 1:
 <p>
 The header bar at the top contains two clickable fields: the
 <strong>Fourier Analyzer</strong> title (opens an About dialog with
-contact info) and <strong>Manual</strong> (this page).
+contact info) and <strong>Manual</strong> (opens the
+<a href="#help">Help dialog</a>, which links here and can search this
+manual or answer questions about it).
 </p>
 </details>
 
@@ -2059,6 +2061,60 @@ width. In the real-space view it is labelled in <strong>nm</strong>
 reciprocal-space bar labelled in <strong>1/Å</strong>. When the pixel size
 is only assumed, the bar carries a small <em>“(if 1px = 1Å)”</em> note
 underneath, since the whole scale is then conditional.
+</p>
+</details>
+
+<details id="help">
+<summary>The Help dialog &amp; AI mode</summary>
+<p>
+Clicking <strong>Manual</strong> in the header bar opens the
+<strong>Help</strong> dialog: a link to this manual, and a question box
+that answers from it. Type a question, then pick the route:
+</p>
+<table>
+  <tr><th>Button</th><th>What it does</th></tr>
+  <tr><td><strong>Find in manual</strong></td>
+      <td>Literal search. Every occurrence of your words anywhere in the
+          manual is listed as a clickable snippet right in the dialog;
+          a click opens that page in your browser with the occurrence
+          highlighted. Immediate, but exact matches only — searching for
+          <em>defocus</em> will not find <em>Δf</em>.</td></tr>
+  <tr><td><strong>Search Google</strong></td>
+      <td>A Google query restricted to the manual's pages, opened in your
+          browser.</td></tr>
+  <tr><td><strong>AI mode</strong></td>
+      <td>Desktop version only. Switches the question box over to a local
+          language model that reads the manual sections most likely to
+          hold the answer and replies directly, citing them. Press
+          <strong>Ask</strong> (or <kbd>Enter</kbd>) to submit.</td></tr>
+</table>
+<p>
+In AI mode, ask in your own words — <em>“how do I do CTF
+correction?”</em> rather than a keyword. The answer cites the sections it
+drew on as numbered links, <strong>[1]</strong>, each opening the manual
+at that very section, and the same sources are listed underneath,
+numbered to match. <strong>Show reasoning</strong> unfolds the model's
+working if you want to check how it got there. Switching modes takes
+nothing away: <strong>Find in manual</strong> keeps working in AI mode,
+and <kbd>Enter</kbd> simply follows whichever mode is on.
+</p>
+<p>
+Everything runs on your own machine — the model is loaded locally and
+the question is not sent anywhere. The first question after starting the
+application therefore waits some 10–20&nbsp;seconds while the model
+loads (switching AI mode on starts the loading straight away, so the
+wait overlaps with your typing); after that the model stays warm, and an
+answer typically arrives in about half a minute. When the manual does
+not cover a question, the model is instructed to say exactly that rather
+than to improvise: a confident answer drawn from the wrong sections
+would be worse than none.
+</p>
+<p>
+The web version has no local model, so there the <strong>AI mode</strong>
+button is absent and the literal search remains the way to ask. On the
+desktop, AI mode needs a one-time local setup — a Python environment and
+the manual index, described in <code>rag/README.md</code> in the source
+repository; until that is in place, the dialog reports what is missing.
 </p>
 </details>
 
