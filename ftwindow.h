@@ -422,6 +422,7 @@ private:
     bool    m_aiBusy     = false;          // a question is in flight
     bool    m_aiFatal    = false;          // worker reported a fatal error itself
     bool    m_aiShowThink = false;         // reasoning unfolded?
+    bool    m_aiDark     = false;          // pane colours; set by the Help dialog
     QString m_aiStatus;                    // last loading stage, for the pane
     QString m_aiThink, m_aiAnswer;         // last completed reply
     QString m_aiStream;                    // tokens so far, while generating

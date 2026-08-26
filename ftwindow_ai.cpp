@@ -293,6 +293,13 @@ void FtWindow::aiRender()
     if (!m_aiOut)
         return;
 
+    // Inline colours matching the Help dialog's current look; the dialog
+    // keeps m_aiDark in step with its Dark mode button (helptheme.h).
+    const QString fg     = m_aiDark ? QStringLiteral("#eeeeee") : QStringLiteral("#1d1d20");
+    const QString muted  = m_aiDark ? QStringLiteral("#bbbbbb") : QStringLiteral("#5a5a62");
+    const QString dim    = m_aiDark ? QStringLiteral("#888888") : QStringLiteral("#8a8a92");
+    const QString border = m_aiDark ? QStringLiteral("#555555") : QStringLiteral("#c9c9d0");
+
     QString html;
 
     // Nothing asked yet: report loading progress, or invite a question. Never
@@ -300,10 +307,10 @@ void FtWindow::aiRender()
     // this branch means the pane is between questions.
     if (!m_aiBusy && m_aiAnswer.isEmpty()) {
         if (m_aiReady && m_aiStatus.isEmpty())
-            html = "<p style=\"color:#bbb;\">Ready. Type a question above and "
-                   "press Ask.</p>";
+            html = QStringLiteral("<p style=\"color:%1;\">Ready. Type a question "
+                                  "above and press Ask.</p>").arg(muted);
         else
-            html = "<p style=\"color:#bbb;\">" +
+            html = QStringLiteral("<p style=\"color:%1;\">").arg(muted) +
                    (m_aiStatus.isEmpty() ? QStringLiteral("Starting the local model...")
                                          : htmlPara(m_aiStatus)) + "</p>";
         m_aiOut->setHtml(html);
@@ -312,27 +319,28 @@ void FtWindow::aiRender()
     }
 
     if (m_aiBusy) {
-        html += "<p style=\"color:#bbb;\">" +
+        html += QStringLiteral("<p style=\"color:%1;\">").arg(muted) +
                 (m_aiReady ? QStringLiteral("Reading the manual...")
                            : QStringLiteral("Loading the model - ") + htmlPara(m_aiStatus)) +
                 "</p>";
         if (!m_aiStream.isEmpty())
-            html += "<p style=\"color:#888;\">" + htmlPara(m_aiStream.right(1200)) + "</p>";
+            html += QStringLiteral("<p style=\"color:%1;\">").arg(dim)
+                    + htmlPara(m_aiStream.right(1200)) + "</p>";
     }
 
     // The reasoning, folded away unless asked for. QTextBrowser's HTML subset
     // has no <details>, so the fold is the button beside the pane, not markup.
     if (!m_aiThink.isEmpty() && m_aiShowThink)
-        html += "<div style=\"color:#999; border-left:2px solid #555; "
-                "padding-left:8px; margin:6px 0;\">" +
+        html += QStringLiteral("<div style=\"color:%1; border-left:2px solid %2; "
+                               "padding-left:8px; margin:6px 0;\">").arg(dim, border) +
                 AnswerFormatting::answerToHtml(m_aiThink, m_aiSources) + "</div>";
 
     if (!m_aiAnswer.isEmpty())
-        html += "<div style=\"color:#eee;\">" +
+        html += QStringLiteral("<div style=\"color:%1;\">").arg(fg) +
                 AnswerFormatting::answerToHtml(m_aiAnswer, m_aiSources) + "</div>";
 
     if (!m_aiSources.isEmpty() && !m_aiBusy) {
-        html += "<p style=\"color:#999; margin:10px 0 2px 0;\">Sources</p>";
+        html += QStringLiteral("<p style=\"color:%1; margin:10px 0 2px 0;\">Sources</p>").arg(dim);
         int n = 0;
         for (const QStringList &s : m_aiSources) {
             ++n;
@@ -340,10 +348,10 @@ void FtWindow::aiRender()
             // can be followed either way: click it, or find it by number here.
             html += QStringLiteral("<p style=\"margin:0 0 4px 14px;\">"
                                    "<a href=\"%1\">[%2]</a> %3 "
-                                   "<span style=\"color:#777;\">%4</span></p>")
+                                   "<span style=\"color:%4;\">%5</span></p>")
                         .arg(s.value(3).toHtmlEscaped()).arg(n)
                         .arg((s.value(2).isEmpty() ? s.value(1) : s.value(2)).toHtmlEscaped(),
-                             s.value(0));
+                             dim, s.value(0));
         }
     }
 
