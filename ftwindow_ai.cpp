@@ -102,23 +102,28 @@ void FtWindow::aiEnsureStarted()
     m_aiStatus = "starting";
     m_aiBuf.clear();
     m_aiErr.clear();
+    m_aiProgress.clear();
+    m_aiProgressTick.invalidate();
 
     m_aiProc = new QProcess(this);
     m_aiProc->setWorkingDirectory(dir);   // so "rag/..." paths inside resolve
 
     connect(m_aiProc, &QProcess::readyReadStandardOutput, this,
             [this]() { aiReadStdout(false); });
-    // The worker's diagnostics (model download progress, tracebacks) are not
-    // protocol, so they go to the console rather than the results pane. A tail
-    // is kept all the same: if the worker dies, that tail is the results pane's
-    // explanation — the app may have been launched from Finder, where there is
-    // no console to go and see.
+    // The worker's stderr carries two different things. The progress bars
+    // tqdm and friends draw while models download, load and embed are shown
+    // in the results pane, where the wait they narrate is happening — dumped
+    // to the console they arrive as a torrent of carriage-return updates.
+    // Everything else (tracebacks, warnings) still goes to the console, and a
+    // tail is kept either way: if the worker dies, that tail is the results
+    // pane's explanation — the app may have been launched from Finder, where
+    // there is no console to go and see.
     connect(m_aiProc, &QProcess::readyReadStandardError, this, [this]() {
         const QByteArray err = m_aiProc->readAllStandardError();
-        qDebug().noquote() << "[rag]" << err.trimmed();
         m_aiErr += err;
         if (m_aiErr.size() > 2000)
             m_aiErr = m_aiErr.right(2000);
+        aiHandleStderr(err);
     });
     connect(m_aiProc, &QProcess::errorOccurred, this, [this](QProcess::ProcessError) {
         m_aiReady = false;
@@ -143,13 +148,14 @@ void FtWindow::aiEnsureStarted()
         aiReadStdout(true);
         const QByteArray err = m_aiProc->readAllStandardError();
         if (!err.trimmed().isEmpty()) {
-            qDebug().noquote() << "[rag]" << err.trimmed();
             m_aiErr += err;
             // Same tail cap as the readyRead handler: a worker dying with a
             // long undrained traceback must not paste it all into the pane.
             if (m_aiErr.size() > 2000)
                 m_aiErr = m_aiErr.right(2000);
+            aiHandleStderr(err);
         }
+        m_aiProgress.clear();
         m_aiReady = false;
         m_aiBusy = false;
         if (code != 0 && !m_aiFatal) {
@@ -236,6 +242,34 @@ void FtWindow::aiReadStdout(bool flushPartial)
     }
 }
 
+// Sort one chunk of worker stderr: in-place progress bars (tqdm and friends
+// redraw with carriage returns; every such line carries "NN%|bar|") go to the
+// results pane as the latest progress line, everything else to the console.
+void FtWindow::aiHandleStderr(const QByteArray &chunk)
+{
+    QString text = QString::fromUtf8(chunk);
+    text.replace(QLatin1Char('\r'), QLatin1Char('\n'));
+    bool sawProgress = false;
+    for (const QString &fragment : text.split(QLatin1Char('\n'), Qt::SkipEmptyParts)) {
+        const QString line = fragment.trimmed();
+        if (line.isEmpty())
+            continue;
+        if (line.contains(QLatin1Char('%')) && line.contains(QLatin1Char('|'))) {
+            m_aiProgress = line;
+            sawProgress = true;
+        } else {
+            qDebug().noquote() << "[rag]" << line;
+        }
+    }
+    // Bars update at tens of hertz; repainting the pane at ten is plenty.
+    // Only the loading phase shows progress, so nothing to repaint after.
+    if (sawProgress && !m_aiReady
+        && (!m_aiProgressTick.isValid() || m_aiProgressTick.elapsed() >= 100)) {
+        m_aiProgressTick.start();
+        aiRender();
+    }
+}
+
 void FtWindow::aiHandleLine(const QByteArray &line)
 {
     QJsonParseError err{};
@@ -264,9 +298,12 @@ void FtWindow::aiHandleLine(const QByteArray &line)
 
     if (type == "status") {
         m_aiStatus = o.value("stage").toString() + ": " + o.value("detail").toString();
+        // A finished stage's bar must not linger under the next stage's name.
+        m_aiProgress.clear();
     } else if (type == "ready") {
         m_aiReady = true;
         m_aiStatus.clear();
+        m_aiProgress.clear();
     } else if (type == "retrieved") {
         readSources(o.value("sources").toArray());
     } else if (type == "token") {
@@ -300,6 +337,12 @@ void FtWindow::aiRender()
     const QString dim    = m_aiDark ? QStringLiteral("#888888") : QStringLiteral("#8a8a92");
     const QString border = m_aiDark ? QStringLiteral("#555555") : QStringLiteral("#c9c9d0");
 
+    // The latest progress bar off the worker's stderr, monospaced so the bar
+    // holds its shape. Empty outside the loading phase.
+    const QString progressHtml = m_aiProgress.isEmpty() ? QString()
+        : QStringLiteral("<p style=\"color:%1; font-family:Menlo,Consolas,monospace;\">%2</p>")
+              .arg(dim, m_aiProgress.toHtmlEscaped());
+
     QString html;
 
     // Nothing asked yet: report loading progress, or invite a question. Never
@@ -312,7 +355,7 @@ void FtWindow::aiRender()
         else
             html = QStringLiteral("<p style=\"color:%1;\">").arg(muted) +
                    (m_aiStatus.isEmpty() ? QStringLiteral("Starting the local model...")
-                                         : htmlPara(m_aiStatus)) + "</p>";
+                                         : htmlPara(m_aiStatus)) + "</p>" + progressHtml;
         m_aiOut->setHtml(html);
         if (m_aiThinkBtn) m_aiThinkBtn->hide();
         return;
@@ -323,6 +366,8 @@ void FtWindow::aiRender()
                 (m_aiReady ? QStringLiteral("Reading the manual...")
                            : QStringLiteral("Loading the model - ") + htmlPara(m_aiStatus)) +
                 "</p>";
+        if (!m_aiReady)
+            html += progressHtml;
         if (!m_aiStream.isEmpty())
             html += QStringLiteral("<p style=\"color:%1;\">").arg(dim)
                     + htmlPara(m_aiStream.right(1200)) + "</p>";

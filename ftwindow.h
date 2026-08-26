@@ -2,6 +2,7 @@
 #define FTWINDOW_H
 
 #include <QWidget>
+#include <QElapsedTimer>
 #include <QImage>
 #include <QPushButton>
 #include <QLineEdit>
@@ -424,6 +425,8 @@ private:
     bool    m_aiShowThink = false;         // reasoning unfolded?
     bool    m_aiDark     = false;          // pane colours; set by the Help dialog
     QString m_aiStatus;                    // last loading stage, for the pane
+    QString m_aiProgress;                  // latest progress-bar line off stderr
+    QElapsedTimer m_aiProgressTick;        // throttles progress repaints
     QString m_aiThink, m_aiAnswer;         // last completed reply
     QString m_aiStream;                    // tokens so far, while generating
     QVector<QStringList> m_aiSources;      // [score, anchor, title, url]
@@ -432,6 +435,7 @@ private:
     void aiAsk(const QString &question);   // send one question
     void aiResetReply();                   // forget the last reply
     void aiHandleLine(const QByteArray &line);
+    void aiHandleStderr(const QByteArray &chunk);
     void aiReadStdout(bool flushPartial);  // deliver buffered worker output
     void aiRender();                       // paint state into m_aiOut
     void aiStop();                         // terminate the worker
