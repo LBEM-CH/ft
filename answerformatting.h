@@ -64,11 +64,10 @@ inline QString latexSpanToHtml(QString m)
         {"\\pm", "±"}, {"\\mp", "∓"}, {"\\times", "×"}, {"\\div", "÷"},
         {"\\cdot", "·"}, {"\\ast", "∗"}, {"\\star", "⋆"}, {"\\circ", "∘"},
         {"\\otimes", "⊗"}, {"\\oplus", "⊕"}, {"\\iint", "∬"}, {"\\int", "∫"},
-        {"\\oint", "∮"}, {"\\sum", "Σ"}, {"\\prod", "Π"}, {"\\sqrt", "√"},
+        {"\\oint", "∮"}, {"\\sum", "∑"}, {"\\prod", "∏"}, {"\\sqrt", "√"},
         {"\\langle", "⟨"}, {"\\rangle", "⟩"}, {"\\hbar", "ℏ"},
         {"\\ldots", "…"}, {"\\cdots", "⋯"}, {"\\dots", "…"}, {"\\prime", "′"},
         {"\\in", "∈"}, {"\\forall", "∀"}, {"\\exists", "∃"},
-        {"\\quad", "  "}, {"\\qquad", "   "},
     };
     for (const auto& s : kSubs)
         m.replace(QString::fromLatin1(s.cmd), QString::fromUtf8(s.uni));
@@ -119,7 +118,17 @@ inline QString latexSpanToHtml(QString m)
     // visibly, because hiding them would misquote the model.
     m.remove(QLatin1Char('{'));
     m.remove(QLatin1Char('}'));
-    return m.simplified();
+
+    // simplified() earns its keep twice: it trims the span's ends, and it
+    // folds the newlines inside display math, which the paragraph pass would
+    // otherwise split mid-formula. But it also collapses every space run --
+    // as would the rich-text renderer itself -- so the wide-space commands
+    // are translated only now, into entities nothing collapses. \qquad
+    // first: \quad is its prefix.
+    m = m.simplified();
+    m.replace(QStringLiteral("\\qquad"), QStringLiteral("&nbsp;&nbsp;&nbsp;&nbsp;"));
+    m.replace(QStringLiteral("\\quad"), QStringLiteral("&nbsp;&nbsp;"));
+    return m;
 }
 
 // The model cites sections by tag, as [p2-ctf-fit] -- meaningful to it, but
@@ -200,16 +209,40 @@ inline QString answerToHtml(const QString& plain,
     text = linkCitationsInHtml(text.toHtmlEscaped(), sources);
 
     // -- 3. Inline Markdown. Backticks and stars are untouched by escaping.
-    // Bold before italic, so ** is not read as two italics.
+    // Code spans go behind placeholders first: their content is literal, so
+    // the * in `f(*args)` must not become emphasis -- and two code spans on
+    // one line could otherwise be stitched together by a single italic match
+    // reaching from inside one to inside the other. Bold before italic, so
+    // ** is not read as two italics.
     static const QRegularExpression
         kCode(QStringLiteral("`([^`\\n]+)`")),
         kBold(QStringLiteral("\\*\\*([^*\\n]+)\\*\\*")),
         kItalic(QStringLiteral("(?<!\\*)\\*([^*\\s][^*\\n]*)\\*(?!\\*)"));
-    text.replace(kCode, QStringLiteral("<code>\\1</code>"));
+    const QChar kCodeMark(0x02);
+    QStringList code;
+    {
+        QString out;
+        qsizetype last = 0;
+        auto it = kCode.globalMatch(text);
+        while (it.hasNext()) {
+            const QRegularExpressionMatch m = it.next();
+            out += text.mid(last, m.capturedStart() - last);
+            out += kCodeMark + QString::number(code.size()) + kCodeMark;
+            code << m.captured(1);
+            last = m.capturedEnd();
+        }
+        out += text.mid(last);
+        text = out;
+    }
     text.replace(kBold, QStringLiteral("<b>\\1</b>"));
     text.replace(kItalic, QStringLiteral("<i>\\1</i>"));
+    for (int i = 0; i < code.size(); ++i)
+        text.replace(kCodeMark + QString::number(i) + kCodeMark,
+                     QStringLiteral("<code>") + code.at(i) + QStringLiteral("</code>"));
 
-    // -- 4. Math back in, in italic the way print sets it.
+    // -- 4. Math back in, in italic the way print sets it. After the code
+    // spans: a math placeholder caught inside one has only now returned to
+    // the text.
     for (int i = 0; i < math.size(); ++i)
         text.replace(kMark + QString::number(i) + kMark,
                      QStringLiteral("<i>") + math.at(i) + QStringLiteral("</i>"));
