@@ -1,5 +1,7 @@
 #include "ftwindow_common.h"
+#include "helptheme.h"
 
+#include <QHBoxLayout>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QRegularExpression>
@@ -956,7 +958,8 @@ static QVector<ManualHit> findManualMatches(const QString &pageFile,
 // that downloaded is searched; ones that didn't are reported, so a network
 // failure can't silently pose as "no matches".
 static void showManualSearchResults(QTextBrowser *browser, const QString &query,
-                                    const QStringList &fetchErrors)
+                                    const QStringList &fetchErrors,
+                                    const HelpTheme &t)
 {
     const int kMaxPerPage = 25;
     QString out;
@@ -968,10 +971,10 @@ static void showManualSearchResults(QTextBrowser *browser, const QString &query,
             findManualMatches(QLatin1String(page.file), it.value(), query);
         if (hits.isEmpty()) continue;
         total += hits.size();
-        out += QStringLiteral("<h4 style=\"margin:10px 0 2px 0; color:#eee;\">")
+        out += QStringLiteral("<h4 style=\"margin:10px 0 2px 0; color:%1;\">").arg(t.fg)
              + QString::fromUtf8(page.title).toHtmlEscaped()
-             + QStringLiteral(" <span style=\"color:#999;\">— %1 match%2</span></h4>")
-                   .arg(hits.size()).arg(hits.size() == 1 ? "" : "es");
+             + QStringLiteral(" <span style=\"color:%1;\">— %2 match%3</span></h4>")
+                   .arg(t.dim).arg(hits.size()).arg(hits.size() == 1 ? "" : "es");
         const int shown = int(qMin<qsizetype>(hits.size(), kMaxPerPage));
         // Half a line of air below each entry, so multi-line snippets read as
         // one finding each instead of running together into a wall of text.
@@ -980,41 +983,44 @@ static void showManualSearchResults(QTextBrowser *browser, const QString &query,
                  + hits[k].url + QStringLiteral("\">") + hits[k].snippet
                  + QStringLiteral("</a></p>");
         if (hits.size() > shown)
-            out += QStringLiteral("<p style=\"margin:0 0 8px 14px; color:#999;\">"
-                                  "… %1 further matches not listed — try a more "
-                                  "specific phrase</p>").arg(hits.size() - shown);
+            out += QStringLiteral("<p style=\"margin:0 0 8px 14px; color:%1;\">"
+                                  "… %2 further matches not listed — try a more "
+                                  "specific phrase</p>").arg(t.dim).arg(hits.size() - shown);
     }
 
     QString head;
     if (total == 0)
-        head = QStringLiteral("<p style=\"color:#eee;\">No matches for “%1” in the "
+        head = QStringLiteral("<p style=\"color:%1;\">No matches for “%2” in the "
                               "manual. Try a shorter keyword, or the Search Google "
-                              "button.</p>").arg(query.toHtmlEscaped());
+                              "button.</p>").arg(t.fg, query.toHtmlEscaped());
     else
-        head = QStringLiteral("<p style=\"color:#bbb;\">%1 match%2 for “%3” — click "
+        head = QStringLiteral("<p style=\"color:%1;\">%2 match%3 for “%4” — click "
                               "one to open it in the browser:</p>")
-                   .arg(total).arg(total == 1 ? "" : "es").arg(query.toHtmlEscaped());
+                   .arg(t.muted).arg(total).arg(total == 1 ? "" : "es").arg(query.toHtmlEscaped());
     for (const QString &err : fetchErrors)
-        out += QStringLiteral("<p style=\"color:#f99;\">Could not load %1</p>")
-                   .arg(err.toHtmlEscaped());
+        out += QStringLiteral("<p style=\"color:%1;\">Could not load %2</p>")
+                   .arg(t.dark ? QStringLiteral("#ff9999") : QStringLiteral("#c62828"),
+                        err.toHtmlEscaped());
     browser->setHtml(head + out);
 }
 
 // Entry point from the Help dialog: make sure all manual pages are downloaded,
 // then search them and fill `browser` with clickable snippet links.
-static void runManualSearch(const QString &rawQuery, QTextBrowser *browser)
+static void runManualSearch(const QString &rawQuery, QTextBrowser *browser,
+                            const HelpTheme &t)
 {
     const QString query = rawQuery.simplified();
     if (query.isEmpty()) return;
     browser->show();
-    browser->setHtml(QStringLiteral("<p style=\"color:#bbb;\">Searching the manual…</p>"));
+    browser->setHtml(QStringLiteral("<p style=\"color:%1;\">Searching the manual…</p>")
+                         .arg(t.muted));
 
     QStringList missing;
     for (const ManualPage &page : kManualPages)
         if (!s_manualPageCache.contains(QLatin1String(page.file)))
             missing << QLatin1String(page.file);
     if (missing.isEmpty()) {
-        showManualSearchResults(browser, query, {});
+        showManualSearchResults(browser, query, {}, t);
         return;
     }
 
@@ -1028,7 +1034,7 @@ static void runManualSearch(const QString &rawQuery, QTextBrowser *browser)
     for (const QString &file : missing) {
         QNetworkReply *reply = nam->get(QNetworkRequest(QUrl(kManualBase + file)));
         QObject::connect(reply, &QNetworkReply::finished, browser,
-                         [nam, reply, file, query, browser, st]() {
+                         [nam, reply, file, query, browser, st, t]() {
             if (reply->error() == QNetworkReply::NoError)
                 s_manualPageCache.insert(file, QString::fromUtf8(reply->readAll()));
             else
@@ -1036,7 +1042,7 @@ static void runManualSearch(const QString &rawQuery, QTextBrowser *browser)
             reply->deleteLater();
             if (--st->pending == 0) {
                 nam->deleteLater();
-                showManualSearchResults(browser, query, st->errors);
+                showManualSearchResults(browser, query, st->errors, t);
             }
         });
     }
@@ -1351,29 +1357,56 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         auto *dlg = new QDialog(this);
         dlg->setAttribute(Qt::WA_DeleteOnClose);
         dlg->setWindowTitle("Help");
-        dlg->setStyleSheet("QDialog { background:#333; }");
 
-        auto *layout = new QVBoxLayout(dlg);
+        // The banner spans the full dialog width, so the outer layout carries
+        // no margins; the content below gets its own margined layout. All the
+        // colours come later, from applyLook() — see helptheme.h.
+        auto *outer = new QVBoxLayout(dlg);
+        outer->setContentsMargins(0, 0, 0, 0);
+        outer->setSpacing(0);
+
+        // Banner: title on the left; Increase Font / Decrease Font / Dark
+        // mode in the top right corner. Blue in the light look, matching the
+        // manual pages' header.
+        auto *banner = new QWidget(dlg);
+        auto *bannerLayout = new QHBoxLayout(banner);
+        bannerLayout->setContentsMargins(12, 6, 8, 6);
+        auto *bannerTitle = new QLabel(QStringLiteral("Fourier Analyzer — Help"), banner);
+        bannerLayout->addWidget(bannerTitle);
+        bannerLayout->addStretch(1);
+        auto *fontMinusBtn = new QPushButton(QStringLiteral("A−"), banner);
+        fontMinusBtn->setToolTip("Decrease font size");
+        auto *fontPlusBtn = new QPushButton(QStringLiteral("A+"), banner);
+        fontPlusBtn->setToolTip("Increase font size");
+        auto *darkBtn = new QPushButton("Dark mode", banner);
+        darkBtn->setCheckable(true);
+        darkBtn->setChecked(helpDialogDark());
+        darkBtn->setToolTip("Dark background with bright text; off, the dialog "
+                            "matches the manual pages' light look.");
+        for (QPushButton *b : { fontMinusBtn, fontPlusBtn, darkBtn }) {
+            b->setCursor(Qt::PointingHandCursor);
+            b->setFocusPolicy(Qt::NoFocus);
+            bannerLayout->addWidget(b);
+        }
+        outer->addWidget(banner);
+
+        auto *content = new QWidget(dlg);
+        auto *layout = new QVBoxLayout(content);
+        outer->addWidget(content, 1);
 
         auto *intro = new QLabel(dlg);
         intro->setTextFormat(Qt::RichText);
         intro->setTextInteractionFlags(Qt::TextBrowserInteraction);
         intro->setOpenExternalLinks(true);
-        intro->setText(
-            "<h3 style=\"color:#eee;\">Fourier Analyzer</h3>"
-            "<p style=\"color:#eee;\">For instructions and exercises, visit the manual:</p>"
-            "<p><a href=\"" + manualUrl + "\">" + manualUrl + "</a></p>");
         layout->addWidget(intro);
 
         auto *qLabel = new QLabel(
             "Ask a question about the Fourier Analyzer\n"
             "(searches the online manual):", dlg);
-        qLabel->setStyleSheet("color:#eee;");
         layout->addWidget(qLabel);
 
         auto *edit = new QLineEdit(dlg);
         edit->setPlaceholderText("e.g. convolution theorem");
-        edit->setStyleSheet("background:#222; color:white; border:1px solid #888; padding:2px;");
         layout->addWidget(edit);
         edit->setFocus();
 
@@ -1382,10 +1415,6 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         auto *results = new QTextBrowser(dlg);
         results->setOpenLinks(false);   // handled below: the links leave the app
         results->setMinimumHeight(240);
-        results->setStyleSheet(
-            "QTextBrowser { background:#222; color:#eee; border:1px solid #888; }");
-        results->document()->setDefaultStyleSheet(
-            "a { color:#9bbcff; text-decoration:none; }");
         results->hide();
         layout->addWidget(results, 1);
         connect(results, &QTextBrowser::anchorClicked, dlg,
@@ -1436,14 +1465,98 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
                 pb->setDefault(false);
             }
 
-        buttons->setStyleSheet(
-            "QPushButton { background-color:#888; border:2px outset #aaa; color:#eee; padding:2px 12px; }");
         layout->addWidget(buttons);
 
+        // ------------------------------------------------------------------
+        // Appearance: apply the current look (dark or manual-page light) and
+        // font size to every part of the dialog, and re-render whatever the
+        // results pane is showing so its inline colours match. The same
+        // scheme as the Help dialog of the 4d application, which embeds this
+        // program — see helptheme.h.
+        // ------------------------------------------------------------------
+        auto lastQuery = std::make_shared<QString>();
+        auto applyLook = [this, dlg, banner, bannerTitle, fontMinusBtn, fontPlusBtn,
+                          darkBtn, intro, qLabel, edit, results, buttons, aiBtn,
+                          manualUrl, lastQuery]() {
+            const HelpTheme t = helpTheme(helpDialogDark());
+            const int base = 13 + helpDialogFontDelta();
+
+            dlg->setStyleSheet(QStringLiteral("QDialog { background:%1; }").arg(t.windowBg));
+            banner->setStyleSheet(QStringLiteral(".QWidget { background:%1; }").arg(t.banner));
+            banner->setAutoFillBackground(true);
+            bannerTitle->setStyleSheet(
+                QStringLiteral("color:%1; font-size:%2px; font-weight:600; background:transparent;")
+                    .arg(t.bannerFg).arg(base + 3));
+            const QString bannerButtonCss = QStringLiteral(
+                "QPushButton { background:transparent; border:1px solid %1; border-radius:3px;"
+                " color:%2; padding:1px 8px; font-size:%3px; }"
+                "QPushButton:checked { background:rgba(255,255,255,0.25); }")
+                                                .arg(t.dark ? QStringLiteral("#666666")
+                                                            : QStringLiteral("#7d9ce0"),
+                                                     t.bannerFg)
+                                                .arg(base - 1);
+            fontMinusBtn->setStyleSheet(bannerButtonCss);
+            fontPlusBtn->setStyleSheet(bannerButtonCss);
+            darkBtn->setStyleSheet(bannerButtonCss);
+
+            intro->setText(QStringLiteral(
+                "<h3 style=\"color:%1;\">Fourier Analyzer</h3>"
+                "<p style=\"color:%1;\">For instructions and exercises, visit the manual:</p>"
+                "<p><a style=\"color:%2;\" href=\"%3\">%3</a></p>")
+                               .arg(t.fg, t.link, manualUrl));
+            intro->setStyleSheet(QStringLiteral("font-size:%1px; background:transparent;").arg(base));
+            qLabel->setStyleSheet(QStringLiteral("color:%1; font-size:%2px; background:transparent;")
+                                      .arg(t.fg).arg(base));
+            edit->setStyleSheet(QStringLiteral("background:%1; color:%2; border:1px solid %3;"
+                                               " padding:2px; font-size:%4px;")
+                                    .arg(t.paneBg, t.fg, t.border).arg(base));
+            results->setStyleSheet(QStringLiteral("QTextBrowser { background:%1; color:%2;"
+                                                  " border:1px solid %3; font-size:%4px; }")
+                                       .arg(t.paneBg, t.fg, t.border).arg(base));
+            results->document()->setDefaultStyleSheet(
+                QStringLiteral("a { color:%1; text-decoration:none; } code { background:%2; }")
+                    .arg(t.link, t.codeBg));
+            buttons->setStyleSheet(QStringLiteral(
+                "QPushButton { background-color:%1; border:2px outset %2; color:%3;"
+                " padding:2px 12px; font-size:%4px; }"
+                "QPushButton:checked { background-color:%5; border:2px inset %2; }")
+                                       .arg(t.buttonBg, t.buttonBorder, t.buttonFg)
+                                       .arg(base)
+                                       .arg(t.buttonCheckedBg));
+
+            // The pane's content carries inline colours from the previous
+            // look, so repaint it: the AI reply from its render, a literal
+            // search by running it again (the pages are cached).
+            bool aiShown = false;
+#ifndef __EMSCRIPTEN__
+            m_aiDark = t.dark;
+            if (aiBtn && aiBtn->isChecked()) {
+                aiRender();
+                aiShown = true;
+            }
+#endif
+            if (!aiShown && !lastQuery->isEmpty() && results->isVisible())
+                runManualSearch(*lastQuery, results, t);
+        };
+        applyLook();
+
+        connect(darkBtn, &QPushButton::toggled, dlg, [applyLook](bool on) {
+            setHelpDialogDark(on);
+            applyLook();
+        });
+        auto stepFont = [applyLook](int step) {
+            // Clamped: -3 keeps the smallest text legible, +12 the dialog usable.
+            setHelpDialogFontDelta(qBound(-3, helpDialogFontDelta() + step, 12));
+            applyLook();
+        };
+        connect(fontPlusBtn, &QPushButton::clicked, dlg, [stepFont]() { stepFont(+1); });
+        connect(fontMinusBtn, &QPushButton::clicked, dlg, [stepFont]() { stepFont(-1); });
+
         // Search every manual page and list the hits in the results pane.
-        auto findInManual = [dlg, edit, results]() {
+        auto findInManual = [dlg, edit, results, lastQuery]() {
             if (edit->text().trimmed().isEmpty()) return;
-            runManualSearch(edit->text(), results);
+            *lastQuery = edit->text();
+            runManualSearch(edit->text(), results, helpTheme(helpDialogDark()));
             // First search: give the freshly shown results pane vertical room.
             // The width is left alone — it tracks the main window (90% at
             // open) or whatever the user has resized it to since.
