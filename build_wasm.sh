@@ -86,6 +86,13 @@ cp "$QT_WASM_PATH/plugins/platforms/qtloader.js" .
 # App icon: used as favicon, home-screen icon and loading-screen logo instead
 # of Qt's qtlogo.svg.
 cp "$SCRIPT_DIR/icon-ft.png" .
+# The qtstatus stage below also plants a plain <a> to the manual on the loading
+# screen. The manual lives on its own path (/ft-manual/), and a page no crawled
+# HTML links to is an orphan search engines index poorly even when sitemapped —
+# this anchor is the app page's link to it. It sits inside the spinner figure,
+# so it shows while the app loads (and to no-JS visitors) and vanishes when the
+# app takes over. The href is relative so it resolves at /ft/ in production and
+# at the served build-dir root locally (the ft-manual symlink below).
 BUILD_STAMP="$(date +%s)"
 sed -e 's/@APPNAME@/ft/g' \
     -e 's/@APPEXPORTNAME@/createQtAppInstance/g' \
@@ -100,6 +107,8 @@ sed -e 's/@APPNAME@/ft/g' \
     <link rel="apple-touch-icon" href="icon-ft.png">\
     <script>window.__FT_BUILD_STAMP="'"${BUILD_STAMP}"'";</script>|' \
   | sed -e 's|<img src="qtlogo.svg" width="320" height="200"|<img src="icon-ft.png" width="100" height="100"|' \
+  | sed -e 's|<div id="qtstatus"></div>|<div id="qtstatus"></div>\
+        <p><a href="../ft-manual/manual.html">Fourier Analyzer user manual</a></p>|' \
   | sed -e 's|await qtLoad({|await qtLoad({ locateFile: (p) => p.endsWith(".wasm") ? p + "?v=" + window.__FT_BUILD_STAMP : p,|' \
   > ft.html
 if [ -d "$SCRIPT_DIR/EXAMPLE_IMAGES" ]; then

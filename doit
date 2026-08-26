@@ -32,6 +32,15 @@ if [ -f ft-manual.tar.gz ]; then
 else
     echo "warning: ft-manual.tar.gz not found — the manual was not updated" >&2
 fi
+
+# The sitemap covers the whole site, so it belongs at the DocumentRoot of the
+# surrounding PHP site, not under /srv. Uploaded next to the tarballs by
+# build_webserver.sh; no apache reload needed for it.
+if [ -f sitemap.xml ]; then
+    cp sitemap.xml /var/www/html/sitemap.xml
+else
+    echo "warning: sitemap.xml not found — the sitemap was not updated" >&2
+fi
 systemctl reload apache2
 
 echo "All done."
