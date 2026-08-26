@@ -175,20 +175,20 @@ if [ "$current_user" = "henning" ] || [ "$current_user" = "stahlber" ]; then
             export SSHPASS="$pw"
             rsync -a -e "sshpass -e $RSYNC_SSH" \
                 "$APP_TARBALL" "$MANUAL_TARBALL" "$EXAMPLES_TARBALL" "$REMOTE_TARGET"
-            rsync -a -e "sshpass -e $RSYNC_SSH" "$SCRIPT_DIR/doit" "$REMOTE_TARGET"
+            rsync -a -e "sshpass -e $RSYNC_SSH" "$SCRIPT_DIR/doit" "$SCRIPT_DIR/sitemap.xml" "$REMOTE_TARGET"
             unset SSHPASS
         else
             echo "sshpass not found (install it with 'brew install sshpass'); falling back to an interactive rsync."
             rsync -a -e "$RSYNC_SSH" \
                 "$APP_TARBALL" "$MANUAL_TARBALL" "$EXAMPLES_TARBALL" "$REMOTE_TARGET"
-            rsync -a -e "$RSYNC_SSH" "$SCRIPT_DIR/doit" "$REMOTE_TARGET"
+            rsync -a -e "$RSYNC_SSH" "$SCRIPT_DIR/doit" "$SCRIPT_DIR/sitemap.xml" "$REMOTE_TARGET"
         fi
     else
         echo "Password file /Users/stahlber/.pw not found. Please copy the archives manually."
         echo "To update the web deployment, run this locally:"
         echo " "
         echo "rsync -a \"$APP_TARBALL\" \"$MANUAL_TARBALL\" \"$EXAMPLES_TARBALL\" \"$REMOTE_TARGET\""
-        echo "rsync -a -e \"$RSYNC_SSH\" \"$SCRIPT_DIR/doit\" \"$REMOTE_TARGET\""
+        echo "rsync -a -e \"$RSYNC_SSH\" \"$SCRIPT_DIR/doit\" \"$SCRIPT_DIR/sitemap.xml\" \"$REMOTE_TARGET\""
             echo " "
     fi
     

@@ -834,9 +834,10 @@ static const ManualPage kManualPages[] = {
     { "manual_exercises.html", "Exercises" },
 };
 
-// Downloaded page HTML, kept for the whole session: the pages total ~1 MB and
-// repeated searches shouldn't re-fetch them every time. A failed download is
-// not cached, so the next search retries it.
+// Downloaded page HTML, kept for the whole session: the pages total ~300 kB
+// (the figures live in separate files the search never fetches) and repeated
+// searches shouldn't re-fetch them every time. A failed download is not
+// cached, so the next search retries it.
 static QHash<QString, QString> s_manualPageCache;
 
 // Reduce a page to the plain-text blocks the browser renders, one string per
@@ -1048,112 +1049,129 @@ static void runManualSearch(const QString &rawQuery, QTextBrowser *browser)
 void FtWindow::activateHistorySlot(int i)
 {
     if (i < 0 || i >= HISTORY_SLOTS) return;
-        // A slot the startup restore skipped (large image, or file on a
-        // network volume) still holds its path. Clicking it is the moment we
-        // pay for the load — including when it is already the active slot,
-        // which is why the "already active" early-out comes after this test.
-        const bool needsDiskLoad = !m_history[i].occupied && m_history[i].deferred;
 
-        if (i == m_activeSlot && !needsDiskLoad) return;   // already active
-        if (m_history[i].loading && i == m_activeSlot) return;   // still reading
+    // With the Align tool open, moving to a buffer retargets what it works
+    // on: that buffer becomes both the image that moves and the buffer the
+    // result lands in, so the tool keeps acting on what is being looked at
+    // instead of on whichever buffer happened to be shown when it opened.
+    // The reference is left as it is — that one is chosen once and stays
+    // put. Done before the early-outs below, so it applies even when the
+    // buffer is already the active one (there the display does not change
+    // but the pulldowns may still be pointing somewhere else). It lives
+    // here rather than at the call site so that every route to another
+    // buffer — a thumbnail click, an arrow key in the maximized view —
+    // leaves the same tool state behind.
+    if (m_alignActive) {
+        alignSeedSourceAndOutput(i);
+        syncAlignCombos();      // repaints the parameter window
+    }
 
-        // Save current active image back to its slot, caching its forward
-        // FFT so returning here won't recompute it. The power-spectrum
-        // thumbnail is derived from that cached FFT (no extra transform).
-        if (m_activeSlot >= 0 && !m_image.isNull()) {
-            HistoryEntry &cur = m_history[m_activeSlot];
-            cur.image        = m_image;
-            cur.path         = m_imagePath;
-            cur.rawPixels    = m_imageRawPixels;
-            cur.minVal       = m_imageMinVal;
-            cur.maxVal       = m_imageMaxVal;
-            cur.pixelSize    = m_pixelSize;
-            cur.pixelSizeAssumed = m_pixelSizeAssumed;
-            cur.lastOperation = m_lastOperation;
-            cur.ftComputed   = m_ftComputed;
-            if (m_ftComputed) {
-                cur.fftData      = m_fftData;
-                cur.fftN         = m_fftN;
-                cur.fftOrigW     = m_origW;
-                cur.fftOrigH     = m_origH;
-                cur.ftInverseOutput = m_ftInverseOutput;
-                cur.powerSpecImg = powerSpecFromCurrentFFT();
-            } else {
-                cur.fftData.clear();
-                cur.fftData.shrink_to_fit();
-                cur.powerSpecImg = computePowerSpecMasked(m_image);
-            }
-            cur.occupied     = true;
-            cur.deferred     = false;
-        }
+    // A slot the startup restore skipped (large image, or file on a
+    // network volume) still holds its path. Reaching it is the moment we
+    // pay for the load — including when it is already the active slot,
+    // which is why the "already active" early-out comes after this test.
+    const bool needsDiskLoad = !m_history[i].occupied && m_history[i].deferred;
 
-        // Activate the clicked slot
-        m_activeSlot = i;
+    if (i == m_activeSlot && !needsDiskLoad) return;   // already active
+    if (m_history[i].loading && i == m_activeSlot) return;   // still reading
 
-        // Realise a deferred slot now that its data is actually wanted. The
-        // read runs on a worker thread — these are exactly the images that
-        // were too big to load at startup, so blocking here would freeze the
-        // window and leave the user unable to delete the buffer they just
-        // discovered they do not want. The slot fills in when it arrives.
-        if (needsDiskLoad)
-            startSlotLoad(i);
-
-        if (m_history[i].occupied) {
-            // Load occupied slot into panel 1
-            m_image          = m_history[i].image;
-            m_imagePath      = m_history[i].path;
-            m_imageRawPixels = m_history[i].rawPixels;
-            m_imageMinVal    = m_history[i].minVal;
-            m_imageMaxVal    = m_history[i].maxVal;
-            m_imageDispMin   = m_history[i].minVal;
-            m_imageDispMax   = m_history[i].maxVal;
-            m_pixelSize      = m_history[i].pixelSize;
-            m_pixelSizeAssumed = m_history[i].pixelSizeAssumed;
-            m_lastOperation  = m_history[i].lastOperation;
+    // Save current active image back to its slot, caching its forward
+    // FFT so returning here won't recompute it. The power-spectrum
+    // thumbnail is derived from that cached FFT (no extra transform).
+    if (m_activeSlot >= 0 && !m_image.isNull()) {
+        HistoryEntry &cur = m_history[m_activeSlot];
+        cur.image        = m_image;
+        cur.path         = m_imagePath;
+        cur.rawPixels    = m_imageRawPixels;
+        cur.minVal       = m_imageMinVal;
+        cur.maxVal       = m_imageMaxVal;
+        cur.pixelSize    = m_pixelSize;
+        cur.pixelSizeAssumed = m_pixelSizeAssumed;
+        cur.lastOperation = m_lastOperation;
+        cur.ftComputed   = m_ftComputed;
+        if (m_ftComputed) {
+            cur.fftData      = m_fftData;
+            cur.fftN         = m_fftN;
+            cur.fftOrigW     = m_origW;
+            cur.fftOrigH     = m_origH;
+            cur.ftInverseOutput = m_ftInverseOutput;
+            cur.powerSpecImg = powerSpecFromCurrentFFT();
         } else {
-            // Empty slot – clear panel 1
-            m_image          = QImage();
-            m_imagePath.clear();
-            m_imageRawPixels.clear();
-            m_imageMinVal    = 0;
-            m_imageMaxVal    = 0;
-            m_imageDispMin   = 0;
-            m_imageDispMax   = 0;
-            m_pixelSize      = 1.0;
-            m_pixelSizeAssumed = false;
-            m_lastOperation.clear();
+            cur.fftData.clear();
+            cur.fftData.shrink_to_fit();
+            cur.powerSpecImg = computePowerSpecMasked(m_image);
         }
+        cur.occupied     = true;
+        cur.deferred     = false;
+    }
 
-        m_modeBtn->setText(modeLabel());
+    // Activate the clicked slot
+    m_activeSlot = i;
 
-        if (m_history[i].occupied && m_history[i].ftComputed
-            && !m_history[i].fftData.empty()) {
-            // Cached FFT: restore it and rebuild only the display images
-            // (parallelized) instead of recomputing the forward transform.
-            m_fftData    = m_history[i].fftData;
-            m_fftN       = m_history[i].fftN;
-            m_origW      = m_history[i].fftOrigW;
-            m_origH      = m_history[i].fftOrigH;
-            m_ftInverseOutput = m_history[i].ftInverseOutput;
-            m_ftComputed = true;
-            recomputeDisplayImages();
-            m_modeBtn->show();
-            m_maskBtnVisible = true;
-        } else {
-            m_ftComputed = false;
-            m_modeBtn->hide();
-            m_maskBtnVisible = false;
-            if (!m_image.isNull())
-                computeFFT(true);
-        }
+    // Realise a deferred slot now that its data is actually wanted. The
+    // read runs on a worker thread — these are exactly the images that
+    // were too big to load at startup, so blocking here would freeze the
+    // window and leave the user unable to delete the buffer they just
+    // discovered they do not want. The slot fills in when it arrives.
+    if (needsDiskLoad)
+        startSlotLoad(i);
 
-        saveHistory();
+    if (m_history[i].occupied) {
+        // Load occupied slot into panel 1
+        m_image          = m_history[i].image;
+        m_imagePath      = m_history[i].path;
+        m_imageRawPixels = m_history[i].rawPixels;
+        m_imageMinVal    = m_history[i].minVal;
+        m_imageMaxVal    = m_history[i].maxVal;
+        m_imageDispMin   = m_history[i].minVal;
+        m_imageDispMax   = m_history[i].maxVal;
+        m_pixelSize      = m_history[i].pixelSize;
+        m_pixelSizeAssumed = m_history[i].pixelSizeAssumed;
+        m_lastOperation  = m_history[i].lastOperation;
+    } else {
+        // Empty slot – clear panel 1
+        m_image          = QImage();
+        m_imagePath.clear();
+        m_imageRawPixels.clear();
+        m_imageMinVal    = 0;
+        m_imageMaxVal    = 0;
+        m_imageDispMin   = 0;
+        m_imageDispMax   = 0;
+        m_pixelSize      = 1.0;
+        m_pixelSizeAssumed = false;
+        m_lastOperation.clear();
+    }
+
+    m_modeBtn->setText(modeLabel());
+
+    if (m_history[i].occupied && m_history[i].ftComputed
+        && !m_history[i].fftData.empty()) {
+        // Cached FFT: restore it and rebuild only the display images
+        // (parallelized) instead of recomputing the forward transform.
+        m_fftData    = m_history[i].fftData;
+        m_fftN       = m_history[i].fftN;
+        m_origW      = m_history[i].fftOrigW;
+        m_origH      = m_history[i].fftOrigH;
+        m_ftInverseOutput = m_history[i].ftInverseOutput;
+        m_ftComputed = true;
+        recomputeDisplayImages();
+        m_modeBtn->show();
+        m_maskBtnVisible = true;
+    } else {
+        m_ftComputed = false;
+        m_modeBtn->hide();
+        m_maskBtnVisible = false;
+        if (!m_image.isNull())
+            computeFFT(true);
+    }
+
+    saveHistory();
 #ifndef __EMSCRIPTEN__
-        QSettings settings("ft", "ft");
-        settings.setValue("lastFile", m_imagePath);
-        settings.setValue("activeSlot", m_activeSlot);
+    QSettings settings("ft", "ft");
+    settings.setValue("lastFile", m_imagePath);
+    settings.setValue("activeSlot", m_activeSlot);
 #endif
-        update();
+    update();
 }
 
 void FtWindow::mousePressEvent(QMouseEvent *event)
@@ -1376,7 +1394,48 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         auto *buttons = new QDialogButtonBox(dlg);
         auto *findBtn   = buttons->addButton("Find in manual", QDialogButtonBox::ActionRole);
         auto *googleBtn = buttons->addButton("Search Google (indexing still not done...)",  QDialogButtonBox::ActionRole);
+
+        // AI mode: the same question box, answered by a local model reading the
+        // manual sections retrieval picked, instead of listed as occurrences to
+        // open one by one. Desktop only -- the WebAssembly build has no local
+        // model, so there the button does not exist and literal search stays the
+        // only route. `aiBtn` is declared outside the guard so the submit lambda
+        // below is identical in both builds; in WebAssembly it stays null.
+        QPushButton *aiBtn = nullptr;
+        QPushButton *askBtn = nullptr;
+#ifndef __EMSCRIPTEN__
+        aiBtn = buttons->addButton("AI mode", QDialogButtonBox::ActionRole);
+        aiBtn->setCheckable(true);
+        aiBtn->setToolTip("Ask in your own words and have a local model answer "
+                          "from the manual, instead of listing keyword matches.");
+
+        // AI mode's own submit button. "Find in manual" keeps its name and its
+        // job in both modes -- switching to AI must add a way to ask, never take
+        // the literal search away.
+        askBtn = buttons->addButton("Ask", QDialogButtonBox::ActionRole);
+        askBtn->hide();
+
+        // QTextBrowser's HTML subset has no <details>, so the model's reasoning
+        // is folded by a button rather than by markup.
+        m_aiThinkBtn = buttons->addButton("Show reasoning", QDialogButtonBox::ActionRole);
+        m_aiThinkBtn->hide();
+        connect(m_aiThinkBtn, &QPushButton::clicked, dlg, [this]() {
+            m_aiShowThink = !m_aiShowThink;
+            aiRender();
+        });
+#endif
         buttons->addButton(QDialogButtonBox::Close);
+
+        // Inside a QDialog a QPushButton is autoDefault by default, so Enter in
+        // the question box would fire returnPressed *and* click whichever button
+        // currently holds default -- submitting the same question twice. The
+        // Enter key is wired explicitly below; no button should claim it.
+        for (QAbstractButton *b : buttons->buttons())
+            if (auto *pb = qobject_cast<QPushButton *>(b)) {
+                pb->setAutoDefault(false);
+                pb->setDefault(false);
+            }
+
         buttons->setStyleSheet(
             "QPushButton { background-color:#888; border:2px outset #aaa; color:#eee; padding:2px 12px; }");
         layout->addWidget(buttons);
@@ -1407,9 +1466,61 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
             QDesktopServices::openUrl(url);
         };
 
+        // Put the question to the local model. Reachable from the Ask button in
+        // AI mode, and from Enter. In the WebAssembly build there is no worker,
+        // so the body compiles away and nothing can call it: aiBtn stays null.
+        auto askAi = [this, dlg, edit, results]() {
+            if (edit->text().trimmed().isEmpty()) return;
+#ifndef __EMSCRIPTEN__
+            m_aiOut = results;              // QPointer: cleared when dlg closes
+            results->show();
+            aiAsk(edit->text());
+            if (dlg->height() < 560)
+                dlg->resize(dlg->width(), 560);
+#endif
+        };
+
+        // Enter follows whichever mode is on. The buttons do not -- each one
+        // always does the single thing its label says.
+        auto submit = [aiBtn, askAi, findInManual]() {
+            if (aiBtn && aiBtn->isChecked()) askAi();
+            else                             findInManual();
+        };
+
+#ifndef __EMSCRIPTEN__
+        // Switching mode re-labels the question box, offers the Ask button, and
+        // starts the helper loading its models straight away so the wait
+        // overlaps with the user still typing. "Find in manual" is deliberately
+        // left alone: both routes stay available in either mode.
+        connect(aiBtn, &QPushButton::toggled, dlg,
+                [this, edit, qLabel, results, askBtn](bool on) {
+            edit->setPlaceholderText(on ? "e.g. how do I do CTF correction?"
+                                        : "e.g. convolution theorem");
+            qLabel->setText(on ? "Ask a question about the Fourier Analyzer\n"
+                                 "(a local model answers from the manual, or use "
+                                 "Find in manual for literal matches):"
+                               : "Ask a question about the Fourier Analyzer\n"
+                                 "(searches the online manual):");
+            askBtn->setVisible(on);
+            if (m_aiThinkBtn && !on)
+                m_aiThinkBtn->hide();
+            if (on) {
+                // This dialog has not asked anything yet. The reply fields
+                // belong to the window and outlive it, so drop the previous
+                // answer rather than repainting it into a fresh dialog.
+                aiResetReply();
+                m_aiOut = results;
+                results->show();
+                aiEnsureStarted();
+                aiRender();
+            }
+        });
+        connect(askBtn, &QPushButton::clicked, dlg, askAi);
+#endif
+
         connect(findBtn,   &QPushButton::clicked, dlg, findInManual);
         connect(googleBtn, &QPushButton::clicked, dlg, searchGoogle);
-        connect(edit, &QLineEdit::returnPressed, dlg, findInManual);  // Enter = find in manual
+        connect(edit, &QLineEdit::returnPressed, dlg, submit);
         connect(buttons, &QDialogButtonBox::rejected, dlg, &QDialog::reject);
 
         // Open at 90% of the window's current width — the manual-search result
@@ -1437,18 +1548,6 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         }
     }
     if (clickedSlot >= 0) {
-        // With the Align tool open, picking a buffer retargets what it works on:
-        // the clicked buffer becomes both the image that moves and the buffer the
-        // result lands in, so the tool keeps acting on what is being looked at
-        // instead of on whichever buffer happened to be shown when it opened. The
-        // reference is left as it is — that one is chosen once and stays put.
-        // Done before the early-outs below, so it applies even when the clicked
-        // buffer is already the active one (there the display does not change but
-        // the pulldowns may still be pointing somewhere else).
-        if (m_alignActive) {
-            alignSeedSourceAndOutput(clickedSlot);
-            syncAlignCombos();      // repaints the parameter window
-        }
         activateHistorySlot(clickedSlot);
         return;
     }
