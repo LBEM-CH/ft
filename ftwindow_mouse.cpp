@@ -1394,7 +1394,48 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         auto *buttons = new QDialogButtonBox(dlg);
         auto *findBtn   = buttons->addButton("Find in manual", QDialogButtonBox::ActionRole);
         auto *googleBtn = buttons->addButton("Search Google (indexing still not done...)",  QDialogButtonBox::ActionRole);
+
+        // AI mode: the same question box, answered by a local model reading the
+        // manual sections retrieval picked, instead of listed as occurrences to
+        // open one by one. Desktop only -- the WebAssembly build has no local
+        // model, so there the button does not exist and literal search stays the
+        // only route. `aiBtn` is declared outside the guard so the submit lambda
+        // below is identical in both builds; in WebAssembly it stays null.
+        QPushButton *aiBtn = nullptr;
+        QPushButton *askBtn = nullptr;
+#ifndef __EMSCRIPTEN__
+        aiBtn = buttons->addButton("AI mode", QDialogButtonBox::ActionRole);
+        aiBtn->setCheckable(true);
+        aiBtn->setToolTip("Ask in your own words and have a local model answer "
+                          "from the manual, instead of listing keyword matches.");
+
+        // AI mode's own submit button. "Find in manual" keeps its name and its
+        // job in both modes -- switching to AI must add a way to ask, never take
+        // the literal search away.
+        askBtn = buttons->addButton("Ask", QDialogButtonBox::ActionRole);
+        askBtn->hide();
+
+        // QTextBrowser's HTML subset has no <details>, so the model's reasoning
+        // is folded by a button rather than by markup.
+        m_aiThinkBtn = buttons->addButton("Show reasoning", QDialogButtonBox::ActionRole);
+        m_aiThinkBtn->hide();
+        connect(m_aiThinkBtn, &QPushButton::clicked, dlg, [this]() {
+            m_aiShowThink = !m_aiShowThink;
+            aiRender();
+        });
+#endif
         buttons->addButton(QDialogButtonBox::Close);
+
+        // Inside a QDialog a QPushButton is autoDefault by default, so Enter in
+        // the question box would fire returnPressed *and* click whichever button
+        // currently holds default -- submitting the same question twice. The
+        // Enter key is wired explicitly below; no button should claim it.
+        for (QAbstractButton *b : buttons->buttons())
+            if (auto *pb = qobject_cast<QPushButton *>(b)) {
+                pb->setAutoDefault(false);
+                pb->setDefault(false);
+            }
+
         buttons->setStyleSheet(
             "QPushButton { background-color:#888; border:2px outset #aaa; color:#eee; padding:2px 12px; }");
         layout->addWidget(buttons);
@@ -1425,9 +1466,61 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
             QDesktopServices::openUrl(url);
         };
 
+        // Put the question to the local model. Reachable from the Ask button in
+        // AI mode, and from Enter. In the WebAssembly build there is no worker,
+        // so the body compiles away and nothing can call it: aiBtn stays null.
+        auto askAi = [this, dlg, edit, results]() {
+            if (edit->text().trimmed().isEmpty()) return;
+#ifndef __EMSCRIPTEN__
+            m_aiOut = results;              // QPointer: cleared when dlg closes
+            results->show();
+            aiAsk(edit->text());
+            if (dlg->height() < 560)
+                dlg->resize(dlg->width(), 560);
+#endif
+        };
+
+        // Enter follows whichever mode is on. The buttons do not -- each one
+        // always does the single thing its label says.
+        auto submit = [aiBtn, askAi, findInManual]() {
+            if (aiBtn && aiBtn->isChecked()) askAi();
+            else                             findInManual();
+        };
+
+#ifndef __EMSCRIPTEN__
+        // Switching mode re-labels the question box, offers the Ask button, and
+        // starts the helper loading its models straight away so the wait
+        // overlaps with the user still typing. "Find in manual" is deliberately
+        // left alone: both routes stay available in either mode.
+        connect(aiBtn, &QPushButton::toggled, dlg,
+                [this, edit, qLabel, results, askBtn](bool on) {
+            edit->setPlaceholderText(on ? "e.g. how do I do CTF correction?"
+                                        : "e.g. convolution theorem");
+            qLabel->setText(on ? "Ask a question about the Fourier Analyzer\n"
+                                 "(a local model answers from the manual, or use "
+                                 "Find in manual for literal matches):"
+                               : "Ask a question about the Fourier Analyzer\n"
+                                 "(searches the online manual):");
+            askBtn->setVisible(on);
+            if (m_aiThinkBtn && !on)
+                m_aiThinkBtn->hide();
+            if (on) {
+                // This dialog has not asked anything yet. The reply fields
+                // belong to the window and outlive it, so drop the previous
+                // answer rather than repainting it into a fresh dialog.
+                aiResetReply();
+                m_aiOut = results;
+                results->show();
+                aiEnsureStarted();
+                aiRender();
+            }
+        });
+        connect(askBtn, &QPushButton::clicked, dlg, askAi);
+#endif
+
         connect(findBtn,   &QPushButton::clicked, dlg, findInManual);
         connect(googleBtn, &QPushButton::clicked, dlg, searchGoogle);
-        connect(edit, &QLineEdit::returnPressed, dlg, findInManual);  // Enter = find in manual
+        connect(edit, &QLineEdit::returnPressed, dlg, submit);
         connect(buttons, &QDialogButtonBox::rejected, dlg, &QDialog::reject);
 
         // Open at 90% of the window's current width — the manual-search result
