@@ -87,12 +87,13 @@ cp "$QT_WASM_PATH/plugins/platforms/qtloader.js" .
 # of Qt's qtlogo.svg.
 cp "$SCRIPT_DIR/icon-ft.png" .
 # The qtstatus stage below also plants a plain <a> to the manual on the loading
-# screen. The manual lives on its own path (/ft-manual/), and a page no crawled
-# HTML links to is an orphan search engines index poorly even when sitemapped —
-# this anchor is the app page's link to it. It sits inside the spinner figure,
-# so it shows while the app loads (and to no-JS visitors) and vanishes when the
-# app takes over. The href is relative so it resolves at /ft/ in production and
-# at the served build-dir root locally (the ft-manual symlink below).
+# screen. The manual lives on its own path (/ft-manual/), and no other crawled
+# page links to it; search engines index such orphan pages poorly even when
+# they are in the sitemap, so this anchor is the app page's link to it. It sits
+# inside the spinner figure, so it shows while the app loads (and to no-JS
+# visitors) and vanishes when the app takes over. The href is relative so it
+# resolves at /ft/ in production and at the served build-dir root locally (the
+# ft-manual symlink below).
 BUILD_STAMP="$(date +%s)"
 sed -e 's/@APPNAME@/ft/g' \
     -e 's/@APPEXPORTNAME@/createQtAppInstance/g' \

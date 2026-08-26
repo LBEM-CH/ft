@@ -2763,6 +2763,15 @@ void FtWindow::finishSlotLoad(int i, quint64 token, SlotImageData data)
         }
     }
 
+    // The Align pulldowns may already point at this slot: activateHistorySlot()
+    // retargets the tool before a deferred read completes, and its sync then
+    // disabled the buttons because the slot held no image yet. It does now, so
+    // judge them again — nothing else would until a pulldown changes.
+    if (m_alignActive && m_alignSrcCombo && m_alignRefCombo
+        && (m_alignSrcCombo->currentIndex() == i
+            || m_alignRefCombo->currentIndex() == i))
+        syncAlignCombos();
+
     saveHistory();
     update();
 }

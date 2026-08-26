@@ -73,8 +73,15 @@ def main():
         emit({"type": "status", "stage": "llm", "detail": args.model})
         from mlx_lm import load, stream_generate
         model, tokenizer = load(args.model)
-    except Exception as e:
-        emit({"type": "error", "message": f"{type(e).__name__}: {e}", "fatal": True})
+    except (Exception, SystemExit) as e:
+        # SystemExit is included because it is not an Exception: Retriever
+        # refuses a stale index via sys.exit(message), and letting that fly
+        # would end the worker without the fatal JSON the application waits for.
+        if isinstance(e, SystemExit):
+            msg = str(e.code) if e.code is not None else "SystemExit"
+        else:
+            msg = f"{type(e).__name__}: {e}"
+        emit({"type": "error", "message": msg, "fatal": True})
         return 1
 
     # Sampler construction moved between mlx-lm versions; low temperature suits
@@ -108,7 +115,12 @@ def main():
         try:
             t0 = time.time()
             k = int(req.get("k", args.k))
+            # Coerced like k: a client bridging JSON through UI code may well
+            # send the number as a string, and it would otherwise surface as a
+            # TypeError deep in the score comparison.
             floor = req.get("floor", args.floor)
+            if floor is not None:
+                floor = float(floor)
             hits = r.retrieve(question, k, floor)
 
             if not hits:
