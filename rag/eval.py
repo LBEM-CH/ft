@@ -67,7 +67,7 @@ def main():
         for k in ks:
             if rank is not None and rank < k:
                 hits_at[k] += 1
-        if rank is None or rank >= min(ks[-1], kmax):
+        if rank is None or rank >= kmax:
             misses.append((q["question"], q["anchor"], rank,
                            [c["anchor"] for c in ranked[:3]]))
 

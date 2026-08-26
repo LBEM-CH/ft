@@ -92,7 +92,7 @@ static QString linkCitations(const QString &plain,
         const int n = number.value(m.captured(1), 0);
         if (n > 0)
             out += QStringLiteral("<a href=\"%1\">[%2]</a>")
-                       .arg(sources.at(n - 1).value(3)).arg(n);
+                       .arg(sources.at(n - 1).value(3).toHtmlEscaped()).arg(n);
         else
             out += m.captured(0);
         last = m.capturedEnd();
@@ -105,6 +105,14 @@ void FtWindow::aiEnsureStarted()
 {
     if (m_aiProc && m_aiProc->state() != QProcess::NotRunning)
         return;
+
+    // A worker that has exited is replaced, not kept: deleting it here also
+    // drops its signal connections, so a dead process can neither accumulate
+    // per restart nor call back into the fresh one's state.
+    if (m_aiProc) {
+        m_aiProc->deleteLater();
+        m_aiProc = nullptr;
+    }
 
     const QString dir = aiDir();
     const QString script = dir + "/rag/serve.py";
@@ -129,16 +137,8 @@ void FtWindow::aiEnsureStarted()
     m_aiProc = new QProcess(this);
     m_aiProc->setWorkingDirectory(dir);   // so "rag/..." paths inside resolve
 
-    connect(m_aiProc, &QProcess::readyReadStandardOutput, this, [this]() {
-        m_aiBuf += m_aiProc->readAllStandardOutput();
-        int nl;
-        while ((nl = m_aiBuf.indexOf('\n')) >= 0) {
-            const QByteArray line = m_aiBuf.left(nl);
-            m_aiBuf.remove(0, nl + 1);
-            if (!line.trimmed().isEmpty())
-                aiHandleLine(line);
-        }
-    });
+    connect(m_aiProc, &QProcess::readyReadStandardOutput, this,
+            [this]() { aiReadStdout(false); });
     // The worker's diagnostics (model download progress, tracebacks) are not
     // protocol, so they go to the console rather than the results pane. A tail
     // is kept all the same: if the worker dies, that tail is the results pane's
@@ -166,6 +166,17 @@ void FtWindow::aiEnsureStarted()
     // of what happened.
     connect(m_aiProc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
             this, [this](int code, QProcess::ExitStatus) {
+        // Qt does not promise the readyRead signals have delivered the dying
+        // process's last bytes yet, so both channels are drained here first —
+        // a fatal error emitted with the worker's last breath must set
+        // m_aiFatal (and the stderr tail be complete) before the exit is
+        // judged below.
+        aiReadStdout(true);
+        const QByteArray err = m_aiProc->readAllStandardError();
+        if (!err.trimmed().isEmpty()) {
+            qDebug().noquote() << "[rag]" << err.trimmed();
+            m_aiErr += err;
+        }
         m_aiReady = false;
         m_aiBusy = false;
         if (code != 0 && !m_aiFatal) {
@@ -229,6 +240,27 @@ void FtWindow::aiAsk(const QString &question)
     QJsonObject req;
     req["question"] = question;
     m_aiProc->write(QJsonDocument(req).toJson(QJsonDocument::Compact) + "\n");
+}
+
+// Deliver whatever worker stdout is buffered, one protocol line at a time.
+// Called from readyReadStandardOutput as data arrives, and once more from the
+// finished handler with flushPartial set: at that point no further read will
+// ever complete a dangling line, so an unterminated remainder is handled now
+// rather than silently dropped.
+void FtWindow::aiReadStdout(bool flushPartial)
+{
+    m_aiBuf += m_aiProc->readAllStandardOutput();
+    int nl;
+    while ((nl = m_aiBuf.indexOf('\n')) >= 0) {
+        const QByteArray line = m_aiBuf.left(nl);
+        m_aiBuf.remove(0, nl + 1);
+        if (!line.trimmed().isEmpty())
+            aiHandleLine(line);
+    }
+    if (flushPartial && !m_aiBuf.trimmed().isEmpty()) {
+        aiHandleLine(m_aiBuf);
+        m_aiBuf.clear();
+    }
 }
 
 void FtWindow::aiHandleLine(const QByteArray &line)
@@ -336,7 +368,7 @@ void FtWindow::aiRender()
             html += QStringLiteral("<p style=\"margin:0 0 4px 14px;\">"
                                    "<a href=\"%1\">[%2]</a> %3 "
                                    "<span style=\"color:#777;\">%4</span></p>")
-                        .arg(s.value(3)).arg(n)
+                        .arg(s.value(3).toHtmlEscaped()).arg(n)
                         .arg((s.value(2).isEmpty() ? s.value(1) : s.value(2)).toHtmlEscaped(),
                              s.value(0));
         }
