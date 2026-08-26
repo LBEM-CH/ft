@@ -42,7 +42,13 @@ SYSTEM = (
     "an answer, refuse -- do not reach back to an example for one.\n"
     "\n"
     "Be concise and concrete. Use the exact tool and control names the manual "
-    "uses."
+    "uses.\n"
+    "\n"
+    "Your answer is shown in a simple rich-text pane. Use short paragraphs, "
+    "**bold** for tool and control names, `code` for file names and values, "
+    "and bullet lists. Write mathematics in plain Unicode - x², α, ×, ∫, "
+    "(f ∗ h)(x, y) - never in LaTeX: the pane cannot typeset $...$ or "
+    "\\commands."
 )
 
 # Two worked examples, shown as prior turns rather than described in the
