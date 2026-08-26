@@ -415,10 +415,12 @@ private:
     // model. There "Find in manual" remains the only route.
     QProcess *m_aiProc = nullptr;
     QByteArray m_aiBuf;                    // partial line from the worker
+    QByteArray m_aiErr;                    // stderr tail, shown if the worker dies
     QPointer<QTextBrowser> m_aiOut;        // results pane of the open dialog
     QPointer<QPushButton> m_aiThinkBtn;    // "Show reasoning" toggle
     bool    m_aiReady    = false;          // worker finished loading its models
     bool    m_aiBusy     = false;          // a question is in flight
+    bool    m_aiFatal    = false;          // worker reported a fatal error itself
     bool    m_aiShowThink = false;         // reasoning unfolded?
     QString m_aiStatus;                    // last loading stage, for the pane
     QString m_aiThink, m_aiAnswer;         // last completed reply

@@ -121,8 +121,10 @@ void FtWindow::aiEnsureStarted()
         py = "python3";
 
     m_aiReady = false;
+    m_aiFatal = false;
     m_aiStatus = "starting";
     m_aiBuf.clear();
+    m_aiErr.clear();
 
     m_aiProc = new QProcess(this);
     m_aiProc->setWorkingDirectory(dir);   // so "rag/..." paths inside resolve
@@ -138,9 +140,16 @@ void FtWindow::aiEnsureStarted()
         }
     });
     // The worker's diagnostics (model download progress, tracebacks) are not
-    // protocol, so they go to the console rather than the results pane.
+    // protocol, so they go to the console rather than the results pane. A tail
+    // is kept all the same: if the worker dies, that tail is the results pane's
+    // explanation — the app may have been launched from Finder, where there is
+    // no console to go and see.
     connect(m_aiProc, &QProcess::readyReadStandardError, this, [this]() {
-        qDebug().noquote() << "[rag]" << m_aiProc->readAllStandardError().trimmed();
+        const QByteArray err = m_aiProc->readAllStandardError();
+        qDebug().noquote() << "[rag]" << err.trimmed();
+        m_aiErr += err;
+        if (m_aiErr.size() > 2000)
+            m_aiErr = m_aiErr.right(2000);
     });
     connect(m_aiProc, &QProcess::errorOccurred, this, [this](QProcess::ProcessError) {
         m_aiReady = false;
@@ -149,13 +158,22 @@ void FtWindow::aiEnsureStarted()
                      " - " + m_aiProc->errorString();
         aiRender();
     });
+    // A startup failure the worker could diagnose arrives as a fatal protocol
+    // error, immediately followed by exit code 1 (see rag/serve.py) — so when
+    // m_aiFatal is set, m_aiStatus already names the actual problem and must
+    // not be overwritten with this generic line. Without it, the stderr tail
+    // (a traceback the worker did not survive to report) is the best account
+    // of what happened.
     connect(m_aiProc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
             this, [this](int code, QProcess::ExitStatus) {
         m_aiReady = false;
         m_aiBusy = false;
-        if (code != 0)
-            m_aiStatus = QStringLiteral("the helper exited (code %1) - see the "
-                                        "console for its output").arg(code);
+        if (code != 0 && !m_aiFatal) {
+            m_aiStatus = QStringLiteral("the helper exited (code %1)").arg(code);
+            const QString err = QString::fromUtf8(m_aiErr).trimmed();
+            if (!err.isEmpty())
+                m_aiStatus += "\n\nIts last output:\n" + err;
+        }
         aiRender();
     });
     // Do not leave the model resident after the application closes.
@@ -257,6 +275,10 @@ void FtWindow::aiHandleLine(const QByteArray &line)
     } else if (type == "error") {
         m_aiBusy = false;
         m_aiStatus = o.value("message").toString();
+        // A fatal error is the worker's exit note: it quits right after, and
+        // the finished handler must leave this message standing.
+        if (o.value("fatal").toBool())
+            m_aiFatal = true;
     }
     aiRender();
 }
