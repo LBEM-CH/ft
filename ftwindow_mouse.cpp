@@ -1015,6 +1015,12 @@ static void runManualSearch(const QString &rawQuery, QTextBrowser *browser,
     browser->setHtml(QStringLiteral("<p style=\"color:%1;\">Searching the manual…</p>")
                          .arg(t.muted));
 
+    // Every call bumps the pane's generation, and a download finishing for an
+    // older one may still cache its page but must not paint: the user (or a
+    // theme change re-running the search) has asked for something newer since.
+    const int generation = browser->property("searchGeneration").toInt() + 1;
+    browser->setProperty("searchGeneration", generation);
+
     QStringList missing;
     for (const ManualPage &page : kManualPages)
         if (!s_manualPageCache.contains(QLatin1String(page.file)))
@@ -1034,7 +1040,7 @@ static void runManualSearch(const QString &rawQuery, QTextBrowser *browser,
     for (const QString &file : missing) {
         QNetworkReply *reply = nam->get(QNetworkRequest(QUrl(kManualBase + file)));
         QObject::connect(reply, &QNetworkReply::finished, browser,
-                         [nam, reply, file, query, browser, st, t]() {
+                         [nam, reply, file, query, browser, st, t, generation]() {
             if (reply->error() == QNetworkReply::NoError)
                 s_manualPageCache.insert(file, QString::fromUtf8(reply->readAll()));
             else
@@ -1042,7 +1048,8 @@ static void runManualSearch(const QString &rawQuery, QTextBrowser *browser,
             reply->deleteLater();
             if (--st->pending == 0) {
                 nam->deleteLater();
-                showManualSearchResults(browser, query, st->errors, t);
+                if (browser->property("searchGeneration").toInt() == generation)
+                    showManualSearchResults(browser, query, st->errors, t);
             }
         });
     }
@@ -1369,6 +1376,7 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
         // mode in the top right corner. Blue in the light look, matching the
         // manual pages' header.
         auto *banner = new QWidget(dlg);
+        banner->setObjectName(QStringLiteral("helpBanner"));
         auto *bannerLayout = new QHBoxLayout(banner);
         bannerLayout->setContentsMargins(12, 6, 8, 6);
         auto *bannerTitle = new QLabel(QStringLiteral("Fourier Analyzer — Help"), banner);
@@ -1482,8 +1490,10 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
             const int base = 13 + helpDialogFontDelta();
 
             dlg->setStyleSheet(QStringLiteral("QDialog { background:%1; }").arg(t.windowBg));
-            banner->setStyleSheet(QStringLiteral(".QWidget { background:%1; }").arg(t.banner));
-            banner->setAutoFillBackground(true);
+            // ID selector: colours exactly this widget, and never its children
+            // the way a bare declaration would cascade.
+            banner->setStyleSheet(QStringLiteral("QWidget#helpBanner { background:%1; }")
+                                      .arg(t.banner));
             bannerTitle->setStyleSheet(
                 QStringLiteral("color:%1; font-size:%2px; font-weight:600; background:transparent;")
                     .arg(t.bannerFg).arg(base + 3));

@@ -102,6 +102,7 @@ void FtWindow::aiEnsureStarted()
     m_aiStatus = "starting";
     m_aiBuf.clear();
     m_aiErr.clear();
+    m_aiErrLineBuf.clear();
     m_aiProgress.clear();
     m_aiProgressTick.invalidate();
 
@@ -153,8 +154,8 @@ void FtWindow::aiEnsureStarted()
             // long undrained traceback must not paste it all into the pane.
             if (m_aiErr.size() > 2000)
                 m_aiErr = m_aiErr.right(2000);
-            aiHandleStderr(err);
         }
+        aiHandleStderr(err, true);   // and flush the buffered partial line
         m_aiProgress.clear();
         m_aiReady = false;
         m_aiBusy = false;
@@ -242,25 +243,47 @@ void FtWindow::aiReadStdout(bool flushPartial)
     }
 }
 
-// Sort one chunk of worker stderr: in-place progress bars (tqdm and friends
-// redraw with carriage returns; every such line carries "NN%|bar|") go to the
-// results pane as the latest progress line, everything else to the console.
-void FtWindow::aiHandleStderr(const QByteArray &chunk)
+// Sort worker stderr: in-place progress bars (tqdm and friends redraw with
+// carriage returns; every such line carries "NN%|bar|") go to the results
+// pane as the latest progress line, everything else to the console. QProcess
+// delivers stderr in arbitrary fragments, mid-line included, so segments are
+// buffered until their \r or \n arrives — a half-drawn bar or half a
+// traceback line must not be taken for a whole one. The finished handler
+// passes flushPartial: no further read will ever complete the remainder then.
+void FtWindow::aiHandleStderr(const QByteArray &chunk, bool flushPartial)
 {
-    QString text = QString::fromUtf8(chunk);
-    text.replace(QLatin1Char('\r'), QLatin1Char('\n'));
+    m_aiErrLineBuf += chunk;
+
     bool sawProgress = false;
-    for (const QString &fragment : text.split(QLatin1Char('\n'), Qt::SkipEmptyParts)) {
-        const QString line = fragment.trimmed();
+    auto takeSegment = [this, &sawProgress](const QByteArray &segment) {
+        const QString line = QString::fromUtf8(segment).trimmed();
         if (line.isEmpty())
-            continue;
+            return;
         if (line.contains(QLatin1Char('%')) && line.contains(QLatin1Char('|'))) {
             m_aiProgress = line;
             sawProgress = true;
         } else {
             qDebug().noquote() << "[rag]" << line;
         }
+    };
+
+    for (;;) {
+        const int r = int(m_aiErrLineBuf.indexOf('\r'));
+        const int n = int(m_aiErrLineBuf.indexOf('\n'));
+        const int cut = (r < 0) ? n : (n < 0 ? r : qMin(r, n));
+        if (cut < 0)
+            break;
+        takeSegment(m_aiErrLineBuf.left(cut));
+        m_aiErrLineBuf.remove(0, cut + 1);
     }
+    // A remainder that will never see its terminator — the worker died, or
+    // something writes without line breaks at all — is a segment after all.
+    if ((flushPartial || m_aiErrLineBuf.size() > 4096)
+        && !m_aiErrLineBuf.trimmed().isEmpty()) {
+        takeSegment(m_aiErrLineBuf);
+        m_aiErrLineBuf.clear();
+    }
+
     // Bars update at tens of hertz; repainting the pane at ten is plenty.
     // Only the loading phase shows progress, so nothing to repaint after.
     if (sawProgress && !m_aiReady
