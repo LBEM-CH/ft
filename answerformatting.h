@@ -171,13 +171,35 @@ inline QString linkCitationsInHtml(const QString& escaped,
 inline QString answerToHtml(const QString& plain,
                             const QVector<QStringList>& sources)
 {
-    // -- 1. Stash math spans behind placeholders. They must not reach the
-    // Markdown pass: *, _ and [ mean something else inside a formula. The
-    // placeholder character cannot occur in model output, and toHtmlEscaped()
-    // leaves it alone.
+    // -- 1. Stash code spans, before anything else can look at the text:
+    // inside `backticks` a $, a *, or a [tag] is just a character, so code
+    // must be hidden before the math and citation passes could misread it
+    // ($PATH, [index]). Stored raw and escaped only on return. The
+    // placeholder characters cannot occur in model output, and
+    // toHtmlEscaped() leaves them alone.
+    const QChar kCodeMark(0x02);
+    QStringList code;
+    QString text = plain;
+    {
+        static const QRegularExpression kCode(QStringLiteral("`([^`\\n]+)`"));
+        QString out;
+        qsizetype last = 0;
+        auto it = kCode.globalMatch(text);
+        while (it.hasNext()) {
+            const QRegularExpressionMatch m = it.next();
+            out += text.mid(last, m.capturedStart() - last);
+            out += kCodeMark + QString::number(code.size()) + kCodeMark;
+            code << m.captured(1);
+            last = m.capturedEnd();
+        }
+        out += text.mid(last);
+        text = out;
+    }
+
+    // -- 2. Stash math spans the same way. They must not reach the Markdown
+    // pass either: * and _ mean something else inside a formula.
     const QChar kMark(0x01);
     QStringList math;
-    QString text = plain;
     auto stashAll = [&](const QRegularExpression& re) {
         QString out;
         qsizetype last = 0;
@@ -205,49 +227,34 @@ inline QString answerToHtml(const QString& plain,
     stashAll(kInlineParen);
     stashAll(kInlineDollar);
 
-    // -- 2. Escape, then link the citations.
+    // -- 3. Escape, then link the citations. Code is hidden, so a [tag]
+    // inside backticks stays the literal text it is.
     text = linkCitationsInHtml(text.toHtmlEscaped(), sources);
 
-    // -- 3. Inline Markdown. Backticks and stars are untouched by escaping.
-    // Code spans go behind placeholders first: their content is literal, so
-    // the * in `f(*args)` must not become emphasis -- and two code spans on
-    // one line could otherwise be stitched together by a single italic match
-    // reaching from inside one to inside the other. Bold before italic, so
-    // ** is not read as two italics.
+    // -- 4. Inline Markdown. The backtick spans are already hidden, so the
+    // * in `f(*args)` cannot become emphasis -- nor can two code spans on
+    // one line be stitched together by a single italic match reaching from
+    // inside one to inside the other. Bold before italic, so ** is not read
+    // as two italics.
     static const QRegularExpression
-        kCode(QStringLiteral("`([^`\\n]+)`")),
         kBold(QStringLiteral("\\*\\*([^*\\n]+)\\*\\*")),
         kItalic(QStringLiteral("(?<!\\*)\\*([^*\\s][^*\\n]*)\\*(?!\\*)"));
-    const QChar kCodeMark(0x02);
-    QStringList code;
-    {
-        QString out;
-        qsizetype last = 0;
-        auto it = kCode.globalMatch(text);
-        while (it.hasNext()) {
-            const QRegularExpressionMatch m = it.next();
-            out += text.mid(last, m.capturedStart() - last);
-            out += kCodeMark + QString::number(code.size()) + kCodeMark;
-            code << m.captured(1);
-            last = m.capturedEnd();
-        }
-        out += text.mid(last);
-        text = out;
-    }
     text.replace(kBold, QStringLiteral("<b>\\1</b>"));
     text.replace(kItalic, QStringLiteral("<i>\\1</i>"));
-    for (int i = 0; i < code.size(); ++i)
-        text.replace(kCodeMark + QString::number(i) + kCodeMark,
-                     QStringLiteral("<code>") + code.at(i) + QStringLiteral("</code>"));
 
-    // -- 4. Math back in, in italic the way print sets it. After the code
-    // spans: a math placeholder caught inside one has only now returned to
-    // the text.
+    // -- 5. Math back in, in italic the way print sets it.
     for (int i = 0; i < math.size(); ++i)
         text.replace(kMark + QString::number(i) + kMark,
                      QStringLiteral("<i>") + math.at(i) + QStringLiteral("</i>"));
 
-    // -- 5. Block structure, line by line: headings, list items, rules,
+    // -- 6. Code back in, escaped only now -- it was stashed raw, before any
+    // pass could touch it. After the math: a code span written inside a
+    // formula has only now returned to the text.
+    for (int i = 0; i < code.size(); ++i)
+        text.replace(kCodeMark + QString::number(i) + kCodeMark,
+                     QStringLiteral("<code>") + code.at(i).toHtmlEscaped() + QStringLiteral("</code>"));
+
+    // -- 7. Block structure, line by line: headings, list items, rules,
     // paragraphs. Lists are indented paragraphs rather than <ul>/<ol>, which
     // keeps the model's own numbering and QTextBrowser's list margins out of
     // the picture.
