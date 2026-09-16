@@ -22,6 +22,7 @@ set(FT_CORE_SOURCES
     ftwindow_slots.cpp
     ftwindow_amyloid.cpp
     ftwindow_align.cpp
+    ftwindow_ai.cpp
     fft.cpp
     mrcloader.cpp
 )

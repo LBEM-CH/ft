@@ -33,7 +33,10 @@ COUNTRYDB="/var/lib/GeoIP/GeoLite2-Country.mmdb"
 # filter and every heading, so changing the window is a one-line edit and the
 # three cannot drift apart.
 MONTHS_BACK=3
-
+if ! [[ "$MONTHS_BACK" =~ ^[1-9][0-9]*$ ]]; then
+  echo "MONTHS_BACK must be a positive integer (>= 1)" >&2
+  exit 1
+fi
 REPORT="/home/henning/ft-report.html"
 REPORT_RECENT="/home/henning/ft-report-last${MONTHS_BACK}months.html"
 
