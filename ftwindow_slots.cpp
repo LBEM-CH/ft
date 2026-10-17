@@ -2839,7 +2839,7 @@ void FtWindow::restoreHistory()
         // loaded the moment the user clicks it.
         QString reason;
         if (!isRestoreCheapAtStartup(path, &reason)) {
-            qDebug() << "History slot" << i << "deferred (" << reason << "):" << path;
+            // qDebug() << "History slot" << i << "deferred (" << reason << "):" << path;
             m_history[i].deferred = true;
             continue;
         }
