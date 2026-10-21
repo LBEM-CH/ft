@@ -1,0 +1,6 @@
+# https://lbem-ft.epfl.ch/ — the Fourier Analyzer manual and, at /ft/, the app.
+# Everything may be crawled. Installed at the site root by doit.
+User-agent: *
+Allow: /
+
+Sitemap: https://lbem-ft.epfl.ch/sitemap.xml

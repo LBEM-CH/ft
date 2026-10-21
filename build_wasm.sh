@@ -87,13 +87,12 @@ cp "$QT_WASM_PATH/plugins/platforms/qtloader.js" .
 # of Qt's qtlogo.svg.
 cp "$SCRIPT_DIR/icon-ft.png" .
 # The qtstatus stage below also plants a plain <a> to the manual on the loading
-# screen. The manual lives on its own path (/ft-manual/), and no other crawled
-# page links to it; search engines index such orphan pages poorly even when
-# they are in the sitemap, so this anchor is the app page's link to it. It sits
-# inside the spinner figure, so it shows while the app loads (and to no-JS
-# visitors) and vanishes when the app takes over. The href is relative so it
-# resolves at /ft/ in production and at the served build-dir root locally (the
-# ft-manual symlink below).
+# screen, so the app page links to the manual for readers and crawlers alike.
+# It sits inside the spinner figure, so it shows while the app loads (and to
+# no-JS visitors) and vanishes when the app takes over. The href is relative and
+# uses the manual's old path, ../ft-manual/: in production that is /ft-manual/,
+# which ft-manual-apache.conf redirects to the manual at the site root, and
+# locally it resolves at the served build-dir root (the ft-manual symlink below).
 BUILD_STAMP="$(date +%s)"
 sed -e 's/@APPNAME@/ft/g' \
     -e 's/@APPEXPORTNAME@/createQtAppInstance/g' \
@@ -119,10 +118,10 @@ if [ -d "$SCRIPT_DIR/EXAMPLE_IMAGES" ]; then
     ln -sfn "$SCRIPT_DIR/EXAMPLE_IMAGES" images
 fi
 
-# The manual is no longer part of the app payload — it is deployed on its own
-# path (/ft-manual/, see ft-manual-apache.conf) and packed by build_webserver.sh
-# straight out of the source tree. It is symlinked in here all the same, under
-# the name it has in production, so that a locally served build reaches its
+# The manual is no longer part of the app payload — it is deployed as the site
+# root (see ft-manual-apache.conf) and packed by build_webserver.sh straight out
+# of the source tree. It is symlinked in here all the same, under the old path
+# that production still redirects, so that a locally served build reaches its
 # pages at the same relative path the deployed app uses.
 if [ -d "$SCRIPT_DIR/ft-manual" ]; then
     ln -sfn "$SCRIPT_DIR/ft-manual" ft-manual

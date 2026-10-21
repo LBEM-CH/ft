@@ -1,47 +1,68 @@
-cd 4d-manual; 
-cp *.html *.css *.png /srv/4d-manual/
-cp images/*.png /srv/4d-manual/images
-cp 4d-apache.conf /etc/apache2/conf-available/4d-manual.conf
-cd ..
-systemctl reload apache2
+#!/usr/bin/env bash
+# Install an ft deployment on lbem-app.epfl.ch, which serves
+# https://lbem-ft.epfl.ch/ (lbem-ft-vhost.conf): the WASM app at /ft/ from
+# /srv/ft, and the manual at the site root from /srv/ft-manual.
+#
+# build_webserver.sh uploads the archives, sitemap.xml, robots.txt, the Apache
+# config and this script to ~/ft-deploy/ and then runs it there over ssh. It needs no sudo:
+# both directories belong to the deploy user, and the payload is static files,
+# so Apache needs no reload either.
+set -euo pipefail
+cd "$(dirname "$0")"
 
-\rm -rf /srv/ft
-mkdir -p /srv/ft
-tar xzf  ft-wasm.tar.gz -C /srv/ft
+for d in /srv/ft /srv/ft-manual; do
+    if [ ! -w "$d" ]; then
+        echo "error: $d is missing or not writable. Once, on this host:" >&2
+        echo "    sudo mkdir -p /srv/ft /srv/ft-manual && sudo chown $USER: /srv/ft /srv/ft-manual" >&2
+        exit 1
+    fi
+done
+
+# The directories are emptied rather than removed: /srv itself belongs to root,
+# so the deploy user could not create them again.
+find /srv/ft -mindepth 1 -delete
+tar xzf ft-wasm.tar.gz -C /srv/ft
 # The example images ship in a separate archive (see build_webserver.sh) so they
 # are only re-uploaded when they actually change. It persists on the server
 # between deploys, so it is unpacked here even on builds that only changed the
-# app. /srv/ft was just wiped, so both archives must be extracted.
+# app. /srv/ft was just emptied, so both archives must be extracted.
 if [ -f ft-examples.tar.gz ]; then
     tar xzf ft-examples.tar.gz -C /srv/ft
-    cp ft-apache.conf /etc/apache2/conf-available/ft-wasm.conf
 else
     echo "warning: ft-examples.tar.gz not found — example images will be missing" >&2
 fi
 
-# The manual is served from its own path (/ft-manual/, Alias in
-# ft-manual-apache.conf) rather than from inside the app, so that a correction to
-# a page does not mean re-deploying the WASM build. Like the examples it is only
-# re-uploaded when a page changed, but the copy on the server persists, so it is
-# unpacked on every run.
+# The manual is served as the site root (ft-manual-apache.conf) rather than from
+# inside the app, so that a correction to a page does not mean re-deploying the
+# WASM build. Like the examples it is only re-uploaded when a page changed, but
+# the copy on the server persists, so it is unpacked on every run.
 if [ -f ft-manual.tar.gz ]; then
-    \rm -rf /srv/ft-manual
-    mkdir -p /srv/ft-manual
+    find /srv/ft-manual -mindepth 1 -delete
     tar xzf ft-manual.tar.gz -C /srv/ft-manual
-    cp ft-manual-apache.conf /etc/apache2/conf-available/ft-manual.conf
 else
     echo "warning: ft-manual.tar.gz not found — the manual was not updated" >&2
 fi
 
-# The sitemap covers the whole site, so it belongs at the DocumentRoot of the
-# surrounding PHP site, not under /srv. Uploaded next to the tarballs by
-# build_webserver.sh; no apache reload needed for it.
-if [ -f sitemap.xml ]; then
-    cp sitemap.xml /var/www/html/sitemap.xml
-else
-    echo "warning: sitemap.xml not found — the sitemap was not updated" >&2
-fi
-systemctl reload apache2
+# The sitemap lists this site's pages, and robots.txt points crawlers at it, so
+# both sit at the site root. They go in after the manual, which has just
+# replaced everything there.
+for f in sitemap.xml robots.txt; do
+    if [ -f "$f" ]; then
+        cp "$f" /srv/ft-manual/
+    else
+        echo "warning: $f not found — it was not updated" >&2
+    fi
+done
+
+# Installing the Apache snippets takes root, so this only reports when the
+# copies Apache uses differ from the ones just uploaded.
+for pair in ft-apache.conf:ft-wasm.conf ft-manual-apache.conf:ft-manual.conf; do
+    src=${pair%%:*}
+    dst=/etc/apache2/conf-available/${pair#*:}
+    if ! cmp -s "$src" "$dst"; then
+        echo "Apache snippet $src differs from $dst. Install it with:"
+        echo "    sudo cp ~/ft-deploy/$src $dst && sudo apache2ctl configtest && sudo systemctl reload apache2"
+    fi
+done
 
 echo "All done."
-
