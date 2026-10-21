@@ -783,10 +783,10 @@ void FtWindow::activateP2Tool(int toolId)
 // ---------------------------------------------------------------------------
 //  Mouse
 // ---------------------------------------------------------------------------
-// The manual is hosted beside the app rather than inside it — /ft-manual/ next
-// to /ft/ — so its pages can be corrected and re-indexed without re-deploying
-// the WASM build. Every link out of the app goes through this one base.
-static const QString kManualBase = QStringLiteral("https://lbem-status.epfl.ch/ft-manual/");
+// The manual is hosted beside the app rather than inside it — at the site root,
+// next to /ft/ — so its pages can be corrected and re-indexed without
+// re-deploying the WASM build. Every link out of the app goes through this one base.
+static const QString kManualBase = QStringLiteral("https://lbem-ft.epfl.ch/");
 
 void FtWindow::openManualAnchor(bool panel2, const QString &anchor)
 {
@@ -1574,14 +1574,14 @@ void FtWindow::mousePressEvent(QMouseEvent *event)
                 dlg->resize(dlg->width(), 560);
         };
 
-        // Site-restricted Google query. Restricting to the manual's own path
-        // covers manual.html *and* manual_exercises.html, manual_panel1.html, …
-        // while keeping the app itself out of the results.
+        // Site-restricted Google query. The site is the manual — manual.html
+        // *and* manual_exercises.html, manual_panel1.html, … — plus the app at
+        // /ft/, whose page holds next to no text, so it rarely competes.
         auto searchGoogle = [edit]() {
             const QString question = edit->text().trimmed();
             if (question.isEmpty()) return;
             const QString query =
-                question + " site:lbem-status.epfl.ch/ft-manual";
+                question + " site:lbem-ft.epfl.ch";
             QUrl url("https://www.google.com/search");
             QUrlQuery uq;
             uq.addQueryItem("q", query);

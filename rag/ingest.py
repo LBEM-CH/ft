@@ -21,7 +21,7 @@ from pathlib import Path
 
 # Where the manual is published. Matches kManualBase in ftwindow_mouse.cpp so
 # citations point at the same pages the application's own links do.
-BASE_URL = "https://lbem-status.epfl.ch/ft-manual/"
+BASE_URL = "https://lbem-ft.epfl.ch/"
 
 # Page titles copied from the kManualPages table in ftwindow_mouse.cpp, so the
 # two search routes name the pages identically.

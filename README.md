@@ -127,6 +127,6 @@ To build and deploy the application as a WebAssembly app that runs in a browser,
 See [LICENSE](LICENSE) for details.
 
 ## Manual and Help Function
-The Fourier Analyzer manual can be found [here](https://lbem-status.epfl.ch/ft-manual).
+The Fourier Analyzer manual can be found [here](https://lbem-ft.epfl.ch/), and the app runs in the browser [here](https://lbem-ft.epfl.ch/ft/).
 
-The Fourier Analyzer is also used by the 4d app, which has a manual function [here](https://lbem-status.epfl.ch/4d-manual).
+The Fourier Analyzer is also used by the 4d app, which has a manual function [here](https://lbem-4d.epfl.ch/).

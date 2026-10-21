@@ -3,14 +3,12 @@
 <!--
   A second entry point that forwards to manual.html, the real first page.
 
-  It is NOT what makes https://lbem-status.epfl.ch/ft-manual/ work. That needs a
-  line in the Apache config (see the RedirectMatch in ft-manual-apache.conf),
-  because the DirectoryIndex list in force for this directory is inherited from
-  the vhost of the PHP site around it and names index.php — so the server never
-  looks for index.html here, and answers the bare directory URL with 403.
+  It is NOT what makes https://lbem-ft.epfl.ch/ show the manual: the
+  DirectoryIndex in ft-manual-apache.conf names manual.html first, so the
+  server serves that page for the bare site URL and never reaches this one.
 
-  Kept anyway: it costs nothing, gives /ft-manual/index.html a sensible answer,
-  and would serve the directory URL on a server with Apache's stock index list.
+  Kept anyway: it costs nothing, gives /index.html a sensible answer, and
+  serves the directory URL on a server with Apache's stock index list.
 
   manual.html stays the page everything links to: the app, the other manual
   pages, and any bookmark anyone already has.
