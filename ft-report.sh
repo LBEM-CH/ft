@@ -20,12 +20,28 @@
 #
 set -u
 
-LOGS="/var/log/apache2/access.log"*          # current + rotated (.1, .gz)
-# The app lives under /ft/ and its manual under /ft-manual/ (it used to be served
-# from inside the app). Both are counted, so the numbers stay comparable with
-# reports made before the manual was split out. Matching "/ft-manual/" as well as
-# "/ft/" is deliberate: " /ft/" alone would silently drop every manual hit.
-FT_RE=" /ft(-manual)?/"
+# Which log, and which requests in it, depends on where this runs. Both the app
+# and its manual are counted, so the numbers stay comparable with reports made
+# before the manual was split out of the app.
+if [ -e /var/log/apache2/lbem-ft_access.log ]; then
+  # lbem-app: https://lbem-ft.epfl.ch/ has a vhost and a log of its own
+  # (lbem-ft-vhost.conf), with the app under /ft/ and the manual at the site
+  # root. Counted: the app, the root, and the manual's pages and figures —
+  # not crawler files (robots.txt, sitemap.xml) or probes for things the site
+  # does not have, and not the old /ft-manual/ paths, which only redirect to a
+  # page whose own request is counted already.
+  LOGS="/var/log/apache2/lbem-ft_access.log"*    # current + rotated (.1, .gz)
+  FT_RE='"[A-Z]+ /(ft/|figures/|(manual[^ "?]*|index)\.html[ ?]|[ ?])'
+  SCOPE="lbem-ft.epfl.ch (app and manual)"
+else
+  # lbem-status, where the app lived under /ft/ and its manual under /ft-manual/,
+  # in the log shared with the rest of that site. Kept for the history there.
+  # Matching "/ft-manual/" as well as "/ft/" is deliberate: " /ft/" alone would
+  # silently drop every manual hit.
+  LOGS="/var/log/apache2/access.log"*            # current + rotated (.1, .gz)
+  FT_RE=" /ft(-manual)?/"
+  SCOPE="/ft/ and /ft-manual/"
+fi
 CITYDB="/var/lib/GeoIP/GeoLite2-City.mmdb"
 COUNTRYDB="/var/lib/GeoIP/GeoLite2-Country.mmdb"
 # How many calendar months the windowed report covers: the current month plus
@@ -37,8 +53,11 @@ if ! [[ "$MONTHS_BACK" =~ ^[1-9][0-9]*$ ]]; then
   echo "MONTHS_BACK must be a positive integer (>= 1)" >&2
   exit 1
 fi
-REPORT="/home/henning/ft-report.html"
-REPORT_RECENT="/home/henning/ft-report-last${MONTHS_BACK}months.html"
+# The reports go to the home of whoever ran sudo, and belong to them.
+OWNER="${SUDO_USER:-$(id -un)}"
+OWNER_HOME=$(getent passwd "$OWNER" | cut -d: -f6)
+REPORT="$OWNER_HOME/ft-report.html"
+REPORT_RECENT="$OWNER_HOME/ft-report-last${MONTHS_BACK}months.html"
 
 # The months of that window as Apache-format Mon/YYYY tokens. Anchor to the 15th
 # so "-N month" arithmetic never lands in the wrong month when the current day
@@ -85,7 +104,7 @@ else
 fi
 
 echo "##############################################################"
-echo "Log history on disk for /ft/ and /ft-manual/:"
+echo "Log history on disk for ${SCOPE}:"
 echo "  ${SPAN_FIRST} – ${SPAN_LAST}   (${SPAN_DAYS} days carrying hits)"
 echo "  No chart below can span more than this. If that is shorter than"
 echo "  you expect, raise 'rotate' in /etc/logrotate.d/apache2 — see the"
@@ -96,29 +115,29 @@ echo
 # --- HTML report (GoAccess, with country/geo panel) — all available logs ---
 zcat -f $LOGS | grep -E "$FT_RE" \
   | goaccess --log-format=COMBINED --geoip-database="$CITYDB" -o "$REPORT" -
-chown henning:henning "$REPORT"
+chown "$OWNER": "$REPORT"
 
 # --- HTML report — the previous MONTHS_BACK calendar months only ---
 zcat -f $LOGS | grep -E "$FT_RE" | grep -E "$RECENT_RE" \
   | goaccess --log-format=COMBINED --geoip-database="$CITYDB" -o "$REPORT_RECENT" -
-chown henning:henning "$REPORT_RECENT"
+chown "$OWNER": "$REPORT_RECENT"
 
 echo "##############################################################"
-echo "Top countries accessing /ft/ and /ft-manual/ (all logs):"
+echo "Top countries accessing ${SCOPE} (all logs):"
 echo "##############################################################"
 zcat -f $LOGS | grep -E "$FT_RE" | top_countries
 
 echo "##############################################################"
-echo "Top cities accessing /ft/ and /ft-manual/ (all logs):"
+echo "Top cities accessing ${SCOPE} (all logs):"
 echo "##############################################################"
 zcat -f $LOGS | grep -E "$FT_RE" | top_cities
 
 echo "##############################################################"
-echo "Top countries accessing /ft/ and /ft-manual/ in last ${MONTHS_BACK} months (${RANGE_LABEL}):"
+echo "Top countries accessing ${SCOPE} in last ${MONTHS_BACK} months (${RANGE_LABEL}):"
 echo "##############################################################"
 zcat -f $LOGS | grep -E "$FT_RE" | grep -E "$RECENT_RE" | top_countries
 
 echo "##############################################################"
-echo "Top cities accessing /ft/ and /ft-manual/ in last ${MONTHS_BACK} months (${RANGE_LABEL}):"
+echo "Top cities accessing ${SCOPE} in last ${MONTHS_BACK} months (${RANGE_LABEL}):"
 echo "##############################################################"
 zcat -f $LOGS | grep -E "$FT_RE" | grep -E "$RECENT_RE" | top_cities

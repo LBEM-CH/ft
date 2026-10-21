@@ -166,7 +166,7 @@ if [ "$current_user" = "henning" ] || [ "$current_user" = "stahlber" ]; then
         "$APP_TARBALL" "$MANUAL_TARBALL" "$EXAMPLES_TARBALL" \
         "$SCRIPT_DIR/doit" "$SCRIPT_DIR/sitemap.xml" "$SCRIPT_DIR/robots.txt" \
         "$SCRIPT_DIR/ft-apache.conf" "$SCRIPT_DIR/ft-manual-apache.conf" \
-        "$SCRIPT_DIR/lbem-ft-vhost.conf" \
+        "$SCRIPT_DIR/lbem-ft-vhost.conf" "$SCRIPT_DIR/ft-report.sh" \
         "$DEPLOY_HOST:$DEPLOY_DIR/"
     echo "Unpacking on the webserver (doit)"
     $SSH "$DEPLOY_HOST" "bash $DEPLOY_DIR/doit"
@@ -175,16 +175,16 @@ if [ "$current_user" = "henning" ] || [ "$current_user" = "stahlber" ]; then
     echo " "
     cat <<EOF
 One-time server setup: see lbem-ft-vhost.conf.
-To evaluate website usage, copy ft-report.sh to the target. Run on the local machine:
-    scp ft-report.sh henning@lbem-status:/home/henning
-Then run on the target:
-    sudo /home/henning/ft-report.sh
-It writes a GoAccess HTML report to /home/henning/ft-report.html and prints the
-top countries and cities accessing /ft/ to the terminal.
-(Requires on the target: goaccess, mmdb-bin, and GeoLite2 DBs in /var/lib/GeoIP.)
+To evaluate website usage, run on the webserver (ft-report.sh was uploaded with
+the archives):
+    sudo bash ~/$DEPLOY_DIR/ft-report.sh
+It writes GoAccess HTML reports to your home there (ft-report.html and the last
+months' ft-report-last*months.html) and prints the top countries and cities
+accessing the app and the manual to the terminal.
+(Requires on the webserver: goaccess, mmdb-bin, and GeoLite2 DBs in /var/lib/GeoIP.)
 
 From your local machine, fetch the HTML report:
-    scp henning@lbem-status.epfl.ch:~/ft-report.html .
+    scp $DEPLOY_HOST:ft-report.html .
     open ft-report.html
 
 EOF
